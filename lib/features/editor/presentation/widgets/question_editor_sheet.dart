@@ -5,6 +5,9 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
+
+import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 
 // Note: I'll need to check if vsc_quill_delta_to_html is available, 
 // if not I might need another way to convert delta to html for storage.
@@ -86,6 +89,10 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardState = ref.watch(mathKeyboardControllerProvider);
+    final isMathActive = keyboardState.isVisible && keyboardState.type == KeyboardType.math;
+    _controller.readOnly = isMathActive;
+
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.9,
@@ -113,7 +120,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             ),
             const Divider(),
             DropdownButtonFormField<QuestionType>(
-              value: _type,
+              initialValue: _type,
               decoration: const InputDecoration(labelText: 'Question Type'),
               items: QuestionType.values.map((t) => DropdownMenuItem(
                 value: t,
@@ -135,15 +142,22 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
               controller: _controller,
               config: const QuillSimpleToolbarConfig(),
             ),
-            Container(
-              height: 200,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: QuillEditor.basic(
-                controller: _controller,
-                config: const QuillEditorConfig(),
+            MathKeyboardField(
+              controller: _controller,
+              builder: (context, fieldFocusNode, isMathActive) => Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: QuillEditor(
+                  controller: _controller,
+                  focusNode: fieldFocusNode,
+                  scrollController: ScrollController(),
+                  config: const QuillEditorConfig(
+                    placeholder: 'Enter question text...',
+                  ),
+                ),
               ),
             ),
             if (_type == QuestionType.mcq) ...[

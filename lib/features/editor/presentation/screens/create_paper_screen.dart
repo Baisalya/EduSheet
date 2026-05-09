@@ -9,6 +9,7 @@ import 'package:edusheet/features/pdf/services/pdf_service.dart';
 import '../widgets/question_editor_sheet.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'dart:convert';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
 
 class CreatePaperScreen extends ConsumerStatefulWidget {
   const CreatePaperScreen({super.key});
@@ -19,6 +20,13 @@ class CreatePaperScreen extends ConsumerStatefulWidget {
 
 class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   bool _showPreview = false;
+  final TextEditingController _titleController = TextEditingController();
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,12 +65,18 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             children: [
               _buildBrandingEditor(paper),
               const SizedBox(height: 16),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: 'Paper Title',
-                  border: OutlineInputBorder(),
+              MathKeyboardField(
+                controller: _titleController,
+                builder: (context, fieldFocusNode, isMathActive) => TextField(
+                  controller: _titleController..text = paper.title,
+                  focusNode: fieldFocusNode,
+                  keyboardType: isMathActive ? TextInputType.none : TextInputType.text,
+                  decoration: const InputDecoration(
+                    labelText: 'Paper Title',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (val) => ref.read(editorStateProvider.notifier).updateTitle(val),
                 ),
-                onChanged: (val) => ref.read(editorStateProvider.notifier).updateTitle(val),
               ),
               const SizedBox(height: 24),
               _buildSectionHeader('Template & Layout'),

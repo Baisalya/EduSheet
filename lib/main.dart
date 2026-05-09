@@ -5,6 +5,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'core/constants/app_constants.dart';
 import 'features/editor/presentation/screens/create_paper_screen.dart';
 import 'shared/presentation/screens/home_screen.dart';
+import 'features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 
 void main() {
   runApp(
@@ -36,7 +37,9 @@ class MyApp extends StatelessWidget {
         Locale('en', 'US'),
         Locale('hi', 'IN'),
       ],
+      builder: (context, child) => MathKeyboardWrapper(child: child!),
       home: const HomeScreen(),
     );
   }
 }
+
