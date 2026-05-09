@@ -9,6 +9,7 @@ class Paper {
   final String? schoolLogo;
   final List<PaperSection> sections;
   final bool includeOmr;
+  final String templateId;
 
   Paper({
     required this.id,
@@ -17,6 +18,7 @@ class Paper {
     this.schoolLogo,
     this.sections = const [],
     this.includeOmr = false,
+    this.templateId = 'school_formal',
   });
 
   Paper copyWith({
@@ -26,6 +28,7 @@ class Paper {
     String? schoolLogo,
     List<PaperSection>? sections,
     bool? includeOmr,
+    String? templateId,
   }) {
     return Paper(
       id: id ?? this.id,
@@ -34,6 +37,7 @@ class Paper {
       schoolLogo: schoolLogo ?? this.schoolLogo,
       sections: sections ?? this.sections,
       includeOmr: includeOmr ?? this.includeOmr,
+      templateId: templateId ?? this.templateId,
     );
   }
 

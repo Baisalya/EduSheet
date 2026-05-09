@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+import 'package:edusheet/features/pdf/presentation/widgets/template_selector.dart';
 import 'package:edusheet/features/pdf/services/pdf_service.dart';
 import '../widgets/question_editor_sheet.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -50,9 +51,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   Widget _buildEditor(Paper paper) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
             children: [
               _buildBrandingEditor(paper),
               const SizedBox(height: 16),
@@ -63,28 +64,38 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 ),
                 onChanged: (val) => ref.read(editorStateProvider.notifier).updateTitle(val),
               ),
+              const SizedBox(height: 24),
+              _buildSectionHeader('Template & Layout'),
+              const SizedBox(height: 12),
+              TemplateSelector(
+                selectedTemplateId: paper.templateId,
+                onTemplateSelected: (id) => ref.read(editorStateProvider.notifier).updateTemplate(id),
+              ),
+              const SizedBox(height: 24),
+              _buildSectionHeader('Sections & Questions'),
+              const SizedBox(height: 8),
+              ...paper.sections.map((section) => _buildSectionEditor(section, key: ValueKey(section.id))),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Include OMR Sheet'),
+                subtitle: const Text('Add a full OMR sheet at the end'),
+                value: paper.includeOmr,
+                onChanged: (val) => ref.read(editorStateProvider.notifier).toggleOmr(val),
+              ),
             ],
-          ),
-        ),
-        Expanded(
-          child: ReorderableListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            onReorder: (oldIdx, newIdx) => ref.read(editorStateProvider.notifier).reorderSections(oldIdx, newIdx),
-            children: [
-              for (final section in paper.sections)
-                _buildSectionEditor(section, key: ValueKey(section.id)),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: SwitchListTile(
-            title: const Text('Include OMR Sheet'),
-            value: paper.includeOmr,
-            onChanged: (val) => ref.read(editorStateProvider.notifier).toggleOmr(val),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).primaryColor,
+          ),
     );
   }
 
@@ -250,57 +261,106 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 
   Widget _buildPreview(Paper paper) {
-    // For now, let's just show a simple list preview. 
-    // Real "Live Preview" would use PdfPreview, but that might be heavy for mobile.
-    return ListView(
+    // Basic preview that respects some template properties
+    return Container(
+      color: Colors.white,
       padding: const EdgeInsets.all(16),
-      children: [
-        Center(child: Text(paper.title, style: Theme.of(context).textTheme.headlineMedium)),
-        const Divider(),
-        ...paper.sections.map((s) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 16),
-            Text('${s.prefix} ${s.title}'.trim(), style: Theme.of(context).textTheme.titleLarge),
-            if (s.instruction != null) Text(s.instruction!, style: const TextStyle(fontStyle: FontStyle.italic)),
-            const Divider(),
-            ...s.questions.asMap().entries.map((entry) {
-              final idx = entry.key + 1;
-              final q = entry.value;
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  paper.schoolName,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                Text(
+                  paper.title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                  textAlign: TextAlign.center,
+                ),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('$idx. '),
-                        Expanded(child: _buildRichText(q.text)),
-                        Text('[${q.marks}]'),
-                      ],
-                    ),
-                    if (q.type == QuestionType.mcq)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 20, top: 4),
-                        child: Column(
-                          children: q.options.asMap().entries.map((o) {
-                            return Row(
-                              children: [
-                                Text('${String.fromCharCode(65 + o.key)}) '),
-                                Expanded(child: Text(o.value.text)),
-                              ],
-                            );
-                          }).toList(),
-                        ),
-                      ),
+                    const Text('Time: 3 Hours'),
+                    Text('Max Marks: ${paper.totalMarks}'),
                   ],
                 ),
-              );
-            }),
-          ],
-        )),
-      ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              itemCount: paper.sections.length,
+              itemBuilder: (context, index) {
+                final s = paper.sections[index];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    Text(
+                      '${s.prefix} ${s.title}'.trim(),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Theme.of(context).primaryColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    if (s.instruction != null)
+                      Text(
+                        s.instruction!,
+                        style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+                      ),
+                    const Divider(),
+                    ...s.questions.asMap().entries.map((entry) {
+                      final qIdx = entry.key + 1;
+                      final q = entry.value;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('$qIdx. ', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                Expanded(child: _buildRichText(q.text)),
+                                Text('[${q.marks}]', style: const TextStyle(fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            if (q.type == QuestionType.mcq)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 24, top: 4),
+                                child: Column(
+                                  children: q.options.asMap().entries.map((o) {
+                                    return Row(
+                                      children: [
+                                        Text('${String.fromCharCode(65 + o.key)}) '),
+                                        Expanded(child: Text(o.value.text)),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 

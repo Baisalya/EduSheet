@@ -10,9 +10,15 @@ import 'dart:io';
 import 'package:edusheet/features/omr/domain/models/omr_config.dart';
 import 'package:edusheet/features/omr/services/omr_widgets_builder.dart';
 
+import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+
 class PdfService {
   static Future<void> generateAndPreview(Paper paper) async {
     final pdf = pw.Document();
+    final template = PaperTemplate.predefinedTemplates.firstWhere(
+      (t) => t.id == paper.templateId,
+      orElse: () => PaperTemplate.predefinedTemplates.first,
+    );
 
     pw.ImageProvider? logoImage;
     if (paper.schoolLogo != null) {
@@ -26,43 +32,150 @@ class PdfService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(32),
-        build: (context) => [
-          _buildHeader(paper, logoImage),
-          ...paper.sections.map((section) => _buildSection(section)),
-          if (paper.includeOmr) ..._buildOmrSheet(paper, logoImage),
-        ],
+        build: (context) {
+          final content = [
+            _buildHeader(paper, logoImage, template),
+            ...paper.sections.map((section) => _buildSection(section, template)),
+            if (paper.includeOmr) ..._buildOmrSheet(paper, logoImage),
+          ];
+
+          if (template.hasBorder) {
+            return [
+              pw.FullPage(
+                ignoreMargins: true,
+                child: pw.Container(
+                  margin: const pw.EdgeInsets.all(10),
+                  padding: const pw.EdgeInsets.all(20),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: template.primaryColor, width: 1),
+                  ),
+                  child: pw.Column(children: content),
+                ),
+              )
+            ];
+          }
+          return content;
+        },
       ),
     );
 
     await Printing.layoutPdf(onLayout: (format) async => pdf.save());
   }
 
-  static pw.Widget _buildHeader(Paper paper, pw.ImageProvider? logoImage) {
+  static pw.Widget _buildHeader(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+    if (template.type == TemplateType.coaching) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.all(10),
+        color: template.secondaryColor,
+        child: pw.Row(
+          children: [
+            if (logoImage != null)
+              pw.Container(width: 60, height: 60, child: pw.Image(logoImage)),
+            pw.SizedBox(width: 20),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  paper.schoolName,
+                  style: pw.TextStyle(
+                    fontSize: 20,
+                    fontWeight: pw.FontWeight.bold,
+                    color: template.primaryColor,
+                  ),
+                ),
+                pw.Text(
+                  paper.title,
+                  style: pw.TextStyle(fontSize: 16, color: PdfColors.grey900),
+                ),
+              ],
+            ),
+            pw.Spacer(),
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Text('Time: 3 Hours'),
+                pw.Text('Max Marks: ${paper.totalMarks}'),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (template.type == TemplateType.cute) {
+      return pw.Column(
+        children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.center,
+            children: [
+              if (logoImage != null)
+                pw.Container(width: 40, height: 40, child: pw.Image(logoImage)),
+              pw.SizedBox(width: 10),
+              pw.Text(
+                paper.schoolName,
+                style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: template.primaryColor),
+              ),
+            ],
+          ),
+          pw.Container(
+            margin: const pw.EdgeInsets.symmetric(vertical: 8),
+            padding: const pw.EdgeInsets.all(4),
+            decoration: pw.BoxDecoration(
+              color: template.secondaryColor,
+              borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
+            ),
+            child: pw.Text(
+              paper.title,
+              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+            children: [
+              pw.Text('Name: ________________'),
+              pw.Text('Class: ________'),
+            ],
+          ),
+          pw.Divider(color: template.primaryColor),
+        ],
+      );
+    }
+
+    // Default / School / Board
     return pw.Column(
       children: [
         pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: template.centeredHeader ? pw.MainAxisAlignment.center : pw.MainAxisAlignment.spaceBetween,
           children: [
-            if (logoImage != null)
-              pw.Container(width: 50, height: 50, child: pw.Image(logoImage))
-            else
-              pw.SizedBox(width: 50),
+            if (logoImage != null && !template.centeredHeader)
+              pw.Container(width: 50, height: 50, child: pw.Image(logoImage)),
             pw.Column(
               children: [
+                if (logoImage != null && template.centeredHeader)
+                  pw.Container(width: 50, height: 50, child: pw.Image(logoImage)),
                 pw.Text(
                   paper.schoolName,
                   style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
                 ),
                 pw.Text(
                   paper.title,
-                  style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
+                  style: pw.TextStyle(fontSize: template.headerFontSize, fontWeight: pw.FontWeight.bold),
                 ),
               ],
             ),
-            pw.SizedBox(width: 50),
+            if (!template.centeredHeader) pw.SizedBox(width: 50),
           ],
         ),
         pw.SizedBox(height: 10),
+        if (template.type == TemplateType.board) ...[
+          pw.Row(
+            children: [
+              pw.Expanded(child: pw.Text('Roll No: _______________')),
+              pw.Expanded(child: pw.Text('Candidate Signature: _______________')),
+            ],
+          ),
+          pw.SizedBox(height: 10),
+        ],
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
@@ -75,19 +188,24 @@ class PdfService {
     );
   }
 
-  static pw.Widget _buildSection(PaperSection section) {
+  static pw.Widget _buildSection(PaperSection section, PaperTemplate template) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.SizedBox(height: 20),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text(
-              '${section.prefix} ${section.title}'.trim(),
-              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+        pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: template.type == TemplateType.coaching
+              ? pw.BoxDecoration(color: template.secondaryColor)
+              : null,
+          child: pw.Text(
+            '${section.prefix} ${section.title}'.trim(),
+            style: pw.TextStyle(
+              fontSize: 18,
+              fontWeight: pw.FontWeight.bold,
+              color: template.type == TemplateType.coaching ? template.primaryColor : PdfColors.black,
             ),
-          ],
+          ),
         ),
         if (section.instruction != null && section.instruction!.isNotEmpty)
           pw.Padding(
@@ -101,13 +219,13 @@ class PdfService {
         ...section.questions.asMap().entries.map((entry) {
           final idx = entry.key + 1;
           final q = entry.value;
-          return _buildQuestion(idx, q);
+          return _buildQuestion(idx, q, template);
         }),
       ],
     );
   }
 
-  static pw.Widget _buildQuestion(int index, Question q) {
+  static pw.Widget _buildQuestion(int index, Question q, PaperTemplate template) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 8),
       child: pw.Column(
@@ -116,11 +234,11 @@ class PdfService {
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.SizedBox(width: 25, child: pw.Text('$index.')),
+              pw.SizedBox(width: 25, child: pw.Text('$index.', style: pw.TextStyle(fontSize: template.questionFontSize))),
               pw.Expanded(
-                child: _parseRichTextToPdf(q.text),
+                child: _parseRichTextToPdf(q.text, template.questionFontSize),
               ),
-              pw.SizedBox(width: 40, child: pw.Text('[${q.marks}]', textAlign: pw.TextAlign.right)),
+              pw.SizedBox(width: 40, child: pw.Text('[${q.marks}]', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: template.questionFontSize))),
             ],
           ),
           if (q.type == QuestionType.mcq)
@@ -134,8 +252,8 @@ class PdfService {
                     padding: const pw.EdgeInsets.symmetric(vertical: 2),
                     child: pw.Row(
                       children: [
-                        pw.Text('$optIdx) '),
-                        pw.Text(optEntry.value.text),
+                        pw.Text('$optIdx) ', style: pw.TextStyle(fontSize: template.questionFontSize)),
+                        pw.Text(optEntry.value.text, style: pw.TextStyle(fontSize: template.questionFontSize)),
                       ],
                     ),
                   );
@@ -145,36 +263,36 @@ class PdfService {
           if (q.type == QuestionType.fillInTheBlanks)
             pw.Padding(
               padding: const pw.EdgeInsets.only(left: 25, top: 4),
-              child: pw.Text('Ans: ________________________'),
+              child: pw.Text('Ans: ________________________', style: pw.TextStyle(fontSize: template.questionFontSize)),
             ),
         ],
       ),
     );
   }
 
-  static pw.Widget _parseRichTextToPdf(String text) {
+  static pw.Widget _parseRichTextToPdf(String text, double fontSize) {
     try {
       if (text.startsWith('[') || text.startsWith('{')) {
         final List<dynamic> deltaJson = jsonDecode(text);
         final converter = QuillDeltaToHtmlConverter(deltaJson.cast<Map<String, dynamic>>());
         final html = converter.convert();
         final document = html_parser.parse(html);
-        return pw.RichText(text: pw.TextSpan(children: _domToTextSpans(document.body!)));
+        return pw.RichText(text: pw.TextSpan(children: _domToTextSpans(document.body!, fontSize)));
       }
     } catch (e) {
       // Fallback to plain text
     }
-    return pw.Text(text);
+    return pw.Text(text, style: pw.TextStyle(fontSize: fontSize));
   }
 
-  static List<pw.InlineSpan> _domToTextSpans(dom.Node node) {
+  static List<pw.InlineSpan> _domToTextSpans(dom.Node node, double fontSize) {
     List<pw.InlineSpan> spans = [];
 
     for (var child in node.nodes) {
       if (child is dom.Text) {
-        spans.add(pw.TextSpan(text: child.text));
+        spans.add(pw.TextSpan(text: child.text, style: pw.TextStyle(fontSize: fontSize)));
       } else if (child is dom.Element) {
-        pw.TextStyle style = const pw.TextStyle();
+        pw.TextStyle style = pw.TextStyle(fontSize: fontSize);
         if (child.localName == 'strong' || child.localName == 'b') {
           style = style.copyWith(fontWeight: pw.FontWeight.bold);
         } else if (child.localName == 'em' || child.localName == 'i') {
@@ -186,7 +304,7 @@ class PdfService {
         spans.add(pw.TextSpan(
           text: child.nodes.isEmpty ? child.text : null,
           style: style,
-          children: child.nodes.isNotEmpty ? _domToTextSpans(child) : null,
+          children: child.nodes.isNotEmpty ? _domToTextSpans(child, fontSize) : null,
         ));
       }
     }

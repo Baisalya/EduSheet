@@ -145,4 +145,8 @@ class EditorState extends _$EditorState {
   void toggleOmr(bool value) {
     state = state.copyWith(includeOmr: value);
   }
+
+  void updateTemplate(String templateId) {
+    state = state.copyWith(templateId: templateId);
+  }
 }
