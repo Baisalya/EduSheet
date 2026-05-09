@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../features/editor/presentation/screens/create_paper_screen.dart';
 import '../../../features/omr/presentation/pages/omr_generator_page.dart';
+import '../../../features/question_bank/presentation/screens/question_bank_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -40,11 +41,10 @@ class HomeScreen extends StatelessWidget {
             title: 'Question Bank',
             icon: Icons.account_balance,
             color: Colors.green,
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Question Bank feature coming soon!')),
-              );
-            },
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const QuestionBankScreen()),
+            ),
           ),
           _HomeCard(
             title: 'Settings',
