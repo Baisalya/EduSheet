@@ -12,6 +12,7 @@ class MathKey extends StatefulWidget {
   final Color? color;
   final Color? textColor;
   final double? fontSize;
+  final Widget? child;
 
   const MathKey({
     super.key,
@@ -23,6 +24,7 @@ class MathKey extends StatefulWidget {
     this.color,
     this.textColor,
     this.fontSize,
+    this.child,
   });
 
   @override
@@ -95,7 +97,7 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
                 ),
                 padding: const EdgeInsets.all(2),
                 child: Center(
-                  child: _buildContent(context, effectiveLabel, effectiveTex),
+                  child: widget.child ?? _buildContent(context, effectiveLabel, effectiveTex),
                 ),
               ),
             ),
@@ -118,7 +120,7 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
                     ],
                   ),
                   child: Center(
-                    child: _buildContent(context, effectiveLabel, effectiveTex, preview: true),
+                    child: widget.child ?? _buildContent(context, effectiveLabel, effectiveTex, preview: true),
                   ),
                 ),
               ),

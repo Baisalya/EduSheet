@@ -2,14 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/math_keyboard_controller.dart';
 import 'math_keyboard_view.dart';
+import 'floating_element_manager.dart';
 
-class MathKeyboardWrapper extends ConsumerWidget {
+class MathKeyboardWrapper extends ConsumerStatefulWidget {
   final Widget child;
 
   const MathKeyboardWrapper({super.key, required this.child});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MathKeyboardWrapper> createState() => _MathKeyboardWrapperState();
+}
+
+class _MathKeyboardWrapperState extends ConsumerState<MathKeyboardWrapper> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(mathKeyboardControllerProvider);
     final controller = ref.read(mathKeyboardControllerProvider.notifier);
     final isMathVisible = state.isVisible && state.type == KeyboardType.math;
@@ -21,7 +29,14 @@ class MathKeyboardWrapper extends ConsumerWidget {
           Positioned.fill(
             child: Column(
               children: [
-                Expanded(child: child),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      widget.child,
+                      const FloatingElementManager(),
+                    ],
+                  ),
+                ),
                 // Spacer to prevent content from being hidden behind math keyboard
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -47,7 +62,18 @@ class MathKeyboardWrapper extends ConsumerWidget {
                     controller.setHeight(state.height - details.delta.dy);
                   }
                 },
-                child: const MathKeyboardView(),
+                child: SizedBox(
+                  height: state.height,
+                  child: HeroControllerScope.none(
+                    child: Navigator(
+                      key: _navigatorKey,
+                      onGenerateRoute: (settings) => PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) => const MathKeyboardView(),
+                        transitionsBuilder: (context, animation, secondaryAnimation, child) => child,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),

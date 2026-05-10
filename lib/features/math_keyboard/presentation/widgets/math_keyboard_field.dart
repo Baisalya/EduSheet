@@ -68,49 +68,60 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Stack(
-          alignment: Alignment.centerRight,
-          children: [
-            widget.builder(context, _focusNode, isMathActive),
-            if (_isFocused)
-              Padding(
-                padding: const EdgeInsets.only(right: 8.0),
-                child: Material(
-                  color: isMathActive 
-                      ? Theme.of(context).colorScheme.primary 
-                      : Theme.of(context).colorScheme.secondaryContainer,
-                  shape: const CircleBorder(),
-                  elevation: 4,
-                  child: IconButton(
-                    icon: Icon(
-                      isMathActive ? Icons.keyboard : Icons.functions,
-                      size: 20,
-                      color: isMathActive 
-                          ? Theme.of(context).colorScheme.onPrimary 
-                          : Theme.of(context).colorScheme.onSecondaryContainer,
+        GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapDown: (_) {
+            if (isMathActive) {
+              // Proactively hide system keyboard when tapping while math is active
+              SystemChannels.textInput.invokeMethod('TextInput.hide');
+            }
+          },
+          child: Stack(
+            alignment: Alignment.centerRight,
+            children: [
+              widget.builder(context, _focusNode, isMathActive),
+              if (_isFocused)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Material(
+                    color: isMathActive 
+                        ? Theme.of(context).colorScheme.primary 
+                        : Theme.of(context).colorScheme.secondaryContainer,
+                    shape: const CircleBorder(),
+                    elevation: 4,
+                    child: IconButton(
+                      icon: Icon(
+                        isMathActive ? Icons.keyboard : Icons.functions,
+                        size: 20,
+                        color: isMathActive 
+                            ? Theme.of(context).colorScheme.onPrimary 
+                            : Theme.of(context).colorScheme.onSecondaryContainer,
+                      ),
+                      onPressed: () async {
+                        final notifier = ref.read(mathKeyboardControllerProvider.notifier);
+                        
+                        if (isMathActive) {
+                          notifier.showSystemKeyboard();
+                          // Re-show system keyboard with a small delay to ensure readOnly is false
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            SystemChannels.textInput.invokeMethod('TextInput.show');
+                          });
+                        } else {
+                          notifier.showMathKeyboard();
+                          // Explicitly hide system keyboard without losing focus
+                          SystemChannels.textInput.invokeMethod('TextInput.hide');
+                        }
+                        
+                        if (!_focusNode.hasFocus) {
+                          _focusNode.requestFocus();
+                        }
+                      },
+                      tooltip: isMathActive ? 'System Keyboard' : 'Math Keyboard',
                     ),
-                    onPressed: () async {
-                      final notifier = ref.read(mathKeyboardControllerProvider.notifier);
-                      
-                      if (isMathActive) {
-                        notifier.showSystemKeyboard();
-                        // Re-show system keyboard
-                        SystemChannels.textInput.invokeMethod('TextInput.show');
-                      } else {
-                        notifier.showMathKeyboard();
-                        // Explicitly hide system keyboard without losing focus
-                        SystemChannels.textInput.invokeMethod('TextInput.hide');
-                      }
-                      
-                      if (!_focusNode.hasFocus) {
-                        _focusNode.requestFocus();
-                      }
-                    },
-                    tooltip: isMathActive ? 'System Keyboard' : 'Math Keyboard',
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
         if (isMathActive && _isFocused) _buildMathPreview(),
       ],

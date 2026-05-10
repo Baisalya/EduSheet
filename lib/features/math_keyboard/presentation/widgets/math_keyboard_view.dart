@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_key.dart';
@@ -34,11 +35,16 @@ class MathKeyboardView extends ConsumerWidget {
           // Drag Handle & Tab Bar
           _buildHeader(context, state, controller),
 
+          // Geometry Specific Toolbar
+          if (state.currentCategory == MathCategory.geometry) _buildGeometryToolbar(context, state, controller),
+
           // Symbol Grid
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              child: _buildSymbolGrid(context, state, controller),
+              child: state.currentCategory == MathCategory.format 
+                  ? _buildQuillToolbar(context, state, ref)
+                  : _buildSymbolGrid(context, state, controller),
             ),
           ),
 
@@ -123,6 +129,182 @@ class MathKeyboardView extends ConsumerWidget {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildGeometryToolbar(BuildContext context, MathKeyboardStateData state, MathKeyboardController controller) {
+    final theme = Theme.of(context);
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1))),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            Text('Symbol Size:', style: theme.textTheme.labelSmall),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline, size: 18),
+              onPressed: () => controller.setSymbolSize(state.symbolSizeLevel - 1),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              // Tooltip removed to fix "No Overlay" error
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text('${state.symbolSizeLevel > 0 ? "+" : ""}${state.symbolSizeLevel}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline, size: 18),
+              onPressed: () => controller.setSymbolSize(state.symbolSizeLevel + 1),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              // Tooltip removed to fix "No Overlay" error
+            ),
+            const SizedBox(width: 16),
+            TextButton(
+              onPressed: () => controller.setSymbolSize(0),
+              child: const Text('Reset', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuillToolbar(BuildContext context, MathKeyboardStateData state, WidgetRef ref) {
+    if (state.activeController is! quill.QuillController) {
+      return const Center(
+        child: Text('Formatting only available for text editors'),
+      );
+    }
+
+    final controller = ref.read(mathKeyboardControllerProvider.notifier);
+    final theme = Theme.of(context);
+
+    // Define formatting actions for the grid
+    final actions = [
+      {'label': 'Shapes', 'icon': Icons.category_outlined, 'onTap': () => _showShapePicker(context, controller)},
+      {'label': 'Text Box', 'icon': Icons.text_fields_outlined, 'onTap': () => controller.addFloatingElement(FloatingElementType.textBox)},
+      {'label': 'Bold', 'icon': Icons.format_bold, 'onTap': () => state.activeController.toggleAttribute(quill.Attribute.bold)},
+      {'label': 'Italic', 'icon': Icons.format_italic, 'onTap': () => state.activeController.toggleAttribute(quill.Attribute.italic)},
+      {'label': 'Under', 'icon': Icons.format_underlined, 'onTap': () => state.activeController.toggleAttribute(quill.Attribute.underline)},
+      {'label': 'Strike', 'icon': Icons.format_strikethrough, 'onTap': () => state.activeController.toggleAttribute(quill.Attribute.strikeThrough)},
+      {'label': 'Bullet', 'icon': Icons.format_list_bulleted, 'onTap': () => state.activeController.toggleAttribute(quill.Attribute.ul)},
+      {'label': 'Number', 'icon': Icons.format_list_numbered, 'onTap': () => state.activeController.toggleAttribute(quill.Attribute.ol)},
+      {'label': 'Left', 'icon': Icons.format_align_left, 'onTap': () => state.activeController.formatSelection(quill.Attribute.leftAlignment)},
+      {'label': 'Center', 'icon': Icons.format_align_center, 'onTap': () => state.activeController.formatSelection(quill.Attribute.centerAlignment)},
+      {'label': 'Right', 'icon': Icons.format_align_right, 'onTap': () => state.activeController.formatSelection(quill.Attribute.rightAlignment)},
+      {'label': 'Justify', 'icon': Icons.format_align_justify, 'onTap': () => state.activeController.formatSelection(quill.Attribute.justifyAlignment)},
+    ];
+
+    return Container(
+      color: theme.colorScheme.surface,
+      child: GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 6,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 1,
+        ),
+        itemCount: actions.length,
+        itemBuilder: (context, index) {
+          final action = actions[index];
+          return MathKey(
+            onTap: action['onTap'] as VoidCallback,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(action['icon'] as IconData, size: 20, color: theme.colorScheme.primary),
+                const SizedBox(height: 2),
+                Text(
+                  action['label'] as String, 
+                  style: theme.textTheme.labelSmall?.copyWith(fontSize: 9),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showShapePicker(BuildContext context, MathKeyboardController controller) {
+    final theme = Theme.of(context);
+    final shapes = [
+      Icons.circle,
+      Icons.square,
+      Icons.change_history, // Triangle
+      Icons.pentagon,
+      Icons.hexagon,
+      Icons.star,
+      Icons.arrow_forward,
+      Icons.arrow_back,
+      Icons.arrow_upward,
+      Icons.arrow_downward,
+      Icons.call_made,
+      Icons.call_received,
+      Icons.favorite,
+      Icons.cloud,
+      Icons.lightbulb,
+      Icons.chat_bubble_outline,
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      useRootNavigator: false, // Ensure it opens within the keyboard's Navigator
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SingleChildScrollView( 
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Insert Shape',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 6,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                ),
+                itemCount: shapes.length,
+                itemBuilder: (context, index) {
+                  return InkWell(
+                    onTap: () {
+                      controller.addFloatingElement(FloatingElementType.shape, icon: shapes[index]);
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(shapes[index], color: theme.colorScheme.primary),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

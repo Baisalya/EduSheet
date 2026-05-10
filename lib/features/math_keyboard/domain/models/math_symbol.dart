@@ -11,6 +11,7 @@ enum MathCategory {
   arrows,
   sets,
   templates,
+  format,
   misc,
 }
 
@@ -173,11 +174,23 @@ const List<MathSymbol> mathSymbols = [
 
   // Geometry
   MathSymbol(label: '△', tex: r'\triangle', category: MathCategory.geometry),
+  MathSymbol(label: '△ ABC', tex: r'\triangle_{A B C}', category: MathCategory.geometry, isBuilder: true),
+  MathSymbol(label: '○', tex: r'\bigcirc', category: MathCategory.geometry),
+  MathSymbol(label: '□', tex: r'\square', category: MathCategory.geometry),
+  MathSymbol(label: '▭', tex: r'\text{Rect}', category: MathCategory.geometry),
+  MathSymbol(label: 'Rhomb', tex: r'\Diamond', category: MathCategory.geometry),
+  MathSymbol(label: '▱', tex: r'\text{Paral}', category: MathCategory.geometry),
+  MathSymbol(label: 'Trap', tex: r'\text{Trap}', category: MathCategory.geometry),
+  MathSymbol(label: '∠', tex: r'\angle', category: MathCategory.geometry),
+  MathSymbol(label: 'm∠', tex: r'm\angle', category: MathCategory.geometry),
   MathSymbol(label: '≅', tex: r'\cong', category: MathCategory.geometry),
   MathSymbol(label: '∼', tex: r'\sim', category: MathCategory.geometry),
   MathSymbol(label: '⊥', tex: r'\perp', category: MathCategory.geometry),
   MathSymbol(label: '∥', tex: r'\parallel', category: MathCategory.geometry),
-  MathSymbol(label: '∠', tex: r'\angle', category: MathCategory.geometry),
+  MathSymbol(label: '°', tex: r'^{\circ}', category: MathCategory.geometry),
+  MathSymbol(label: 'AB', tex: r'\overline{AB}', category: MathCategory.geometry, isBuilder: true),
+  MathSymbol(label: '→', tex: r'\vec{v}', category: MathCategory.geometry, isBuilder: true),
+  MathSymbol(label: 'Coord', tex: r'\text{Graph}', category: MathCategory.geometry),
 
   // Sets
   MathSymbol(label: '∈', tex: r'\in', category: MathCategory.sets),
