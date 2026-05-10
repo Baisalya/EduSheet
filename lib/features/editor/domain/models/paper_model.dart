@@ -46,13 +46,7 @@ class Paper {
   }
 
   double get totalMarks {
-    double total = 0;
-    for (var section in sections) {
-      for (var question in section.questions) {
-        total += question.marks;
-      }
-    }
-    return total;
+    return sections.fold(0.0, (sum, section) => sum + section.totalMarks);
   }
 }
 
@@ -90,6 +84,9 @@ class PaperSection {
   final String? instruction;
   final String prefix;
   final List<Question> questions;
+  final int? requiredCount;
+  final bool showTitle;
+  final bool showDivider;
 
   PaperSection({
     required this.id,
@@ -97,6 +94,9 @@ class PaperSection {
     this.instruction,
     this.prefix = '',
     this.questions = const [],
+    this.requiredCount,
+    this.showTitle = true,
+    this.showDivider = true,
   });
 
   PaperSection copyWith({
@@ -105,6 +105,10 @@ class PaperSection {
     String? instruction,
     String? prefix,
     List<Question>? questions,
+    int? requiredCount,
+    bool clearRequiredCount = false,
+    bool? showTitle,
+    bool? showDivider,
   }) {
     return PaperSection(
       id: id ?? this.id,
@@ -112,7 +116,26 @@ class PaperSection {
       instruction: instruction ?? this.instruction,
       prefix: prefix ?? this.prefix,
       questions: questions ?? this.questions,
+      requiredCount: clearRequiredCount ? null : (requiredCount ?? this.requiredCount),
+      showTitle: showTitle ?? this.showTitle,
+      showDivider: showDivider ?? this.showDivider,
     );
+  }
+
+  double get totalMarks {
+    if (questions.isEmpty) return 0.0;
+    
+    // Filter out questions explicitly marked as optional
+    final nonOptionalQuestions = questions.where((q) => !q.isOptional).toList();
+    
+    if (requiredCount == null || requiredCount! >= nonOptionalQuestions.length) {
+      return nonOptionalQuestions.fold(0.0, (sum, q) => sum + q.marks);
+    }
+
+    // If there's a requiredCount, we usually assume the student picks the ones with most marks
+    // to determine the maximum possible marks for the section.
+    final sortedMarks = nonOptionalQuestions.map((q) => q.marks).toList()..sort((a, b) => b.compareTo(a));
+    return sortedMarks.take(requiredCount!).fold(0.0, (sum, m) => sum + m);
   }
 }
 
@@ -148,6 +171,7 @@ class Question {
   final QuestionType type;
   final double marks;
   final TextAlign alignment;
+  final bool isOptional;
 
   Question({
     required this.id,
@@ -157,6 +181,7 @@ class Question {
     this.type = QuestionType.descriptive,
     this.marks = 1.0,
     this.alignment = TextAlign.left,
+    this.isOptional = false,
   });
 
   Question copyWith({
@@ -167,6 +192,7 @@ class Question {
     QuestionType? type,
     double? marks,
     TextAlign? alignment,
+    bool? isOptional,
   }) {
     return Question(
       id: id ?? this.id,
@@ -176,6 +202,7 @@ class Question {
       type: type ?? this.type,
       marks: marks ?? this.marks,
       alignment: alignment ?? this.alignment,
+      isOptional: isOptional ?? this.isOptional,
     );
   }
 }

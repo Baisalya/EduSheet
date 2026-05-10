@@ -192,6 +192,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         title: Row(
           children: [
             Expanded(child: Text(section.title, style: const TextStyle(fontWeight: FontWeight.bold))),
+            Text(
+              '${section.totalMarks} Marks',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(width: 8),
             Text('${section.questions.length} Questions', style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
@@ -222,6 +230,61 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   decoration: const InputDecoration(labelText: 'Instructions'),
                   onChanged: (val) => ref.read(editorStateProvider.notifier).updateSection(section.id, instruction: val),
                 ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text('Show Title', style: TextStyle(fontSize: 14)),
+                        value: section.showTitle,
+                        onChanged: (val) => ref.read(editorStateProvider.notifier).updateSection(section.id, showTitle: val),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                      ),
+                    ),
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text('Show Divider', style: TextStyle(fontSize: 14)),
+                        value: section.showDivider,
+                        onChanged: (val) => ref.read(editorStateProvider.notifier).updateSection(section.id, showDivider: val),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    const Text('Student must answer: ', style: TextStyle(fontSize: 14)),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 80,
+                      child: TextFormField(
+                        initialValue: section.requiredCount?.toString(),
+                        decoration: const InputDecoration(
+                          hintText: 'All',
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        onChanged: (val) {
+                          final count = int.tryParse(val);
+                          ref.read(editorStateProvider.notifier).updateSection(
+                            section.id, 
+                            requiredCount: count,
+                            clearRequiredCount: val.isEmpty,
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('out of ${section.questions.length} questions', style: const TextStyle(fontSize: 14)),
+                  ],
+                ),
+                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -234,9 +297,15 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
               for (final q in section.questions)
                 ListTile(
                   key: ValueKey(q.id),
-                  leading: CircleAvatar(child: Text(q.marks.toStringAsFixed(0))),
+                  leading: CircleAvatar(
+                    backgroundColor: q.isOptional ? Colors.grey[200] : null,
+                    child: Text(q.marks.toStringAsFixed(0)),
+                  ),
                   title: _buildQuestionPreviewText(q.text),
-                  subtitle: Text(q.type.name.toUpperCase()),
+                  subtitle: Text(
+                    '${q.type.name.toUpperCase()}${q.isOptional ? " (OPTIONAL)" : ""}',
+                    style: TextStyle(color: q.isOptional ? Colors.grey : null),
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -390,20 +459,29 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 16),
-                    Text(
-                      '${s.prefix} ${s.title}'.trim(),
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: Theme.of(context).primaryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
+                const SizedBox(height: 16),
+                if (s.showTitle || s.prefix.isNotEmpty)
+                  Text(
+                    '${s.prefix} ${s.showTitle ? s.title : ""}'.trim(),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: Theme.of(context).primaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                if (s.instruction != null)
+                  Text(
+                    s.instruction!,
+                    style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+                  ),
+                if (s.requiredCount != null && s.requiredCount! < s.questions.length)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      'Note: Answer any ${s.requiredCount} questions from this section.',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
                     ),
-                    if (s.instruction != null)
-                      Text(
-                        s.instruction!,
-                        style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
-                      ),
-                    const Divider(),
+                  ),
+                if (s.showDivider) const Divider(),
                     ...s.questions.asMap().entries.map((entry) {
                       final qIdx = entry.key + 1;
                       final q = entry.value;
@@ -416,7 +494,19 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('$qIdx. ', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                Expanded(child: _buildRichText(q.text)),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _buildRichText(q.text),
+                                      if (q.isOptional)
+                                        const Text(
+                                          '(Optional/OR Choice)',
+                                          style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey),
+                                        ),
+                                    ],
+                                  ),
+                                ),
                                 Text('[${q.marks}]', style: const TextStyle(fontWeight: FontWeight.bold)),
                               ],
                             ),

@@ -30,32 +30,29 @@ class PdfService {
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        build: (context) {
-          final content = [
-            _buildHeader(paper, logoImage, template),
-            ...paper.sections.map((section) => _buildSection(section, template)),
-            if (paper.includeOmr) ..._buildOmrSheet(paper, logoImage),
-          ];
-
-          if (template.hasBorder) {
-            return [
-              pw.FullPage(
+        pageTheme: pw.PageTheme(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(32),
+          buildBackground: (context) {
+            if (template.hasBorder) {
+              return pw.FullPage(
                 ignoreMargins: true,
                 child: pw.Container(
                   margin: const pw.EdgeInsets.all(10),
-                  padding: const pw.EdgeInsets.all(20),
                   decoration: pw.BoxDecoration(
                     border: pw.Border.all(color: template.primaryColor, width: 1),
                   ),
-                  child: pw.Column(children: content),
                 ),
-              )
-            ];
-          }
-          return content;
-        },
+              );
+            }
+            return pw.SizedBox();
+          },
+        ),
+        build: (context) => [
+          _buildHeader(paper, logoImage, template),
+          ...paper.sections.map((section) => _buildSection(section, template)),
+          if (paper.includeOmr) ..._buildOmrSheet(paper, logoImage),
+        ],
       ),
     );
 
@@ -218,20 +215,21 @@ class PdfService {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.SizedBox(height: 20),
-        pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          decoration: template.type == TemplateType.coaching
-              ? pw.BoxDecoration(color: template.secondaryColor)
-              : null,
-          child: pw.Text(
-            '${section.prefix} ${section.title}'.trim(),
-            style: pw.TextStyle(
-              fontSize: 18,
-              fontWeight: pw.FontWeight.bold,
-              color: template.type == TemplateType.coaching ? template.primaryColor : PdfColors.black,
+        if (section.showTitle || section.prefix.isNotEmpty)
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: template.type == TemplateType.coaching
+                ? pw.BoxDecoration(color: template.secondaryColor)
+                : null,
+            child: pw.Text(
+              '${section.prefix} ${section.showTitle ? section.title : ""}'.trim(),
+              style: pw.TextStyle(
+                fontSize: 18,
+                fontWeight: pw.FontWeight.bold,
+                color: template.type == TemplateType.coaching ? template.primaryColor : PdfColors.black,
+              ),
             ),
           ),
-        ),
         if (section.instruction != null && section.instruction!.isNotEmpty)
           pw.Padding(
             padding: const pw.EdgeInsets.only(bottom: 8),
@@ -240,7 +238,7 @@ class PdfService {
               style: pw.TextStyle(fontStyle: pw.FontStyle.italic, fontSize: 12),
             ),
           ),
-        pw.Divider(),
+        if (section.showDivider) pw.Divider(),
         ...section.questions.asMap().entries.map((entry) {
           final idx = entry.key + 1;
           final q = entry.value;

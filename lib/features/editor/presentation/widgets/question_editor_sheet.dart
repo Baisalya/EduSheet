@@ -31,6 +31,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
   late QuillController _controller;
   late QuestionType _type;
   late double _marks;
+  late bool _isOptional;
   late List<QuestionOption> _options;
 
   @override
@@ -38,6 +39,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     super.initState();
     _type = widget.question?.type ?? QuestionType.descriptive;
     _marks = widget.question?.marks ?? 1.0;
+    _isOptional = widget.question?.isOptional ?? false;
     _options = widget.question?.options.map((o) => o.copyWith()).toList() ?? [];
 
     if (widget.question != null) {
@@ -73,6 +75,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
         type: _type,
         marks: _marks,
         options: _options,
+        isOptional: _isOptional,
       );
     } else {
       ref.read(editorStateProvider.notifier).updateQuestion(
@@ -82,6 +85,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
         type: _type,
         marks: _marks,
         options: _options,
+        isOptional: _isOptional,
       );
     }
     Navigator.pop(context);
@@ -147,7 +151,15 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              title: const Text('Is Optional Question?'),
+              subtitle: const Text('Optional questions are not counted in total marks'),
+              value: _isOptional,
+              onChanged: (val) => setState(() => _isOptional = val),
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 8),
             const Text('Question Content:', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Container(

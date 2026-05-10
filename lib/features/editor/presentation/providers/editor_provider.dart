@@ -82,7 +82,15 @@ class EditorState extends _$EditorState {
     state = state.copyWith(sections: [...state.sections, newSection]);
   }
 
-  void updateSection(String sectionId, {String? title, String? instruction, String? prefix}) {
+  void updateSection(String sectionId, {
+    String? title,
+    String? instruction,
+    String? prefix,
+    int? requiredCount,
+    bool clearRequiredCount = false,
+    bool? showTitle,
+    bool? showDivider,
+  }) {
     state = state.copyWith(
       sections: state.sections.map((s) {
         if (s.id == sectionId) {
@@ -90,6 +98,10 @@ class EditorState extends _$EditorState {
             title: title ?? s.title,
             instruction: instruction ?? s.instruction,
             prefix: prefix ?? s.prefix,
+            requiredCount: requiredCount ?? s.requiredCount,
+            clearRequiredCount: clearRequiredCount,
+            showTitle: showTitle ?? s.showTitle,
+            showDivider: showDivider ?? s.showDivider,
           );
         }
         return s;
@@ -111,7 +123,7 @@ class EditorState extends _$EditorState {
     state = state.copyWith(sections: sections);
   }
 
-  void addQuestion(String sectionId, String text, {QuestionType type = QuestionType.descriptive, double marks = 1.0, List<QuestionOption> options = const []}) {
+  void addQuestion(String sectionId, String text, {QuestionType type = QuestionType.descriptive, double marks = 1.0, List<QuestionOption> options = const [], bool isOptional = false}) {
     state = state.copyWith(
       sections: state.sections.map((section) {
         if (section.id == sectionId) {
@@ -121,6 +133,7 @@ class EditorState extends _$EditorState {
             type: type,
             marks: marks,
             options: options,
+            isOptional: isOptional,
           );
           return section.copyWith(questions: [...section.questions, newQuestion]);
         }
@@ -136,6 +149,7 @@ class EditorState extends _$EditorState {
     String? imageUrl,
     TextAlign? alignment,
     List<QuestionOption>? options,
+    bool? isOptional,
   }) {
     state = state.copyWith(
       sections: state.sections.map((section) {
@@ -150,6 +164,7 @@ class EditorState extends _$EditorState {
                   imageUrl: imageUrl ?? q.imageUrl,
                   alignment: alignment ?? q.alignment,
                   options: options ?? q.options,
+                  isOptional: isOptional ?? q.isOptional,
                 );
               }
               return q;
