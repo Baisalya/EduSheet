@@ -13,8 +13,45 @@ import 'package:edusheet/features/omr/services/omr_widgets_builder.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 
 class PdfService {
+  static Future<pw.ThemeData> _loadTheme() async {
+    final baseFont = await PdfGoogleFonts.notoSansRegular();
+    final mathFont = await PdfGoogleFonts.notoSansMathRegular();
+    final symbols2Font = await PdfGoogleFonts.notoSansSymbols2Regular();
+    final devanagariFont = await PdfGoogleFonts.notoSansDevanagariRegular();
+    final odiaFont = await PdfGoogleFonts.notoSansOriyaRegular();
+    final bengaliFont = await PdfGoogleFonts.notoSansBengaliRegular();
+    final tamilFont = await PdfGoogleFonts.notoSansTamilRegular();
+    final teluguFont = await PdfGoogleFonts.notoSansTeluguRegular();
+    final kannadaFont = await PdfGoogleFonts.notoSansKannadaRegular();
+    final gujaratiFont = await PdfGoogleFonts.notoSansGujaratiRegular();
+    final malayalamFont = await PdfGoogleFonts.notoSansMalayalamRegular();
+    final gurmukhiFont = await PdfGoogleFonts.notoSansGurmukhiRegular();
+    final arabicFont = await PdfGoogleFonts.notoSansArabicRegular();
+    final cjkFont = await PdfGoogleFonts.notoSansJPRegular();
+
+    return pw.ThemeData.withFont(
+      base: baseFont,
+      fontFallback: [
+        mathFont,
+        symbols2Font,
+        devanagariFont,
+        odiaFont,
+        bengaliFont,
+        tamilFont,
+        teluguFont,
+        kannadaFont,
+        gujaratiFont,
+        malayalamFont,
+        gurmukhiFont,
+        arabicFont,
+        cjkFont,
+      ],
+    );
+  }
+
   static Future<void> generateAndPreview(Paper paper) async {
-    final pdf = pw.Document();
+    final theme = await _loadTheme();
+    final pdf = pw.Document(theme: theme);
     final template = PaperTemplate.predefinedTemplates.firstWhere(
       (t) => t.id == paper.templateId,
       orElse: () => PaperTemplate.predefinedTemplates.first,
@@ -86,7 +123,7 @@ class PdfService {
                     ),
                     pw.Text(
                       paper.title,
-                      style: pw.TextStyle(fontSize: 16, color: PdfColors.grey900),
+                      style: pw.TextStyle(fontSize: 16),
                     ),
                   ],
                 ),
@@ -115,24 +152,24 @@ class PdfService {
               if (logoImage != null)
                 pw.Container(width: 40, height: 40, child: pw.Image(logoImage)),
               pw.SizedBox(width: 10),
-              pw.Text(
-                paper.schoolName,
-                style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: template.primaryColor),
-              ),
-            ],
+          pw.Text(
+            paper.schoolName,
+            style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: template.primaryColor),
           ),
-          pw.Container(
-            margin: const pw.EdgeInsets.symmetric(vertical: 8),
-            padding: const pw.EdgeInsets.all(4),
-            decoration: pw.BoxDecoration(
-              color: template.secondaryColor,
-              borderRadius: pw.BorderRadius.all(pw.Radius.circular(8)),
-            ),
-            child: pw.Text(
-              paper.title,
-              style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
-            ),
-          ),
+        ],
+      ),
+      pw.Container(
+        margin: const pw.EdgeInsets.symmetric(vertical: 8),
+        padding: const pw.EdgeInsets.all(4),
+        decoration: pw.BoxDecoration(
+          color: template.secondaryColor,
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+        ),
+        child: pw.Text(
+          paper.title,
+          style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+        ),
+      ),
           headerFieldsWidget,
           pw.Divider(color: template.primaryColor),
         ],
@@ -257,11 +294,11 @@ class PdfService {
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.SizedBox(width: 25, child: pw.Text('$index.', style: pw.TextStyle(fontSize: template.questionFontSize))),
+              pw.SizedBox(width: 25, child: pw.Text('$index.', style: pw.TextStyle(fontSize: template.questionFontSize, fontWeight: pw.FontWeight.bold))),
               pw.Expanded(
                 child: _parseRichTextToPdf(q.text, template.questionFontSize),
               ),
-              pw.SizedBox(width: 40, child: pw.Text('[${q.marks}]', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: template.questionFontSize))),
+              pw.SizedBox(width: 40, child: pw.Text('[${q.marks}]', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: template.questionFontSize, fontWeight: pw.FontWeight.bold))),
             ],
           ),
           if (q.type == QuestionType.mcq)
@@ -274,9 +311,10 @@ class PdfService {
                   return pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(vertical: 2),
                     child: pw.Row(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
                         pw.Text('$optIdx) ', style: pw.TextStyle(fontSize: template.questionFontSize)),
-                        pw.Text(optEntry.value.text, style: pw.TextStyle(fontSize: template.questionFontSize)),
+                        pw.Expanded(child: pw.Text(optEntry.value.text, style: pw.TextStyle(fontSize: template.questionFontSize))),
                       ],
                     ),
                   );
@@ -313,7 +351,9 @@ class PdfService {
 
     for (var child in node.nodes) {
       if (child is dom.Text) {
-        spans.add(pw.TextSpan(text: child.text, style: pw.TextStyle(fontSize: fontSize)));
+        if (child.text.trim().isNotEmpty) {
+          spans.add(pw.TextSpan(text: child.text, style: pw.TextStyle(fontSize: fontSize)));
+        }
       } else if (child is dom.Element) {
         pw.TextStyle style = pw.TextStyle(fontSize: fontSize);
         if (child.localName == 'strong' || child.localName == 'b') {
@@ -325,7 +365,7 @@ class PdfService {
         }
 
         spans.add(pw.TextSpan(
-          text: child.nodes.isEmpty ? child.text : null,
+          text: child.nodes.isEmpty ? (child.text.isNotEmpty ? child.text : null) : null,
           style: style,
           children: child.nodes.isNotEmpty ? _domToTextSpans(child, fontSize) : null,
         ));
