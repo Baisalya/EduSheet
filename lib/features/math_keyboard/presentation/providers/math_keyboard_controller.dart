@@ -124,6 +124,21 @@ class MathKeyboardController extends _$MathKeyboardController {
         if (symbol.label.length == 1 || symbol.category == MathCategory.greek || symbol.category == MathCategory.operators) {
           textToInsert = symbol.label;
         }
+
+        // Professional function insertion for standard fields
+        final functions = [
+          r'\sin', r'\cos', r'\tan', r'\csc', r'\sec', r'\cot', 
+          r'\log', r'\ln', r'\arcsin', r'\arccos', r'\arctan',
+          r'\sinh', r'\cosh', r'\tanh'
+        ];
+        
+        if (functions.contains(text)) {
+          textToInsert = '${textToInsert.replaceAll('\\', '')}()';
+        } else if (text.endsWith(r'\theta') && text.length > 7) {
+          // Handle theta versions like \sin \theta
+          final func = text.split(' ').first.replaceAll('\\', '');
+          textToInsert = '$func(θ)';
+        }
       }
       
       // Handle specific common TeX strings if not caught by symbols
@@ -170,8 +185,26 @@ class MathKeyboardController extends _$MathKeyboardController {
         );
       }
     } else if (controller is math_kb.MathFieldEditingController) {
+      final functionsWithBraces = [
+        r'\sin', r'\cos', r'\tan', r'\csc', r'\sec', r'\cot', 
+        r'\log', r'\ln', r'\arcsin', r'\arccos', r'\arctan',
+        r'\sinh', r'\cosh', r'\tanh'
+      ];
+      
       if (text == r'\frac{1}{2}') {
         controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
+      } else if (functionsWithBraces.contains(text)) {
+        controller.addLeaf(text);
+        controller.addLeaf('(');
+        controller.addLeaf(')');
+        controller.goBack(); // Place cursor inside ()
+      } else if (text.endsWith(r'\theta') && text.length > 7) {
+        // Handle theta versions like \sin \theta
+        final func = text.split(' ').first;
+        controller.addLeaf(func);
+        controller.addLeaf('(');
+        controller.addLeaf(r'\theta');
+        controller.addLeaf(')');
       } else if (text == r'\sqrt{}') {
         controller.addFunction(r'\sqrt', [math_kb_node.TeXArg.braces]);
       } else if (text == r'\sqrt[3]{}') {

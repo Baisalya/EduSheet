@@ -28,6 +28,9 @@ class MathKeyboardView extends ConsumerWidget {
       ),
       child: Column(
         children: [
+          // Persistent Quick Bar (Numbers & Basic Operators)
+          _buildQuickBar(context, controller),
+
           // Drag Handle & Tab Bar
           _buildHeader(context, state, controller),
 
@@ -52,14 +55,14 @@ class MathKeyboardView extends ConsumerWidget {
         Container(
           width: 40,
           height: 4,
-          margin: const EdgeInsets.symmetric(vertical: 8),
+          margin: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
             color: Colors.grey.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
         SizedBox(
-          height: 40,
+          height: 38,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -86,6 +89,41 @@ class MathKeyboardView extends ConsumerWidget {
         ),
         const Divider(height: 1),
       ],
+    );
+  }
+
+  Widget _buildQuickBar(BuildContext context, MathKeyboardController controller) {
+    final quickSymbols = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '+', '-', '×', '÷', '='];
+    final theme = Theme.of(context);
+
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1))),
+      ),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        itemCount: quickSymbols.length,
+        itemBuilder: (context, index) {
+          final label = quickSymbols[index];
+          final tex = label == '×' ? r'\times' : (label == '÷' ? r'\div' : label);
+          
+          return Container(
+            width: 40,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            child: MathKey(
+              label: label,
+              tex: tex,
+              fontSize: 16,
+              color: theme.colorScheme.surface,
+              onTap: () => controller.insertText(tex),
+            ),
+          );
+        },
+      ),
     );
   }
 
