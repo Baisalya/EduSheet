@@ -10,8 +10,9 @@ class MathKeyboardWrapper extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final keyboardState = ref.watch(mathKeyboardControllerProvider);
-    final isMathVisible = keyboardState.isVisible && keyboardState.type == KeyboardType.math;
+    final state = ref.watch(mathKeyboardControllerProvider);
+    final controller = ref.read(mathKeyboardControllerProvider.notifier);
+    final isMathVisible = state.isVisible && state.type == KeyboardType.math;
 
     return Material(
       child: Stack(
@@ -24,7 +25,7 @@ class MathKeyboardWrapper extends ConsumerWidget {
                 // Spacer to prevent content from being hidden behind math keyboard
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  height: isMathVisible ? 300 : 0,
+                  height: isMathVisible ? state.height : 0,
                   curve: Curves.easeOut,
                 ),
               ],
@@ -38,9 +39,16 @@ class MathKeyboardWrapper extends ConsumerWidget {
             bottom: 0,
             child: AnimatedSlide(
               offset: isMathVisible ? Offset.zero : const Offset(0, 1),
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              child: const MathKeyboardView(),
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.fastOutSlowIn,
+              child: GestureDetector(
+                onVerticalDragUpdate: (details) {
+                  if (isMathVisible) {
+                    controller.setHeight(state.height - details.delta.dy);
+                  }
+                },
+                child: const MathKeyboardView(),
+              ),
             ),
           ),
         ],
