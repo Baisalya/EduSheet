@@ -64,7 +64,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             padding: const EdgeInsets.all(16.0),
             children: [
               _buildBrandingEditor(paper),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              _buildSectionHeader('General Info'),
+              const SizedBox(height: 12),
               MathKeyboardField(
                 controller: _titleController,
                 builder: (context, fieldFocusNode, isMathActive) => TextField(
@@ -72,12 +74,17 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   focusNode: fieldFocusNode,
                   keyboardType: isMathActive ? TextInputType.none : TextInputType.text,
                   decoration: const InputDecoration(
-                    labelText: 'Paper Title',
+                    labelText: 'Exam Title (e.g. Mid-Term 2024)',
                     border: OutlineInputBorder(),
                   ),
                   onChanged: (val) => ref.read(editorStateProvider.notifier).updateTitle(val),
                 ),
               ),
+              const SizedBox(height: 24),
+              _buildSectionHeader('Header Fields (Customizable)'),
+              const Text('Add fields like Subject, Date, Class, etc.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 8),
+              _buildHeaderFieldsEditor(paper),
               const SizedBox(height: 24),
               _buildSectionHeader('Template & Layout'),
               const SizedBox(height: 12),
@@ -98,6 +105,69 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
               ),
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeaderFieldsEditor(Paper paper) {
+    return Column(
+      children: [
+        ReorderableListView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          onReorder: (oldIdx, newIdx) => ref.read(editorStateProvider.notifier).reorderHeaderFields(oldIdx, newIdx),
+          children: [
+            for (final field in paper.headerFields)
+              Padding(
+                key: ValueKey(field.id),
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.drag_handle, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        initialValue: field.label,
+                        decoration: const InputDecoration(labelText: 'Label', border: OutlineInputBorder()),
+                        onChanged: (val) => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, label: val),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 5,
+                      child: TextFormField(
+                        initialValue: field.value,
+                        enabled: !field.isPlaceholder,
+                        decoration: InputDecoration(
+                          labelText: field.isPlaceholder ? 'Placeholder' : 'Value',
+                          border: const OutlineInputBorder(),
+                          hintText: field.isPlaceholder ? '________' : null,
+                        ),
+                        onChanged: (val) => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, value: val),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(field.isPlaceholder ? Icons.check_box : Icons.check_box_outline_blank, size: 20),
+                      onPressed: () => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, isPlaceholder: !field.isPlaceholder),
+                      tooltip: 'Toggle Placeholder',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                      onPressed: () => ref.read(editorStateProvider.notifier).deleteHeaderField(field.id),
+                      tooltip: 'Delete Field',
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => ref.read(editorStateProvider.notifier).addHeaderField(),
+          icon: const Icon(Icons.add),
+          label: const Text('Add Header Field'),
         ),
       ],
     );
@@ -275,7 +345,6 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 
   Widget _buildPreview(Paper paper) {
-    // Basic preview that respects some template properties
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.all(16),
@@ -301,11 +370,12 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const Divider(),
+                _buildPreviewHeaderFields(paper),
+                const Divider(),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    const Text('Time: 3 Hours'),
-                    Text('Max Marks: ${paper.totalMarks}'),
+                    Text('Max Marks: ${paper.totalMarks}', style: const TextStyle(fontWeight: FontWeight.bold)),
                   ],
                 ),
               ],
@@ -375,6 +445,39 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPreviewHeaderFields(Paper paper) {
+    if (paper.headerFields.isEmpty) return const SizedBox.shrink();
+
+    List<List<PaperHeaderField>> rows = [];
+    for (var i = 0; i < paper.headerFields.length; i += 2) {
+      rows.add(paper.headerFields.sublist(i, i + 2 > paper.headerFields.length ? paper.headerFields.length : i + 2));
+    }
+
+    return Column(
+      children: rows.map((row) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: row.map((field) {
+              final content = field.isPlaceholder ? '________________' : field.value;
+              return Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: DefaultTextStyle.of(context).style,
+                    children: [
+                      TextSpan(text: '${field.label}: ', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      TextSpan(text: content),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      }).toList(),
     );
   }
 

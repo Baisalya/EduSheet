@@ -63,40 +63,47 @@ class PdfService {
   }
 
   static pw.Widget _buildHeader(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+    final headerFieldsWidget = _buildDynamicHeaderFields(paper, template);
+
     if (template.type == TemplateType.coaching) {
       return pw.Container(
         padding: const pw.EdgeInsets.all(10),
         color: template.secondaryColor,
-        child: pw.Row(
+        child: pw.Column(
           children: [
-            if (logoImage != null)
-              pw.Container(width: 60, height: 60, child: pw.Image(logoImage)),
-            pw.SizedBox(width: 20),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
+            pw.Row(
               children: [
-                pw.Text(
-                  paper.schoolName,
-                  style: pw.TextStyle(
-                    fontSize: 20,
-                    fontWeight: pw.FontWeight.bold,
-                    color: template.primaryColor,
-                  ),
+                if (logoImage != null)
+                  pw.Container(width: 60, height: 60, child: pw.Image(logoImage)),
+                pw.SizedBox(width: 20),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      paper.schoolName,
+                      style: pw.TextStyle(
+                        fontSize: 20,
+                        fontWeight: pw.FontWeight.bold,
+                        color: template.primaryColor,
+                      ),
+                    ),
+                    pw.Text(
+                      paper.title,
+                      style: pw.TextStyle(fontSize: 16, color: PdfColors.grey900),
+                    ),
+                  ],
                 ),
-                pw.Text(
-                  paper.title,
-                  style: pw.TextStyle(fontSize: 16, color: PdfColors.grey900),
+                pw.Spacer(),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text('Max Marks: ${paper.totalMarks}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  ],
                 ),
               ],
             ),
-            pw.Spacer(),
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.end,
-              children: [
-                pw.Text('Time: 3 Hours'),
-                pw.Text('Max Marks: ${paper.totalMarks}'),
-              ],
-            ),
+            pw.SizedBox(height: 10),
+            headerFieldsWidget,
           ],
         ),
       );
@@ -129,13 +136,7 @@ class PdfService {
               style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
             ),
           ),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
-            children: [
-              pw.Text('Name: ________________'),
-              pw.Text('Class: ________'),
-            ],
-          ),
+          headerFieldsWidget,
           pw.Divider(color: template.primaryColor),
         ],
       );
@@ -167,24 +168,48 @@ class PdfService {
           ],
         ),
         pw.SizedBox(height: 10),
-        if (template.type == TemplateType.board) ...[
-          pw.Row(
-            children: [
-              pw.Expanded(child: pw.Text('Roll No: _______________')),
-              pw.Expanded(child: pw.Text('Candidate Signature: _______________')),
-            ],
-          ),
-          pw.SizedBox(height: 10),
-        ],
+        headerFieldsWidget,
         pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: pw.MainAxisAlignment.end,
           children: [
-            pw.Text('Time: 3 Hours'),
-            pw.Text('Max Marks: ${paper.totalMarks}'),
+            pw.Text('Max Marks: ${paper.totalMarks}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           ],
         ),
         pw.Divider(thickness: 2),
       ],
+    );
+  }
+
+  static pw.Widget _buildDynamicHeaderFields(Paper paper, PaperTemplate template) {
+    if (paper.headerFields.isEmpty) return pw.SizedBox();
+
+    // Group fields in rows of 2 or 3 depending on length
+    List<List<PaperHeaderField>> rows = [];
+    for (var i = 0; i < paper.headerFields.length; i += 2) {
+      rows.add(paper.headerFields.sublist(i, i + 2 > paper.headerFields.length ? paper.headerFields.length : i + 2));
+    }
+
+    return pw.Column(
+      children: rows.map((row) {
+        return pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 2),
+          child: pw.Row(
+            children: row.map((field) {
+              final content = field.isPlaceholder ? '________________' : field.value;
+              return pw.Expanded(
+                child: pw.RichText(
+                  text: pw.TextSpan(
+                    children: [
+                      pw.TextSpan(text: '${field.label}: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.TextSpan(text: content),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      }).toList(),
     );
   }
 

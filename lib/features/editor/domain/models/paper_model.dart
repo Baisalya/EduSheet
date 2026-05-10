@@ -7,6 +7,7 @@ class Paper {
   final String title;
   final String schoolName;
   final String? schoolLogo;
+  final List<PaperHeaderField> headerFields;
   final List<PaperSection> sections;
   final bool includeOmr;
   final String templateId;
@@ -16,6 +17,7 @@ class Paper {
     required this.title,
     this.schoolName = 'My School',
     this.schoolLogo,
+    this.headerFields = const [],
     this.sections = const [],
     this.includeOmr = false,
     this.templateId = 'school_formal',
@@ -26,6 +28,7 @@ class Paper {
     String? title,
     String? schoolName,
     String? schoolLogo,
+    List<PaperHeaderField>? headerFields,
     List<PaperSection>? sections,
     bool? includeOmr,
     String? templateId,
@@ -35,6 +38,7 @@ class Paper {
       title: title ?? this.title,
       schoolName: schoolName ?? this.schoolName,
       schoolLogo: schoolLogo ?? this.schoolLogo,
+      headerFields: headerFields ?? this.headerFields,
       sections: sections ?? this.sections,
       includeOmr: includeOmr ?? this.includeOmr,
       templateId: templateId ?? this.templateId,
@@ -49,6 +53,34 @@ class Paper {
       }
     }
     return total;
+  }
+}
+
+class PaperHeaderField {
+  final String id;
+  final String label;
+  final String value;
+  final bool isPlaceholder;
+
+  PaperHeaderField({
+    required this.id,
+    required this.label,
+    this.value = '',
+    this.isPlaceholder = false,
+  });
+
+  PaperHeaderField copyWith({
+    String? id,
+    String? label,
+    String? value,
+    bool? isPlaceholder,
+  }) {
+    return PaperHeaderField(
+      id: id ?? this.id,
+      label: label ?? this.label,
+      value: value ?? this.value,
+      isPlaceholder: isPlaceholder ?? this.isPlaceholder,
+    );
   }
 }
 

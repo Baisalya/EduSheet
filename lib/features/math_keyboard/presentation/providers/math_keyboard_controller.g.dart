@@ -7,7 +7,7 @@ part of 'math_keyboard_controller.dart';
 // **************************************************************************
 
 String _$mathKeyboardControllerHash() =>
-    r'5b1a2d23b64160efbe3af22a3c6cfd2125ad2bff';
+    r'e851fee54a9ce41aa55a34be10f7e6b4acda5cb2';
 
 /// See also [MathKeyboardController].
 @ProviderFor(MathKeyboardController)

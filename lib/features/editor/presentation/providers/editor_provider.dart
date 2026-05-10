@@ -1,5 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import '../../domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 
@@ -13,6 +13,14 @@ class EditorState extends _$EditorState {
       id: const Uuid().v4(),
       title: 'New Paper',
       sections: [],
+      headerFields: [
+        PaperHeaderField(id: const Uuid().v4(), label: 'Subject', value: 'Mathematics'),
+        PaperHeaderField(id: const Uuid().v4(), label: 'Class', value: '10th'),
+        PaperHeaderField(id: const Uuid().v4(), label: 'Date', isPlaceholder: true),
+        PaperHeaderField(id: const Uuid().v4(), label: 'Time', value: '3 Hours'),
+        PaperHeaderField(id: const Uuid().v4(), label: 'Student Name', isPlaceholder: true),
+        PaperHeaderField(id: const Uuid().v4(), label: 'Roll No', isPlaceholder: true),
+      ],
     );
   }
 
@@ -25,6 +33,45 @@ class EditorState extends _$EditorState {
       schoolName: schoolName ?? state.schoolName,
       schoolLogo: schoolLogo ?? state.schoolLogo,
     );
+  }
+
+  void addHeaderField({String label = 'New Field', String value = '', bool isPlaceholder = false}) {
+    final newField = PaperHeaderField(
+      id: const Uuid().v4(),
+      label: label,
+      value: value,
+      isPlaceholder: isPlaceholder,
+    );
+    state = state.copyWith(headerFields: [...state.headerFields, newField]);
+  }
+
+  void updateHeaderField(String id, {String? label, String? value, bool? isPlaceholder}) {
+    state = state.copyWith(
+      headerFields: state.headerFields.map((f) {
+        if (f.id == id) {
+          return f.copyWith(
+            label: label ?? f.label,
+            value: value ?? f.value,
+            isPlaceholder: isPlaceholder ?? f.isPlaceholder,
+          );
+        }
+        return f;
+      }).toList(),
+    );
+  }
+
+  void deleteHeaderField(String id) {
+    state = state.copyWith(
+      headerFields: state.headerFields.where((f) => f.id != id).toList(),
+    );
+  }
+
+  void reorderHeaderFields(int oldIndex, int newIndex) {
+    final fields = [...state.headerFields];
+    if (newIndex > oldIndex) newIndex--;
+    final field = fields.removeAt(oldIndex);
+    fields.insert(newIndex, field);
+    state = state.copyWith(headerFields: fields);
   }
 
   void addSection() {

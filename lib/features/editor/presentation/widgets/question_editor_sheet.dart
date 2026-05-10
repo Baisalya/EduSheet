@@ -119,84 +119,129 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
               ],
             ),
             const Divider(),
-            DropdownButtonFormField<QuestionType>(
-              initialValue: _type,
-              decoration: const InputDecoration(labelText: 'Question Type'),
-              items: QuestionType.values.map((t) => DropdownMenuItem(
-                value: t,
-                child: Text(t.name.toUpperCase()),
-              )).toList(),
-              onChanged: (val) => setState(() => _type = val!),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              initialValue: _marks.toString(),
-              decoration: const InputDecoration(labelText: 'Marks'),
-              keyboardType: TextInputType.number,
-              onChanged: (val) => _marks = double.tryParse(val) ?? 1.0,
-            ),
-            const SizedBox(height: 16),
-            const Text('Question Text:', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            QuillSimpleToolbar(
-              controller: _controller,
-              config: const QuillSimpleToolbarConfig(),
-            ),
-            MathKeyboardField(
-              controller: _controller,
-              builder: (context, fieldFocusNode, isMathActive) => Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: QuillEditor(
-                  controller: _controller,
-                  focusNode: fieldFocusNode,
-                  scrollController: ScrollController(),
-                  config: const QuillEditorConfig(
-                    placeholder: 'Enter question text...',
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<QuestionType>(
+                    isExpanded: true,
+                    value: _type,
+                    decoration: const InputDecoration(labelText: 'Type', border: OutlineInputBorder()),
+                    items: QuestionType.values.map((t) => DropdownMenuItem(
+                      value: t,
+                      child: Text(
+                        t.name.toUpperCase(),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    )).toList(),
+                    onChanged: (val) => setState(() => _type = val!),
                   ),
                 ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    initialValue: _marks.toString(),
+                    decoration: const InputDecoration(labelText: 'Marks', border: OutlineInputBorder()),
+                    keyboardType: TextInputType.number,
+                    onChanged: (val) => _marks = double.tryParse(val) ?? 1.0,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text('Question Content:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  QuillSimpleToolbar(
+                    controller: _controller,
+                    config: const QuillSimpleToolbarConfig(
+                      showFontFamily: false,
+                      showFontSize: false,
+                      showBoldButton: true,
+                      showItalicButton: true,
+                      showUnderLineButton: true,
+                      showListNumbers: true,
+                      showListBullets: true,
+                      showColorButton: true,
+                      showAlignmentButtons: true,
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  MathKeyboardField(
+                    controller: _controller,
+                    builder: (context, fieldFocusNode, isMathActive) => Container(
+                      height: 150,
+                      padding: const EdgeInsets.all(8),
+                      child: QuillEditor(
+                        controller: _controller,
+                        focusNode: fieldFocusNode,
+                        scrollController: ScrollController(),
+                        config: const QuillEditorConfig(
+                          placeholder: 'Type your question here...',
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             if (_type == QuestionType.mcq) ...[
-              const SizedBox(height: 16),
-              const Text('Options:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Options:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextButton.icon(
+                    onPressed: () => setState(() => _options.add(QuestionOption(id: const Uuid().v4(), text: ''))),
+                    icon: const Icon(Icons.add_circle_outline, size: 20),
+                    label: const Text('Add Option'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               ..._options.asMap().entries.map((entry) {
                 final idx = entry.key;
                 final opt = entry.value;
-                return Row(
-                  children: [
-                    Radio<bool>(
-                      value: true,
-                      groupValue: opt.isCorrect,
-                      onChanged: (val) {
-                        setState(() {
-                          _options = _options.asMap().entries.map((e) {
-                            return e.value.copyWith(isCorrect: e.key == idx);
-                          }).toList();
-                        });
-                      },
-                    ),
-                    Expanded(
-                      child: TextFormField(
-                        initialValue: opt.text,
-                        onChanged: (val) => _options[idx] = opt.copyWith(text: val),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0),
+                  child: Row(
+                    children: [
+                      Radio<bool>(
+                        value: true,
+                        groupValue: opt.isCorrect,
+                        onChanged: (val) {
+                          setState(() {
+                            _options = _options.asMap().entries.map((e) {
+                              return e.value.copyWith(isCorrect: e.key == idx);
+                            }).toList();
+                          });
+                        },
+                        visualDensity: VisualDensity.compact,
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () => setState(() => _options.removeAt(idx)),
-                    ),
-                  ],
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: opt.text,
+                          decoration: InputDecoration(
+                            hintText: 'Option ${String.fromCharCode(65 + idx)}',
+                            border: const OutlineInputBorder(),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          onChanged: (val) => _options[idx] = opt.copyWith(text: val),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                        onPressed: () => setState(() => _options.removeAt(idx)),
+                      ),
+                    ],
+                  ),
                 );
               }),
-              TextButton.icon(
-                onPressed: () => setState(() => _options.add(QuestionOption(id: const Uuid().v4(), text: ''))),
-                icon: const Icon(Icons.add),
-                label: const Text('Add Option'),
-              ),
             ],
             const SizedBox(height: 24),
             ElevatedButton(
