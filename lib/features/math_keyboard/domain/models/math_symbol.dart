@@ -156,12 +156,15 @@ const List<MathSymbol> mathSymbols = [
 
   // Calculus
   MathSymbol(label: '∫', tex: r'\int', category: MathCategory.calculus),
+  MathSymbol(label: 'Def ∫', tex: r'\int_{}^{}^{}', category: MathCategory.calculus, isBuilder: true),
   MathSymbol(label: '∬', tex: r'\iint', category: MathCategory.calculus),
   MathSymbol(label: '∭', tex: r'\iiint', category: MathCategory.calculus),
   MathSymbol(label: '∂', tex: r'\partial', category: MathCategory.calculus),
   MathSymbol(label: '∇', tex: r'\nabla', category: MathCategory.calculus),
   MathSymbol(label: 'lim', tex: r'\lim_{x \to \infty}', category: MathCategory.calculus, isBuilder: true),
-  MathSymbol(label: 'd/dx', tex: r'\frac{d}{dx}', category: MathCategory.calculus),
+  MathSymbol(label: 'd/dx', tex: r'\frac{d}{dx}', category: MathCategory.calculus, isBuilder: true),
+  MathSymbol(label: 'dy/dx', tex: r'\frac{dy}{dx}', category: MathCategory.calculus, isBuilder: true),
+  MathSymbol(label: 'd²/dx²', tex: r'\frac{d^2}{dx^2}', category: MathCategory.calculus, isBuilder: true),
 
   // Matrices
   MathSymbol(label: '[2x2]', tex: r'\begin{pmatrix}  & \\  & \end{pmatrix}', category: MathCategory.matrices, isBuilder: true),

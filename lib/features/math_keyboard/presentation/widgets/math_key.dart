@@ -142,6 +142,10 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
       // Clean up common LaTeX patterns for keyboard display
       String displayTex = tex
           .replaceAll(r'\frac{1}{2}', r'\frac{\square}{\square}')
+          .replaceAll(r'\frac{d}{dx}', r'\frac{d}{dx}')
+          .replaceAll(r'\frac{dy}{dx}', r'\frac{dy}{dx}')
+          .replaceAll(r'\frac{d^2}{dx^2}', r'\frac{d^2}{dx^2}')
+          .replaceAll(r'\int_{}^{}^{}', r'\int_{a}^{b}')
           .replaceAll('{}', '')
           .replaceAll('{ }', '')
           .replaceAll('&', '')

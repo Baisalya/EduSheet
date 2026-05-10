@@ -138,6 +138,16 @@ class MathKeyboardController extends _$MathKeyboardController {
           // Handle theta versions like \sin \theta
           final func = text.split(' ').first.replaceAll('\\', '');
           textToInsert = '$func(θ)';
+        } else if (text == r'\frac{d}{dx}') {
+          textToInsert = 'd/dx';
+        } else if (text == r'\frac{dy}{dx}') {
+          textToInsert = 'dy/dx';
+        } else if (text == r'\frac{d^2}{dx^2}') {
+          textToInsert = 'd²/dx²';
+        } else if (text == r'\lim_{x \to \infty}') {
+          textToInsert = 'lim x→∞';
+        } else if (text == r'\int_{}^{}^{}') {
+          textToInsert = '∫';
         }
       }
       
@@ -193,6 +203,45 @@ class MathKeyboardController extends _$MathKeyboardController {
       
       if (text == r'\frac{1}{2}') {
         controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
+      } else if (text == r'\frac{d}{dx}') {
+        controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
+        controller.addLeaf('d');
+        controller.goNext();
+        controller.addLeaf('d');
+        controller.addLeaf('x');
+        controller.goNext();
+      } else if (text == r'\frac{dy}{dx}') {
+        controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
+        controller.addLeaf('d');
+        controller.addLeaf('y');
+        controller.goNext();
+        controller.addLeaf('d');
+        controller.addLeaf('x');
+        controller.goNext();
+      } else if (text == r'\frac{d^2}{dx^2}') {
+        controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
+        controller.addLeaf('d');
+        controller.addFunction('^', [math_kb_node.TeXArg.braces]);
+        controller.addLeaf('2');
+        controller.goNext();
+        controller.goNext();
+        controller.addLeaf('d');
+        controller.addLeaf('x');
+        controller.addFunction('^', [math_kb_node.TeXArg.braces]);
+        controller.addLeaf('2');
+        controller.goNext();
+        controller.goNext();
+      } else if (text == r'\lim_{x \to \infty}') {
+        controller.addLeaf(r'\lim');
+        controller.addFunction('_', [math_kb_node.TeXArg.braces]);
+        controller.addLeaf('x');
+        controller.addLeaf(r'\to');
+        controller.addLeaf(r'\infty');
+        controller.goNext();
+      } else if (text == r'\int_{}^{}^{}') {
+        controller.addLeaf(r'\int');
+        controller.addFunction('_', [math_kb_node.TeXArg.braces]);
+        // Cursor stays in subscript for user to fill lower bound
       } else if (functionsWithBraces.contains(text)) {
         controller.addLeaf(text);
         controller.addLeaf('(');
