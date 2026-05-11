@@ -23,6 +23,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   final TextEditingController _titleController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _titleController.text = ref.read(editorStateProvider).title;
+    });
+  }
+
+  @override
   void dispose() {
     _titleController.dispose();
     super.dispose();
@@ -44,6 +52,19 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
             onPressed: () => PdfService.generateAndPreview(paper),
+          ),
+          IconButton(
+            icon: const Icon(Icons.save),
+            tooltip: 'Save Paper',
+            onPressed: () async {
+              await ref.read(editorStateProvider.notifier).savePaper();
+              ref.invalidate(savedPapersProvider);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Paper saved successfully!')),
+                );
+              }
+            },
           ),
         ],
       ),
@@ -70,7 +91,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
               MathKeyboardField(
                 controller: _titleController,
                 builder: (context, fieldFocusNode, isMathActive) => TextField(
-                  controller: _titleController..text = paper.title,
+                  controller: _titleController,
                   focusNode: fieldFocusNode,
                   keyboardType: isMathActive ? TextInputType.none : TextInputType.text,
                   decoration: const InputDecoration(

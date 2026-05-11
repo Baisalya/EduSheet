@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../features/editor/presentation/screens/create_paper_screen.dart';
+import '../../../features/editor/presentation/screens/saved_papers_screen.dart';
+import '../../../features/editor/presentation/providers/editor_provider.dart';
 import '../../../features/omr/presentation/pages/omr_generator_page.dart';
 import '../../../features/question_bank/presentation/screens/question_bank_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('EduSheet'),
@@ -23,9 +26,21 @@ class HomeScreen extends StatelessWidget {
             title: 'Create Question Paper',
             icon: Icons.note_add,
             color: Colors.blue,
+            onTap: () {
+              ref.read(editorStateProvider.notifier).reset();
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CreatePaperScreen()),
+              );
+            },
+          ),
+          _HomeCard(
+            title: 'Saved Papers',
+            icon: Icons.folder,
+            color: Colors.purple,
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const CreatePaperScreen()),
+              MaterialPageRoute(builder: (context) => const SavedPapersScreen()),
             ),
           ),
           _HomeCard(
@@ -45,12 +60,6 @@ class HomeScreen extends StatelessWidget {
               context,
               MaterialPageRoute(builder: (context) => const QuestionBankScreen()),
             ),
-          ),
-          _HomeCard(
-            title: 'Settings',
-            icon: Icons.settings,
-            color: Colors.grey,
-            onTap: () {},
           ),
         ],
       ),

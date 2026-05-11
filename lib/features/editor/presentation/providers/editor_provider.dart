@@ -2,10 +2,21 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
+import 'package:edusheet/features/editor/data/repositories/paper_repository.dart';
+import 'package:edusheet/features/editor/data/repositories/local_paper_repository.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 part 'editor_provider.g.dart';
 
-@riverpod
+final paperRepositoryProvider = Provider<PaperRepository>((ref) {
+  return LocalPaperRepository();
+});
+
+final savedPapersProvider = FutureProvider.autoDispose<List<Paper>>((ref) {
+  return ref.watch(paperRepositoryProvider).getAllPapers();
+});
+
+@Riverpod(keepAlive: true)
 class EditorState extends _$EditorState {
   @override
   Paper build() {
@@ -22,6 +33,19 @@ class EditorState extends _$EditorState {
         PaperHeaderField(id: const Uuid().v4(), label: 'Roll No', isPlaceholder: true),
       ],
     );
+  }
+
+  Future<void> savePaper() async {
+    final repo = ref.read(paperRepositoryProvider);
+    await repo.savePaper(state);
+  }
+
+  void loadPaper(Paper paper) {
+    state = paper;
+  }
+
+  void reset() {
+    state = build();
   }
 
   void updateTitle(String title) {

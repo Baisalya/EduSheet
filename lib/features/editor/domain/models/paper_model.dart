@@ -48,6 +48,38 @@ class Paper {
   double get totalMarks {
     return sections.fold(0.0, (sum, section) => sum + section.totalMarks);
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'schoolName': schoolName,
+      'schoolLogo': schoolLogo,
+      'headerFields': headerFields.map((f) => f.toJson()).toList(),
+      'sections': sections.map((s) => s.toJson()).toList(),
+      'includeOmr': includeOmr,
+      'templateId': templateId,
+    };
+  }
+
+  factory Paper.fromJson(Map<String, dynamic> json) {
+    return Paper(
+      id: json['id'],
+      title: json['title'],
+      schoolName: json['schoolName'] ?? 'My School',
+      schoolLogo: json['schoolLogo'],
+      headerFields: (json['headerFields'] as List?)
+              ?.map((f) => PaperHeaderField.fromJson(f))
+              .toList() ??
+          [],
+      sections: (json['sections'] as List?)
+              ?.map((s) => PaperSection.fromJson(s))
+              .toList() ??
+          [],
+      includeOmr: json['includeOmr'] ?? false,
+      templateId: json['templateId'] ?? 'school_formal',
+    );
+  }
 }
 
 class PaperHeaderField {
@@ -74,6 +106,24 @@ class PaperHeaderField {
       label: label ?? this.label,
       value: value ?? this.value,
       isPlaceholder: isPlaceholder ?? this.isPlaceholder,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'label': label,
+      'value': value,
+      'isPlaceholder': isPlaceholder,
+    };
+  }
+
+  factory PaperHeaderField.fromJson(Map<String, dynamic> json) {
+    return PaperHeaderField(
+      id: json['id'],
+      label: json['label'],
+      value: json['value'] ?? '',
+      isPlaceholder: json['isPlaceholder'] ?? false,
     );
   }
 }
@@ -116,7 +166,8 @@ class PaperSection {
       instruction: instruction ?? this.instruction,
       prefix: prefix ?? this.prefix,
       questions: questions ?? this.questions,
-      requiredCount: clearRequiredCount ? null : (requiredCount ?? this.requiredCount),
+      requiredCount:
+          clearRequiredCount ? null : (requiredCount ?? this.requiredCount),
       showTitle: showTitle ?? this.showTitle,
       showDivider: showDivider ?? this.showDivider,
     );
@@ -124,18 +175,49 @@ class PaperSection {
 
   double get totalMarks {
     if (questions.isEmpty) return 0.0;
-    
+
     // Filter out questions explicitly marked as optional
     final nonOptionalQuestions = questions.where((q) => !q.isOptional).toList();
-    
-    if (requiredCount == null || requiredCount! >= nonOptionalQuestions.length) {
+
+    if (requiredCount == null ||
+        requiredCount! >= nonOptionalQuestions.length) {
       return nonOptionalQuestions.fold(0.0, (sum, q) => sum + q.marks);
     }
 
     // If there's a requiredCount, we usually assume the student picks the ones with most marks
     // to determine the maximum possible marks for the section.
-    final sortedMarks = nonOptionalQuestions.map((q) => q.marks).toList()..sort((a, b) => b.compareTo(a));
+    final sortedMarks = nonOptionalQuestions.map((q) => q.marks).toList()
+      ..sort((a, b) => b.compareTo(a));
     return sortedMarks.take(requiredCount!).fold(0.0, (sum, m) => sum + m);
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'instruction': instruction,
+      'prefix': prefix,
+      'questions': questions.map((q) => q.toJson()).toList(),
+      'requiredCount': requiredCount,
+      'showTitle': showTitle,
+      'showDivider': showDivider,
+    };
+  }
+
+  factory PaperSection.fromJson(Map<String, dynamic> json) {
+    return PaperSection(
+      id: json['id'],
+      title: json['title'],
+      instruction: json['instruction'],
+      prefix: json['prefix'] ?? '',
+      questions: (json['questions'] as List?)
+              ?.map((q) => Question.fromJson(q))
+              .toList() ??
+          [],
+      requiredCount: json['requiredCount'],
+      showTitle: json['showTitle'] ?? true,
+      showDivider: json['showDivider'] ?? true,
+    );
   }
 }
 
@@ -159,6 +241,22 @@ class QuestionOption {
       id: id ?? this.id,
       text: text ?? this.text,
       isCorrect: isCorrect ?? this.isCorrect,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'text': text,
+      'isCorrect': isCorrect,
+    };
+  }
+
+  factory QuestionOption.fromJson(Map<String, dynamic> json) {
+    return QuestionOption(
+      id: json['id'],
+      text: json['text'],
+      isCorrect: json['isCorrect'] ?? false,
     );
   }
 }
@@ -203,6 +301,35 @@ class Question {
       marks: marks ?? this.marks,
       alignment: alignment ?? this.alignment,
       isOptional: isOptional ?? this.isOptional,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'text': text,
+      'imageUrl': imageUrl,
+      'options': options.map((o) => o.toJson()).toList(),
+      'type': type.index,
+      'marks': marks,
+      'alignment': alignment.index,
+      'isOptional': isOptional,
+    };
+  }
+
+  factory Question.fromJson(Map<String, dynamic> json) {
+    return Question(
+      id: json['id'],
+      text: json['text'],
+      imageUrl: json['imageUrl'],
+      options: (json['options'] as List?)
+              ?.map((o) => QuestionOption.fromJson(o))
+              .toList() ??
+          [],
+      type: QuestionType.values[json['type'] ?? 1],
+      marks: (json['marks'] as num?)?.toDouble() ?? 1.0,
+      alignment: TextAlign.values[json['alignment'] ?? 0],
+      isOptional: json['isOptional'] ?? false,
     );
   }
 }
