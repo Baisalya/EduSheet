@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
 
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
+import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
 
 // Note: I'll need to check if vsc_quill_delta_to_html is available, 
 // if not I might need another way to convert delta to html for storage.
@@ -160,7 +161,25 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
               contentPadding: EdgeInsets.zero,
             ),
             const SizedBox(height: 8),
-            const Text('Question Content:', style: TextStyle(fontWeight: FontWeight.bold)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Question Content:', style: TextStyle(fontWeight: FontWeight.bold)),
+                TextButton.icon(
+                  onPressed: () async {
+                    final text = await Navigator.push<String>(
+                      context,
+                      MaterialPageRoute(builder: (context) => const OCRScreen()),
+                    );
+                    if (text != null && mounted) {
+                      _controller.document.insert(_controller.selection.baseOffset, text);
+                    }
+                  },
+                  icon: const Icon(Icons.document_scanner, size: 20),
+                  label: const Text('Scan Question'),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             Container(
               decoration: BoxDecoration(

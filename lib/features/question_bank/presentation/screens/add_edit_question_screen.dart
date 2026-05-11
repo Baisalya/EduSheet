@@ -5,6 +5,7 @@ import '../../../editor/domain/models/paper_model.dart';
 import '../../domain/models/question_bank_model.dart';
 import '../providers/question_bank_provider.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
+import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
 
 class AddEditQuestionScreen extends ConsumerStatefulWidget {
   final QuestionBankQuestion? question;
@@ -138,6 +139,34 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Question Text', style: TextStyle(fontWeight: FontWeight.bold)),
+                TextButton.icon(
+                  onPressed: () async {
+                    final text = await Navigator.push<String>(
+                      context,
+                      MaterialPageRoute(builder: (context) => const OCRScreen()),
+                    );
+                    if (text != null && mounted) {
+                      final currentText = _textController.text;
+                      final selection = _textController.selection;
+                      if (selection.isValid) {
+                        final newText = currentText.replaceRange(selection.start, selection.end, text);
+                        _textController.text = newText;
+                        _textController.selection = TextSelection.collapsed(offset: selection.start + text.length);
+                      } else {
+                        _textController.text = currentText + text;
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.document_scanner, size: 20),
+                  label: const Text('Scan Question'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             MathKeyboardField(
               controller: _textController,
               builder: (context, fieldFocusNode, isMathActive) => TextFormField(
@@ -145,7 +174,10 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                 focusNode: fieldFocusNode,
                 maxLines: 3,
                 keyboardType: isMathActive ? TextInputType.none : TextInputType.multiline,
-                decoration: const InputDecoration(labelText: 'Question Text', border: OutlineInputBorder()),
+                decoration: const InputDecoration(
+                  hintText: 'Type or scan your question here...',
+                  border: OutlineInputBorder(),
+                ),
                 validator: (v) => v!.isEmpty ? 'Required' : null,
               ),
             ),
