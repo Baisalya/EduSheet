@@ -2,6 +2,19 @@ import 'package:pdf/pdf.dart';
 
 enum TemplateType { school, coaching, cute, board }
 
+enum HeaderLayout {
+  centered,
+  logoLeft,
+  logoRight,
+  modernCoaching,
+  minimal,
+}
+
+enum PaperLayout {
+  standard,
+  twoColumn,
+}
+
 class PaperTemplate {
   final String id;
   final String name;
@@ -12,6 +25,8 @@ class PaperTemplate {
   final double questionFontSize;
   final bool hasBorder;
   final bool centeredHeader;
+  final HeaderLayout headerLayout;
+  final PaperLayout paperLayout;
 
   PaperTemplate({
     required this.id,
@@ -23,6 +38,8 @@ class PaperTemplate {
     this.questionFontSize = 12,
     this.hasBorder = false,
     this.centeredHeader = true,
+    this.headerLayout = HeaderLayout.centered,
+    this.paperLayout = PaperLayout.standard,
   });
 
   static List<PaperTemplate> get predefinedTemplates => [
@@ -32,6 +49,7 @@ class PaperTemplate {
           type: TemplateType.school,
           hasBorder: true,
           centeredHeader: true,
+          headerLayout: HeaderLayout.centered,
         ),
         PaperTemplate(
           id: 'coaching_modern',
@@ -40,6 +58,7 @@ class PaperTemplate {
           primaryColor: PdfColors.blue900,
           secondaryColor: PdfColors.blue100,
           centeredHeader: false,
+          headerLayout: HeaderLayout.modernCoaching,
         ),
         PaperTemplate(
           id: 'cute_kids',
@@ -48,12 +67,21 @@ class PaperTemplate {
           primaryColor: PdfColors.pink300,
           secondaryColor: PdfColors.yellow100,
           headerFontSize: 26,
+          headerLayout: HeaderLayout.centered,
         ),
         PaperTemplate(
           id: 'board_cbse',
           name: 'Board (CBSE Style)',
           type: TemplateType.board,
           centeredHeader: true,
+          headerLayout: HeaderLayout.centered,
+        ),
+        PaperTemplate(
+          id: 'minimalist',
+          name: 'Minimalist',
+          type: TemplateType.school,
+          headerLayout: HeaderLayout.minimal,
+          hasBorder: false,
         ),
       ];
 }

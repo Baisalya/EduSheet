@@ -102,40 +102,64 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.9,
       ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 16,
-        right: 16,
-        top: 16,
+        left: 20,
+        right: 20,
+        top: 20,
       ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   widget.question == null ? 'Add Question' : 'Edit Question',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                 ),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                  style: IconButton.styleFrom(backgroundColor: Colors.grey[100]),
+                ),
               ],
             ),
-            const Divider(),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: DropdownButtonFormField<QuestionType>(
                     isExpanded: true,
                     value: _type,
-                    decoration: const InputDecoration(labelText: 'Type', border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                      labelText: 'Question Type',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Colors.grey[50],
+                    ),
                     items: QuestionType.values.map((t) => DropdownMenuItem(
                       value: t,
                       child: Text(
                         t.name.toUpperCase(),
-                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                       ),
                     )).toList(),
                     onChanged: (val) => setState(() => _type = val!),
@@ -145,26 +169,38 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 Expanded(
                   child: TextFormField(
                     initialValue: _marks.toString(),
-                    decoration: const InputDecoration(labelText: 'Marks', border: OutlineInputBorder()),
+                    decoration: InputDecoration(
+                      labelText: 'Marks',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Colors.grey[50],
+                    ),
                     keyboardType: TextInputType.number,
                     onChanged: (val) => _marks = double.tryParse(val) ?? 1.0,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              title: const Text('Is Optional Question?'),
-              subtitle: const Text('Optional questions are not counted in total marks'),
-              value: _isOptional,
-              onChanged: (val) => setState(() => _isOptional = val),
-              contentPadding: EdgeInsets.zero,
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.blue.withOpacity(0.1)),
+              ),
+              child: SwitchListTile(
+                title: const Text('Optional Question', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text('Does not count towards total marks', style: TextStyle(fontSize: 11)),
+                value: _isOptional,
+                onChanged: (val) => setState(() => _isOptional = val),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Question Content:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Question Content', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                 TextButton.icon(
                   onPressed: () async {
                     final text = await Navigator.push<String>(
@@ -175,16 +211,25 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                       _controller.document.insert(_controller.selection.baseOffset, text);
                     }
                   },
-                  icon: const Icon(Icons.document_scanner, size: 20),
-                  label: const Text('Scan Question'),
+                  icon: const Icon(Icons.document_scanner_outlined, size: 18),
+                  label: const Text('Scan', style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(foregroundColor: Colors.blue),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Container(
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+                borderRadius: BorderRadius.circular(16),
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Column(
                 children: [
@@ -206,14 +251,14 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                   MathKeyboardField(
                     controller: _controller,
                     builder: (context, fieldFocusNode, isMathActive) => Container(
-                      height: 150,
-                      padding: const EdgeInsets.all(8),
+                      height: 180,
+                      padding: const EdgeInsets.all(12),
                       child: QuillEditor(
                         controller: _controller,
                         focusNode: fieldFocusNode,
                         scrollController: ScrollController(),
                         config: const QuillEditorConfig(
-                          placeholder: 'Type your question here...',
+                          placeholder: 'Start typing the question...',
                         ),
                       ),
                     ),
@@ -226,11 +271,11 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Options:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Options', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                   TextButton.icon(
                     onPressed: () => setState(() => _options.add(QuestionOption(id: const Uuid().v4(), text: ''))),
-                    icon: const Icon(Icons.add_circle_outline, size: 20),
-                    label: const Text('Add Option'),
+                    icon: const Icon(Icons.add_circle_outline, size: 18),
+                    label: const Text('Add Option', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -239,12 +284,13 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 final idx = entry.key;
                 final opt = entry.value;
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
+                  padding: const EdgeInsets.only(bottom: 12.0),
                   child: Row(
                     children: [
                       Radio<bool>(
                         value: true,
                         groupValue: opt.isCorrect,
+                        activeColor: Colors.green,
                         onChanged: (val) {
                           setState(() {
                             _options = _options.asMap().entries.map((e) {
@@ -252,21 +298,23 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                             }).toList();
                           });
                         },
-                        visualDensity: VisualDensity.compact,
                       ),
                       Expanded(
                         child: TextFormField(
                           initialValue: opt.text,
                           decoration: InputDecoration(
                             hintText: 'Option ${String.fromCharCode(65 + idx)}',
-                            border: const OutlineInputBorder(),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            filled: true,
+                            fillColor: opt.isCorrect ? Colors.green.withOpacity(0.05) : Colors.grey[50],
                           ),
                           onChanged: (val) => _options[idx] = opt.copyWith(text: val),
                         ),
                       ),
+                      const SizedBox(width: 8),
                       IconButton(
-                        icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                        icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 22),
                         onPressed: () => setState(() => _options.removeAt(idx)),
                       ),
                     ],
@@ -274,12 +322,19 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 );
               }),
             ],
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
             ElevatedButton(
               onPressed: _save,
-              child: const Text('Save'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 54),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              child: const Text('Save Question', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
           ],
         ),
       ),

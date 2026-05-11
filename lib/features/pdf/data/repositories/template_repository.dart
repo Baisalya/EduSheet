@@ -48,6 +48,8 @@ class TemplateRepository {
       'questionFontSize': t.questionFontSize,
       'hasBorder': t.hasBorder,
       'centeredHeader': t.centeredHeader,
+      'headerLayout': t.headerLayout.index,
+      'paperLayout': t.paperLayout.index,
     };
   }
 
@@ -62,6 +64,8 @@ class TemplateRepository {
       questionFontSize: json['questionFontSize'],
       hasBorder: json['hasBorder'],
       centeredHeader: json['centeredHeader'],
+      headerLayout: HeaderLayout.values[json['headerLayout'] ?? 0],
+      paperLayout: PaperLayout.values[json['paperLayout'] ?? 0],
     );
   }
 }

@@ -53,6 +53,8 @@ class TemplateNotifier extends StateNotifier<TemplateState> {
       questionFontSize: base.questionFontSize,
       hasBorder: base.hasBorder,
       centeredHeader: base.centeredHeader,
+      headerLayout: base.headerLayout,
+      paperLayout: base.paperLayout,
     );
     await _repository.saveTemplate(custom);
     await loadCustomTemplates();
