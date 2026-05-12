@@ -6,6 +6,7 @@ import '../../../features/editor/presentation/screens/saved_papers_screen.dart';
 import '../../../features/editor/presentation/providers/editor_provider.dart';
 import '../../../features/omr/presentation/pages/omr_generator_page.dart';
 import '../../../features/question_bank/presentation/screens/question_bank_screen.dart';
+import '../../../features/document_reader/presentation/screens/document_reader_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -95,8 +96,10 @@ class HomeScreen extends ConsumerWidget {
               lottieAsset: 'assets/lottie/DocumentReader.json',
               icon: Icons.description,
               color: Colors.redAccent,
-              onTap: () {},
-              isComingSoon: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DocumentReaderScreen()),
+              ),
             ),
             _HomeCard(
               title: 'Word Converter',
