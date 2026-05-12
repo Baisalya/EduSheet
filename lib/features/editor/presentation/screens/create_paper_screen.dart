@@ -21,6 +21,8 @@ class CreatePaperScreen extends ConsumerStatefulWidget {
 class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   bool _showPreview = false;
   final TextEditingController _titleController = TextEditingController();
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
 
   @override
   void initState() {
@@ -33,7 +35,16 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _pageController.dispose();
     super.dispose();
+  }
+
+  void _goToPage(int page) {
+    _pageController.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOutCubic,
+    );
   }
 
   @override
@@ -47,9 +58,23 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: isDark ? Colors.white : Colors.black,
-        title: Text(
-          paper.title.isEmpty ? 'New Paper' : paper.title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              paper.title.isEmpty ? 'New Paper' : paper.title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            if (!_showPreview)
+              Text(
+                _currentPage == 0 ? 'Paper Setup' : 'Section $_currentPage',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+          ],
         ),
         actions: [
           IconButton(
@@ -80,8 +105,13 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         ],
       ),
       body: _showPreview ? _buildPreview(paper) : _buildEditor(paper),
-      floatingActionButton: !_showPreview ? FloatingActionButton.extended(
-        onPressed: () => ref.read(editorStateProvider.notifier).addSection(),
+      bottomNavigationBar: !_showPreview ? _buildBottomNavigation(paper) : null,
+      floatingActionButton: !_showPreview && _currentPage == 0 ? FloatingActionButton.extended(
+        onPressed: () {
+          ref.read(editorStateProvider.notifier).addSection();
+          final targetPage = paper.sections.length + 1; // Slide 0 is setup, sections start at 1
+          _goToPage(targetPage);
+        },
         icon: const Icon(Icons.add),
         label: const Text('Add Section'),
         backgroundColor: Colors.blue,
@@ -91,7 +121,58 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
+  Widget _buildBottomNavigation(Paper paper) {
+    final totalPages = paper.sections.length + 1;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withAlpha(13))),
+      ),
+      child: SafeArea(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            IconButton(
+              onPressed: _currentPage > 0 ? () => _goToPage(_currentPage - 1) : null,
+              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+            ),
+            Row(
+              children: List.generate(totalPages, (index) {
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: _currentPage == index ? 24 : 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _currentPage == index ? Colors.blue : Colors.grey.withAlpha(76),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                );
+              }),
+            ),
+            IconButton(
+              onPressed: _currentPage < totalPages - 1 ? () => _goToPage(_currentPage + 1) : null,
+              icon: const Icon(Icons.arrow_forward_ios, size: 20),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildEditor(Paper paper) {
+    return PageView(
+      controller: _pageController,
+      onPageChanged: (page) => setState(() => _currentPage = page),
+      children: [
+        _buildSetupSlide(paper),
+        ...paper.sections.map((section) => _buildSectionSlide(section)),
+      ],
+    );
+  }
+
+  Widget _buildSetupSlide(Paper paper) {
     return ListView(
       padding: const EdgeInsets.all(20.0),
       children: [
@@ -158,19 +239,6 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        Row(
-          children: [
-            const Icon(Icons.list_alt, color: Colors.green),
-            const SizedBox(width: 8),
-            Text(
-              'Sections & Questions',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        ...paper.sections.map((section) => _buildSectionEditor(section, key: ValueKey(section.id))),
-        const SizedBox(height: 20),
         _EditorCard(
           title: 'Extra Options',
           icon: Icons.more_horiz,
@@ -183,7 +251,17 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             contentPadding: EdgeInsets.zero,
           ),
         ),
-        const SizedBox(height: 80), // Space for FAB
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
+  Widget _buildSectionSlide(PaperSection section) {
+    return ListView(
+      padding: const EdgeInsets.all(20.0),
+      children: [
+        _buildSectionEditor(section, key: ValueKey(section.id)),
+        const SizedBox(height: 80),
       ],
     );
   }
@@ -196,69 +274,111 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           onReorder: (oldIdx, newIdx) => ref.read(editorStateProvider.notifier).reorderHeaderFields(oldIdx, newIdx),
+          proxyDecorator: (child, index, animation) => Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(20),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: child,
+            ),
+          ),
           children: [
             for (final field in paper.headerFields)
               Padding(
                 key: ValueKey(field.id),
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
                 child: Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainer,
+                    color: isDark ? Colors.white.withAlpha(10) : Colors.grey.withAlpha(15),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                    border: Border.all(
+                      color: isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(10),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.drag_handle, color: Colors.grey, size: 20),
+                      ReorderableDragStartListener(
+                        index: paper.headerFields.indexOf(field),
+                        child: Icon(
+                          Icons.drag_indicator_rounded,
+                          color: Colors.grey.withAlpha(100),
+                          size: 20,
+                        ),
+                      ),
                       const SizedBox(width: 8),
+                      // Label field
                       Expanded(
-                        flex: 3,
+                        flex: 2,
                         child: TextFormField(
                           initialValue: field.label,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
                           decoration: InputDecoration(
-                            labelText: 'Label',
+                            hintText: 'Label',
+                            hintStyle: TextStyle(color: Colors.grey.withAlpha(100)),
                             isDense: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
                           ),
                           onChanged: (val) => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, label: val),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      // Divider
+                      Container(
+                        height: 20,
+                        width: 1,
+                        margin: const EdgeInsets.symmetric(horizontal: 12),
+                        color: isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(10),
+                      ),
+                      // Value field
                       Expanded(
-                        flex: 5,
+                        flex: 3,
                         child: TextFormField(
                           initialValue: field.value,
                           enabled: !field.isPlaceholder,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: field.isPlaceholder 
+                                ? Colors.grey.withAlpha(120) 
+                                : (isDark ? Colors.white.withAlpha(200) : Colors.black87),
+                          ),
                           decoration: InputDecoration(
-                            labelText: field.isPlaceholder ? 'Placeholder' : 'Value',
+                            hintText: field.isPlaceholder ? 'Auto-filled' : 'Enter value...',
+                            hintStyle: TextStyle(
+                              color: Colors.grey.withAlpha(100),
+                              fontStyle: field.isPlaceholder ? FontStyle.italic : FontStyle.normal,
+                            ),
                             isDense: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            fillColor: field.isPlaceholder ? (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100]) : null,
-                            hintText: field.isPlaceholder ? '________' : null,
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
                           ),
                           onChanged: (val) => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, value: val),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: Icon(
-                          field.isPlaceholder ? Icons.check_box : Icons.check_box_outline_blank,
-                          size: 22,
-                          color: field.isPlaceholder ? Colors.blue : Colors.grey,
-                        ),
-                        onPressed: () => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, isPlaceholder: !field.isPlaceholder),
-                        tooltip: 'Toggle Placeholder',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                      const SizedBox(width: 8),
+                      _HeaderFieldAction(
+                        icon: field.isPlaceholder ? Icons.edit_off_rounded : Icons.edit_rounded,
+                        color: field.isPlaceholder ? Colors.blue : Colors.grey.withAlpha(120),
+                        tooltip: field.isPlaceholder ? 'Enable Manual Entry' : 'Set as Placeholder',
+                        onTap: () => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, isPlaceholder: !field.isPlaceholder),
                       ),
-                      const SizedBox(width: 4),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
-                        onPressed: () => ref.read(editorStateProvider.notifier).deleteHeaderField(field.id),
+                      _HeaderFieldAction(
+                        icon: Icons.delete_outline_rounded,
+                        color: Colors.redAccent.withAlpha(180),
                         tooltip: 'Delete Field',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        onTap: () => ref.read(editorStateProvider.notifier).deleteHeaderField(field.id),
                       ),
                     ],
                   ),
@@ -270,7 +390,6 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
-
   Widget _buildSectionEditor(PaperSection section, {required Key key}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
@@ -279,7 +398,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.grey.withOpacity(0.1)),
+        side: BorderSide(color: Colors.grey.withAlpha(25)),
       ),
       child: Container(
         decoration: BoxDecoration(
@@ -294,7 +413,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+              color: Colors.black.withAlpha(isDark ? 51 : 10),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -313,7 +432,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.blue.withAlpha(25),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -394,9 +513,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white.withOpacity(0.05) : Colors.orange.withOpacity(0.05),
+                      color: isDark ? Colors.white.withAlpha(13) : Colors.orange.withAlpha(13),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withOpacity(0.1)),
+                      border: Border.all(color: Colors.orange.withAlpha(25)),
                     ),
                     child: Row(
                       children: [
@@ -452,7 +571,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     decoration: BoxDecoration(
                       color: Theme.of(context).cardTheme.color,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                      border: Border.all(color: Theme.of(context).dividerColor.withAlpha(25)),
                     ),
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -557,10 +676,10 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardTheme.color,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                  border: Border.all(color: Theme.of(context).dividerColor.withAlpha(25)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+                      color: Colors.black.withAlpha(isDark ? 51 : 13),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -645,7 +764,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey[300]!),
+              border: Border.all(color: isDark ? Colors.white.withAlpha(25) : Colors.grey[300]!),
               borderRadius: BorderRadius.circular(8),
               color: isDark ? Theme.of(context).cardTheme.color : Colors.white,
             ),
@@ -814,6 +933,34 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 }
 
+class _HeaderFieldAction extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _HeaderFieldAction({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        icon: Icon(icon, color: color, size: 20),
+        onPressed: onTap,
+        splashRadius: 20,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      ),
+    );
+  }
+}
+
 class _EditorCard extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -835,10 +982,10 @@ class _EditorCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withOpacity(0.1)),
+        border: Border.all(color: color.withAlpha(25)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            color: Colors.black.withAlpha(isDark ? 51 : 10),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -854,7 +1001,7 @@ class _EditorCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withAlpha(25),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: color, size: 20),
