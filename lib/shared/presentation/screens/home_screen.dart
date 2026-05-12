@@ -6,14 +6,17 @@ import '../../../features/editor/presentation/screens/saved_papers_screen.dart';
 import '../../../features/editor/presentation/providers/editor_provider.dart';
 import '../../../features/omr/presentation/pages/omr_generator_page.dart';
 import '../../../features/question_bank/presentation/screens/question_bank_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Row(
           mainAxisSize: MainAxisSize.min,
@@ -22,10 +25,7 @@ class HomeScreen extends ConsumerWidget {
             _AnimatedGradientTitle(),
           ],
         ),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black,
+        foregroundColor: isDark ? Colors.white : Colors.black,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -85,8 +85,10 @@ class HomeScreen extends ConsumerWidget {
               lottieAsset: 'assets/lottie/settingssliders.json',
               icon: Icons.settings,
               color: Colors.blueGrey,
-              onTap: () {},
-              isComingSoon: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              ),
             ),
             _HomeCard(
               title: 'PDF/Word Reader',
@@ -205,6 +207,7 @@ class _HomeCardState extends State<_HomeCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseColor = widget.isComingSoon ? Colors.grey : widget.color;
 
     return GestureDetector(
@@ -240,30 +243,24 @@ class _HomeCardState extends State<_HomeCard> {
               end: Alignment.bottomRight,
               colors: widget.isComingSoon
                   ? [
-                Colors.grey.shade100,
-                Colors.grey.shade50,
+                isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
+                isDark ? Colors.white.withOpacity(0.02) : Colors.grey.shade50,
               ]
                   : [
-                Color.lerp(widget.color, Colors.white, 0.88)!,
-                Colors.white,
+                Color.lerp(widget.color, isDark ? Colors.black : Colors.white, 0.88)!,
+                isDark ? Theme.of(context).colorScheme.surfaceContainer : Colors.white,
               ],
             ),
             border: Border.all(
               color: widget.isComingSoon
-                  ? Colors.grey.shade200
-                  : widget.color.withOpacity(0.10),
+                  ? (isDark ? Colors.grey.shade800 : Colors.grey.shade200)
+                  : widget.color.withOpacity(0.15),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
                 blurRadius: 22,
                 offset: const Offset(0, 10),
-                spreadRadius: -6,
-              ),
-              BoxShadow(
-                color: widget.color.withOpacity(0.10),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
                 spreadRadius: -6,
               ),
             ],
@@ -281,7 +278,7 @@ class _HomeCardState extends State<_HomeCard> {
                     height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: widget.color.withOpacity(0.08),
+                      color: widget.color.withOpacity(isDark ? 0.12 : 0.08),
                     ),
                   ),
                 ),
@@ -294,7 +291,7 @@ class _HomeCardState extends State<_HomeCard> {
                     height: 90,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.25),
+                      color: (isDark ? Colors.black : Colors.white).withOpacity(0.15),
                     ),
                   ),
                 ),
@@ -335,7 +332,7 @@ class _HomeCardState extends State<_HomeCard> {
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: widget.color.withOpacity(0.10),
+                                color: widget.color.withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(100),
                               ),
                               child: Text(
@@ -391,8 +388,8 @@ class _HomeCardState extends State<_HomeCard> {
                               height: 1.15,
                               fontWeight: FontWeight.w800,
                               color: widget.isComingSoon
-                                  ? Colors.grey.shade700
-                                  : Colors.black87,
+                                  ? Colors.grey.shade600
+                                  : (isDark ? Colors.white : Colors.black87),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -405,7 +402,7 @@ class _HomeCardState extends State<_HomeCard> {
                               fontWeight: FontWeight.w500,
                               color: widget.isComingSoon
                                   ? Colors.grey
-                                  : Colors.black54,
+                                  : (isDark ? Colors.grey.shade400 : Colors.black54),
                             ),
                           ),
                         ],

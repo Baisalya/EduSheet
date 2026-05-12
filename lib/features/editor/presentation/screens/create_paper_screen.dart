@@ -39,13 +39,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   @override
   Widget build(BuildContext context) {
     final paper = ref.watch(editorStateProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.black,
+        foregroundColor: isDark ? Colors.white : Colors.black,
         title: Text(
           paper.title.isEmpty ? 'New Paper' : paper.title,
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -118,8 +119,6 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     labelText: 'Exam Title (e.g. Mid-Term 2024)',
                     hintText: 'Enter exam title',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    filled: true,
-                    fillColor: Colors.white,
                   ),
                   onChanged: (val) => ref.read(editorStateProvider.notifier).updateTitle(val),
                 ),
@@ -190,6 +189,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 
   Widget _buildHeaderFieldsEditor(Paper paper) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
         ReorderableListView(
@@ -204,9 +204,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.grey[50],
+                    color: Theme.of(context).colorScheme.surfaceContainer,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[200]!),
+                    border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
                   ),
                   child: Row(
                     children: [
@@ -220,8 +220,6 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                             labelText: 'Label',
                             isDense: true,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            filled: true,
-                            fillColor: Colors.white,
                           ),
                           onChanged: (val) => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, label: val),
                         ),
@@ -236,8 +234,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                             labelText: field.isPlaceholder ? 'Placeholder' : 'Value',
                             isDense: true,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            filled: true,
-                            fillColor: field.isPlaceholder ? Colors.grey[100] : Colors.white,
+                            fillColor: field.isPlaceholder ? (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100]) : null,
                             hintText: field.isPlaceholder ? '________' : null,
                           ),
                           onChanged: (val) => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, value: val),
@@ -275,6 +272,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
 
 
   Widget _buildSectionEditor(PaperSection section, {required Key key}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
       key: key,
       margin: const EdgeInsets.symmetric(vertical: 10),
@@ -289,11 +287,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Colors.white, Colors.grey[50]!],
+            colors: [
+              Theme.of(context).cardTheme.color!,
+              Theme.of(context).colorScheme.surfaceContainer,
+            ],
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -393,7 +394,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.05),
+                      color: isDark ? Colors.white.withOpacity(0.05) : Colors.orange.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.orange.withOpacity(0.1)),
                     ),
@@ -413,8 +414,6 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                               isDense: true,
                               contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              filled: true,
-                              fillColor: Colors.white,
                             ),
                             keyboardType: TextInputType.number,
                             onChanged: (val) {
@@ -431,7 +430,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         Expanded(
                           child: Text(
                             'out of ${section.questions.length}',
-                            style: const TextStyle(fontSize: 13, color: Colors.black54),
+                            style: const TextStyle(fontSize: 13),
                           ),
                         ),
                       ],
@@ -451,9 +450,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     key: ValueKey(q.id),
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).cardTheme.color,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[200]!),
+                      border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
                     ),
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -539,6 +538,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 
   Widget _buildBrandingEditor(Paper paper) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Row(
       children: [
         GestureDetector(
@@ -555,12 +555,12 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 width: 70,
                 height: 70,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardTheme.color,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey[300]!),
+                  border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -597,8 +597,6 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
               labelText: 'School/Institution Name',
               hintText: 'Enter school name',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              filled: true,
-              fillColor: Colors.white,
             ),
             onChanged: (val) => ref.read(editorStateProvider.notifier).updateBranding(schoolName: val),
           ),
@@ -636,8 +634,10 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 
   Widget _buildPreview(Paper paper) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
-      color: Colors.white,
+      color: isDark ? Theme.of(context).scaffoldBackgroundColor : Colors.white,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -645,8 +645,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
+              border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey[300]!),
               borderRadius: BorderRadius.circular(8),
+              color: isDark ? Theme.of(context).cardTheme.color : Colors.white,
             ),
             child: Column(
               children: [
@@ -828,14 +829,16 @@ class _EditorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: color.withOpacity(0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -859,10 +862,11 @@ class _EditorCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
                     letterSpacing: 0.5,
+                    color: isDark ? Colors.white : Colors.black87,
                   ),
                 ),
               ],

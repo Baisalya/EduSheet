@@ -124,12 +124,14 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.black,
+        foregroundColor: isDark ? Colors.white : Colors.black,
         title: Text(
           widget.question == null ? 'Add Question' : 'Edit Question',
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -198,8 +200,6 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                       decoration: InputDecoration(
                         hintText: 'Type or scan your question here...',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                        filled: true,
-                        fillColor: Colors.grey[50],
                       ),
                       validator: (v) => v!.isEmpty ? 'Required' : null,
                     ),
@@ -222,8 +222,6 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                           decoration: InputDecoration(
                             labelText: 'Subject',
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            filled: true,
-                            fillColor: Colors.white,
                           ),
                           validator: (v) => v!.isEmpty ? 'Required' : null,
                         ),
@@ -235,8 +233,6 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                           decoration: InputDecoration(
                             labelText: 'Chapter',
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            filled: true,
-                            fillColor: Colors.white,
                           ),
                           validator: (v) => v!.isEmpty ? 'Required' : null,
                         ),
@@ -249,8 +245,6 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                     decoration: InputDecoration(
                       labelText: 'Difficulty',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.white,
                     ),
                     items: Difficulty.values.map((d) => DropdownMenuItem(value: d, child: Text(d.name.toUpperCase()))).toList(),
                     onChanged: (v) => setState(() => _difficulty = v!),
@@ -261,8 +255,6 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                     decoration: InputDecoration(
                       labelText: 'Tags (comma separated)',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.white,
                       prefixIcon: const Icon(Icons.tag_rounded, size: 18),
                     ),
                   ),
@@ -282,8 +274,6 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                     decoration: InputDecoration(
                       labelText: 'Type',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.white,
                     ),
                     items: QuestionType.values.map((t) => DropdownMenuItem(value: t, child: Text(t.name.toUpperCase()))).toList(),
                     onChanged: (v) => setState(() {
@@ -326,8 +316,7 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                                     labelText: 'Option ${i + 1}',
                                     isDense: true,
                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                    filled: true,
-                                    fillColor: opt.isCorrect ? Colors.green.withOpacity(0.05) : Colors.white,
+                                    fillColor: opt.isCorrect ? Colors.green.withOpacity(isDark ? 0.1 : 0.05) : null,
                                   ),
                                 ),
                               ),
@@ -363,14 +352,16 @@ class _FormSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: color.withOpacity(0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -394,10 +385,11 @@ class _FormSection extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
                     letterSpacing: 0.5,
+                    color: isDark ? Colors.white : Colors.black87,
                   ),
                 ),
               ],

@@ -13,13 +13,14 @@ class OmrGeneratorPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(omrProvider);
     final notifier = ref.read(omrProvider.notifier);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.black,
+        foregroundColor: isDark ? Colors.white : Colors.black,
         title: const Text(
           'OMR Sheet Generator',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -40,14 +41,14 @@ class OmrGeneratorPage extends ConsumerWidget {
               title: 'Branding & Info',
               icon: Icons.business,
               color: Colors.blue,
-              child: _buildBrandingSection(config, notifier),
+              child: _buildBrandingSection(context, config, notifier),
             ),
             const SizedBox(height: 20),
             _OmrCard(
               title: 'Configuration',
               icon: Icons.settings_outlined,
               color: Colors.purple,
-              child: _buildConfigSection(config, notifier),
+              child: _buildConfigSection(context, config, notifier),
             ),
             const SizedBox(height: 20),
             _OmrCard(
@@ -79,8 +80,6 @@ class OmrGeneratorPage extends ConsumerWidget {
                         decoration: InputDecoration(
                           labelText: 'Barcode Data (Optional)',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          filled: true,
-                          fillColor: Colors.white,
                         ),
                         onChanged: notifier.updateBarcodeData,
                       ),
@@ -97,7 +96,7 @@ class OmrGeneratorPage extends ConsumerWidget {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.blue.withOpacity(0.3),
+                    color: Colors.blue.withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 6),
                   ),
@@ -129,7 +128,7 @@ class OmrGeneratorPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildBrandingSection(OmrConfig config, OmrNotifier notifier) {
+  Widget _buildBrandingSection(BuildContext context, OmrConfig config, OmrNotifier notifier) {
     return Row(
       children: [
         GestureDetector(
@@ -146,12 +145,12 @@ class OmrGeneratorPage extends ConsumerWidget {
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardTheme.color,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey[300]!),
+                  border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 10,
                     ),
                   ],
@@ -189,8 +188,6 @@ class OmrGeneratorPage extends ConsumerWidget {
                   labelText: 'School/Institute Name',
                   isDense: true,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white,
                 ),
                 onChanged: notifier.updateSchoolName,
               ),
@@ -201,8 +198,6 @@ class OmrGeneratorPage extends ConsumerWidget {
                   labelText: 'Exam Name',
                   isDense: true,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white,
                 ),
                 onChanged: notifier.updateExamName,
               ),
@@ -213,7 +208,7 @@ class OmrGeneratorPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildConfigSection(OmrConfig config, OmrNotifier notifier) {
+  Widget _buildConfigSection(BuildContext context, OmrConfig config, OmrNotifier notifier) {
     return Column(
       children: [
         DropdownButtonFormField<int>(
@@ -221,8 +216,6 @@ class OmrGeneratorPage extends ConsumerWidget {
           decoration: InputDecoration(
             labelText: 'Total Questions',
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            filled: true,
-            fillColor: Colors.white,
           ),
           items: [10, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200, 300, 400, 500]
               .map((c) => DropdownMenuItem(value: c, child: Text('$c Questions')))
@@ -235,8 +228,6 @@ class OmrGeneratorPage extends ConsumerWidget {
           decoration: InputDecoration(
             labelText: 'Options per Question',
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            filled: true,
-            fillColor: Colors.white,
           ),
           items: OmrOptionsCount.values
               .map((c) => DropdownMenuItem(
@@ -265,14 +256,16 @@ class _OmrCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: color.withOpacity(0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -296,10 +289,11 @@ class _OmrCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
                     letterSpacing: 0.5,
+                    color: isDark ? Colors.white : Colors.black87,
                   ),
                 ),
               ],
@@ -328,13 +322,14 @@ class _ModernSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: value ? Colors.blue.withOpacity(0.05) : Colors.grey[50],
+        color: value ? Colors.blue.withOpacity(0.05) : (isDark ? Colors.white.withOpacity(0.02) : Colors.grey[50]),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: value ? Colors.blue.withOpacity(0.1) : Colors.grey[200]!,
+          color: value ? Colors.blue.withOpacity(0.1) : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[200]!),
         ),
       ),
       child: SwitchListTile(
@@ -343,7 +338,7 @@ class _ModernSwitch extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: value ? FontWeight.bold : FontWeight.w500,
-            color: value ? Colors.blue[700] : Colors.black87,
+            color: value ? Colors.blue[700] : (isDark ? Colors.white70 : Colors.black87),
           ),
         ),
         value: value,

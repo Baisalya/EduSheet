@@ -97,14 +97,15 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
     final isMathActive = keyboardState.isVisible && keyboardState.type == KeyboardType.math;
     _controller.readOnly = isMathActive;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.9,
       ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -122,7 +123,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: isDark ? Colors.grey[700] : Colors.grey[300],
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -133,12 +134,18 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
               children: [
                 Text(
                   widget.question == null ? 'Add Question' : 'Edit Question',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
                 ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),
-                  style: IconButton.styleFrom(backgroundColor: Colors.grey[100]),
+                  style: IconButton.styleFrom(
+                    backgroundColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                  ),
                 ),
               ],
             ),
@@ -152,8 +159,6 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                     decoration: InputDecoration(
                       labelText: 'Question Type',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.grey[50],
                     ),
                     items: QuestionType.values.map((t) => DropdownMenuItem(
                       value: t,
@@ -172,8 +177,6 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                     decoration: InputDecoration(
                       labelText: 'Marks',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.grey[50],
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (val) => _marks = double.tryParse(val) ?? 1.0,
@@ -184,7 +187,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             const SizedBox(height: 12),
             Container(
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.05),
+                color: Colors.blue.withOpacity(isDark ? 0.1 : 0.05),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.blue.withOpacity(0.1)),
               ),
@@ -200,7 +203,14 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Question Content', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                Text(
+                  'Question Content',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
                 TextButton.icon(
                   onPressed: () async {
                     final text = await Navigator.push<String>(
@@ -220,12 +230,12 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             const SizedBox(height: 8),
             Container(
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey[200]!),
+                border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[200]!),
                 borderRadius: BorderRadius.circular(16),
-                color: Colors.white,
+                color: isDark ? Colors.grey[900] : Colors.white,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
+                    color: Colors.black.withOpacity(isDark ? 0.2 : 0.02),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -271,7 +281,14 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Options', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  Text(
+                    'Options',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
                   TextButton.icon(
                     onPressed: () => setState(() => _options.add(QuestionOption(id: const Uuid().v4(), text: ''))),
                     icon: const Icon(Icons.add_circle_outline, size: 18),
@@ -306,8 +323,9 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                             hintText: 'Option ${String.fromCharCode(65 + idx)}',
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            filled: true,
-                            fillColor: opt.isCorrect ? Colors.green.withOpacity(0.05) : Colors.grey[50],
+                            fillColor: opt.isCorrect 
+                                ? Colors.green.withOpacity(isDark ? 0.1 : 0.05) 
+                                : null,
                           ),
                           onChanged: (val) => _options[idx] = opt.copyWith(text: val),
                         ),

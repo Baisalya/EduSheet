@@ -186,6 +186,7 @@ class MathKeyboardView extends ConsumerWidget {
 
     final controller = ref.read(mathKeyboardControllerProvider.notifier);
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     // Define formatting actions for the grid
     final actions = [
@@ -225,7 +226,10 @@ class MathKeyboardView extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(
                   action['label'] as String, 
-                  style: theme.textTheme.labelSmall?.copyWith(fontSize: 9),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontSize: 9,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],

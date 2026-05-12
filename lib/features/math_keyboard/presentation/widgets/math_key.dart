@@ -87,12 +87,12 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
           clipBehavior: Clip.none,
           children: [
             Material(
-              color: widget.color ?? const Color(0xFFF2F2F2),
+              color: widget.color ?? Theme.of(context).colorScheme.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(4),
               elevation: _isPressed ? 0 : 1,
               child: Container(
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.withValues(alpha: 0.2), width: 0.5),
+                  border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1), width: 0.5),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 padding: const EdgeInsets.all(2),

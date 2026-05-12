@@ -11,13 +11,14 @@ class SavedPapersScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final papersAsync = ref.watch(savedPapersProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.black,
+        foregroundColor: isDark ? Colors.white : Colors.black,
         title: const Text(
           'Saved Papers',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -59,14 +60,16 @@ class _SavedPaperCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -93,10 +96,11 @@ class _SavedPaperCard extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       paper.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.3,
+                        color: isDark ? Colors.white : Colors.black87,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -123,7 +127,7 @@ class _SavedPaperCard extends ConsumerWidget {
               Text(
                 paper.schoolName,
                 style: TextStyle(
-                  color: Colors.grey[600],
+                  color: isDark ? Colors.grey.shade400 : Colors.grey[600],
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
