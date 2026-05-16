@@ -175,6 +175,56 @@ class MathKeyboardController extends _$MathKeyboardController {
     state = state.copyWith(symbolSizeLevel: level.clamp(-2, 2));
   }
 
+  void moveCursorLeft() {
+    final controller = state.activeController;
+    if (controller is math_kb.MathFieldEditingController) {
+      controller.goBack();
+    } else if (controller is TextEditingController) {
+      final selection = controller.selection;
+      if (selection.start > 0) {
+        controller.selection = TextSelection.collapsed(offset: selection.start - 1);
+      }
+    } else if (controller is quill.QuillController) {
+      final index = controller.selection.baseOffset;
+      if (index > 0) {
+        controller.updateSelection(
+          TextSelection.collapsed(offset: index - 1),
+          quill.ChangeSource.local,
+        );
+      }
+    }
+  }
+
+  void moveCursorRight() {
+    final controller = state.activeController;
+    if (controller is math_kb.MathFieldEditingController) {
+      controller.goNext();
+    } else if (controller is TextEditingController) {
+      final selection = controller.selection;
+      if (selection.end < controller.text.length) {
+        controller.selection = TextSelection.collapsed(offset: selection.end + 1);
+      }
+    } else if (controller is quill.QuillController) {
+      final index = controller.selection.baseOffset;
+      if (index < controller.document.length - 1) {
+        controller.updateSelection(
+          TextSelection.collapsed(offset: index + 1),
+          quill.ChangeSource.local,
+        );
+      }
+    }
+  }
+
+  void nextField() {
+    final controller = state.activeController;
+    if (controller is math_kb.MathFieldEditingController) {
+      controller.goNext();
+    } else {
+      // For standard fields, tab to next focusable if possible, or just space
+      insertText(' ');
+    }
+  }
+
   void insertText(String text) {
     final controller = state.activeController;
     if (controller == null) return;
@@ -234,18 +284,18 @@ class MathKeyboardController extends _$MathKeyboardController {
         r'a^2 + b^2 = c^2': 'a² + b² = c²',
         r'(x-h)^2 + (y-k)^2 = r^2': '(x-h)² + (y-k)² = r²',
         r'y = mx + b': 'y = mx + b',
-        r'\sin': 'sin',
-        r'\cos': 'cos',
-        r'\tan': 'tan',
-        r'\csc': 'csc',
-        r'\sec': 'sec',
-        r'\cot': 'cot',
-        r'\arcsin': 'arcsin',
-        r'\arccos': 'arccos',
-        r'\arctan': 'arctan',
-        r'\sinh': 'sinh',
-        r'\cosh': 'cosh',
-        r'\tanh': 'tanh',
+        r'\sin': 'sin()',
+        r'\cos': 'cos()',
+        r'\tan': 'tan()',
+        r'\csc': 'csc()',
+        r'\sec': 'sec()',
+        r'\cot': 'cot()',
+        r'\arcsin': 'arcsin()',
+        r'\arccos': 'arccos()',
+        r'\arctan': 'arctan()',
+        r'\sinh': 'sinh()',
+        r'\cosh': 'cosh()',
+        r'\tanh': 'tanh()',
         r'\theta': 'θ',
         r'\phi': 'φ',
         r'\alpha': 'α',
@@ -254,6 +304,9 @@ class MathKeyboardController extends _$MathKeyboardController {
         r'\delta': 'δ',
         r'\epsilon': 'ε',
         r'\pi': 'π',
+        '(': '()',
+        '[': '[]',
+        '{': '{}',
       };
 
       if (textMapping.containsKey(text)) {
@@ -286,14 +339,18 @@ class MathKeyboardController extends _$MathKeyboardController {
       if (controller is TextEditingController) {
         final selection = controller.selection;
         final currentText = controller.text;
+        final start = selection.start != -1 ? selection.start : currentText.length;
+        final end = selection.end != -1 ? selection.end : currentText.length;
 
-        final newText = currentText.replaceRange(
-          selection.start != -1 ? selection.start : currentText.length,
-          selection.end != -1 ? selection.end : currentText.length,
-          textToInsert,
-        );
+        final newText = currentText.replaceRange(start, end, textToInsert);
 
-        final newCursorPos = (selection.start != -1 ? selection.start : currentText.length) + textToInsert.length;
+        // Smart cursor placement for auto-closing pairs
+        int newCursorPos = start + textToInsert.length;
+        if (['()', '[]', '{}', '||', 'sin()', 'cos()', 'tan()', 'log()', 'ln()'].contains(textToInsert)) {
+          newCursorPos -= 1;
+        } else if (['arcsin()', 'arccos()', 'arctan()', 'sinh()', 'cosh()', 'tanh()'].contains(textToInsert)) {
+          newCursorPos -= 1;
+        }
 
         controller.value = TextEditingValue(
           text: newText,
@@ -304,8 +361,16 @@ class MathKeyboardController extends _$MathKeyboardController {
         final length = controller.selection.extentOffset - index;
 
         controller.replaceText(index, length, textToInsert, null);
+        
+        int offset = textToInsert.length;
+        if (['()', '[]', '{}', '||', 'sin()', 'cos()', 'tan()', 'log()', 'ln()'].contains(textToInsert)) {
+          offset -= 1;
+        } else if (['arcsin()', 'arccos()', 'arctan()', 'sinh()', 'cosh()', 'tanh()'].contains(textToInsert)) {
+          offset -= 1;
+        }
+
         controller.updateSelection(
-          TextSelection.collapsed(offset: index + textToInsert.length),
+          TextSelection.collapsed(offset: index + offset),
           quill.ChangeSource.local,
         );
       }
@@ -441,6 +506,18 @@ class MathKeyboardController extends _$MathKeyboardController {
         controller.addLeaf('|');
         controller.addLeaf('|');
         controller.goBack(); // Move cursor inside
+      } else if (text == '(') {
+        controller.addLeaf('(');
+        controller.addLeaf(')');
+        controller.goBack();
+      } else if (text == '[') {
+        controller.addLeaf('[');
+        controller.addLeaf(']');
+        controller.goBack();
+      } else if (text == '{') {
+        controller.addLeaf('{');
+        controller.addLeaf('}');
+        controller.goBack();
       } else if (text == r'\frac{}{}') {
         controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
       } else {

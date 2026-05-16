@@ -32,6 +32,9 @@ class MathKeyboardView extends ConsumerWidget {
           // Persistent Quick Bar (Numbers & Basic Operators)
           _buildQuickBar(context, controller),
 
+          // Navigation Bar (Arrows & Next)
+          _buildNavigationBar(context, controller),
+
           // Drag Handle & Tab Bar
           _buildHeader(context, state, controller),
 
@@ -50,6 +53,39 @@ class MathKeyboardView extends ConsumerWidget {
 
           // Action Bar
           const _ActionBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavigationBar(BuildContext context, MathKeyboardController controller) {
+    final theme = Theme.of(context);
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1))),
+      ),
+      child: Row(
+        children: [
+          _NavButton(
+            icon: Icons.chevron_left,
+            onPressed: () => controller.moveCursorLeft(),
+          ),
+          const SizedBox(width: 8),
+          _NavButton(
+            icon: Icons.chevron_right,
+            onPressed: () => controller.moveCursorRight(),
+          ),
+          const Spacer(),
+          _NavButton(
+            label: 'NEXT FIELD',
+            icon: Icons.keyboard_tab,
+            onPressed: () => controller.nextField(),
+            width: 120,
+            isPrimary: true,
+          ),
         ],
       ),
     );
@@ -374,6 +410,60 @@ class MathKeyboardView extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _NavButton extends StatelessWidget {
+  final IconData icon;
+  final String? label;
+  final VoidCallback onPressed;
+  final double width;
+  final bool isPrimary;
+
+  const _NavButton({
+    required this.icon,
+    this.label,
+    required this.onPressed,
+    this.width = 44,
+    this.isPrimary = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      height: 32,
+      width: width,
+      child: Material(
+        color: isPrimary ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isPrimary ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
+              ),
+              if (label != null) ...[
+                const SizedBox(width: 4),
+                Text(
+                  label!,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isPrimary ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
