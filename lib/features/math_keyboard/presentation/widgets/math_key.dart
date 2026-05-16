@@ -74,6 +74,7 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final effectiveLabel = widget.label ?? widget.symbol?.label;
     final effectiveTex = widget.tex ?? widget.symbol?.tex;
+    final theme = Theme.of(context);
 
     return GestureDetector(
       onTapDown: _handleTapDown,
@@ -81,19 +82,24 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
       onTapCancel: _handleTapCancel,
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
-      child: ScaleTransition(
-        scale: _scaleAnimation,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Material(
-              color: widget.color ?? Theme.of(context).colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(4),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ScaleTransition(
+            scale: _scaleAnimation,
+            child: Material(
+              color: widget.color ?? (_isPressed 
+                  ? theme.colorScheme.surfaceContainerHighest 
+                  : theme.colorScheme.surfaceContainerHigh),
+              borderRadius: BorderRadius.circular(8),
               elevation: _isPressed ? 0 : 1,
               child: Container(
                 decoration: BoxDecoration(
-                  border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1), width: 0.5),
-                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: theme.dividerColor.withValues(alpha: 0.1), 
+                    width: 0.5
+                  ),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 padding: const EdgeInsets.all(2),
                 child: Center(
@@ -101,60 +107,95 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
                 ),
               ),
             ),
-            if (_isPressed)
-              Positioned(
-                top: -40,
-                left: -10,
-                right: -10,
-                child: Container(
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: widget.child ?? _buildContent(context, effectiveLabel, effectiveTex, preview: true),
-                  ),
-                ),
-              ),
-          ],
-        ),
+          ),
+          if (_isPressed)
+            Positioned(
+              top: -60,
+              left: -12,
+              right: -12,
+              child: _buildPreviewBubble(context, effectiveLabel, effectiveTex),
+            ),
+        ],
       ),
     );
   }
 
+  Widget _buildPreviewBubble(BuildContext context, String? label, String? tex) {
+    final theme = Theme.of(context);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 100),
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: value,
+          alignment: Alignment.bottomCenter,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 50,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: widget.child ?? _buildContent(context, label, tex, preview: true),
+                ),
+              ),
+              CustomPaint(
+                size: const Size(16, 10),
+                painter: _BubbleTrianglePainter(
+                  color: theme.colorScheme.primaryContainer,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildContent(BuildContext context, String? label, String? tex, {bool preview = false}) {
+    final theme = Theme.of(context);
     final style = TextStyle(
-      fontSize: (widget.fontSize ?? 18) * (preview ? 1.2 : 1.0), // Reduced preview multiplier slightly
+      fontSize: (widget.fontSize ?? 18) * (preview ? 1.2 : 1.0),
       fontWeight: FontWeight.w500,
-      color: widget.textColor ?? Theme.of(context).colorScheme.onSurfaceVariant,
+      color: widget.textColor ?? theme.colorScheme.onSurfaceVariant,
     );
 
-    // Better detection for LaTeX: starts with \, contains ^ or _, or is a known fraction/root
     final isTex = tex != null && (tex.contains('\\') || tex.contains('^') || tex.contains('_') || tex.contains('{'));
 
     if (isTex) {
-      // Clean up common LaTeX patterns for keyboard display
       String displayTex = tex
-          .replaceAll(r'\frac{1}{2}', r'\frac{\square}{\square}')
+          .replaceAll(r'\frac{1}{2}', r'\frac{1}{2}')
           .replaceAll(r'\frac{d}{dx}', r'\frac{d}{dx}')
           .replaceAll(r'\frac{dy}{dx}', r'\frac{dy}{dx}')
           .replaceAll(r'\frac{d^2}{dx^2}', r'\frac{d^2}{dx^2}')
           .replaceAll(r'\int_{}^{}^{}', r'\int_{a}^{b}')
+          .replaceAll(r'\sqrt{}', r'\sqrt{\square}')
+          .replaceAll(r'\sqrt[3]{}', r'\sqrt[3]{\square}')
+          .replaceAll(r'\sqrt[]{}', r'\sqrt[n]{\square}')
+          .replaceAll(r'^{}', r'x^{\square}')
+          .replaceAll(r'_{}', r'x_{\square}')
+          .replaceAll(r'\frac{}{}', r'\frac{\square}{\square}')
+          .replaceAll(r'\sum_{}^{}', r'\sum_{n=1}^{\infty}')
+          .replaceAll(r'\prod_{}^{}', r'\prod_{n=1}^{\infty}')
+          .replaceAll(r'\int_{}^{}', r'\int_{a}^{b}')
+          .replaceAll(r'|{}|', r'|x|')
           .replaceAll('{}', '')
           .replaceAll('{ }', '')
           .replaceAll('&', '')
-          .replaceAll(r'\begin{pmatrix}', r'\begin{matrix}') // Use simpler matrix for keys
+          .replaceAll(r'\begin{pmatrix}', r'\begin{matrix}')
           .replaceAll(r'\end{pmatrix}', r'\end{matrix}');
 
-      // Special handling for templates that are too wide
       if (!preview && displayTex.length > 20) {
         return Text(
           label ?? 'Temp',
@@ -169,7 +210,6 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
           mathStyle: MathStyle.display,
           textStyle: style,
           onErrorFallback: (err) {
-            // Fallback to label if rendering fails
             return Text(
               label ?? '?',
               textAlign: TextAlign.center,
@@ -186,4 +226,23 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
       style: style,
     );
   }
+}
+
+class _BubbleTrianglePainter extends CustomPainter {
+  final Color color;
+  _BubbleTrianglePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    final path = Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..lineTo(size.width, 0)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

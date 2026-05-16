@@ -141,33 +141,58 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     if (tex.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Mathematical Preview:',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Icon(
+                Icons.functions,
+                size: 14,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'MATHEMATICAL PREVIEW',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Center(
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Math.tex(
-                tex,
-                textStyle: const TextStyle(fontSize: 20),
-                onErrorFallback: (err) => Text(
-                  'Invalid expression',
-                  style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+              physics: const BouncingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Math.tex(
+                  tex,
+                  mathStyle: MathStyle.display,
+                  textStyle: const TextStyle(fontSize: 22),
+                  onErrorFallback: (err) => Text(
+                    'Invalid expression',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                  ),
                 ),
               ),
             ),

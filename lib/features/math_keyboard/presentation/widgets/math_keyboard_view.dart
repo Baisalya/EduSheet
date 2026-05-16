@@ -56,45 +56,59 @@ class MathKeyboardView extends ConsumerWidget {
   }
 
   Widget _buildHeader(BuildContext context, MathKeyboardStateData state, MathKeyboardController controller) {
-    return Column(
-      children: [
-        Container(
-          width: 40,
-          height: 4,
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.grey.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(2),
+    final theme = Theme.of(context);
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1))),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: theme.dividerColor.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
-        ),
-        SizedBox(
-          height: 38,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            children: MathCategory.values.map((category) {
-              final isSelected = state.currentCategory == category;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: ChoiceChip(
-                  label: Text(
-                    category.name.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          SizedBox(
+            height: 44,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: MathCategory.values.length,
+              itemBuilder: (context, index) {
+                final category = MathCategory.values[index];
+                final isSelected = state.currentCategory == category;
+                
+                return GestureDetector(
+                  onTap: () => controller.setCategory(category),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: isSelected ? theme.colorScheme.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      category.name.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    if (selected) controller.setCategory(category);
-                  },
-                ),
-              );
-            }).toList(),
+                );
+              },
+            ),
           ),
-        ),
-        const Divider(height: 1),
-      ],
+        ],
+      ),
     );
   }
 
@@ -103,27 +117,27 @@ class MathKeyboardView extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      height: 52,
+      padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
         border: Border(bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1))),
       ),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         itemCount: quickSymbols.length,
         itemBuilder: (context, index) {
           final label = quickSymbols[index];
           final tex = label == '×' ? r'\times' : (label == '÷' ? r'\div' : label);
           
           return Container(
-            width: 40,
-            margin: const EdgeInsets.symmetric(horizontal: 2),
+            width: 44,
+            margin: const EdgeInsets.symmetric(horizontal: 3),
             child: MathKey(
               label: label,
               tex: tex,
-              fontSize: 16,
+              fontSize: 18,
               color: theme.colorScheme.surface,
               onTap: () => controller.insertText(tex),
             ),
@@ -318,22 +332,29 @@ class MathKeyboardView extends ConsumerWidget {
     final isTablet = MediaQuery.of(context).size.width > 600 || state.isTabletLayout;
     final theme = Theme.of(context);
     
-    // High density for BASIC category
+    // Custom grid settings per category
     final int crossAxisCount;
+    final double childAspectRatio;
+
     if (state.currentCategory == MathCategory.basic) {
-      crossAxisCount = isTablet ? 12 : 8; // Denser grid for basic
+      crossAxisCount = isTablet ? 10 : 6;
+      childAspectRatio = 1.0;
+    } else if (state.currentCategory == MathCategory.templates) {
+      crossAxisCount = isTablet ? 4 : 2; // Fewer columns for wide templates
+      childAspectRatio = 2.5; // Wider keys for formulas
     } else {
-      crossAxisCount = isTablet ? 12 : 6;
+      crossAxisCount = isTablet ? 10 : 6;
+      childAspectRatio = 1.0;
     }
     
     return GridView.builder(
       key: ValueKey(state.currentCategory),
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(12),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 6,
-        crossAxisSpacing: 6,
-        childAspectRatio: 1,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: childAspectRatio,
       ),
       itemCount: symbols.length,
       itemBuilder: (context, index) {
@@ -363,38 +384,33 @@ class _ActionBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(mathKeyboardControllerProvider.notifier);
-    final state = ref.watch(mathKeyboardControllerProvider);
     final theme = Theme.of(context);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        border: Border(top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.2))),
+        border: Border(top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1))),
       ),
       child: Row(
         children: [
           _ActionButton(
             label: 'ABC',
             onPressed: () => controller.showSystemKeyboard(),
-            color: theme.colorScheme.secondaryContainer,
+            color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.7),
             textColor: theme.colorScheme.onSecondaryContainer,
-          ),
-          const SizedBox(width: 8),
-          _ActionButton(
-            icon: Icons.tablet_android,
-            onPressed: () => controller.toggleTabletLayout(),
-            color: state.isTabletLayout ? theme.colorScheme.primaryContainer : null,
           ),
           const SizedBox(width: 8),
           _ActionButton(
             icon: Icons.space_bar,
             onPressed: () => controller.insertText(' '),
+            flex: 2,
           ),
           const SizedBox(width: 8),
           _ActionButton(
             icon: Icons.backspace_outlined,
             onPressed: () => controller.deleteBackward(),
+            color: theme.colorScheme.surfaceContainerHighest,
           ),
           const SizedBox(width: 8),
           _ActionButton(
@@ -415,6 +431,7 @@ class _ActionButton extends StatelessWidget {
   final VoidCallback onPressed;
   final Color? color;
   final Color? textColor;
+  final int flex;
 
   const _ActionButton({
     this.icon,
@@ -422,24 +439,33 @@ class _ActionButton extends StatelessWidget {
     required this.onPressed,
     this.color,
     this.textColor,
+    this.flex = 1,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Expanded(
+      flex: flex,
       child: SizedBox(
-        height: 44,
+        height: 48,
         child: Material(
           color: color ?? theme.colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           child: InkWell(
             onTap: onPressed,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
             child: Center(
               child: label != null 
-                ? Text(label!, style: TextStyle(fontWeight: FontWeight.bold, color: textColor))
-                : Icon(icon, size: 20, color: textColor),
+                ? Text(
+                    label!, 
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold, 
+                      color: textColor ?? theme.colorScheme.onSurfaceVariant,
+                      letterSpacing: 1.1,
+                    )
+                  )
+                : Icon(icon, size: 22, color: textColor ?? theme.colorScheme.onSurfaceVariant),
             ),
           ),
         ),

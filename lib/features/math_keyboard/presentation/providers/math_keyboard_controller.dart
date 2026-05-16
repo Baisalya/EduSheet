@@ -184,96 +184,117 @@ class MathKeyboardController extends _$MathKeyboardController {
       state = state.copyWith(isPowerMode: false);
     }
 
+    // Determine the text to insert, potentially with sizing prefix
+    String textToInsert = text;
+    if (state.symbolSizeLevel != 0 && text.startsWith('\\')) {
+      final sizeMap = {-2: r'\tiny', -1: r'\small', 1: r'\large', 2: r'\Large'};
+      final prefix = sizeMap[state.symbolSizeLevel] ?? '';
+      textToInsert = '$prefix $text';
+    }
+
     if (controller is TextEditingController || controller is quill.QuillController) {
-      // Map TeX to Unicode for standard text fields (No \commands allowed here)
-      String textToInsert = text;
-      
-      // Map Geometry TeX to Unicode equivalents for text fields
-      final geometryMap = {
-        r'\triangle': '△',
-        r'\bigcirc': '○',
-        r'\square': '□',
-        r'\text{Rect}': '▭',
-        r'\Diamond': '◊',
-        r'\text{Paral}': '▱',
-        r'\text{Trap}': '⏢',
-        r'\angle': '∠',
-        r'm\angle': 'm∠',
-        r'\cong': '≅',
-        r'\sim': '∼',
-        r'\perp': '⊥',
-        r'\parallel': '∥',
-        r'^{\circ}': '°',
+      // For standard text fields, map structural LaTeX to clean Unicode/text
+      final textMapping = {
+        r'\sqrt{}': '√',
+        r'\sqrt[3]{}': '∛',
+        r'\sqrt[]{}': 'ⁿ√',
+        r'\frac{}{}': '/',
+        r'\frac{1}{2}': '½',
+        r'\int_{}^{}^{}': '∫',
+        r'\int_{}^{}': '∫',
+        r'\int': '∫',
+        r'\iint': '∬',
+        r'\iiint': '∭',
+        r'\oint': '∮',
+        r'\sum_{}^{}^{}': '∑',
+        r'\sum_{}^{}': '∑',
+        r'\sum': '∑',
+        r'\prod_{}^{}^{}': '∏',
+        r'\prod_{}^{}': '∏',
+        r'\prod': '∏',
+        r'\log_{}(': 'log',
+        r'\log_{}': 'log',
+        r'\ln': 'ln',
+        r'|{}|': '||',
+        r'^{}': '^',
+        r'_{}': '_',
+        r'^{2}': '²',
+        r'^{3}': '³',
+        r'e^{}': 'e^',
+        r'\frac{d}{dx}': 'd/dx',
+        r'\frac{dy}{dx}': 'dy/dx',
+        r'\frac{d^2}{dx^2}': 'd²/dx²',
+        r'\lim_{x \to \infty}': 'lim x→∞',
+        r'\triangle_{A B C}': '△ABC',
         r'\overline{AB}': 'AB̅',
         r'\vec{v}': 'v⃗',
-        r'\text{Graph}': '[Graph]',
-        r'\triangle_{A B C}': '△ABC',
+        r'\begin{pmatrix}  & \\  & \end{pmatrix}': '[Matrix 2x2]',
+        r'\begin{pmatrix}  &  & \\  &  & \\  &  & \end{pmatrix}': '[Matrix 3x3]',
+        r'x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}': '[Quadratic Formula]',
+        r'a^2 + b^2 = c^2': 'a² + b² = c²',
+        r'(x-h)^2 + (y-k)^2 = r^2': '(x-h)² + (y-k)² = r²',
+        r'y = mx + b': 'y = mx + b',
+        r'\sin': 'sin',
+        r'\cos': 'cos',
+        r'\tan': 'tan',
+        r'\csc': 'csc',
+        r'\sec': 'sec',
+        r'\cot': 'cot',
+        r'\arcsin': 'arcsin',
+        r'\arccos': 'arccos',
+        r'\arctan': 'arctan',
+        r'\sinh': 'sinh',
+        r'\cosh': 'cosh',
+        r'\tanh': 'tanh',
+        r'\theta': 'θ',
+        r'\phi': 'φ',
+        r'\alpha': 'α',
+        r'\beta': 'β',
+        r'\gamma': 'γ',
+        r'\delta': 'δ',
+        r'\epsilon': 'ε',
+        r'\pi': 'π',
       };
 
-      if (geometryMap.containsKey(text)) {
-        textToInsert = geometryMap[text]!;
+      if (textMapping.containsKey(text)) {
+        textToInsert = textMapping[text]!;
       } else if (state.isPowerMode && (text.length == 1 || text == r'\pi' || text == 'e')) {
-        // ... (existing power mode logic)
+        // ... (rest of power mode logic remains the same)
         final rawChar = text == r'\pi' ? 'π' : text;
-        const superscripts = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','n':'ⁿ','x':'ˣ','y':'ʸ','z':'ᶻ','a':'ᵃ','b':'ᵇ','c':'ᶜ','i':'ⁱ','π':'ᶲ'};
+        const superscripts = {
+          '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+          '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+          'n': 'ⁿ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ', 'a': 'ᵃ',
+          'b': 'ᵇ', 'c': 'ᶜ', 'i': 'ⁱ', 'π': 'ᶲ'
+        };
         textToInsert = superscripts[rawChar] ?? '^$rawChar';
       } else {
-        final symbol = mathSymbols.firstWhere((s) => s.tex == text, orElse: () => MathSymbol(label: text, tex: text, category: MathCategory.misc));
+        // General cleanup for other LaTeX commands in standard fields
+        final symbol = mathSymbols.firstWhere(
+          (s) => s.tex == text, 
+          orElse: () => MathSymbol(label: text, tex: text, category: MathCategory.misc)
+        );
+        
         if (symbol.label.length == 1 || symbol.category == MathCategory.greek || symbol.category == MathCategory.operators) {
           textToInsert = symbol.label;
-        }
-
-        final functions = [r'\sin', r'\cos', r'\tan', r'\csc', r'\sec', r'\cot', r'\log', r'\ln', r'\arcsin', r'\arccos', r'\arctan', r'\sinh', r'\cosh', r'\tanh'];
-        if (functions.contains(text)) {
-          textToInsert = '${textToInsert.replaceAll('\\', '')}()';
-        } else if (text.endsWith(r'\theta') && text.length > 7) {
-          final func = text.split(' ').first.replaceAll('\\', '');
-          textToInsert = '$func(θ)';
-        } else if (text == r'\frac{d}{dx}') {
-          textToInsert = 'd/dx';
-        } else if (text == r'\frac{dy}{dx}') {
-          textToInsert = 'dy/dx';
-        } else if (text == r'\frac{d^2}{dx^2}') {
-          textToInsert = 'd²/dx²';
-        } else if (text == r'\lim_{x \to \infty}') {
-          textToInsert = 'lim x→∞';
-        } else if (text == r'\int_{}^{}^{}') {
-          textToInsert = '∫';
+        } else if (text.startsWith('\\')) {
+          // If it's a command we don't know, just show the label or strip the backslash
+          textToInsert = symbol.label;
         }
       }
-
-      // DO NOT wrap in \large for standard text fields, it just shows as text
-      // Instead, we use the character as-is. Standard fields don't support TeX sizing.
-      
-      // Handle specific common TeX strings if not caught by symbols
-      if (text == r'^{2}') textToInsert = '²';
-      if (text == r'^{3}') textToInsert = '³';
-      if (text == r'\frac{1}{2}') textToInsert = '½';
-      if (text.startsWith('^{') && text.endsWith('}')) {
-        final content = text.substring(2, text.length - 1);
-        if (content.length == 1) {
-          // Map 0-9 to superscript unicode if possible
-          const superscripts = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','n':'ⁿ','x':'ˣ','y':'ʸ'};
-          textToInsert = superscripts[content] ?? '^$content';
-        } else {
-          textToInsert = '^($content)';
-        }
-      }
-      if (text == r'\sqrt{}') textToInsert = '√';
-      if (text == r'\frac{}{}') textToInsert = '/';
 
       if (controller is TextEditingController) {
         final selection = controller.selection;
         final currentText = controller.text;
-        
+
         final newText = currentText.replaceRange(
           selection.start != -1 ? selection.start : currentText.length,
           selection.end != -1 ? selection.end : currentText.length,
           textToInsert,
         );
-        
+
         final newCursorPos = (selection.start != -1 ? selection.start : currentText.length) + textToInsert.length;
-        
+
         controller.value = TextEditingValue(
           text: newText,
           selection: TextSelection.collapsed(offset: newCursorPos),
@@ -281,7 +302,7 @@ class MathKeyboardController extends _$MathKeyboardController {
       } else if (controller is quill.QuillController) {
         final index = controller.selection.baseOffset;
         final length = controller.selection.extentOffset - index;
-        
+
         controller.replaceText(index, length, textToInsert, null);
         controller.updateSelection(
           TextSelection.collapsed(offset: index + textToInsert.length),
@@ -290,13 +311,28 @@ class MathKeyboardController extends _$MathKeyboardController {
       }
     } else if (controller is math_kb.MathFieldEditingController) {
       final functionsWithBraces = [
-        r'\sin', r'\cos', r'\tan', r'\csc', r'\sec', r'\cot', 
-        r'\log', r'\ln', r'\arcsin', r'\arccos', r'\arctan',
-        r'\sinh', r'\cosh', r'\tanh'
+        r'\sin',
+        r'\cos',
+        r'\tan',
+        r'\csc',
+        r'\sec',
+        r'\cot',
+        r'\log',
+        r'\ln',
+        r'\arcsin',
+        r'\arccos',
+        r'\arctan',
+        r'\sinh',
+        r'\cosh',
+        r'\tanh'
       ];
-      
+
       if (text == r'\frac{1}{2}') {
         controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
+        controller.addLeaf('1');
+        controller.goNext();
+        controller.addLeaf('2');
+        controller.goNext();
       } else if (text == r'\frac{d}{dx}') {
         controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
         controller.addLeaf('d');
@@ -364,6 +400,8 @@ class MathKeyboardController extends _$MathKeyboardController {
         controller.addFunction(r'\sqrt', [math_kb_node.TeXArg.brackets, math_kb_node.TeXArg.braces]);
         controller.addLeaf('3');
         controller.goNext();
+      } else if (text == r'\sqrt[]{}') {
+        controller.addFunction(r'\sqrt', [math_kb_node.TeXArg.brackets, math_kb_node.TeXArg.braces]);
       } else if (text == r'^{}') {
         controller.addFunction('^', [math_kb_node.TeXArg.braces]);
       } else if (text == r'^{2}') {
@@ -389,14 +427,6 @@ class MathKeyboardController extends _$MathKeyboardController {
         controller.addLeaf(r'\int');
       } else if (text == r'\int_{}^{}') {
         controller.addFunction(r'\int', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
-      } else if (text == r'\triangle_{A B C}') {
-        controller.addLeaf(r'\triangle');
-        controller.addFunction('_', [math_kb_node.TeXArg.braces]);
-        // Allow teacher to type labels like ABC
-      } else if (text == r'\overline{AB}') {
-        controller.addFunction(r'\overline', [math_kb_node.TeXArg.braces]);
-      } else if (text == r'\vec{v}') {
-        controller.addFunction(r'\vec', [math_kb_node.TeXArg.braces]);
       } else if (text == r'\sum_{}^{}') {
         controller.addFunction(r'\sum', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
       } else if (text == r'\prod_{}^{}') {
@@ -411,22 +441,22 @@ class MathKeyboardController extends _$MathKeyboardController {
         controller.addLeaf('|');
         controller.addLeaf('|');
         controller.goBack(); // Move cursor inside
+      } else if (text == r'\frac{}{}') {
+        controller.addFunction(r'\frac', [math_kb_node.TeXArg.braces, math_kb_node.TeXArg.braces]);
       } else {
         if (state.isPowerMode && text.length == 1) {
           controller.addFunction('^', [math_kb_node.TeXArg.braces]);
           controller.addLeaf(text);
           controller.goNext();
         } else {
-          // Check for size prefix if geometry category and math field
-          if (state.currentCategory == MathCategory.geometry && state.symbolSizeLevel != 0 && text.startsWith('\\')) {
-            final sizeMap = { -2: r'\tiny', -1: r'\small', 1: r'\large', 2: r'\Large' };
+          // General insertion with sizing
+          if (state.symbolSizeLevel != 0 && text.startsWith('\\')) {
+            final sizeMap = {-2: r'\tiny', -1: r'\small', 1: r'\large', 2: r'\Large'};
             final prefix = sizeMap[state.symbolSizeLevel] ?? '';
             controller.addLeaf(prefix);
             controller.addLeaf(' ');
-            controller.addLeaf(text);
-          } else {
-            controller.addLeaf(text);
           }
+          controller.addLeaf(text);
         }
       }
     }
