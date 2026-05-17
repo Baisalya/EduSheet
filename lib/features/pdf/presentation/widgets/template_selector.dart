@@ -50,28 +50,42 @@ class TemplateSelector extends ConsumerWidget {
                       color: isSelected ? Colors.blue : (isDark ? Colors.white24 : Colors.grey[300]!),
                       width: isSelected ? 2 : 1,
                     ),
-                    color: isSelected ? Colors.blue : (isDark ? const Color(0xFF2A2D30) : Colors.white),
+                    color: isSelected ? (isDark ? Colors.blue.withAlpha(50) : Colors.blue.withAlpha(20)) : (isDark ? const Color(0xFF2A2D30) : Colors.white),
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        template.headerLayout.name == 'custom' ? Icons.dashboard_customize : _getIconForType(template.type),
-                        color: isSelected ? Colors.white : (isDark ? Colors.grey[400] : Colors.grey[600]),
-                        size: 32,
+                      Container(
+                        height: 50,
+                        width: 70,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white10 : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.withAlpha(50)),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Center(
+                          child: template.headerLayout == HeaderLayout.custom && template.customLayout != null
+                              ? _buildTinyCustomLayout(template.customLayout!)
+                              : Icon(
+                                  _getIconForType(template.type),
+                                  color: isSelected ? Colors.blue : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                  size: 24,
+                                ),
+                        ),
                       ),
-                      const SizedBox(height: 8),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Text(
                           template.name,
                           textAlign: TextAlign.center,
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            color: isSelected ? Colors.white : (isDark ? Colors.white : Colors.grey[800]),
+                            color: isSelected ? Colors.blue : (isDark ? Colors.white : Colors.grey[800]),
                           ),
                         ),
                       ),
@@ -83,6 +97,28 @@ class TemplateSelector extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTinyCustomLayout(CustomLayout layout) {
+    const double a4Width = 595.27;
+    const double scale = 70 / a4Width; // 70 is container width
+
+    return Stack(
+      children: layout.elements.map((el) {
+        return Positioned(
+          left: el.x * scale,
+          top: el.y * scale,
+          child: Container(
+            width: (el.width ?? (a4Width - 64)) * scale,
+            height: (el.height ?? 20) * scale,
+            decoration: BoxDecoration(
+              color: Colors.blue.withAlpha(100),
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

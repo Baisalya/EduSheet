@@ -292,8 +292,27 @@ class CustomHeaderBuilder extends HeaderBuilder {
           child: pw.Wrap(
             spacing: 16,
             runSpacing: 4,
-            children: labels.map((l) => pw.Text('$l: __________', 
-              style: style.copyWith(fontSize: style.fontSize! * 0.85))).toList(),
+            children: labels.map((l) {
+              final field = paper.headerFields.firstWhere(
+                (f) => f.label.toLowerCase() == l.toString().toLowerCase(),
+                orElse: () => PaperHeaderField(id: '', label: l.toString(), isPlaceholder: true),
+              );
+              final content = field.isPlaceholder ? '________________' : field.value;
+              return pw.RichText(
+                text: pw.TextSpan(
+                  children: [
+                    pw.TextSpan(
+                      text: '${field.label}: ',
+                      style: style.copyWith(fontWeight: pw.FontWeight.bold, fontSize: style.fontSize! * 0.85),
+                    ),
+                    pw.TextSpan(
+                      text: content,
+                      style: style.copyWith(fontSize: style.fontSize! * 0.85),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
           ),
         );
       case ElementType.staticText:

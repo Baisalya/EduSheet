@@ -1,10 +1,12 @@
+import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:edusheet/features/editor/data/repositories/paper_repository.dart';
 import 'package:edusheet/features/editor/data/repositories/local_paper_repository.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 part 'editor_provider.g.dart';
 
@@ -233,6 +235,34 @@ class EditorState extends _$EditorState {
   }
 
   void updateTemplate(String templateId) {
+    final templates = ref.read(templateProvider).all;
+    final template = templates.firstWhere((t) => t.id == templateId, orElse: () => templates.first);
+    
     state = state.copyWith(templateId: templateId);
+
+    // Automatic Field Detection
+    if (template.headerLayout == HeaderLayout.custom && template.customLayout != null) {
+      final fieldsBlocks = template.customLayout!.elements.where((e) => e.type == ElementType.headerFieldsBlock);
+      if (fieldsBlocks.isNotEmpty) {
+        final List<String> labels = List<String>.from(fieldsBlocks.first.properties['fieldLabels'] ?? []);
+        final currentLabels = state.headerFields.map((f) => f.label.toLowerCase()).toList();
+        
+        final List<PaperHeaderField> newFields = [...state.headerFields];
+        bool changed = false;
+        for (var label in labels) {
+          if (!currentLabels.contains(label.toLowerCase())) {
+            newFields.add(PaperHeaderField(
+              id: const Uuid().v4(),
+              label: label,
+              isPlaceholder: true,
+            ));
+            changed = true;
+          }
+        }
+        if (changed) {
+          state = state.copyWith(headerFields: newFields);
+        }
+      }
+    }
   }
 }

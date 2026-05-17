@@ -1,3 +1,4 @@
+import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -84,7 +85,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
-            onPressed: () => PdfService.generateAndPreview(paper),
+            onPressed: () {
+              final templates = ref.read(templateProvider).all;
+              final template = templates.firstWhere(
+                (t) => t.id == paper.templateId,
+                orElse: () => templates.first,
+              );
+              PdfService.generateAndPreview(paper, template);
+            },
           ),
           IconButton(
             icon: const Icon(Icons.save),

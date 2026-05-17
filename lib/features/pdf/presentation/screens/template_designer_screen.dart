@@ -42,7 +42,6 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
   bool _snapToGrid = true;
   final double _snapSize = 5.0;
   bool _isFullPageView = true;
-  double _zoomScale = 1.0;
   final TransformationController _transformationController = TransformationController();
 
   @override
@@ -178,8 +177,11 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                         value: selected.contains(f),
                         onChanged: (val) {
                           setModalState(() {
-                            if (val == true) selected.add(f);
-                            else selected.remove(f);
+                            if (val == true) {
+                              selected.add(f);
+                            } else {
+                              selected.remove(f);
+                            }
                           });
                         },
                       )),
@@ -378,6 +380,37 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     );
   }
 
+  void _showSaveDialog() async {
+    final controller = TextEditingController(text: _template.name);
+    final String? name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save Template'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Template Name'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+        ],
+      ),
+    );
+
+    if (name != null && name.isNotEmpty) {
+      final updatedTemplate = _template.copyWith(
+        name: name,
+        customLayout: CustomLayout(elements: _elements, canvasHeight: _canvasHeight),
+      );
+      final navigator = Navigator.of(context);
+      await ref.read(templateProvider.notifier).saveTemplate(updatedTemplate);
+      if (mounted) {
+        navigator.pop();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -394,14 +427,7 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
             TextButton.icon(
               icon: const Icon(Icons.save_outlined, size: 20),
               label: const Text('Save'),
-              onPressed: () async {
-                final updatedTemplate = _template.copyWith(
-                  customLayout: CustomLayout(elements: _elements, canvasHeight: _canvasHeight),
-                );
-                final navigator = Navigator.of(context);
-                await ref.read(templateProvider.notifier).saveTemplate(updatedTemplate);
-                if (mounted) navigator.pop();
-              },
+              onPressed: _showSaveDialog,
             ),
             const SizedBox(width: 8),
           ],
@@ -1017,6 +1043,7 @@ class _RibbonGroup extends StatelessWidget {
   final String label;
   final List<Widget> children;
   const _RibbonGroup({required this.label, required this.children});
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1036,6 +1063,7 @@ class _RibbonButton extends StatelessWidget {
   final VoidCallback onTap;
   final Color? iconColor;
   const _RibbonButton({required this.icon, required this.label, required this.onTap, this.iconColor});
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -1062,6 +1090,7 @@ class _RibbonToggle extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
   const _RibbonToggle({required this.icon, required this.label, required this.value, required this.onChanged});
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -1083,6 +1112,7 @@ class _RibbonToggle extends StatelessWidget {
 
 class _VerticalDivider extends StatelessWidget {
   const _VerticalDivider();
+
   @override
   Widget build(BuildContext context) {
     return Container(width: 1, height: 60, color: Colors.grey.withValues(alpha: 0.15), margin: const EdgeInsets.symmetric(horizontal: 12));
@@ -1094,6 +1124,7 @@ class _ToggleButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
   const _ToggleButton({required this.icon, required this.isActive, required this.onTap});
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -1116,6 +1147,7 @@ class _AlignmentButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
   const _AlignmentButton({required this.icon, required this.isActive, required this.onTap});
+
   @override
   Widget build(BuildContext context) {
     return InkWell(

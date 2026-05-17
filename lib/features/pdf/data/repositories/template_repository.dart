@@ -57,6 +57,7 @@ class TemplateRepository {
       'centeredHeader': t.centeredHeader,
       'headerLayout': t.headerLayout.index,
       'paperLayout': t.paperLayout.index,
+      'paperSize': t.paperSize.index,
       'customLayout': t.customLayout?.toJson(),
     };
   }
@@ -74,6 +75,7 @@ class TemplateRepository {
       centeredHeader: json['centeredHeader'],
       headerLayout: HeaderLayout.values[json['headerLayout'] ?? 0],
       paperLayout: PaperLayout.values[json['paperLayout'] ?? 0],
+      paperSize: PaperSize.values[json['paperSize'] ?? 0],
       customLayout: json['customLayout'] != null ? CustomLayout.fromJson(json['customLayout']) : null,
     );
   }

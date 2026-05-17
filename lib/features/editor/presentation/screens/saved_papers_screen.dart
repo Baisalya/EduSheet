@@ -1,4 +1,5 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/editor_provider.dart';
@@ -154,7 +155,14 @@ class _SavedPaperCard extends ConsumerWidget {
                     icon: Icons.picture_as_pdf_outlined,
                     label: 'PDF',
                     color: Colors.redAccent,
-                    onPressed: () => PdfService.generateAndPreview(paper),
+                    onPressed: () {
+                      final templates = ref.read(templateProvider).all;
+                      final template = templates.firstWhere(
+                        (t) => t.id == paper.templateId,
+                        orElse: () => templates.first,
+                      );
+                      PdfService.generateAndPreview(paper, template);
+                    },
                   ),
                   const Spacer(),
                   IconButton(
