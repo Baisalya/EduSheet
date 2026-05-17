@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -264,13 +266,19 @@ class CustomHeaderBuilder extends HeaderBuilder {
           child: pw.Text(paper.title, style: style),
         );
       case ElementType.logo:
-        return logoImage != null
+        return el.content.isNotEmpty
             ? pw.Container(
                 width: el.width ?? 50,
                 height: el.height ?? 50,
-                child: pw.Image(logoImage),
+                child: pw.Image(pw.MemoryImage(File(el.content).readAsBytesSync())),
               )
-            : pw.SizedBox();
+            : (logoImage != null
+                ? pw.Container(
+                    width: el.width ?? 50,
+                    height: el.height ?? 50,
+                    child: pw.Image(logoImage),
+                  )
+                : pw.SizedBox());
       case ElementType.maxMarks:
         return pw.Container(
           width: el.width,
@@ -278,9 +286,15 @@ class CustomHeaderBuilder extends HeaderBuilder {
           child: pw.Text('Max Marks: ${paper.totalMarks}', style: style),
         );
       case ElementType.headerFieldsBlock:
+        final List<dynamic> labels = el.properties['fieldLabels'] ?? ['Subject', 'Date'];
         return pw.Container(
           width: el.width ?? 300,
-          child: buildDynamicHeaderFields(paper, template),
+          child: pw.Wrap(
+            spacing: 16,
+            runSpacing: 4,
+            children: labels.map((l) => pw.Text('$l: __________', 
+              style: style.copyWith(fontSize: style.fontSize! * 0.85))).toList(),
+          ),
         );
       case ElementType.staticText:
         return pw.Container(

@@ -6,6 +6,8 @@ import 'package:edusheet/features/pdf/presentation/providers/template_provider.d
 import 'package:pdf/pdf.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class TemplateDesignerScreen extends ConsumerStatefulWidget {
   final PaperTemplate? existingTemplate;
@@ -37,8 +39,9 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
   }
 
   bool _showGrid = true;
+  bool _snapToGrid = true;
   final double _snapSize = 5.0;
-  bool _isFullPageView = false;
+  bool _isFullPageView = true;
   double _zoomScale = 1.0;
   final TransformationController _transformationController = TransformationController();
 
@@ -49,6 +52,8 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
       _template = widget.existingTemplate!;
       _elements = List.from(_template.customLayout?.elements ?? []);
       _canvasHeight = _template.customLayout?.canvasHeight ?? 250;
+      // If we are opening an existing template, we still want to default to full page view
+      _isFullPageView = true;
     } else {
       _template = PaperTemplate(
         id: const Uuid().v4(),
@@ -57,6 +62,8 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         headerLayout: HeaderLayout.custom,
         hasBorder: true,
       );
+      _canvasHeight = _pageHeight; // Default new templates to full page height
+      _isFullPageView = true;
       _elements = [
         TemplateElement(
           id: const Uuid().v4(),
@@ -81,26 +88,143 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     });
   }
 
-  void _addElement(ElementType type) {
+  void _addElement(ElementType type) async {
+    String content = '';
+    Map<String, dynamic> extraProps = {};
+
+    if (type == ElementType.staticText) {
+      final result = await _showTextEntryDialog('Enter Text', 'Add some text to your template');
+      if (result == null || result.isEmpty) return;
+      content = result;
+    } else if (type == ElementType.logo) {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+      content = image.path;
+    } else if (type == ElementType.headerFieldsBlock) {
+      final result = await _showFieldsDialog();
+      if (result == null) return;
+      extraProps['fieldLabels'] = result;
+    }
+
     setState(() {
       final newElement = TemplateElement(
         id: const Uuid().v4(),
         type: type,
         x: 50,
         y: 50,
-        width: type == ElementType.logo ? 60 : (type == ElementType.horizontalLine ? 200 : (_pageWidth - 64)),
-        height: type == ElementType.logo ? 60 : (type == ElementType.horizontalLine ? 1 : null),
-        content: type == ElementType.staticText ? 'Double click to edit' : '',
+        width: type == ElementType.logo ? 80 : (type == ElementType.horizontalLine ? 200 : (_pageWidth - 64)),
+        height: type == ElementType.logo ? 80 : (type == ElementType.horizontalLine ? 1 : null),
+        content: content,
         properties: {
           'fontSize': 14.0,
           'bold': type == ElementType.schoolName || type == ElementType.paperTitle,
           'alignment': 'left',
           'color': 0xFF000000,
+          ...extraProps,
         },
       );
       _elements.add(newElement);
       _selectedElementId = newElement.id;
     });
+  }
+
+  Future<String?> _showTextEntryDialog(String title, String hint, {String? initialValue}) async {
+    final controller = TextEditingController(text: initialValue);
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(hintText: hint),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+        ],
+      ),
+    );
+  }
+
+  Future<List<String>?> _showFieldsDialog({List<String>? initialSelected}) async {
+    final List<String> available = ['Roll No', 'Name', 'Section', 'Date', 'Subject', 'Time', 'Class'];
+    final List<String> selected = initialSelected != null ? List.from(initialSelected) : ['Subject', 'Date'];
+    final customController = TextEditingController();
+
+    // Ensure all initially selected are in available list
+    for (var s in selected) {
+      if (!available.contains(s)) available.add(s);
+    }
+
+    return showDialog<List<String>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: const Text('Select Fields to Include'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      ...available.map((f) => CheckboxListTile(
+                        title: Text(f),
+                        dense: true,
+                        value: selected.contains(f),
+                        onChanged: (val) {
+                          setModalState(() {
+                            if (val == true) selected.add(f);
+                            else selected.remove(f);
+                          });
+                        },
+                      )),
+                    ],
+                  ),
+                ),
+                const Divider(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: customController,
+                          decoration: const InputDecoration(
+                            hintText: 'Custom Field...',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add, color: Colors.blue),
+                        onPressed: () {
+                          if (customController.text.isNotEmpty) {
+                            setModalState(() {
+                              available.add(customController.text);
+                              selected.add(customController.text);
+                              customController.clear();
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(context, selected), child: const Text('Add Block')),
+          ],
+        ),
+      ),
+    );
   }
 
   void _updateElement(String id, {double? x, double? y, double? width, double? height, Map<String, dynamic>? props}) {
@@ -110,7 +234,7 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         double newX = x ?? _elements[index].x;
         double newY = y ?? _elements[index].y;
 
-        if (_snapSize > 0) {
+        if (_snapToGrid && _snapSize > 0) {
           newX = (newX / _snapSize).round() * _snapSize;
           newY = (newY / _snapSize).round() * _snapSize;
         }
@@ -288,12 +412,7 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
             Expanded(
               child: Stack(
                 children: [
-                  Center(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(50),
-                      child: _buildCanvas(),
-                    ),
-                  ),
+                  _buildCanvas(),
                   _buildCanvasControls(),
                 ],
               ),
@@ -310,7 +429,7 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         : null;
 
     return Container(
-      height: 120,
+      height: 140, // Increased height to accommodate dual sliders
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
@@ -370,6 +489,25 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                 ],
               ),
               _VerticalDivider(),
+              if (el.type == ElementType.headerFieldsBlock) ...[
+                _RibbonGroup(
+                  label: 'FIELDS',
+                  children: [
+                    _RibbonButton(
+                      icon: Icons.edit_note,
+                      label: 'Edit Fields',
+                      onTap: () async {
+                        final current = List<String>.from(el.properties['fieldLabels'] ?? []);
+                        final result = await _showFieldsDialog(initialSelected: current);
+                        if (result != null) {
+                          _updateElement(el.id, props: {'fieldLabels': result});
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                _VerticalDivider(),
+              ],
               if (el.type == ElementType.staticText) ...[
                 _RibbonGroup(
                   label: 'CONTENT',
@@ -399,23 +537,52 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                 label: 'SIZE',
                 children: [
                   SizedBox(
-                    width: 100,
+                    width: 120,
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Width', style: TextStyle(fontSize: 9)),
-                        SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 2,
-                            thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6),
-                          ),
-                          child: Slider(
-                            value: el.width ?? (_pageWidth - 64),
-                            min: 10,
-                            max: (_pageWidth - 64),
-                            onChanged: (val) => _updateElement(el.id, width: val),
-                          ),
+                        Row(
+                          children: [
+                            const Text('W', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 2,
+                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                                ),
+                                child: Slider(
+                                  value: el.width ?? (el.type == ElementType.logo ? 80 : (_pageWidth - 64)),
+                                  min: 10,
+                                  max: (_pageWidth - 64),
+                                  onChanged: (val) => _updateElement(el.id, width: val),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
+                        if (el.type == ElementType.logo) 
+                          Row(
+                            children: [
+                              const Text('H', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 2,
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                                  ),
+                                  child: Slider(
+                                    value: el.height ?? 80,
+                                    min: 10,
+                                    max: 300,
+                                    onChanged: (val) => _updateElement(el.id, height: val),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
@@ -461,6 +628,12 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                   label: 'Grid',
                   value: _showGrid,
                   onChanged: (v) => setState(() => _showGrid = v),
+                ),
+                _RibbonToggle(
+                  icon: Icons.edgesensor_low,
+                  label: 'Snap',
+                  value: _snapToGrid,
+                  onChanged: (v) => setState(() => _snapToGrid = v),
                 ),
                 _RibbonToggle(
                   icon: Icons.fullscreen,
@@ -539,25 +712,35 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
   Widget _buildCanvas() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Calculate auto-scale to fit screen width
-        final double availableWidth = constraints.maxWidth - 40;
+        // Calculate auto-scale to fit screen width exactly
+        final double availableWidth = constraints.maxWidth;
         final double autoScale = availableWidth / _pageWidth;
-        final double finalScale = autoScale * _zoomScale;
+        
+        // We use a slightly smaller scale to give a tiny breathing room (e.g. 0.95)
+        final double baseScale = autoScale * 0.95;
 
         return InteractiveViewer(
           transformationController: _transformationController,
-          minScale: 0.5,
-          maxScale: 2.5,
+          minScale: 0.2,
+          maxScale: 5.0,
+          // Set boundaryMargin to allowing panning slightly beyond the page
+          boundaryMargin: EdgeInsets.symmetric(
+            horizontal: availableWidth * 0.5,
+            vertical: constraints.maxHeight * 0.5,
+          ),
           child: Center(
             child: Container(
-              width: _pageWidth * finalScale,
-              height: (_isFullPageView ? _pageHeight : _canvasHeight) * finalScale,
-              margin: const EdgeInsets.symmetric(vertical: 20),
+              width: _pageWidth * baseScale,
+              height: (_isFullPageView ? _pageHeight : _canvasHeight) * baseScale,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(2),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 20, spreadRadius: 5),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2), 
+                    blurRadius: 15, 
+                    spreadRadius: 2,
+                  ),
                 ],
               ),
               child: Stack(
@@ -566,17 +749,17 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                   // Grid starting from margins
                   if (_showGrid)
                     Positioned(
-                      left: 32 * finalScale,
-                      top: 32 * finalScale,
-                      right: 32 * finalScale,
-                      bottom: 32 * finalScale,
-                      child: CustomPaint(painter: GridPainter(scale: finalScale, step: _snapSize)),
+                      left: 32 * baseScale,
+                      top: 32 * baseScale,
+                      right: 32 * baseScale,
+                      bottom: 32 * baseScale,
+                      child: CustomPaint(painter: GridPainter(scale: baseScale, step: _snapSize)),
                     ),
                   
                   // Margin indicators (Teacher friendly)
                   Positioned.fill(
                     child: Container(
-                      margin: EdgeInsets.all(32 * finalScale),
+                      margin: EdgeInsets.all(32 * baseScale),
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.blue.withValues(alpha: 0.1), width: 0.5),
                       ),
@@ -586,28 +769,28 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                   if (_template.hasBorder)
                     Positioned.fill(
                       child: Container(
-                        margin: EdgeInsets.all(10 * finalScale),
+                        margin: EdgeInsets.all(10 * baseScale),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Color(_template.primaryColor.toInt()), width: 1.5 * finalScale),
+                          border: Border.all(color: Color(_template.primaryColor.toInt()), width: 1.5 * baseScale),
                         ),
                       ),
                     ),
 
                   Padding(
-                    padding: EdgeInsets.all(32 * finalScale),
+                    padding: EdgeInsets.all(32 * baseScale),
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        ..._elements.map((el) => _buildSmartElement(el, finalScale)),
+                        ..._elements.map((el) => _buildSmartElement(el, baseScale)),
                         if (!_isFullPageView)
                           Positioned(
-                            bottom: -40 * finalScale,
+                            bottom: -40 * baseScale,
                             left: 0,
                             right: 0,
                             child: Column(
                               children: [
                                 Container(
-                                  height: 30 * finalScale,
+                                  height: 30 * baseScale,
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       begin: Alignment.topCenter,
@@ -619,27 +802,27 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        Icon(Icons.arrow_downward, size: 10 * finalScale, color: Colors.blue[300]),
+                                        Icon(Icons.arrow_downward, size: 10 * baseScale, color: Colors.blue[300]),
                                         const SizedBox(width: 8),
                                         Text('QUESTION AREA STARTS HERE', 
                                           style: TextStyle(
-                                            fontSize: 9 * finalScale, 
+                                            fontSize: 9 * baseScale, 
                                             color: Colors.blue[300], 
                                             fontWeight: FontWeight.bold,
                                             letterSpacing: 1.2,
                                           )),
                                         const SizedBox(width: 8),
-                                        Icon(Icons.arrow_downward, size: 10 * finalScale, color: Colors.blue[300]),
+                                        Icon(Icons.arrow_downward, size: 10 * baseScale, color: Colors.blue[300]),
                                       ],
                                     ),
                                   ),
                                 ),
                                 if (_template.paperLayout == PaperLayout.twoColumn)
                                   Container(
-                                    height: 150 * finalScale,
+                                    height: 150 * baseScale,
                                     width: 1,
                                     color: Colors.blue.withValues(alpha: 0.2),
-                                    margin: EdgeInsets.only(top: 10 * finalScale),
+                                    margin: EdgeInsets.only(top: 10 * baseScale),
                                   )
                               ],
                             ),
@@ -664,6 +847,21 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
       top: el.y * scale,
       child: GestureDetector(
         onTap: () => setState(() => _selectedElementId = el.id),
+        onDoubleTap: () async {
+          if (el.type == ElementType.staticText) {
+            final result = await _showTextEntryDialog('Edit Text', 'Enter new text content', initialValue: el.content);
+            if (result != null) {
+              final idx = _elements.indexWhere((e) => e.id == el.id);
+              setState(() => _elements[idx] = _elements[idx].copyWith(content: result));
+            }
+          } else if (el.type == ElementType.headerFieldsBlock) {
+            final current = List<String>.from(el.properties['fieldLabels'] ?? []);
+            final result = await _showFieldsDialog(initialSelected: current);
+            if (result != null) {
+              _updateElement(el.id, props: {'fieldLabels': result});
+            }
+          }
+        },
         onPanUpdate: (details) {
           _updateElement(el.id, x: el.x + details.delta.dx / scale, y: el.y + details.delta.dy / scale);
         },
@@ -741,22 +939,29 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         );
       case ElementType.logo:
         return Container(
-          width: (el.width ?? 60) * scale,
-          height: (el.height ?? 60) * scale,
-          color: Colors.grey[300],
-          child: const Icon(Icons.school, size: 30),
+          width: (el.width ?? 80) * scale,
+          height: (el.height ?? 80) * scale,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+          ),
+          child: el.content.isNotEmpty
+            ? Image.file(File(el.content), fit: BoxFit.contain)
+            : const Center(child: Icon(Icons.add_a_photo, size: 20)),
         );
       case ElementType.headerFieldsBlock:
+        final List<dynamic> labels = el.properties['fieldLabels'] ?? ['Subject', 'Date'];
         return Container(
           width: (el.width ?? 300) * scale,
           padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Subject: Mathematics', style: style.copyWith(fontSize: fontSize * 0.8)),
-              Text('Date: __________', style: style.copyWith(fontSize: fontSize * 0.8)),
-            ],
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: Wrap(
+            spacing: 16,
+            runSpacing: 4,
+            children: labels.map((l) => Text('$l: __________', 
+              style: style.copyWith(fontSize: fontSize * 0.85))).toList(),
           ),
         );
       case ElementType.maxMarks:
@@ -769,7 +974,7 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         return Container(
           width: (el.width ?? (_pageWidth - 64)) * scale,
           alignment: alignment,
-          child: Text(el.content.isEmpty ? 'Double click to edit' : el.content, style: style),
+          child: Text(el.content, style: style),
         );
       case ElementType.horizontalLine:
         return Container(
