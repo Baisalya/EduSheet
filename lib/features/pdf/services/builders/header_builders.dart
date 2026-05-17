@@ -7,7 +7,7 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 
 abstract class HeaderBuilder {
-  pw.Widget build(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template);
+  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template);
 
   pw.Widget buildDynamicHeaderFields(Paper paper, PaperTemplate template) {
     if (paper.headerFields.isEmpty) return pw.SizedBox();
@@ -48,7 +48,8 @@ abstract class HeaderBuilder {
 
 class CenteredHeaderBuilder extends HeaderBuilder {
   @override
-  pw.Widget build(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
+    final logoImage = logos.isNotEmpty ? logos.first : null;
     return pw.Column(
       children: [
         if (logoImage != null)
@@ -84,7 +85,8 @@ class LogoSideHeaderBuilder extends HeaderBuilder {
   LogoSideHeaderBuilder({required this.isLogoLeft});
 
   @override
-  pw.Widget build(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
+    final logoImage = logos.isNotEmpty ? logos.first : null;
     final logo = logoImage != null
         ? pw.Container(
             width: 60,
@@ -141,7 +143,8 @@ class LogoRightHeaderBuilder extends LogoSideHeaderBuilder {
 
 class ModernCoachingHeaderBuilder extends HeaderBuilder {
   @override
-  pw.Widget build(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
+    final logoImage = logos.isNotEmpty ? logos.first : null;
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
@@ -192,7 +195,7 @@ class ModernCoachingHeaderBuilder extends HeaderBuilder {
 
 class MinimalHeaderBuilder extends HeaderBuilder {
   @override
-  pw.Widget build(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -224,21 +227,34 @@ class MinimalHeaderBuilder extends HeaderBuilder {
 
 class CustomHeaderBuilder extends HeaderBuilder {
   @override
-  pw.Widget build(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
     final layout = template.customLayout;
     if (layout == null) return pw.SizedBox();
+
+    // Map logo elements to indices
+    int logoIdx = 0;
+    final elements = layout.elements.map((el) {
+      if (el.type == ElementType.logo) {
+        final currentIdx = logoIdx++;
+        final logoImg = logos.length > currentIdx ? logos[currentIdx] : null;
+        return pw.Positioned(
+          left: el.x,
+          top: el.y,
+          child: _buildElement(el, paper, logoImg, template),
+        );
+      }
+      return pw.Positioned(
+        left: el.x,
+        top: el.y,
+        child: _buildElement(el, paper, null, template),
+      );
+    }).toList();
 
     return pw.Container(
       height: layout.canvasHeight,
       width: 595.27 - 64, // A4 width minus margins (32 * 2)
       child: pw.Stack(
-        children: layout.elements.map((el) {
-          return pw.Positioned(
-            left: el.x,
-            top: el.y,
-            child: _buildElement(el, paper, logoImage, template),
-          );
-        }).toList(),
+        children: elements,
       ),
     );
   }

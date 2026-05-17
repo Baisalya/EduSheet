@@ -85,11 +85,17 @@ class QuestionPaperService {
     final theme = await _loadTheme();
     final pdf = pw.Document(theme: theme);
 
-    pw.ImageProvider? logoImage;
-    if (paper.schoolLogo != null) {
-      final file = File(paper.schoolLogo!);
-      if (await file.exists()) {
-        logoImage = pw.MemoryImage(await file.readAsBytes());
+    final List<pw.ImageProvider?> logos = [];
+    for (var path in paper.logos) {
+      if (path.isNotEmpty) {
+        final file = File(path);
+        if (await file.exists()) {
+          logos.add(pw.MemoryImage(await file.readAsBytes()));
+        } else {
+          logos.add(null);
+        }
+      } else {
+        logos.add(null);
       }
     }
 
@@ -117,9 +123,9 @@ class QuestionPaperService {
           },
         ),
         build: (context) => [
-          headerBuilder.build(paper, logoImage, template),
+          headerBuilder.build(paper, logos, template),
           ...paper.sections.map((section) => _buildSection(section, template)),
-          if (paper.includeOmr) ..._buildOmrSheet(paper, logoImage),
+          if (paper.includeOmr) ..._buildOmrSheet(paper, logos.isNotEmpty ? logos.first : null),
         ],
       ),
     );

@@ -1,3 +1,5 @@
+import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -181,15 +183,29 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 
   Widget _buildSetupSlide(Paper paper) {
+    final templates = ref.watch(templateProvider).all;
+    final template = templates.firstWhere((t) => t.id == paper.templateId, orElse: () => templates.first);
+    final hasCustomLayout = template.headerLayout == HeaderLayout.custom && template.customLayout != null;
+    
+    final bool showSchoolName = !hasCustomLayout || 
+        template.customLayout!.elements.any((e) => e.type == ElementType.schoolName);
+    
+    final List<TemplateElement> logoElements = hasCustomLayout 
+        ? template.customLayout!.elements.where((e) => e.type == ElementType.logo).toList()
+        : [TemplateElement(id: 'default', type: ElementType.logo, x: 0, y: 0)]; // Default has 1 logo
+
+    final bool showBranding = showSchoolName || logoElements.isNotEmpty;
+
     return ListView(
       padding: const EdgeInsets.all(20.0),
       children: [
-        _EditorCard(
-          title: 'Branding',
-          icon: Icons.business,
-          color: Colors.blue,
-          child: _buildBrandingEditor(paper),
-        ),
+        if (showBranding)
+          _EditorCard(
+            title: 'Branding',
+            icon: Icons.business,
+            color: Colors.blue,
+            child: _buildBrandingEditor(paper, showSchoolName, logoElements),
+          ),
         const SizedBox(height: 20),
         _EditorCard(
           title: 'General Info',
@@ -213,26 +229,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Header Fields',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => ref.read(editorStateProvider.notifier).addHeaderField(),
-                    icon: const Icon(Icons.add, size: 20),
-                    label: const Text('Add Field'),
-                  ),
-                ],
-              ),
-              const Text(
-                'Add fields like Subject, Date, Class, etc.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 12),
-              _buildHeaderFieldsEditor(paper),
+              _buildHeaderFieldsSection(paper, template),
             ],
           ),
         ),
@@ -264,6 +261,42 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
+  Widget _buildHeaderFieldsSection(Paper paper, PaperTemplate template) {
+    final hasCustomLayout = template.headerLayout == HeaderLayout.custom && template.customLayout != null;
+    final List<String> requiredLabels = hasCustomLayout
+        ? List<String>.from(template.customLayout!.elements
+            .where((e) => e.type == ElementType.headerFieldsBlock)
+            .fold<List<String>>([], (prev, e) => [...prev, ...List<String>.from(e.properties['fieldLabels'] ?? [])]))
+        : [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Header Fields',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            if (!hasCustomLayout)
+              TextButton.icon(
+                onPressed: () => ref.read(editorStateProvider.notifier).addHeaderField(),
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text('Add Field'),
+              ),
+          ],
+        ),
+        const Text(
+          'Manage fields like Subject, Date, Class, etc.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 12),
+        _buildHeaderFieldsEditor(paper, requiredLabels, !hasCustomLayout),
+      ],
+    );
+  }
+
   Widget _buildSectionSlide(PaperSection section) {
     return ListView(
       padding: const EdgeInsets.all(20.0),
@@ -274,8 +307,16 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
-  Widget _buildHeaderFieldsEditor(Paper paper) {
+  Widget _buildHeaderFieldsEditor(Paper paper, List<String> requiredLabels, bool allowAll) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final List<PaperHeaderField> filteredFields = allowAll 
+        ? paper.headerFields 
+        : paper.headerFields.where((f) => requiredLabels.any((l) => l.toLowerCase() == f.label.toLowerCase())).toList();
+
+    if (filteredFields.isEmpty && !allowAll) {
+      return const Center(child: Text('No fields required for this template.', style: TextStyle(fontSize: 12, color: Colors.grey)));
+    }
+
     return Column(
       children: [
         ReorderableListView(
@@ -299,7 +340,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             ),
           ),
           children: [
-            for (final field in paper.headerFields)
+            for (final field in filteredFields)
               Padding(
                 key: ValueKey(field.id),
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -328,6 +369,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         flex: 2,
                         child: TextFormField(
                           initialValue: field.label,
+                          readOnly: !allowAll, // Only custom templates lock labels
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
@@ -382,12 +424,13 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         tooltip: field.isPlaceholder ? 'Enable Manual Entry' : 'Set as Placeholder',
                         onTap: () => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, isPlaceholder: !field.isPlaceholder),
                       ),
-                      _HeaderFieldAction(
-                        icon: Icons.delete_outline_rounded,
-                        color: Colors.redAccent.withAlpha(180),
-                        tooltip: 'Delete Field',
-                        onTap: () => ref.read(editorStateProvider.notifier).deleteHeaderField(field.id),
-                      ),
+                      if (allowAll)
+                        _HeaderFieldAction(
+                          icon: Icons.delete_outline_rounded,
+                          color: Colors.redAccent.withAlpha(180),
+                          tooltip: 'Delete Field',
+                          onTap: () => ref.read(editorStateProvider.notifier).deleteHeaderField(field.id),
+                        ),
                     ],
                   ),
                 ),
@@ -664,70 +707,95 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     return Text(text, maxLines: 1, overflow: TextOverflow.ellipsis);
   }
 
-  Widget _buildBrandingEditor(Paper paper) {
+  Widget _buildBrandingEditor(Paper paper, bool showSchoolName, List<TemplateElement> logoElements) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Row(
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () async {
-            final picker = ImagePicker();
-            final image = await picker.pickImage(source: ImageSource.gallery);
-            if (image != null) {
-              ref.read(editorStateProvider.notifier).updateBranding(schoolLogo: image.path);
-            }
-          },
-          child: Stack(
-            children: [
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardTheme.color,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Theme.of(context).dividerColor.withAlpha(25)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(isDark ? 51 : 13),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: paper.schoolLogo != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.file(File(paper.schoolLogo!), fit: BoxFit.cover),
-                      )
-                    : Icon(Icons.add_a_photo_outlined, size: 28, color: Colors.grey[400]),
-              ),
-              if (paper.schoolLogo != null)
-                Positioned(
-                  right: -2,
-                  top: -2,
-                  child: GestureDetector(
-                    onTap: () => ref.read(editorStateProvider.notifier).updateBranding(schoolLogo: null),
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                      child: const Icon(Icons.close, size: 12, color: Colors.white),
-                    ),
+        if (logoElements.isNotEmpty) ...[
+          const Text('Logo(s)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: logoElements.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final String? path = paper.logos.length > idx ? paper.logos[idx] : null;
+                
+                return Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: Column(
+                    children: [
+                      GestureDetector(
+                        onTap: () async {
+                          final picker = ImagePicker();
+                          final image = await picker.pickImage(source: ImageSource.gallery);
+                          if (image != null) {
+                            ref.read(editorStateProvider.notifier).updateBranding(logo: image.path, logoIndex: idx);
+                          }
+                        },
+                        child: Stack(
+                          children: [
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).cardTheme.color,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Theme.of(context).dividerColor.withAlpha(25)),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withAlpha(isDark ? 51 : 13),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: path != null && path.isNotEmpty
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Image.file(File(path), fit: BoxFit.cover),
+                                    )
+                                  : Icon(Icons.add_a_photo_outlined, size: 24, color: Colors.grey[400]),
+                            ),
+                            if (path != null && path.isNotEmpty)
+                              Positioned(
+                                right: -2,
+                                top: -2,
+                                child: GestureDetector(
+                                  onTap: () => ref.read(editorStateProvider.notifier).updateBranding(logo: '', logoIndex: idx),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                    child: const Icon(Icons.close, size: 10, color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text('Logo ${idx + 1}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                    ],
                   ),
-                ),
-            ],
+                );
+              }).toList(),
+            ),
           ),
-        ),
-        const SizedBox(width: 20),
-        Expanded(
-          child: TextFormField(
+          const SizedBox(height: 16),
+        ],
+        if (showSchoolName)
+          TextFormField(
             initialValue: paper.schoolName,
             decoration: InputDecoration(
               labelText: 'School/Institution Name',
               hintText: 'Enter school name',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              isDense: true,
             ),
             onChanged: (val) => ref.read(editorStateProvider.notifier).updateBranding(schoolName: val),
           ),
-        ),
       ],
     );
   }

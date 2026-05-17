@@ -6,7 +6,7 @@ class Paper {
   final String id;
   final String title;
   final String schoolName;
-  final String? schoolLogo;
+  final List<String> logos;
   final List<PaperHeaderField> headerFields;
   final List<PaperSection> sections;
   final bool includeOmr;
@@ -16,7 +16,7 @@ class Paper {
     required this.id,
     required this.title,
     this.schoolName = 'My School',
-    this.schoolLogo,
+    this.logos = const [],
     this.headerFields = const [],
     this.sections = const [],
     this.includeOmr = false,
@@ -27,7 +27,7 @@ class Paper {
     String? id,
     String? title,
     String? schoolName,
-    String? schoolLogo,
+    List<String>? logos,
     List<PaperHeaderField>? headerFields,
     List<PaperSection>? sections,
     bool? includeOmr,
@@ -37,7 +37,7 @@ class Paper {
       id: id ?? this.id,
       title: title ?? this.title,
       schoolName: schoolName ?? this.schoolName,
-      schoolLogo: schoolLogo ?? this.schoolLogo,
+      logos: logos ?? this.logos,
       headerFields: headerFields ?? this.headerFields,
       sections: sections ?? this.sections,
       includeOmr: includeOmr ?? this.includeOmr,
@@ -54,7 +54,7 @@ class Paper {
       'id': id,
       'title': title,
       'schoolName': schoolName,
-      'schoolLogo': schoolLogo,
+      'logos': logos,
       'headerFields': headerFields.map((f) => f.toJson()).toList(),
       'sections': sections.map((s) => s.toJson()).toList(),
       'includeOmr': includeOmr,
@@ -67,7 +67,7 @@ class Paper {
       id: json['id'],
       title: json['title'],
       schoolName: json['schoolName'] ?? 'My School',
-      schoolLogo: json['schoolLogo'],
+      logos: (json['logos'] as List?)?.cast<String>() ?? [],
       headerFields: (json['headerFields'] as List?)
               ?.map((f) => PaperHeaderField.fromJson(f))
               .toList() ??

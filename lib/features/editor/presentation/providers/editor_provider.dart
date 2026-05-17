@@ -26,6 +26,7 @@ class EditorState extends _$EditorState {
       id: const Uuid().v4(),
       title: 'New Paper',
       sections: [],
+      logos: ['', '', ''], // Initialize with 3 slots by default
       headerFields: [
         PaperHeaderField(id: const Uuid().v4(), label: 'Subject', value: 'Mathematics'),
         PaperHeaderField(id: const Uuid().v4(), label: 'Class', value: '10th'),
@@ -54,11 +55,22 @@ class EditorState extends _$EditorState {
     state = state.copyWith(title: title);
   }
 
-  void updateBranding({String? schoolName, String? schoolLogo}) {
-    state = state.copyWith(
-      schoolName: schoolName ?? state.schoolName,
-      schoolLogo: schoolLogo ?? state.schoolLogo,
-    );
+  void updateBranding({String? schoolName, String? logo, int? logoIndex}) {
+    if (logoIndex != null) {
+      final newLogos = List<String>.from(state.logos);
+      while (newLogos.length <= logoIndex) {
+        newLogos.add('');
+      }
+      newLogos[logoIndex] = logo ?? '';
+      state = state.copyWith(
+        schoolName: schoolName ?? state.schoolName,
+        logos: newLogos,
+      );
+    } else {
+      state = state.copyWith(
+        schoolName: schoolName ?? state.schoolName,
+      );
+    }
   }
 
   void addHeaderField({String label = 'New Field', String value = '', bool isPlaceholder = false}) {
@@ -240,15 +252,26 @@ class EditorState extends _$EditorState {
     
     state = state.copyWith(templateId: templateId);
 
-    // Automatic Field Detection
+    // Automatic Field and Logo Detection
     if (template.headerLayout == HeaderLayout.custom && template.customLayout != null) {
-      final fieldsBlocks = template.customLayout!.elements.where((e) => e.type == ElementType.headerFieldsBlock);
+      final elements = template.customLayout!.elements;
+      
+      // Sync Logos slots
+      final logoCount = elements.where((e) => e.type == ElementType.logo).length;
+      final List<String> currentLogos = List<String>.from(state.logos);
+      if (currentLogos.length < logoCount) {
+        currentLogos.addAll(List.generate(logoCount - currentLogos.length, (_) => ''));
+      }
+      
+      // Sync Fields
+      final fieldsBlocks = elements.where((e) => e.type == ElementType.headerFieldsBlock);
+      List<PaperHeaderField> newFields = [...state.headerFields];
+      bool fieldsChanged = false;
+
       if (fieldsBlocks.isNotEmpty) {
         final List<String> labels = List<String>.from(fieldsBlocks.first.properties['fieldLabels'] ?? []);
         final currentLabels = state.headerFields.map((f) => f.label.toLowerCase()).toList();
         
-        final List<PaperHeaderField> newFields = [...state.headerFields];
-        bool changed = false;
         for (var label in labels) {
           if (!currentLabels.contains(label.toLowerCase())) {
             newFields.add(PaperHeaderField(
@@ -256,13 +279,15 @@ class EditorState extends _$EditorState {
               label: label,
               isPlaceholder: true,
             ));
-            changed = true;
+            fieldsChanged = true;
           }
         }
-        if (changed) {
-          state = state.copyWith(headerFields: newFields);
-        }
       }
+
+      state = state.copyWith(
+        logos: currentLogos,
+        headerFields: fieldsChanged ? newFields : null,
+      );
     }
   }
 }
