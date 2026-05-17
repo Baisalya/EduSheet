@@ -1,4 +1,5 @@
 import 'package:pdf/pdf.dart';
+import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 
 enum TemplateType { school, coaching, cute, board }
 
@@ -8,11 +9,20 @@ enum HeaderLayout {
   logoRight,
   modernCoaching,
   minimal,
+  custom,
 }
 
 enum PaperLayout {
   standard,
   twoColumn,
+}
+
+enum PaperSize {
+  a4,
+  a5,
+  a3,
+  letter,
+  legal,
 }
 
 class PaperTemplate {
@@ -27,6 +37,8 @@ class PaperTemplate {
   final bool centeredHeader;
   final HeaderLayout headerLayout;
   final PaperLayout paperLayout;
+  final PaperSize paperSize;
+  final CustomLayout? customLayout;
 
   PaperTemplate({
     required this.id,
@@ -40,7 +52,41 @@ class PaperTemplate {
     this.centeredHeader = true,
     this.headerLayout = HeaderLayout.centered,
     this.paperLayout = PaperLayout.standard,
+    this.paperSize = PaperSize.a4,
+    this.customLayout,
   });
+
+  PaperTemplate copyWith({
+    String? id,
+    String? name,
+    TemplateType? type,
+    PdfColor? primaryColor,
+    PdfColor? secondaryColor,
+    double? headerFontSize,
+    double? questionFontSize,
+    bool? hasBorder,
+    bool? centeredHeader,
+    HeaderLayout? headerLayout,
+    PaperLayout? paperLayout,
+    PaperSize? paperSize,
+    CustomLayout? customLayout,
+  }) {
+    return PaperTemplate(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      primaryColor: primaryColor ?? this.primaryColor,
+      secondaryColor: secondaryColor ?? this.secondaryColor,
+      headerFontSize: headerFontSize ?? this.headerFontSize,
+      questionFontSize: questionFontSize ?? this.questionFontSize,
+      hasBorder: hasBorder ?? this.hasBorder,
+      centeredHeader: centeredHeader ?? this.centeredHeader,
+      headerLayout: headerLayout ?? this.headerLayout,
+      paperLayout: paperLayout ?? this.paperLayout,
+      paperSize: paperSize ?? this.paperSize,
+      customLayout: customLayout ?? this.customLayout,
+    );
+  }
 
   static List<PaperTemplate> get predefinedTemplates => [
         PaperTemplate(

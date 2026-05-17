@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import '../../domain/models/paper_template.dart';
+import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:pdf/pdf.dart';
 
 class TemplateRepository {
@@ -21,13 +22,19 @@ class TemplateRepository {
       final List<dynamic> jsonList = json.decode(content);
       return jsonList.map((e) => _fromJson(e)).toList();
     } catch (e) {
+      print('Error loading templates: $e');
       return [];
     }
   }
 
   Future<void> saveTemplate(PaperTemplate template) async {
     final templates = await getCustomTemplates();
-    templates.add(template);
+    final index = templates.indexWhere((t) => t.id == template.id);
+    if (index != -1) {
+      templates[index] = template;
+    } else {
+      templates.add(template);
+    }
     await _saveAll(templates);
   }
 
@@ -50,6 +57,7 @@ class TemplateRepository {
       'centeredHeader': t.centeredHeader,
       'headerLayout': t.headerLayout.index,
       'paperLayout': t.paperLayout.index,
+      'customLayout': t.customLayout?.toJson(),
     };
   }
 
@@ -66,6 +74,7 @@ class TemplateRepository {
       centeredHeader: json['centeredHeader'],
       headerLayout: HeaderLayout.values[json['headerLayout'] ?? 0],
       paperLayout: PaperLayout.values[json['paperLayout'] ?? 0],
+      customLayout: json['customLayout'] != null ? CustomLayout.fromJson(json['customLayout']) : null,
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
@@ -216,5 +217,94 @@ class MinimalHeaderBuilder extends HeaderBuilder {
         pw.Divider(thickness: 0.5),
       ],
     );
+  }
+}
+
+class CustomHeaderBuilder extends HeaderBuilder {
+  @override
+  pw.Widget build(Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+    final layout = template.customLayout;
+    if (layout == null) return pw.SizedBox();
+
+    return pw.Container(
+      height: layout.canvasHeight,
+      width: 595.27 - 64, // A4 width minus margins (32 * 2)
+      child: pw.Stack(
+        children: layout.elements.map((el) {
+          return pw.Positioned(
+            left: el.x,
+            top: el.y,
+            child: _buildElement(el, paper, logoImage, template),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  pw.Widget _buildElement(TemplateElement el, Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+    final style = pw.TextStyle(
+      fontSize: el.properties['fontSize']?.toDouble() ?? 12,
+      fontWeight: el.properties['bold'] == true ? pw.FontWeight.bold : pw.FontWeight.normal,
+      color: el.properties['color'] != null ? PdfColor.fromInt(el.properties['color']) : PdfColors.black,
+    );
+
+    final alignment = _getPdfAlignment(el.properties['alignment']);
+
+    switch (el.type) {
+      case ElementType.schoolName:
+        return pw.Container(
+          width: el.width,
+          alignment: alignment,
+          child: pw.Text(paper.schoolName, style: style),
+        );
+      case ElementType.paperTitle:
+        return pw.Container(
+          width: el.width,
+          alignment: alignment,
+          child: pw.Text(paper.title, style: style),
+        );
+      case ElementType.logo:
+        return logoImage != null
+            ? pw.Container(
+                width: el.width ?? 50,
+                height: el.height ?? 50,
+                child: pw.Image(logoImage),
+              )
+            : pw.SizedBox();
+      case ElementType.maxMarks:
+        return pw.Container(
+          width: el.width,
+          alignment: alignment,
+          child: pw.Text('Max Marks: ${paper.totalMarks}', style: style),
+        );
+      case ElementType.headerFieldsBlock:
+        return pw.Container(
+          width: el.width ?? 300,
+          child: buildDynamicHeaderFields(paper, template),
+        );
+      case ElementType.staticText:
+        return pw.Container(
+          width: el.width,
+          alignment: alignment,
+          child: pw.Text(el.content, style: style),
+        );
+      case ElementType.horizontalLine:
+        return pw.Container(
+          width: el.width ?? 100,
+          height: 1,
+          color: style.color,
+        );
+    }
+  }
+
+  pw.Alignment _getPdfAlignment(String? align) {
+    switch (align) {
+      case 'center':
+        return pw.Alignment.center;
+      case 'right':
+        return pw.Alignment.centerRight;
+      default:
+        return pw.Alignment.centerLeft;
+    }
   }
 }

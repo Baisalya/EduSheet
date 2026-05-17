@@ -61,6 +61,23 @@ class QuestionPaperService {
         return MinimalHeaderBuilder();
       case HeaderLayout.logoRight:
         return LogoRightHeaderBuilder();
+      case HeaderLayout.custom:
+        return CustomHeaderBuilder();
+    }
+  }
+
+  static PdfPageFormat _getPageFormat(PaperSize size) {
+    switch (size) {
+      case PaperSize.a4:
+        return PdfPageFormat.a4;
+      case PaperSize.a5:
+        return PdfPageFormat.a5;
+      case PaperSize.a3:
+        return PdfPageFormat.a3;
+      case PaperSize.letter:
+        return PdfPageFormat.letter;
+      case PaperSize.legal:
+        return PdfPageFormat.legal;
     }
   }
 
@@ -77,11 +94,12 @@ class QuestionPaperService {
     }
 
     final headerBuilder = _getHeaderBuilder(template.headerLayout);
+    final pageFormat = _getPageFormat(template.paperSize);
 
     pdf.addPage(
       pw.MultiPage(
         pageTheme: pw.PageTheme(
-          pageFormat: PdfPageFormat.a4,
+          pageFormat: pageFormat,
           margin: const pw.EdgeInsets.all(32),
           buildBackground: (context) {
             if (template.hasBorder) {
