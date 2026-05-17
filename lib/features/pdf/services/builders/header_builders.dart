@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -7,7 +5,12 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 
 abstract class HeaderBuilder {
-  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template);
+  pw.Widget build(
+    Paper paper,
+    List<pw.ImageProvider?> logos,
+    PaperTemplate template, {
+    Map<String, pw.ImageProvider>? customImages,
+  });
 
   pw.Widget buildDynamicHeaderFields(Paper paper, PaperTemplate template) {
     if (paper.headerFields.isEmpty) return pw.SizedBox();
@@ -48,7 +51,12 @@ abstract class HeaderBuilder {
 
 class CenteredHeaderBuilder extends HeaderBuilder {
   @override
-  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
+  pw.Widget build(
+    Paper paper,
+    List<pw.ImageProvider?> logos,
+    PaperTemplate template, {
+    Map<String, pw.ImageProvider>? customImages,
+  }) {
     final logoImage = logos.isNotEmpty ? logos.first : null;
     return pw.Column(
       children: [
@@ -85,7 +93,12 @@ class LogoSideHeaderBuilder extends HeaderBuilder {
   LogoSideHeaderBuilder({required this.isLogoLeft});
 
   @override
-  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
+  pw.Widget build(
+    Paper paper,
+    List<pw.ImageProvider?> logos,
+    PaperTemplate template, {
+    Map<String, pw.ImageProvider>? customImages,
+  }) {
     final logoImage = logos.isNotEmpty ? logos.first : null;
     final logo = logoImage != null
         ? pw.Container(
@@ -143,7 +156,12 @@ class LogoRightHeaderBuilder extends LogoSideHeaderBuilder {
 
 class ModernCoachingHeaderBuilder extends HeaderBuilder {
   @override
-  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
+  pw.Widget build(
+    Paper paper,
+    List<pw.ImageProvider?> logos,
+    PaperTemplate template, {
+    Map<String, pw.ImageProvider>? customImages,
+  }) {
     final logoImage = logos.isNotEmpty ? logos.first : null;
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
@@ -195,7 +213,12 @@ class ModernCoachingHeaderBuilder extends HeaderBuilder {
 
 class MinimalHeaderBuilder extends HeaderBuilder {
   @override
-  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
+  pw.Widget build(
+    Paper paper,
+    List<pw.ImageProvider?> logos,
+    PaperTemplate template, {
+    Map<String, pw.ImageProvider>? customImages,
+  }) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -227,16 +250,26 @@ class MinimalHeaderBuilder extends HeaderBuilder {
 
 class CustomHeaderBuilder extends HeaderBuilder {
   @override
-  pw.Widget build(Paper paper, List<pw.ImageProvider?> logos, PaperTemplate template) {
-    final layout = template.customLayout;
-    if (layout == null) return pw.SizedBox();
+  pw.Widget build(
+    Paper paper,
+    List<pw.ImageProvider?> logos,
+    PaperTemplate template, {
+    Map<String, pw.ImageProvider>? customImages,
+  }) {
+    final layout = template.customLayout ?? template.effectiveLayout;
 
     // Map logo elements to indices
     int logoIdx = 0;
     final elements = layout.elements.map((el) {
       if (el.type == ElementType.logo) {
         final currentIdx = logoIdx++;
-        final logoImg = logos.length > currentIdx ? logos[currentIdx] : null;
+        pw.ImageProvider? logoImg;
+        if (el.content.isNotEmpty) {
+          logoImg = customImages?[el.content];
+        } else if (logos.length > currentIdx) {
+          logoImg = logos[currentIdx];
+        }
+
         return pw.Positioned(
           left: el.x,
           top: el.y,
@@ -263,6 +296,8 @@ class CustomHeaderBuilder extends HeaderBuilder {
     final style = pw.TextStyle(
       fontSize: el.properties['fontSize']?.toDouble() ?? 12,
       fontWeight: el.properties['bold'] == true ? pw.FontWeight.bold : pw.FontWeight.normal,
+      fontStyle: el.properties['italic'] == true ? pw.FontStyle.italic : pw.FontStyle.normal,
+      decoration: el.properties['decoration'] == 'underline' ? pw.TextDecoration.underline : pw.TextDecoration.none,
       color: el.properties['color'] != null ? PdfColor.fromInt(el.properties['color']) : PdfColors.black,
     );
 
@@ -282,24 +317,19 @@ class CustomHeaderBuilder extends HeaderBuilder {
           child: pw.Text(paper.title, style: style),
         );
       case ElementType.logo:
-        return el.content.isNotEmpty
-            ? pw.Container(
-                width: el.width ?? 50,
-                height: el.height ?? 50,
-                child: pw.Image(pw.MemoryImage(File(el.content).readAsBytesSync())),
-              )
-            : (logoImage != null
-                ? pw.Container(
-                    width: el.width ?? 50,
-                    height: el.height ?? 50,
-                    child: pw.Image(logoImage),
-                  )
-                : pw.SizedBox());
+        if (logoImage != null) {
+          return pw.Container(
+            width: el.width ?? 50,
+            height: el.height ?? 50,
+            child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+          );
+        }
+        return pw.SizedBox();
       case ElementType.maxMarks:
         return pw.Container(
           width: el.width,
           alignment: alignment,
-          child: pw.Text('Max Marks: ${paper.totalMarks}', style: style),
+          child: pw.Text('Max Marks: ${paper.totalMarks.toStringAsFixed(0)}', style: style),
         );
       case ElementType.headerFieldsBlock:
         final List<dynamic> labels = el.properties['fieldLabels'] ?? ['Subject', 'Date'];
@@ -308,6 +338,7 @@ class CustomHeaderBuilder extends HeaderBuilder {
           child: pw.Wrap(
             spacing: 16,
             runSpacing: 4,
+            alignment: _getWrapAlignment(el.properties['alignment']),
             children: labels.map((l) {
               final field = paper.headerFields.firstWhere(
                 (f) => f.label.toLowerCase() == l.toString().toLowerCase(),
@@ -354,6 +385,17 @@ class CustomHeaderBuilder extends HeaderBuilder {
         return pw.Alignment.centerRight;
       default:
         return pw.Alignment.centerLeft;
+    }
+  }
+
+  pw.WrapAlignment _getWrapAlignment(String? align) {
+    switch (align) {
+      case 'center':
+        return pw.WrapAlignment.center;
+      case 'right':
+        return pw.WrapAlignment.end;
+      default:
+        return pw.WrapAlignment.start;
     }
   }
 }

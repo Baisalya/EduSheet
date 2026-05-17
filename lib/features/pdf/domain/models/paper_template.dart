@@ -2,7 +2,7 @@ import 'package:pdf/pdf.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:uuid/uuid.dart';
 
-enum TemplateType { school, coaching, cute, board }
+enum TemplateType { school, college, coaching, kids, board }
 
 enum HeaderLayout {
   centered,
@@ -10,6 +10,9 @@ enum HeaderLayout {
   logoRight,
   modernCoaching,
   minimal,
+  academic,
+  ssvm,
+  dps,
   custom,
 }
 
@@ -303,6 +306,318 @@ class PaperTemplate {
         ));
         return CustomLayout(elements: elements, canvasHeight: 80);
 
+      case HeaderLayout.academic:
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.logo,
+          x: (contentWidth - 60) / 2,
+          y: 0,
+          width: 60,
+          height: 60,
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.schoolName,
+          x: 0,
+          y: 62,
+          width: contentWidth,
+          properties: {
+            'fontSize': 24.0,
+            'bold': true,
+            'alignment': 'center',
+            'color': primaryColor.toInt(),
+          },
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.staticText,
+          x: 0,
+          y: 88,
+          width: contentWidth,
+          content: 'AD MAJOREM DEI GLORIAM',
+          properties: {
+            'fontSize': 8.0,
+            'bold': true,
+            'alignment': 'center',
+            'color': 0xFF757575,
+          },
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.paperTitle,
+          x: 0,
+          y: 102,
+          width: contentWidth,
+          properties: {'fontSize': 16.0, 'bold': true, 'alignment': 'center'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 0,
+          y: 130,
+          width: contentWidth,
+          properties: {
+            'fontSize': 11.0,
+            'alignment': 'left',
+            'fieldLabels': ['Name', 'Roll No', 'Sec']
+          },
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 0,
+          y: 155,
+          width: contentWidth * 0.7,
+          properties: {
+            'fontSize': 11.0,
+            'alignment': 'left',
+            'fieldLabels': ['Subject', 'Class', 'Date']
+          },
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.maxMarks,
+          x: contentWidth - 150,
+          y: 155,
+          width: 150,
+          properties: {'fontSize': 11.0, 'bold': true, 'alignment': 'right'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.horizontalLine,
+          x: 0,
+          y: 185,
+          width: contentWidth,
+          properties: {'color': 0xFF000000},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.horizontalLine,
+          x: 0,
+          y: 188,
+          width: contentWidth,
+          properties: {'color': 0xFF000000},
+        ));
+        return CustomLayout(elements: elements, canvasHeight: 195);
+
+      case HeaderLayout.ssvm:
+        // Top text "SIX - ENGLISH" (Left & Right - mocked for now as Series/Subject)
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.staticText,
+          x: 0,
+          y: 0,
+          width: contentWidth / 2,
+          content: 'SIX- ENGLISH',
+          properties: {'fontSize': 9.0, 'bold': true, 'alignment': 'left'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.staticText,
+          x: contentWidth / 2,
+          y: 0,
+          width: contentWidth / 2,
+          content: 'SIX- ENGLISH',
+          properties: {'fontSize': 9.0, 'bold': true, 'alignment': 'right'},
+        ));
+
+        // Logo on the left
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.logo,
+          x: 0,
+          y: 15,
+          width: 70,
+          height: 70,
+        ));
+
+        // School Name centered
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.schoolName,
+          x: 80,
+          y: 20,
+          width: contentWidth - 80,
+          properties: {
+            'fontSize': 20.0,
+            'bold': true,
+            'alignment': 'center',
+            'color': 0xFF000000,
+          },
+        ));
+
+        // Annual Examination Box (mocked with static text and potentially a border if supported)
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.paperTitle,
+          x: 80,
+          y: 45,
+          width: contentWidth - 80,
+          properties: {
+            'fontSize': 14.0,
+            'bold': true,
+            'alignment': 'center',
+          },
+        ));
+
+        // Fields Row 1
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 80,
+          y: 70,
+          width: contentWidth - 80,
+          properties: {
+            'fontSize': 11.0,
+            'alignment': 'left',
+            'fieldLabels': ['Class', 'Subject']
+          },
+        ));
+
+        // Fields Row 2
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 80,
+          y: 90,
+          width: contentWidth - 80,
+          properties: {
+            'fontSize': 11.0,
+            'alignment': 'left',
+            'fieldLabels': ['Time', 'Full Marks']
+          },
+        ));
+
+        // Instructions line
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.staticText,
+          x: 0,
+          y: 115,
+          width: contentWidth,
+          content: 'All questions are compulsory. Figures in the margin indicate full marks.',
+          properties: {
+            'fontSize': 10.0,
+            'bold': true,
+            'alignment': 'center',
+            'italic': true
+          },
+        ));
+
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.horizontalLine,
+          x: 0,
+          y: 135,
+          width: contentWidth,
+          properties: {'color': 0xFF000000},
+        ));
+
+        return CustomLayout(elements: elements, canvasHeight: 145);
+
+      case HeaderLayout.dps:
+        // Series & Code
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.staticText,
+          x: 0,
+          y: 0,
+          width: contentWidth / 2,
+          content: 'Series : DPS/ST/SS-SA2/10-11',
+          properties: {'fontSize': 10.0, 'alignment': 'left'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.staticText,
+          x: contentWidth / 2,
+          y: 0,
+          width: contentWidth / 2,
+          content: 'Code : 087',
+          properties: {'fontSize': 10.0, 'alignment': 'right'},
+        ));
+
+        // Centered Logo
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.logo,
+          x: (contentWidth - 50) / 2,
+          y: 15,
+          width: 50,
+          height: 50,
+        ));
+
+        // School Name
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.schoolName,
+          x: 0,
+          y: 70,
+          width: contentWidth,
+          properties: {'fontSize': 16.0, 'bold': true, 'alignment': 'center'},
+        ));
+
+        // Exam Title
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.paperTitle,
+          x: 0,
+          y: 90,
+          width: contentWidth,
+          properties: {'fontSize': 14.0, 'bold': true, 'alignment': 'center'},
+        ));
+
+        // Subject (as static text or from paper title if needed)
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.staticText,
+          x: 0,
+          y: 110,
+          width: contentWidth,
+          content: 'SOCIAL SCIENCE',
+          properties: {'fontSize': 12.0, 'bold': true, 'alignment': 'center'},
+        ));
+
+        // Roll No & Class
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 0,
+          y: 135,
+          width: contentWidth,
+          properties: {
+            'fontSize': 11.0,
+            'alignment': 'left',
+            'fieldLabels': ['Roll No', 'Class']
+          },
+        ));
+
+        // Marks & Time
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 0,
+          y: 160,
+          width: contentWidth,
+          properties: {
+            'fontSize': 11.0,
+            'alignment': 'left',
+            'fieldLabels': ['Marks', 'Time Allowed']
+          },
+        ));
+
+        // Instructions header
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.staticText,
+          x: 0,
+          y: 185,
+          width: 100,
+          content: 'Instructions:',
+          properties: {'fontSize': 11.0, 'bold': true, 'alignment': 'left', 'decoration': 'underline'},
+        ));
+
+        return CustomLayout(elements: elements, canvasHeight: 205);
+
       default:
         elements.add(TemplateElement(
           id: uuid.v4(),
@@ -317,45 +632,107 @@ class PaperTemplate {
   }
 
   static List<PaperTemplate> get predefinedTemplates => [
+        // --- SCHOOL TEMPLATES ---
         PaperTemplate(
-          id: 'school_formal',
-          name: 'School Formal',
+          id: 'school_classic_centered',
+          name: 'Classic Centered',
           type: TemplateType.school,
           hasBorder: true,
-          centeredHeader: true,
           headerLayout: HeaderLayout.centered,
         ),
         PaperTemplate(
-          id: 'coaching_modern',
+          id: 'school_modern_left',
+          name: 'Modern Left (Logo)',
+          type: TemplateType.school,
+          hasBorder: false,
+          headerLayout: HeaderLayout.logoLeft,
+          primaryColor: PdfColors.blue800,
+        ),
+        PaperTemplate(
+          id: 'school_ssvm_style',
+          name: 'SSVM Style',
+          type: TemplateType.school,
+          hasBorder: true,
+          headerLayout: HeaderLayout.ssvm,
+          primaryColor: PdfColors.indigo900,
+          headerFontSize: 24,
+        ),
+        PaperTemplate(
+          id: 'school_dps_style',
+          name: 'DPS Style',
+          type: TemplateType.school,
+          hasBorder: false,
+          headerLayout: HeaderLayout.dps,
+          primaryColor: PdfColors.green800,
+        ),
+        PaperTemplate(
+          id: 'school_xavier_style',
+          name: 'Xavier Style',
+          type: TemplateType.school,
+          hasBorder: true,
+          headerLayout: HeaderLayout.academic,
+          primaryColor: PdfColors.red900,
+          headerFontSize: 26,
+        ),
+
+        // --- COLLEGE TEMPLATES ---
+        PaperTemplate(
+          id: 'college_formal',
+          name: 'Formal College',
+          type: TemplateType.college,
+          hasBorder: false,
+          headerLayout: HeaderLayout.logoLeft,
+          primaryColor: PdfColors.grey900,
+        ),
+        PaperTemplate(
+          id: 'college_modern',
+          name: 'University Modern',
+          type: TemplateType.college,
+          hasBorder: true,
+          headerLayout: HeaderLayout.modernCoaching,
+          primaryColor: PdfColors.blueGrey900,
+        ),
+
+        // --- COACHING TEMPLATES ---
+        PaperTemplate(
+          id: 'coaching_pro',
           name: 'Coaching Pro',
           type: TemplateType.coaching,
           primaryColor: PdfColors.blue900,
           secondaryColor: PdfColors.blue100,
-          centeredHeader: false,
           headerLayout: HeaderLayout.modernCoaching,
         ),
         PaperTemplate(
-          id: 'cute_kids',
-          name: 'Cute Kids',
-          type: TemplateType.cute,
+          id: 'coaching_minimal',
+          name: 'Coaching Lite',
+          type: TemplateType.coaching,
+          headerLayout: HeaderLayout.minimal,
+        ),
+
+        // --- KIDS SCHOOL TEMPLATES ---
+        PaperTemplate(
+          id: 'kids_playful',
+          name: 'Playful Kids',
+          type: TemplateType.kids,
           primaryColor: PdfColors.pink300,
           secondaryColor: PdfColors.yellow100,
-          headerFontSize: 26,
+          headerFontSize: 28,
           headerLayout: HeaderLayout.centered,
         ),
+        PaperTemplate(
+          id: 'kids_creative',
+          name: 'Creative Primary',
+          type: TemplateType.kids,
+          primaryColor: PdfColors.orange400,
+          headerLayout: HeaderLayout.logoRight,
+        ),
+
+        // --- BOARD TEMPLATES ---
         PaperTemplate(
           id: 'board_cbse',
           name: 'Board (CBSE Style)',
           type: TemplateType.board,
-          centeredHeader: true,
           headerLayout: HeaderLayout.centered,
-        ),
-        PaperTemplate(
-          id: 'minimalist',
-          name: 'Minimalist',
-          type: TemplateType.school,
-          headerLayout: HeaderLayout.minimal,
-          hasBorder: false,
         ),
       ];
 }

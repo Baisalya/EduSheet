@@ -6,7 +6,7 @@ import 'package:edusheet/features/pdf/presentation/providers/template_provider.d
 import 'package:edusheet/features/pdf/presentation/screens/template_designer_screen.dart';
 import 'package:uuid/uuid.dart';
 
-class TemplateSelector extends ConsumerWidget {
+class TemplateSelector extends ConsumerStatefulWidget {
   final String selectedTemplateId;
   final ValueChanged<String> onTemplateSelected;
 
@@ -17,16 +17,38 @@ class TemplateSelector extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TemplateSelector> createState() => _TemplateSelectorState();
+}
+
+class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
+  // Use a string or a more flexible type to represent the selection
+  // "all", "custom", or a TemplateType
+  dynamic _selectedCategory = TemplateType.school;
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(templateProvider);
-    final templates = state.all;
+    
+    final List<PaperTemplate> templates;
+    if (_selectedCategory == 'custom') {
+      templates = state.custom;
+    } else if (_selectedCategory == 'all') {
+      templates = state.all;
+    } else if (_selectedCategory is TemplateType) {
+      templates = state.all.where((t) => t.type == _selectedCategory).toList();
+    } else {
+      templates = state.all;
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _buildCategoryChips(),
+        const SizedBox(height: 12),
         SizedBox(
-          height: 120,
+          height: 125,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             itemCount: templates.length + 1,
@@ -36,14 +58,14 @@ class TemplateSelector extends ConsumerWidget {
               }
 
               final template = templates[index];
-              final isSelected = template.id == selectedTemplateId;
+              final isSelected = template.id == widget.selectedTemplateId;
 
               return GestureDetector(
-                onTap: () => onTemplateSelected(template.id),
+                onTap: () => widget.onTemplateSelected(template.id),
                 onLongPress: () => _showTemplateActions(context, ref, template),
                 child: Container(
-                  width: 100,
-                  margin: const EdgeInsets.only(right: 12),
+                  width: 110,
+                  margin: const EdgeInsets.only(right: 12, bottom: 4),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
@@ -51,16 +73,17 @@ class TemplateSelector extends ConsumerWidget {
                       width: isSelected ? 2 : 1,
                     ),
                     color: isSelected ? (isDark ? Colors.blue.withAlpha(50) : Colors.blue.withAlpha(20)) : (isDark ? const Color(0xFF2A2D30) : Colors.white),
+                    boxShadow: isSelected ? [BoxShadow(color: Colors.blue.withAlpha(50), blurRadius: 4, offset: const Offset(0, 2))] : null,
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        height: 50,
-                        width: 70,
+                        height: 55,
+                        width: 80,
                         margin: const EdgeInsets.only(bottom: 8),
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.white10 : Colors.grey[100],
+                          color: isDark ? Colors.white10 : Colors.grey[50],
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: Colors.grey.withAlpha(50)),
                         ),
@@ -71,19 +94,20 @@ class TemplateSelector extends ConsumerWidget {
                               : Icon(
                                   _getIconForType(template.type),
                                   color: isSelected ? Colors.blue : (isDark ? Colors.grey[400] : Colors.grey[600]),
-                                  size: 24,
+                                  size: 28,
                                 ),
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
                         child: Text(
                           template.name,
                           textAlign: TextAlign.center,
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 10,
+                            height: 1.1,
                             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                             color: isSelected ? Colors.blue : (isDark ? Colors.white : Colors.grey[800]),
                           ),
@@ -98,6 +122,41 @@ class TemplateSelector extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  Widget _buildCategoryChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _CategoryChip(
+            label: 'All',
+            isSelected: _selectedCategory == 'all',
+            onSelected: () => setState(() => _selectedCategory = 'all'),
+          ),
+          _CategoryChip(
+            label: 'Custom',
+            isSelected: _selectedCategory == 'custom',
+            onSelected: () => setState(() => _selectedCategory = 'custom'),
+          ),
+          ...TemplateType.values.map((type) => _CategoryChip(
+            label: _getDisplayName(type),
+            isSelected: _selectedCategory == type,
+            onSelected: () => setState(() => _selectedCategory = type),
+          )),
+        ],
+      ),
+    );
+  }
+
+  String _getDisplayName(TemplateType type) {
+    switch (type) {
+      case TemplateType.school: return 'School';
+      case TemplateType.college: return 'College';
+      case TemplateType.coaching: return 'Coaching';
+      case TemplateType.kids: return 'Kids School';
+      case TemplateType.board: return 'Board';
+    }
   }
 
   Widget _buildTinyCustomLayout(CustomLayout layout) {
@@ -218,7 +277,7 @@ class TemplateSelector extends ConsumerWidget {
               title: const Text('Select Template'),
               onTap: () {
                 Navigator.pop(context);
-                onTemplateSelected(template.id);
+                widget.onTemplateSelected(template.id);
               },
             ),
             if (isCustom)
@@ -258,12 +317,53 @@ class TemplateSelector extends ConsumerWidget {
     switch (type) {
       case TemplateType.school:
         return Icons.school;
+      case TemplateType.college:
+        return Icons.account_balance;
       case TemplateType.coaching:
         return Icons.business;
-      case TemplateType.cute:
+      case TemplateType.kids:
         return Icons.child_care;
       case TemplateType.board:
         return Icons.assignment;
     }
+  }
+}
+
+class _CategoryChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onSelected;
+
+  const _CategoryChip({
+    required this.label,
+    required this.isSelected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        label: Text(label),
+        selected: isSelected,
+        onSelected: (_) => onSelected(),
+        selectedColor: Colors.blue.withAlpha(isSelected ? 50 : 0),
+        checkmarkColor: Colors.blue,
+        labelStyle: TextStyle(
+          fontSize: 12,
+          color: isSelected ? Colors.blue : (isDark ? Colors.grey[400] : Colors.grey[700]),
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+        backgroundColor: isDark ? const Color(0xFF2A2D30) : Colors.grey[100],
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(
+            color: isSelected ? Colors.blue : Colors.transparent,
+          ),
+        ),
+      ),
+    );
   }
 }

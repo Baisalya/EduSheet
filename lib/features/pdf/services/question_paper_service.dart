@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/services/builders/header_builders.dart';
 import 'package:edusheet/features/omr/domain/models/omr_config.dart';
 import 'package:edusheet/features/omr/services/omr_widgets_builder.dart';
@@ -61,8 +62,12 @@ class QuestionPaperService {
         return MinimalHeaderBuilder();
       case HeaderLayout.logoRight:
         return LogoRightHeaderBuilder();
+      case HeaderLayout.academic:
+      case HeaderLayout.ssvm:
+      case HeaderLayout.dps:
       case HeaderLayout.custom:
         return CustomHeaderBuilder();
+
     }
   }
 
@@ -85,6 +90,7 @@ class QuestionPaperService {
     final theme = await _loadTheme();
     final pdf = pw.Document(theme: theme);
 
+    // Pre-load standard logos
     final List<pw.ImageProvider?> logos = [];
     for (var path in paper.logos) {
       if (path.isNotEmpty) {
@@ -96,6 +102,20 @@ class QuestionPaperService {
         }
       } else {
         logos.add(null);
+      }
+    }
+
+    // Pre-load custom template images
+    final Map<String, pw.ImageProvider> customImages = {};
+    final layout = template.customLayout ?? template.effectiveLayout;
+    for (var el in layout.elements) {
+      if (el.type == ElementType.logo && el.content.isNotEmpty) {
+        if (!customImages.containsKey(el.content)) {
+          final file = File(el.content);
+          if (await file.exists()) {
+            customImages[el.content] = pw.MemoryImage(await file.readAsBytes());
+          }
+        }
       }
     }
 
@@ -123,7 +143,7 @@ class QuestionPaperService {
           },
         ),
         build: (context) => [
-          headerBuilder.build(paper, logos, template),
+          headerBuilder.build(paper, logos, template, customImages: customImages),
           ...paper.sections.map((section) => _buildSection(section, template)),
           if (paper.includeOmr) ..._buildOmrSheet(paper, logos.isNotEmpty ? logos.first : null),
         ],
