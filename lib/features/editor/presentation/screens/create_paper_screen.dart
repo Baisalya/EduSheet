@@ -1,6 +1,7 @@
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
+import 'package:edusheet/features/pdf/presentation/widgets/template_header_preview.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -830,164 +831,191 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
 
   Widget _buildPreview(Paper paper) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final templates = ref.watch(templateProvider).all;
+    final template = templates.firstWhere(
+      (t) => t.id == paper.templateId,
+      orElse: () => templates.first,
+    );
     
-    return Container(
-      color: isDark ? Theme.of(context).scaffoldBackgroundColor : Colors.white,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    return Column(
+      children: [
+        if (_showPreview)
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              border: Border.all(color: isDark ? Colors.white.withAlpha(25) : Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(8),
-              color: isDark ? Theme.of(context).cardTheme.color : Colors.white,
-            ),
+            color: isDark ? Colors.black26 : Colors.grey[100],
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  paper.schoolName,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
+                const Text(
+                  'Select Layout',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                 ),
-                Text(
-                  paper.title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                  textAlign: TextAlign.center,
-                ),
-                const Divider(),
-                _buildPreviewHeaderFields(paper),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text('Max Marks: ${paper.totalMarks}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ],
+                const SizedBox(height: 8),
+                TemplateSelector(
+                  selectedTemplateId: paper.templateId,
+                  onTemplateSelected: (id) => ref.read(editorStateProvider.notifier).updateTemplate(id),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: ListView.builder(
-              itemCount: paper.sections.length,
-              itemBuilder: (context, index) {
-                final s = paper.sections[index];
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                const SizedBox(height: 16),
-                if (s.showTitle || s.prefix.isNotEmpty)
-                  Text(
-                    '${s.prefix} ${s.showTitle ? s.title : ""}'.trim(),
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Theme.of(context).primaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                if (s.instruction != null)
-                  Text(
-                    s.instruction!,
-                    style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
-                  ),
-                if (s.requiredCount != null && s.requiredCount! < s.questions.length)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4.0),
-                    child: Text(
-                      'Note: Answer any ${s.requiredCount} questions from this section.',
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+        Expanded(
+          child: Container(
+            color: isDark ? Theme.of(context).scaffoldBackgroundColor : Colors.grey[200],
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 800),
+                margin: const EdgeInsets.symmetric(horizontal: 'auto' == 'auto' ? 0 : 0), // Centering hack for web/large screens
+                decoration: BoxDecoration(
+                  color: isDark ? Theme.of(context).cardTheme.color : Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(20),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
-                if (s.showDivider) const Divider(),
-                    ...s.questions.asMap().entries.map((entry) {
-                      final qIdx = entry.key + 1;
-                      final q = entry.value;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('$qIdx. ', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      _buildRichText(q.text),
-                                      if (q.isOptional)
-                                        const Text(
-                                          '(Optional/OR Choice)',
-                                          style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                Text('[${q.marks}]', style: const TextStyle(fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            if (q.type == QuestionType.mcq)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 24, top: 4),
-                                child: Column(
-                                  children: q.options.asMap().entries.map((o) {
-                                    return Row(
-                                      children: [
-                                        Text('${String.fromCharCode(65 + o.key)}) '),
-                                        Expanded(child: Text(o.value.text)),
-                                      ],
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    }),
                   ],
-                );
-              },
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (template.hasBorder)
+                      Container(
+                        margin: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Color(template.primaryColor.toInt()), width: 1),
+                        ),
+                        child: _buildPreviewContent(paper, template),
+                      )
+                    else
+                      _buildPreviewContent(paper, template),
+                  ],
+                ),
+              ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildPreviewHeaderFields(Paper paper) {
-    if (paper.headerFields.isEmpty) return const SizedBox.shrink();
-
-    List<List<PaperHeaderField>> rows = [];
-    for (var i = 0; i < paper.headerFields.length; i += 2) {
-      rows.add(paper.headerFields.sublist(i, i + 2 > paper.headerFields.length ? paper.headerFields.length : i + 2));
-    }
-
+  Widget _buildPreviewContent(Paper paper, PaperTemplate template) {
     return Column(
-      children: rows.map((row) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Row(
-            children: row.map((field) {
-              final content = field.isPlaceholder ? '________________' : field.value;
-              return Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: DefaultTextStyle.of(context).style,
-                    children: [
-                      TextSpan(text: '${field.label}: ', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      TextSpan(text: content),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: TemplateHeaderPreview(paper: paper, template: template),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...paper.sections.map((s) => _buildPreviewSection(s, template)),
+            ],
           ),
-        );
-      }).toList(),
+        ),
+        const SizedBox(height: 40),
+      ],
     );
   }
+
+  Widget _buildPreviewSection(PaperSection s, PaperTemplate template) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        if (s.showTitle || s.prefix.isNotEmpty)
+          Text(
+            '${s.prefix} ${s.showTitle ? s.title : ""}'.trim(),
+            style: TextStyle(
+              color: template.type == TemplateType.coaching ? Color(template.primaryColor.toInt()) : Colors.black,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+        if (s.instruction != null && s.instruction!.isNotEmpty)
+          Text(
+            s.instruction!,
+            style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12),
+          ),
+        if (s.requiredCount != null && s.requiredCount! < s.questions.length)
+          Padding(
+            padding: const EdgeInsets.only(top: 4.0),
+            child: Text(
+              'Note: Answer any ${s.requiredCount} questions from this section.',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 11),
+            ),
+          ),
+        if (s.showDivider) const Divider(),
+        ...s.questions.asMap().entries.map((entry) {
+          final qIdx = entry.key + 1;
+          final q = entry.value;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 25,
+                      child: Text('$qIdx. ', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildRichText(q.text),
+                          if (q.isOptional)
+                            const Text(
+                              '(Optional/OR Choice)',
+                              style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey),
+                            ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: 40,
+                      child: Text('[${q.marks.toStringAsFixed(0)}]', 
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                if (q.type == QuestionType.mcq)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 25, top: 4),
+                    child: Column(
+                      children: q.options.asMap().entries.map((o) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${String.fromCharCode(65 + o.key)}) '),
+                              Expanded(child: Text(o.value.text)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                if (q.type == QuestionType.fillInTheBlanks)
+                   const Padding(
+                    padding: EdgeInsets.only(left: 25, top: 4),
+                    child: Text('Ans: ________________________'),
+                  ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
 
   Widget _buildRichText(String text) {
      try {

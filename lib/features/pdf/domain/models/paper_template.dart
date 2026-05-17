@@ -1,5 +1,6 @@
 import 'package:pdf/pdf.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+import 'package:uuid/uuid.dart';
 
 enum TemplateType { school, coaching, cute, board }
 
@@ -86,6 +87,233 @@ class PaperTemplate {
       paperSize: paperSize ?? this.paperSize,
       customLayout: customLayout ?? this.customLayout,
     );
+  }
+
+  CustomLayout get effectiveLayout {
+    if (headerLayout == HeaderLayout.custom && customLayout != null) {
+      return customLayout!;
+    }
+
+    final elements = <TemplateElement>[];
+    const uuid = Uuid();
+    const double a4Width = 595.27;
+    const double contentWidth = a4Width - 64;
+
+    switch (headerLayout) {
+      case HeaderLayout.centered:
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.logo,
+          x: (contentWidth - 50) / 2,
+          y: 0,
+          width: 50,
+          height: 50,
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.schoolName,
+          x: 0,
+          y: 58,
+          width: contentWidth,
+          properties: {'fontSize': 18.0, 'bold': true, 'alignment': 'center'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.paperTitle,
+          x: 0,
+          y: 80,
+          width: contentWidth,
+          properties: {'fontSize': headerFontSize, 'bold': true, 'alignment': 'center'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 0,
+          y: 110,
+          width: contentWidth,
+          properties: {'fontSize': 12.0, 'alignment': 'center'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.maxMarks,
+          x: 0,
+          y: 150,
+          width: contentWidth,
+          properties: {'fontSize': 12.0, 'bold': true, 'alignment': 'right'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.horizontalLine,
+          x: 0,
+          y: 175,
+          width: contentWidth,
+          properties: {'color': 0xFF000000},
+        ));
+        return CustomLayout(elements: elements, canvasHeight: 180);
+
+      case HeaderLayout.logoLeft:
+      case HeaderLayout.logoRight:
+        final isLeft = headerLayout == HeaderLayout.logoLeft;
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.logo,
+          x: isLeft ? 0 : contentWidth - 60,
+          y: 0,
+          width: 60,
+          height: 60,
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.schoolName,
+          x: isLeft ? 76 : 0,
+          y: 5,
+          width: contentWidth - 76,
+          properties: {'fontSize': 18.0, 'bold': true, 'alignment': isLeft ? 'left' : 'right'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.paperTitle,
+          x: isLeft ? 76 : 0,
+          y: 28,
+          width: contentWidth - 76,
+          properties: {'fontSize': headerFontSize, 'bold': true, 'alignment': isLeft ? 'left' : 'right'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.maxMarks,
+          x: 0,
+          y: 70,
+          width: contentWidth,
+          properties: {'fontSize': 12.0, 'bold': true, 'alignment': isLeft ? 'right' : 'left'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 0,
+          y: 95,
+          width: contentWidth,
+          properties: {'fontSize': 11.0, 'alignment': 'left'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.horizontalLine,
+          x: 0,
+          y: 135,
+          width: contentWidth,
+          properties: {'color': 0xFF000000},
+        ));
+        return CustomLayout(elements: elements, canvasHeight: 140);
+
+      case HeaderLayout.modernCoaching:
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.logo,
+          x: 10,
+          y: 10,
+          width: 60,
+          height: 60,
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.schoolName,
+          x: 90,
+          y: 15,
+          width: contentWidth - 200,
+          properties: {
+            'fontSize': 20.0,
+            'bold': true,
+            'alignment': 'left',
+            'color': primaryColor.toInt(),
+          },
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.paperTitle,
+          x: 90,
+          y: 42,
+          width: contentWidth - 200,
+          properties: {'fontSize': 16.0, 'alignment': 'left'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.maxMarks,
+          x: contentWidth - 110,
+          y: 30,
+          width: 100,
+          properties: {'fontSize': 12.0, 'bold': true, 'alignment': 'right'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 10,
+          y: 85,
+          width: contentWidth - 20,
+          properties: {'fontSize': 11.0, 'alignment': 'left'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.horizontalLine,
+          x: 0,
+          y: 125,
+          width: contentWidth,
+          properties: {'color': primaryColor.toInt()},
+        ));
+        return CustomLayout(elements: elements, canvasHeight: 130);
+
+      case HeaderLayout.minimal:
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.schoolName,
+          x: 0,
+          y: 0,
+          width: contentWidth / 2,
+          properties: {'fontSize': 10.0, 'bold': true, 'alignment': 'left', 'color': 0xFF9E9E9E},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.maxMarks,
+          x: contentWidth / 2,
+          y: 0,
+          width: contentWidth / 2,
+          properties: {'fontSize': 10.0, 'bold': true, 'alignment': 'right'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.paperTitle,
+          x: 0,
+          y: 15,
+          width: contentWidth,
+          properties: {'fontSize': 14.0, 'bold': true, 'alignment': 'left'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.headerFieldsBlock,
+          x: 0,
+          y: 40,
+          width: contentWidth,
+          properties: {'fontSize': 11.0, 'alignment': 'left'},
+        ));
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.horizontalLine,
+          x: 0,
+          y: 75,
+          width: contentWidth,
+          properties: {'color': 0xFF000000},
+        ));
+        return CustomLayout(elements: elements, canvasHeight: 80);
+
+      default:
+        elements.add(TemplateElement(
+          id: uuid.v4(),
+          type: ElementType.schoolName,
+          x: 0,
+          y: 20,
+          width: contentWidth,
+          properties: {'fontSize': 20.0, 'bold': true, 'alignment': 'center'},
+        ));
+        return CustomLayout(elements: elements, canvasHeight: 100);
+    }
   }
 
   static List<PaperTemplate> get predefinedTemplates => [
