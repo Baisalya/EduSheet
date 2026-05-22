@@ -6,8 +6,14 @@ import 'package:math_keyboard/math_keyboard.dart' as math_kb;
 import '../providers/math_keyboard_controller.dart';
 
 class MathKeyboardField extends ConsumerStatefulWidget {
-  final Widget Function(BuildContext context, FocusNode fieldFocusNode, bool isMathActive) builder;
-  final dynamic controller; // TextEditingController, QuillController, or MathFieldEditingController
+  final Widget Function(
+    BuildContext context,
+    FocusNode fieldFocusNode,
+    bool isMathActive,
+  )
+  builder;
+  final dynamic
+  controller; // TextEditingController, QuillController, or MathFieldEditingController
 
   const MathKeyboardField({
     super.key,
@@ -42,8 +48,10 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     });
 
     if (_focusNode.hasFocus) {
-      ref.read(mathKeyboardControllerProvider.notifier).registerController(widget.controller, _focusNode);
-      
+      ref
+          .read(mathKeyboardControllerProvider.notifier)
+          .registerController(widget.controller, _focusNode);
+
       // If math keyboard is already supposed to be active, hide system IME immediately
       final state = ref.read(mathKeyboardControllerProvider);
       if (state.isVisible && state.type == KeyboardType.math) {
@@ -53,7 +61,9 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
       // Small delay to allow potential focus transfer
       Future.delayed(const Duration(milliseconds: 100), () {
         if (!_focusNode.hasFocus) {
-          ref.read(mathKeyboardControllerProvider.notifier).unregisterController(widget.controller);
+          ref
+              .read(mathKeyboardControllerProvider.notifier)
+              .unregisterController(widget.controller);
         }
       });
     }
@@ -62,7 +72,8 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
   @override
   Widget build(BuildContext context) {
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
-    final isMathActive = keyboardState.isVisible && keyboardState.type == KeyboardType.math;
+    final isMathActive =
+        keyboardState.isVisible && keyboardState.type == KeyboardType.math;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -84,8 +95,8 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
                 Padding(
                   padding: const EdgeInsets.only(right: 8.0),
                   child: Material(
-                    color: isMathActive 
-                        ? Theme.of(context).colorScheme.primary 
+                    color: isMathActive
+                        ? Theme.of(context).colorScheme.primary
                         : Theme.of(context).colorScheme.secondaryContainer,
                     shape: const CircleBorder(),
                     elevation: 4,
@@ -93,30 +104,40 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
                       icon: Icon(
                         isMathActive ? Icons.keyboard : Icons.functions,
                         size: 20,
-                        color: isMathActive 
-                            ? Theme.of(context).colorScheme.onPrimary 
-                            : Theme.of(context).colorScheme.onSecondaryContainer,
+                        color: isMathActive
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(
+                                context,
+                              ).colorScheme.onSecondaryContainer,
                       ),
                       onPressed: () async {
-                        final notifier = ref.read(mathKeyboardControllerProvider.notifier);
-                        
+                        final notifier = ref.read(
+                          mathKeyboardControllerProvider.notifier,
+                        );
+
                         if (isMathActive) {
                           notifier.showSystemKeyboard();
                           // Re-show system keyboard with a small delay to ensure readOnly is false
                           WidgetsBinding.instance.addPostFrameCallback((_) {
-                            SystemChannels.textInput.invokeMethod('TextInput.show');
+                            SystemChannels.textInput.invokeMethod(
+                              'TextInput.show',
+                            );
                           });
                         } else {
                           notifier.showMathKeyboard();
                           // Explicitly hide system keyboard without losing focus
-                          SystemChannels.textInput.invokeMethod('TextInput.hide');
+                          SystemChannels.textInput.invokeMethod(
+                            'TextInput.hide',
+                          );
                         }
-                        
+
                         if (!_focusNode.hasFocus) {
                           _focusNode.requestFocus();
                         }
                       },
-                      tooltip: isMathActive ? 'System Keyboard' : 'Math Keyboard',
+                      tooltip: isMathActive
+                          ? 'System Keyboard'
+                          : 'Math Keyboard',
                     ),
                   ),
                 ),
@@ -140,18 +161,28 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
 
     if (tex.isEmpty) return const SizedBox.shrink();
 
+    final isTexLike =
+        controller is math_kb.MathFieldEditingController ||
+        tex.contains('\\') ||
+        tex.contains(r'\frac') ||
+        tex.contains(r'\sqrt');
+
     return Container(
       margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45)
+            : const Color(0xFFFFFCF5),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -168,12 +199,12 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
               ),
               const SizedBox(width: 6),
               Text(
-                'MATHEMATICAL PREVIEW',
+                'BOOK PREVIEW',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
               ),
             ],
           ),
@@ -185,15 +216,32 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
               physics: const BouncingScrollPhysics(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Math.tex(
-                  tex,
-                  mathStyle: MathStyle.display,
-                  textStyle: const TextStyle(fontSize: 22),
-                  onErrorFallback: (err) => Text(
-                    'Invalid expression',
-                    style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
-                  ),
-                ),
+                child: isTexLike
+                    ? Math.tex(
+                        tex,
+                        mathStyle: MathStyle.display,
+                        textStyle: const TextStyle(
+                          fontSize: 24,
+                          fontFamily: 'serif',
+                        ),
+                        onErrorFallback: (err) => Text(
+                          tex,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            height: 1.45,
+                            fontFamily: 'serif',
+                          ),
+                        ),
+                      )
+                    : Text(
+                        tex,
+                        style: TextStyle(
+                          fontSize: 22,
+                          height: 1.45,
+                          fontFamily: 'serif',
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
               ),
             ),
           ),

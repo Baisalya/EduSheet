@@ -2,12 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:app_links/app_links.dart';
 import 'core/constants/app_constants.dart';
 import 'shared/presentation/screens/home_screen.dart';
 import 'features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 import 'shared/presentation/providers/theme_provider.dart';
+import 'features/pdf/services/question_paper_service.dart';
+import 'features/document_reader/presentation/providers/document_provider.dart';
+import 'features/document_reader/presentation/screens/file_preview_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Preload PDF fonts in background to avoid delay when opening PDF for the first time
+  QuestionPaperService.preloadTheme();
+
   runApp(
     const ProviderScope(
       child: MyApp(),
@@ -15,18 +23,64 @@ void main() {
   );
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> {
+  late AppLinks _appLinks;
+  final _navigatorKey = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+  void _initDeepLinks() {
+    _appLinks = AppLinks();
+
+    // Handle links when app is in background/terminated
+    _appLinks.getInitialLink().then((uri) {
+      if (uri != null) _handleIncomingFile(uri);
+    });
+
+    // Handle links when app is running
+    _appLinks.uriLinkStream.listen((uri) {
+      _handleIncomingFile(uri);
+    });
+  }
+
+  void _handleIncomingFile(Uri uri) async {
+    final path = uri.toFilePath();
+    if (path.isEmpty) return;
+
+    final repo = ref.read(documentRepositoryProvider);
+    final doc = await repo.getDocumentFromFilePath(path);
+
+    if (doc != null && _navigatorKey.currentState != null) {
+      _navigatorKey.currentState!.push(
+        MaterialPageRoute(
+          builder: (context) => FilePreviewScreen(document: doc),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
 
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,
       theme: ThemeData(
+// ...
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.blue,
           brightness: Brightness.light,

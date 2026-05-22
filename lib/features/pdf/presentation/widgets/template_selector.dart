@@ -28,7 +28,7 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(templateProvider);
-    
+
     final List<PaperTemplate> templates;
     if (_selectedCategory == 'custom') {
       templates = state.custom;
@@ -69,11 +69,25 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: isSelected ? Colors.blue : (isDark ? Colors.white24 : Colors.grey[300]!),
+                      color: isSelected
+                          ? Colors.blue
+                          : (isDark ? Colors.white24 : Colors.grey[300]!),
                       width: isSelected ? 2 : 1,
                     ),
-                    color: isSelected ? (isDark ? Colors.blue.withAlpha(50) : Colors.blue.withAlpha(20)) : (isDark ? const Color(0xFF2A2D30) : Colors.white),
-                    boxShadow: isSelected ? [BoxShadow(color: Colors.blue.withAlpha(50), blurRadius: 4, offset: const Offset(0, 2))] : null,
+                    color: isSelected
+                        ? (isDark
+                              ? Colors.blue.withAlpha(50)
+                              : Colors.blue.withAlpha(20))
+                        : (isDark ? const Color(0xFF2A2D30) : Colors.white),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: Colors.blue.withAlpha(50),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
                   ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -89,11 +103,17 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
                         ),
                         clipBehavior: Clip.antiAlias,
                         child: Center(
-                          child: template.headerLayout == HeaderLayout.custom && template.customLayout != null
+                          child:
+                              template.headerLayout == HeaderLayout.custom &&
+                                  template.customLayout != null
                               ? _buildTinyCustomLayout(template.customLayout!)
                               : Icon(
                                   _getIconForType(template.type),
-                                  color: isSelected ? Colors.blue : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                  color: isSelected
+                                      ? Colors.blue
+                                      : (isDark
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600]),
                                   size: 28,
                                 ),
                         ),
@@ -108,8 +128,12 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
                           style: TextStyle(
                             fontSize: 10,
                             height: 1.1,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            color: isSelected ? Colors.blue : (isDark ? Colors.white : Colors.grey[800]),
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isSelected
+                                ? Colors.blue
+                                : (isDark ? Colors.white : Colors.grey[800]),
                           ),
                         ),
                       ),
@@ -139,11 +163,13 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
             isSelected: _selectedCategory == 'custom',
             onSelected: () => setState(() => _selectedCategory = 'custom'),
           ),
-          ...TemplateType.values.map((type) => _CategoryChip(
-            label: _getDisplayName(type),
-            isSelected: _selectedCategory == type,
-            onSelected: () => setState(() => _selectedCategory = type),
-          )),
+          ...TemplateType.values.map(
+            (type) => _CategoryChip(
+              label: _getDisplayName(type),
+              isSelected: _selectedCategory == type,
+              onSelected: () => setState(() => _selectedCategory = type),
+            ),
+          ),
         ],
       ),
     );
@@ -151,17 +177,21 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
 
   String _getDisplayName(TemplateType type) {
     switch (type) {
-      case TemplateType.school: return 'School';
-      case TemplateType.college: return 'College';
-      case TemplateType.coaching: return 'Coaching';
-      case TemplateType.kids: return 'Kids School';
-      case TemplateType.board: return 'Board';
+      case TemplateType.school:
+        return 'School';
+      case TemplateType.college:
+        return 'College';
+      case TemplateType.coaching:
+        return 'Coaching';
+      case TemplateType.kids:
+        return 'Kids School';
+      case TemplateType.board:
+        return 'Board';
     }
   }
 
   Widget _buildTinyCustomLayout(CustomLayout layout) {
-    const double a4Width = 595.27;
-    const double scale = 70 / a4Width; // 70 is container width
+    const double scale = 70 / CustomLayout.designWidth;
 
     return Stack(
       children: layout.elements.map((el) {
@@ -169,7 +199,7 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
           left: el.x * scale,
           top: el.y * scale,
           child: Container(
-            width: (el.width ?? (a4Width - 64)) * scale,
+            width: (el.width ?? CustomLayout.designWidth) * scale,
             height: (el.height ?? 20) * scale,
             decoration: BoxDecoration(
               color: Colors.blue.withAlpha(100),
@@ -181,7 +211,11 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
     );
   }
 
-  Widget _buildAddButton(BuildContext context, WidgetRef ref, TemplateState state) {
+  Widget _buildAddButton(
+    BuildContext context,
+    WidgetRef ref,
+    TemplateState state,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: () => _showImportSourceDialog(context, ref, state),
@@ -191,20 +225,27 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: isDark ? Colors.white24 : Colors.grey[300]!, 
-              style: BorderStyle.solid
+            color: isDark ? Colors.white24 : Colors.grey[300]!,
+            style: BorderStyle.solid,
           ),
           color: isDark ? const Color(0xFF2A2D30) : Colors.grey[50],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_circle_outline, color: isDark ? Colors.grey[500] : Colors.grey, size: 32),
+            Icon(
+              Icons.add_circle_outline,
+              color: isDark ? Colors.grey[500] : Colors.grey,
+              size: 32,
+            ),
             const SizedBox(height: 8),
             Text(
               'Design New\nTemplate',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 10, color: isDark ? Colors.grey[400] : Colors.grey),
+              style: TextStyle(
+                fontSize: 10,
+                color: isDark ? Colors.grey[400] : Colors.grey,
+              ),
             ),
           ],
         ),
@@ -212,30 +253,51 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
     );
   }
 
-  void _showImportSourceDialog(BuildContext context, WidgetRef ref, TemplateState state) {
+  void _showImportSourceDialog(
+    BuildContext context,
+    WidgetRef ref,
+    TemplateState state,
+  ) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('New Custom Template', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'New Custom Template',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.add_circle_outline, color: Colors.blue),
               title: const Text('Start from Scratch'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const TemplateDesignerScreen()));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const TemplateDesignerScreen(),
+                  ),
+                );
               },
             ),
             const Divider(),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Import Layout From:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+              child: Text(
+                'Import Layout From:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
             ),
             Flexible(
               child: ListView.builder(
@@ -246,7 +308,11 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
                   return ListTile(
                     leading: Icon(_getIconForType(template.type)),
                     title: Text(template.name),
-                    subtitle: Text(template.headerLayout == HeaderLayout.custom ? 'Custom' : 'Standard'),
+                    subtitle: Text(
+                      template.headerLayout == HeaderLayout.custom
+                          ? 'Custom'
+                          : 'Standard',
+                    ),
                     onTap: () {
                       Navigator.pop(context);
                       _duplicateAndEdit(context, template);
@@ -261,12 +327,18 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
     );
   }
 
-  void _showTemplateActions(BuildContext context, WidgetRef ref, PaperTemplate template) {
+  void _showTemplateActions(
+    BuildContext context,
+    WidgetRef ref,
+    PaperTemplate template,
+  ) {
     final isCustom = template.headerLayout == HeaderLayout.custom;
-    
+
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Column(
@@ -286,7 +358,13 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
                 title: const Text('Edit Design'),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => TemplateDesignerScreen(existingTemplate: template)));
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          TemplateDesignerScreen(existingTemplate: template),
+                    ),
+                  );
                 },
               ),
             ListTile(
@@ -310,7 +388,12 @@ class _TemplateSelectorState extends ConsumerState<TemplateSelector> {
       headerLayout: HeaderLayout.custom,
       customLayout: template.effectiveLayout,
     );
-    Navigator.push(context, MaterialPageRoute(builder: (context) => TemplateDesignerScreen(existingTemplate: copy)));
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TemplateDesignerScreen(existingTemplate: copy),
+      ),
+    );
   }
 
   IconData _getIconForType(TemplateType type) {
@@ -353,7 +436,9 @@ class _CategoryChip extends StatelessWidget {
         checkmarkColor: Colors.blue,
         labelStyle: TextStyle(
           fontSize: 12,
-          color: isSelected ? Colors.blue : (isDark ? Colors.grey[400] : Colors.grey[700]),
+          color: isSelected
+              ? Colors.blue
+              : (isDark ? Colors.grey[400] : Colors.grey[700]),
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
         backgroundColor: isDark ? const Color(0xFF2A2D30) : Colors.grey[100],

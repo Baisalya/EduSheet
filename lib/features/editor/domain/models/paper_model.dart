@@ -6,8 +6,10 @@ class Paper {
   final String id;
   final String title;
   final String schoolName;
+  final String instruction;
   final List<String> logos;
   final List<PaperHeaderField> headerFields;
+  final Map<String, String> customHeaderValues;
   final List<PaperSection> sections;
   final bool includeOmr;
   final String templateId;
@@ -16,8 +18,10 @@ class Paper {
     required this.id,
     required this.title,
     this.schoolName = 'My School',
+    this.instruction = '',
     this.logos = const [],
     this.headerFields = const [],
+    this.customHeaderValues = const {},
     this.sections = const [],
     this.includeOmr = false,
     this.templateId = 'school_formal',
@@ -27,8 +31,10 @@ class Paper {
     String? id,
     String? title,
     String? schoolName,
+    String? instruction,
     List<String>? logos,
     List<PaperHeaderField>? headerFields,
+    Map<String, String>? customHeaderValues,
     List<PaperSection>? sections,
     bool? includeOmr,
     String? templateId,
@@ -37,8 +43,10 @@ class Paper {
       id: id ?? this.id,
       title: title ?? this.title,
       schoolName: schoolName ?? this.schoolName,
+      instruction: instruction ?? this.instruction,
       logos: logos ?? this.logos,
       headerFields: headerFields ?? this.headerFields,
+      customHeaderValues: customHeaderValues ?? this.customHeaderValues,
       sections: sections ?? this.sections,
       includeOmr: includeOmr ?? this.includeOmr,
       templateId: templateId ?? this.templateId,
@@ -54,8 +62,10 @@ class Paper {
       'id': id,
       'title': title,
       'schoolName': schoolName,
+      'instruction': instruction,
       'logos': logos,
       'headerFields': headerFields.map((f) => f.toJson()).toList(),
+      'customHeaderValues': customHeaderValues,
       'sections': sections.map((s) => s.toJson()).toList(),
       'includeOmr': includeOmr,
       'templateId': templateId,
@@ -67,12 +77,20 @@ class Paper {
       id: json['id'],
       title: json['title'],
       schoolName: json['schoolName'] ?? 'My School',
+      instruction: json['instruction'] ?? '',
       logos: (json['logos'] as List?)?.cast<String>() ?? [],
-      headerFields: (json['headerFields'] as List?)
+      headerFields:
+          (json['headerFields'] as List?)
               ?.map((f) => PaperHeaderField.fromJson(f))
               .toList() ??
           [],
-      sections: (json['sections'] as List?)
+      customHeaderValues:
+          (json['customHeaderValues'] as Map?)?.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          ) ??
+          {},
+      sections:
+          (json['sections'] as List?)
               ?.map((s) => PaperSection.fromJson(s))
               .toList() ??
           [],
@@ -166,8 +184,9 @@ class PaperSection {
       instruction: instruction ?? this.instruction,
       prefix: prefix ?? this.prefix,
       questions: questions ?? this.questions,
-      requiredCount:
-          clearRequiredCount ? null : (requiredCount ?? this.requiredCount),
+      requiredCount: clearRequiredCount
+          ? null
+          : (requiredCount ?? this.requiredCount),
       showTitle: showTitle ?? this.showTitle,
       showDivider: showDivider ?? this.showDivider,
     );
@@ -210,7 +229,8 @@ class PaperSection {
       title: json['title'],
       instruction: json['instruction'],
       prefix: json['prefix'] ?? '',
-      questions: (json['questions'] as List?)
+      questions:
+          (json['questions'] as List?)
               ?.map((q) => Question.fromJson(q))
               .toList() ??
           [],
@@ -232,11 +252,7 @@ class QuestionOption {
     this.isCorrect = false,
   });
 
-  QuestionOption copyWith({
-    String? id,
-    String? text,
-    bool? isCorrect,
-  }) {
+  QuestionOption copyWith({String? id, String? text, bool? isCorrect}) {
     return QuestionOption(
       id: id ?? this.id,
       text: text ?? this.text,
@@ -245,11 +261,7 @@ class QuestionOption {
   }
 
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'text': text,
-      'isCorrect': isCorrect,
-    };
+    return {'id': id, 'text': text, 'isCorrect': isCorrect};
   }
 
   factory QuestionOption.fromJson(Map<String, dynamic> json) {
@@ -322,7 +334,8 @@ class Question {
       id: json['id'],
       text: json['text'],
       imageUrl: json['imageUrl'],
-      options: (json['options'] as List?)
+      options:
+          (json['options'] as List?)
               ?.map((o) => QuestionOption.fromJson(o))
               .toList() ??
           [],

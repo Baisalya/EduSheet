@@ -25,6 +25,7 @@ class CreatePaperScreen extends ConsumerStatefulWidget {
 class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   bool _showPreview = false;
   final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _instructionController = TextEditingController();
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
@@ -32,13 +33,16 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _titleController.text = ref.read(editorStateProvider).title;
+      final paper = ref.read(editorStateProvider);
+      _titleController.text = paper.title;
+      _instructionController.text = paper.instruction;
     });
   }
 
   @override
   void dispose() {
     _titleController.dispose();
+    _instructionController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -117,18 +121,24 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
       ),
       body: _showPreview ? _buildPreview(paper) : _buildEditor(paper),
       bottomNavigationBar: !_showPreview ? _buildBottomNavigation(paper) : null,
-      floatingActionButton: !_showPreview && _currentPage == 0 ? FloatingActionButton.extended(
-        onPressed: () {
-          ref.read(editorStateProvider.notifier).addSection();
-          final targetPage = paper.sections.length + 1; // Slide 0 is setup, sections start at 1
-          _goToPage(targetPage);
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Add Section'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ) : null,
+      floatingActionButton: !_showPreview && _currentPage == 0
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                ref.read(editorStateProvider.notifier).addSection();
+                final targetPage =
+                    paper.sections.length +
+                    1; // Slide 0 is setup, sections start at 1
+                _goToPage(targetPage);
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Section'),
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            )
+          : null,
     );
   }
 
@@ -138,14 +148,18 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withAlpha(13))),
+        border: Border(
+          top: BorderSide(color: Theme.of(context).dividerColor.withAlpha(13)),
+        ),
       ),
       child: SafeArea(
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton(
-              onPressed: _currentPage > 0 ? () => _goToPage(_currentPage - 1) : null,
+              onPressed: _currentPage > 0
+                  ? () => _goToPage(_currentPage - 1)
+                  : null,
               icon: const Icon(Icons.arrow_back_ios_new, size: 20),
             ),
             Row(
@@ -156,14 +170,18 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   width: _currentPage == index ? 24 : 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: _currentPage == index ? Colors.blue : Colors.grey.withAlpha(76),
+                    color: _currentPage == index
+                        ? Colors.blue
+                        : Colors.grey.withAlpha(76),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 );
               }),
             ),
             IconButton(
-              onPressed: _currentPage < totalPages - 1 ? () => _goToPage(_currentPage + 1) : null,
+              onPressed: _currentPage < totalPages - 1
+                  ? () => _goToPage(_currentPage + 1)
+                  : null,
               icon: const Icon(Icons.arrow_forward_ios, size: 20),
             ),
           ],
@@ -185,15 +203,20 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
 
   Widget _buildSetupSlide(Paper paper) {
     final templates = ref.watch(templateProvider).all;
-    final template = templates.firstWhere((t) => t.id == paper.templateId, orElse: () => templates.first);
-    final hasCustomLayout = template.headerLayout == HeaderLayout.custom && template.customLayout != null;
-    
-    final bool showSchoolName = !hasCustomLayout || 
-        template.customLayout!.elements.any((e) => e.type == ElementType.schoolName);
-    
-    final List<TemplateElement> logoElements = hasCustomLayout 
-        ? template.customLayout!.elements.where((e) => e.type == ElementType.logo).toList()
-        : [TemplateElement(id: 'default', type: ElementType.logo, x: 0, y: 0)]; // Default has 1 logo
+    final template = templates.firstWhere(
+      (t) => t.id == paper.templateId,
+      orElse: () => templates.first,
+    );
+    final layout = template.effectiveLayout;
+    final bool showSchoolName = layout.elements.any(
+      (e) => e.type == ElementType.schoolName,
+    );
+    final List<TemplateElement> logoElements = layout.elements
+        .where((e) => e.type == ElementType.logo)
+        .toList();
+    final List<TemplateElement> staticTextElements = layout.elements
+        .where((e) => e.type == ElementType.staticText)
+        .toList();
 
     final bool showBranding = showSchoolName || logoElements.isNotEmpty;
 
@@ -220,20 +243,49 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 builder: (context, fieldFocusNode, isMathActive) => TextField(
                   controller: _titleController,
                   focusNode: fieldFocusNode,
-                  keyboardType: isMathActive ? TextInputType.none : TextInputType.text,
+                  keyboardType: isMathActive
+                      ? TextInputType.none
+                      : TextInputType.text,
                   decoration: InputDecoration(
                     labelText: 'Exam Title (e.g. Mid-Term 2024)',
                     hintText: 'Enter exam title',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  onChanged: (val) => ref.read(editorStateProvider.notifier).updateTitle(val),
+                  onChanged: (val) =>
+                      ref.read(editorStateProvider.notifier).updateTitle(val),
                 ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _instructionController,
+                maxLines: 2,
+                decoration: InputDecoration(
+                  labelText: 'Paper Instructions',
+                  hintText: 'Example: All questions are compulsory.',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onChanged: (val) => ref
+                    .read(editorStateProvider.notifier)
+                    .updateInstruction(val),
               ),
               const SizedBox(height: 20),
               _buildHeaderFieldsSection(paper, template),
             ],
           ),
         ),
+        if (staticTextElements.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _EditorCard(
+            title: 'Header Text',
+            icon: Icons.text_fields_rounded,
+            color: Colors.teal,
+            child: _buildCustomHeaderTextEditor(paper, staticTextElements),
+          ),
+        ],
         const SizedBox(height: 20),
         _EditorCard(
           title: 'Template & Layout',
@@ -241,7 +293,18 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           color: Colors.orange,
           child: TemplateSelector(
             selectedTemplateId: paper.templateId,
-            onTemplateSelected: (id) => ref.read(editorStateProvider.notifier).updateTemplate(id),
+            onTemplateSelected: (id) =>
+                ref.read(editorStateProvider.notifier).updateTemplate(id),
+          ),
+        ),
+        const SizedBox(height: 20),
+        _EditorCard(
+          title: 'Header Preview',
+          icon: Icons.preview_rounded,
+          color: Colors.indigo,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: TemplateHeaderPreview(paper: paper, template: template),
           ),
         ),
         const SizedBox(height: 20),
@@ -250,10 +313,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           icon: Icons.more_horiz,
           color: Colors.blueGrey,
           child: SwitchListTile(
-            title: const Text('Include OMR Sheet', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: const Text(
+              'Include OMR Sheet',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
             subtitle: const Text('Add a full OMR sheet at the end of the PDF'),
             value: paper.includeOmr,
-            onChanged: (val) => ref.read(editorStateProvider.notifier).toggleOmr(val),
+            onChanged: (val) =>
+                ref.read(editorStateProvider.notifier).toggleOmr(val),
             contentPadding: EdgeInsets.zero,
           ),
         ),
@@ -263,12 +330,18 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 
   Widget _buildHeaderFieldsSection(Paper paper, PaperTemplate template) {
-    final hasCustomLayout = template.headerLayout == HeaderLayout.custom && template.customLayout != null;
-    final List<String> requiredLabels = hasCustomLayout
-        ? List<String>.from(template.customLayout!.elements
-            .where((e) => e.type == ElementType.headerFieldsBlock)
-            .fold<List<String>>([], (prev, e) => [...prev, ...List<String>.from(e.properties['fieldLabels'] ?? [])]))
-        : [];
+    final List<String> requiredLabels = List<String>.from(
+      template.effectiveLayout.elements
+          .where((e) => e.type == ElementType.headerFieldsBlock)
+          .fold<List<String>>(
+            [],
+            (prev, e) => [
+              ...prev,
+              ...List<String>.from(e.properties['fieldLabels'] ?? []),
+            ],
+          ),
+    );
+    final allowAll = requiredLabels.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,9 +353,10 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
               'Header Fields',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            if (!hasCustomLayout)
+            if (allowAll)
               TextButton.icon(
-                onPressed: () => ref.read(editorStateProvider.notifier).addHeaderField(),
+                onPressed: () =>
+                    ref.read(editorStateProvider.notifier).addHeaderField(),
                 icon: const Icon(Icons.add, size: 20),
                 label: const Text('Add Field'),
               ),
@@ -293,7 +367,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           style: TextStyle(fontSize: 12, color: Colors.grey),
         ),
         const SizedBox(height: 12),
-        _buildHeaderFieldsEditor(paper, requiredLabels, !hasCustomLayout),
+        _buildHeaderFieldsEditor(paper, requiredLabels, allowAll),
       ],
     );
   }
@@ -308,14 +382,85 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
-  Widget _buildHeaderFieldsEditor(Paper paper, List<String> requiredLabels, bool allowAll) {
+  Widget _buildCustomHeaderTextEditor(
+    Paper paper,
+    List<TemplateElement> elements,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final List<PaperHeaderField> filteredFields = allowAll 
-        ? paper.headerFields 
-        : paper.headerFields.where((f) => requiredLabels.any((l) => l.toLowerCase() == f.label.toLowerCase())).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Edit template text that appears in the paper header.',
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        const SizedBox(height: 12),
+        ...elements.asMap().entries.map((entry) {
+          final index = entry.key;
+          final element = entry.value;
+          final key = element.paperBindingKey;
+          final value = paper.customHeaderValues[key] ?? element.content;
+          final label = _readableHeaderTextLabel(element, index);
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: TextFormField(
+              key: ValueKey('${paper.id}-$key'),
+              initialValue: value,
+              maxLines: value.length > 40 ? 2 : 1,
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+              decoration: InputDecoration(
+                labelText: label,
+                hintText: element.content,
+                isDense: true,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.short_text_rounded, size: 18),
+              ),
+              onChanged: (val) => ref
+                  .read(editorStateProvider.notifier)
+                  .updateCustomHeaderValue(key, val),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  String _readableHeaderTextLabel(TemplateElement element, int index) {
+    final content = element.content.trim();
+    if (content.isEmpty) return 'Header text ${index + 1}';
+    if (content.length <= 28) return content;
+    return '${content.substring(0, 28)}...';
+  }
+
+  Widget _buildHeaderFieldsEditor(
+    Paper paper,
+    List<String> requiredLabels,
+    bool allowAll,
+  ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final List<PaperHeaderField> filteredFields = allowAll
+        ? paper.headerFields
+        : paper.headerFields
+              .where(
+                (f) => requiredLabels.any(
+                  (l) => l.toLowerCase() == f.label.toLowerCase(),
+                ),
+              )
+              .toList();
 
     if (filteredFields.isEmpty && !allowAll) {
-      return const Center(child: Text('No fields required for this template.', style: TextStyle(fontSize: 12, color: Colors.grey)));
+      return const Center(
+        child: Text(
+          'No fields required for this template.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      );
     }
 
     return Column(
@@ -323,7 +468,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         ReorderableListView(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          onReorder: (oldIdx, newIdx) => ref.read(editorStateProvider.notifier).reorderHeaderFields(oldIdx, newIdx),
+          onReorder: (oldIdx, newIdx) => ref
+              .read(editorStateProvider.notifier)
+              .reorderHeaderFields(oldIdx, newIdx),
           proxyDecorator: (child, index, animation) => Material(
             color: Colors.transparent,
             child: Container(
@@ -346,12 +493,19 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 key: ValueKey(field.id),
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withAlpha(10) : Colors.grey.withAlpha(15),
+                    color: isDark
+                        ? Colors.white.withAlpha(10)
+                        : Colors.grey.withAlpha(15),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(10),
+                      color: isDark
+                          ? Colors.white.withAlpha(20)
+                          : Colors.black.withAlpha(10),
                     ),
                   ),
                   child: Row(
@@ -370,7 +524,8 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         flex: 2,
                         child: TextFormField(
                           initialValue: field.label,
-                          readOnly: !allowAll, // Only custom templates lock labels
+                          readOnly:
+                              !allowAll, // Only custom templates lock labels
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
@@ -378,12 +533,18 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                           ),
                           decoration: InputDecoration(
                             hintText: 'Label',
-                            hintStyle: TextStyle(color: Colors.grey.withAlpha(100)),
+                            hintStyle: TextStyle(
+                              color: Colors.grey.withAlpha(100),
+                            ),
                             isDense: true,
                             border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                            ),
                           ),
-                          onChanged: (val) => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, label: val),
+                          onChanged: (val) => ref
+                              .read(editorStateProvider.notifier)
+                              .updateHeaderField(field.id, label: val),
                         ),
                       ),
                       // Divider
@@ -391,7 +552,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         height: 20,
                         width: 1,
                         margin: const EdgeInsets.symmetric(horizontal: 12),
-                        color: isDark ? Colors.white.withAlpha(20) : Colors.black.withAlpha(10),
+                        color: isDark
+                            ? Colors.white.withAlpha(20)
+                            : Colors.black.withAlpha(10),
                       ),
                       // Value field
                       Expanded(
@@ -401,36 +564,59 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                           enabled: !field.isPlaceholder,
                           style: TextStyle(
                             fontSize: 14,
-                            color: field.isPlaceholder 
-                                ? Colors.grey.withAlpha(120) 
-                                : (isDark ? Colors.white.withAlpha(200) : Colors.black87),
+                            color: field.isPlaceholder
+                                ? Colors.grey.withAlpha(120)
+                                : (isDark
+                                      ? Colors.white.withAlpha(200)
+                                      : Colors.black87),
                           ),
                           decoration: InputDecoration(
-                            hintText: field.isPlaceholder ? 'Auto-filled' : 'Enter value...',
+                            hintText: field.isPlaceholder
+                                ? 'Auto-filled'
+                                : 'Enter value...',
                             hintStyle: TextStyle(
                               color: Colors.grey.withAlpha(100),
-                              fontStyle: field.isPlaceholder ? FontStyle.italic : FontStyle.normal,
+                              fontStyle: field.isPlaceholder
+                                  ? FontStyle.italic
+                                  : FontStyle.normal,
                             ),
                             isDense: true,
                             border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                            ),
                           ),
-                          onChanged: (val) => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, value: val),
+                          onChanged: (val) => ref
+                              .read(editorStateProvider.notifier)
+                              .updateHeaderField(field.id, value: val),
                         ),
                       ),
                       const SizedBox(width: 8),
                       _HeaderFieldAction(
-                        icon: field.isPlaceholder ? Icons.edit_off_rounded : Icons.edit_rounded,
-                        color: field.isPlaceholder ? Colors.blue : Colors.grey.withAlpha(120),
-                        tooltip: field.isPlaceholder ? 'Enable Manual Entry' : 'Set as Placeholder',
-                        onTap: () => ref.read(editorStateProvider.notifier).updateHeaderField(field.id, isPlaceholder: !field.isPlaceholder),
+                        icon: field.isPlaceholder
+                            ? Icons.edit_off_rounded
+                            : Icons.edit_rounded,
+                        color: field.isPlaceholder
+                            ? Colors.blue
+                            : Colors.grey.withAlpha(120),
+                        tooltip: field.isPlaceholder
+                            ? 'Enable Manual Entry'
+                            : 'Set as Placeholder',
+                        onTap: () => ref
+                            .read(editorStateProvider.notifier)
+                            .updateHeaderField(
+                              field.id,
+                              isPlaceholder: !field.isPlaceholder,
+                            ),
                       ),
                       if (allowAll)
                         _HeaderFieldAction(
                           icon: Icons.delete_outline_rounded,
                           color: Colors.redAccent.withAlpha(180),
                           tooltip: 'Delete Field',
-                          onTap: () => ref.read(editorStateProvider.notifier).deleteHeaderField(field.id),
+                          onTap: () => ref
+                              .read(editorStateProvider.notifier)
+                              .deleteHeaderField(field.id),
                         ),
                     ],
                   ),
@@ -489,7 +675,11 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 ),
                 child: Text(
                   '${section.totalMarks} Marks',
-                  style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11),
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -513,14 +703,21 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                           decoration: InputDecoration(
                             labelText: 'Section Prefix (e.g. Part A)',
                             isDense: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                          onChanged: (val) => ref.read(editorStateProvider.notifier).updateSection(section.id, prefix: val),
+                          onChanged: (val) => ref
+                              .read(editorStateProvider.notifier)
+                              .updateSection(section.id, prefix: val),
                         ),
                       ),
                       const SizedBox(width: 12),
                       IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                        ),
                         onPressed: () => _confirmDeleteSection(section),
                       ),
                     ],
@@ -532,18 +729,30 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     decoration: InputDecoration(
                       labelText: 'Section Instructions',
                       isDense: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                    onChanged: (val) => ref.read(editorStateProvider.notifier).updateSection(section.id, instruction: val),
+                    onChanged: (val) => ref
+                        .read(editorStateProvider.notifier)
+                        .updateSection(section.id, instruction: val),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
                         child: CheckboxListTile(
-                          title: const Text('Show Title', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                          title: const Text(
+                            'Show Title',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           value: section.showTitle,
-                          onChanged: (val) => ref.read(editorStateProvider.notifier).updateSection(section.id, showTitle: val),
+                          onChanged: (val) => ref
+                              .read(editorStateProvider.notifier)
+                              .updateSection(section.id, showTitle: val),
                           contentPadding: EdgeInsets.zero,
                           controlAffinity: ListTileControlAffinity.leading,
                           dense: true,
@@ -551,9 +760,17 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                       ),
                       Expanded(
                         child: CheckboxListTile(
-                          title: const Text('Show Divider', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                          title: const Text(
+                            'Show Divider',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           value: section.showDivider,
-                          onChanged: (val) => ref.read(editorStateProvider.notifier).updateSection(section.id, showDivider: val),
+                          onChanged: (val) => ref
+                              .read(editorStateProvider.notifier)
+                              .updateSection(section.id, showDivider: val),
                           contentPadding: EdgeInsets.zero,
                           controlAffinity: ListTileControlAffinity.leading,
                           dense: true,
@@ -565,15 +782,27 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white.withAlpha(13) : Colors.orange.withAlpha(13),
+                      color: isDark
+                          ? Colors.white.withAlpha(13)
+                          : Colors.orange.withAlpha(13),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.orange.withAlpha(25)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.help_outline, size: 18, color: Colors.orange),
+                        const Icon(
+                          Icons.help_outline,
+                          size: 18,
+                          color: Colors.orange,
+                        ),
                         const SizedBox(width: 8),
-                        const Text('Student must answer: ', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                        const Text(
+                          'Student must answer: ',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         SizedBox(
                           width: 60,
@@ -583,17 +812,24 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                             decoration: InputDecoration(
                               hintText: 'All',
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                             keyboardType: TextInputType.number,
                             onChanged: (val) {
                               final count = int.tryParse(val);
-                              ref.read(editorStateProvider.notifier).updateSection(
-                                section.id, 
-                                requiredCount: count,
-                                clearRequiredCount: val.isEmpty,
-                              );
+                              ref
+                                  .read(editorStateProvider.notifier)
+                                  .updateSection(
+                                    section.id,
+                                    requiredCount: count,
+                                    clearRequiredCount: val.isEmpty,
+                                  );
                             },
                           ),
                         ),
@@ -614,31 +850,45 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             ReorderableListView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              onReorder: (oldIdx, newIdx) => ref.read(editorStateProvider.notifier).reorderQuestions(section.id, oldIdx, newIdx),
+              onReorder: (oldIdx, newIdx) => ref
+                  .read(editorStateProvider.notifier)
+                  .reorderQuestions(section.id, oldIdx, newIdx),
               children: [
                 for (final q in section.questions)
                   Container(
                     key: ValueKey(q.id),
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Theme.of(context).cardTheme.color,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Theme.of(context).dividerColor.withAlpha(25)),
+                      border: Border.all(
+                        color: Theme.of(context).dividerColor.withAlpha(25),
+                      ),
                     ),
                     child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       leading: Container(
                         width: 36,
                         height: 36,
                         decoration: BoxDecoration(
-                          color: q.isOptional ? Colors.grey[100] : Colors.blue[50],
+                          color: q.isOptional
+                              ? Colors.grey[100]
+                              : Colors.blue[50],
                           shape: BoxShape.circle,
                         ),
                         child: Center(
                           child: Text(
                             q.marks.toStringAsFixed(0),
                             style: TextStyle(
-                              color: q.isOptional ? Colors.grey[600] : Colors.blue[700],
+                              color: q.isOptional
+                                  ? Colors.grey[600]
+                                  : Colors.blue[700],
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
@@ -659,13 +909,20 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.edit_outlined, size: 20),
-                            onPressed: () => _showQuestionEditor(section.id, question: q),
+                            onPressed: () =>
+                                _showQuestionEditor(section.id, question: q),
                             constraints: const BoxConstraints(),
                             padding: const EdgeInsets.all(8),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
-                            onPressed: () => ref.read(editorStateProvider.notifier).deleteQuestion(section.id, q.id),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 20,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: () => ref
+                                .read(editorStateProvider.notifier)
+                                .deleteQuestion(section.id, q.id),
                             constraints: const BoxConstraints(),
                             padding: const EdgeInsets.all(8),
                           ),
@@ -686,7 +943,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   foregroundColor: Colors.blue,
                   elevation: 0,
                   side: const BorderSide(color: Colors.blue),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   minimumSize: const Size(double.infinity, 45),
                 ),
               ),
@@ -702,28 +961,45 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
       if (text.startsWith('[') || text.startsWith('{')) {
         final List<dynamic> json = jsonDecode(text);
         final doc = quill.Document.fromJson(json.cast<Map<String, dynamic>>());
-        return Text(doc.toPlainText().replaceAll('\n', ' '), maxLines: 1, overflow: TextOverflow.ellipsis);
+        return Text(
+          doc.toPlainText().replaceAll('\n', ' '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
       }
     } catch (_) {}
     return Text(text, maxLines: 1, overflow: TextOverflow.ellipsis);
   }
 
-  Widget _buildBrandingEditor(Paper paper, bool showSchoolName, List<TemplateElement> logoElements) {
+  Widget _buildBrandingEditor(
+    Paper paper,
+    bool showSchoolName,
+    List<TemplateElement> logoElements,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (logoElements.isNotEmpty) ...[
-          const Text('Logo(s)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey)),
+          const Text(
+            'Logo(s)',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
           const SizedBox(height: 8),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: logoElements.asMap().entries.map((entry) {
                 final idx = entry.key;
-                final String? path = paper.logos.length > idx ? paper.logos[idx] : null;
-                
+                final String? path = paper.logos.length > idx
+                    ? paper.logos[idx]
+                    : null;
+
                 return Padding(
                   padding: const EdgeInsets.only(right: 16),
                   child: Column(
@@ -731,9 +1007,16 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                       GestureDetector(
                         onTap: () async {
                           final picker = ImagePicker();
-                          final image = await picker.pickImage(source: ImageSource.gallery);
+                          final image = await picker.pickImage(
+                            source: ImageSource.gallery,
+                          );
                           if (image != null) {
-                            ref.read(editorStateProvider.notifier).updateBranding(logo: image.path, logoIndex: idx);
+                            ref
+                                .read(editorStateProvider.notifier)
+                                .updateBranding(
+                                  logo: image.path,
+                                  logoIndex: idx,
+                                );
                           }
                         },
                         child: Stack(
@@ -744,10 +1027,16 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                               decoration: BoxDecoration(
                                 color: Theme.of(context).cardTheme.color,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Theme.of(context).dividerColor.withAlpha(25)),
+                                border: Border.all(
+                                  color: Theme.of(
+                                    context,
+                                  ).dividerColor.withAlpha(25),
+                                ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withAlpha(isDark ? 51 : 13),
+                                    color: Colors.black.withAlpha(
+                                      isDark ? 51 : 13,
+                                    ),
                                     blurRadius: 6,
                                     offset: const Offset(0, 2),
                                   ),
@@ -756,20 +1045,36 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                               child: path != null && path.isNotEmpty
                                   ? ClipRRect(
                                       borderRadius: BorderRadius.circular(12),
-                                      child: Image.file(File(path), fit: BoxFit.cover),
+                                      child: Image.file(
+                                        File(path),
+                                        fit: BoxFit.cover,
+                                      ),
                                     )
-                                  : Icon(Icons.add_a_photo_outlined, size: 24, color: Colors.grey[400]),
+                                  : Icon(
+                                      Icons.add_a_photo_outlined,
+                                      size: 24,
+                                      color: Colors.grey[400],
+                                    ),
                             ),
                             if (path != null && path.isNotEmpty)
                               Positioned(
                                 right: -2,
                                 top: -2,
                                 child: GestureDetector(
-                                  onTap: () => ref.read(editorStateProvider.notifier).updateBranding(logo: '', logoIndex: idx),
+                                  onTap: () => ref
+                                      .read(editorStateProvider.notifier)
+                                      .updateBranding(logo: '', logoIndex: idx),
                                   child: Container(
                                     padding: const EdgeInsets.all(2),
-                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                    child: const Icon(Icons.close, size: 10, color: Colors.white),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.close,
+                                      size: 10,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -777,7 +1082,13 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text('Logo ${idx + 1}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      Text(
+                        'Logo ${idx + 1}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey,
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -792,10 +1103,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             decoration: InputDecoration(
               labelText: 'School/Institution Name',
               hintText: 'Enter school name',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               isDense: true,
             ),
-            onChanged: (val) => ref.read(editorStateProvider.notifier).updateBranding(schoolName: val),
+            onChanged: (val) => ref
+                .read(editorStateProvider.notifier)
+                .updateBranding(schoolName: val),
           ),
       ],
     );
@@ -805,7 +1120,8 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => QuestionEditorSheet(sectionId: sectionId, question: question),
+      builder: (context) =>
+          QuestionEditorSheet(sectionId: sectionId, question: question),
     );
   }
 
@@ -814,9 +1130,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Section?'),
-        content: Text('Are you sure you want to delete "${section.title}" and all its questions?'),
+        content: Text(
+          'Are you sure you want to delete "${section.title}" and all its questions?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () {
               ref.read(editorStateProvider.notifier).deleteSection(section.id);
@@ -836,7 +1157,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
       (t) => t.id == paper.templateId,
       orElse: () => templates.first,
     );
-    
+
     return Column(
       children: [
         if (_showPreview)
@@ -853,21 +1174,28 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 const SizedBox(height: 8),
                 TemplateSelector(
                   selectedTemplateId: paper.templateId,
-                  onTemplateSelected: (id) => ref.read(editorStateProvider.notifier).updateTemplate(id),
+                  onTemplateSelected: (id) =>
+                      ref.read(editorStateProvider.notifier).updateTemplate(id),
                 ),
               ],
             ),
           ),
         Expanded(
           child: Container(
-            color: isDark ? Theme.of(context).scaffoldBackgroundColor : Colors.grey[200],
+            color: isDark
+                ? Theme.of(context).scaffoldBackgroundColor
+                : Colors.grey[200],
             padding: const EdgeInsets.all(16),
             child: SingleChildScrollView(
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 800),
-                margin: const EdgeInsets.symmetric(horizontal: 'auto' == 'auto' ? 0 : 0), // Centering hack for web/large screens
+                margin: const EdgeInsets.symmetric(
+                  horizontal: 'auto' == 'auto' ? 0 : 0,
+                ), // Centering hack for web/large screens
                 decoration: BoxDecoration(
-                  color: isDark ? Theme.of(context).cardTheme.color : Colors.white,
+                  color: isDark
+                      ? Theme.of(context).cardTheme.color
+                      : Colors.white,
                   borderRadius: BorderRadius.circular(4),
                   boxShadow: [
                     BoxShadow(
@@ -884,7 +1212,10 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                       Container(
                         margin: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Color(template.primaryColor.toInt()), width: 1),
+                          border: Border.all(
+                            color: Color(template.primaryColor.toInt()),
+                            width: 1,
+                          ),
                         ),
                         child: _buildPreviewContent(paper, template),
                       )
@@ -912,6 +1243,21 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (paper.instruction.trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Center(
+                    child: Text(
+                      paper.instruction.trim(),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontStyle: FontStyle.italic,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
               ...paper.sections.map((s) => _buildPreviewSection(s, template)),
             ],
           ),
@@ -930,7 +1276,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           Text(
             '${s.prefix} ${s.showTitle ? s.title : ""}'.trim(),
             style: TextStyle(
-              color: template.type == TemplateType.coaching ? Color(template.primaryColor.toInt()) : Colors.black,
+              color: template.type == TemplateType.coaching
+                  ? Color(template.primaryColor.toInt())
+                  : Colors.black,
               fontWeight: FontWeight.bold,
               fontSize: 18,
             ),
@@ -938,14 +1286,22 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         if (s.instruction != null && s.instruction!.isNotEmpty)
           Text(
             s.instruction!,
-            style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey, fontSize: 12),
+            style: const TextStyle(
+              fontStyle: FontStyle.italic,
+              color: Colors.grey,
+              fontSize: 12,
+            ),
           ),
         if (s.requiredCount != null && s.requiredCount! < s.questions.length)
           Padding(
             padding: const EdgeInsets.only(top: 4.0),
             child: Text(
               'Note: Answer any ${s.requiredCount} questions from this section.',
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 11),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.blue,
+                fontSize: 11,
+              ),
             ),
           ),
         if (s.showDivider) const Divider(),
@@ -962,7 +1318,10 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   children: [
                     SizedBox(
                       width: 25,
-                      child: Text('$qIdx. ', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      child: Text(
+                        '$qIdx. ',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                     Expanded(
                       child: Column(
@@ -972,16 +1331,22 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                           if (q.isOptional)
                             const Text(
                               '(Optional/OR Choice)',
-                              style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontStyle: FontStyle.italic,
+                                color: Colors.grey,
+                              ),
                             ),
                         ],
                       ),
                     ),
                     SizedBox(
                       width: 40,
-                      child: Text('[${q.marks.toStringAsFixed(0)}]', 
+                      child: Text(
+                        '[${q.marks.toStringAsFixed(0)}]',
                         textAlign: TextAlign.right,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ],
                 ),
@@ -1004,7 +1369,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     ),
                   ),
                 if (q.type == QuestionType.fillInTheBlanks)
-                   const Padding(
+                  const Padding(
                     padding: EdgeInsets.only(left: 25, top: 4),
                     child: Text('Ans: ________________________'),
                   ),
@@ -1016,14 +1381,13 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
-
   Widget _buildRichText(String text) {
-     try {
+    try {
       if (text.startsWith('[') || text.startsWith('{')) {
         final List<dynamic> json = jsonDecode(text);
         final doc = quill.Document.fromJson(json.cast<Map<String, dynamic>>());
         final controller = quill.QuillController(
-          document: doc, 
+          document: doc,
           selection: const TextSelection.collapsed(offset: 0),
           readOnly: true,
         );
@@ -1123,10 +1487,7 @@ class _EditorCard extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: child,
-          ),
+          Padding(padding: const EdgeInsets.all(16), child: child),
         ],
       ),
     );

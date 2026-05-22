@@ -1,5 +1,4 @@
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
-import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
@@ -28,12 +27,32 @@ class EditorState extends _$EditorState {
       sections: [],
       logos: ['', '', ''], // Initialize with 3 slots by default
       headerFields: [
-        PaperHeaderField(id: const Uuid().v4(), label: 'Subject', value: 'Mathematics'),
+        PaperHeaderField(
+          id: const Uuid().v4(),
+          label: 'Subject',
+          value: 'Mathematics',
+        ),
         PaperHeaderField(id: const Uuid().v4(), label: 'Class', value: '10th'),
-        PaperHeaderField(id: const Uuid().v4(), label: 'Date', isPlaceholder: true),
-        PaperHeaderField(id: const Uuid().v4(), label: 'Time', value: '3 Hours'),
-        PaperHeaderField(id: const Uuid().v4(), label: 'Student Name', isPlaceholder: true),
-        PaperHeaderField(id: const Uuid().v4(), label: 'Roll No', isPlaceholder: true),
+        PaperHeaderField(
+          id: const Uuid().v4(),
+          label: 'Date',
+          isPlaceholder: true,
+        ),
+        PaperHeaderField(
+          id: const Uuid().v4(),
+          label: 'Time',
+          value: '3 Hours',
+        ),
+        PaperHeaderField(
+          id: const Uuid().v4(),
+          label: 'Student Name',
+          isPlaceholder: true,
+        ),
+        PaperHeaderField(
+          id: const Uuid().v4(),
+          label: 'Roll No',
+          isPlaceholder: true,
+        ),
       ],
     );
   }
@@ -55,6 +74,10 @@ class EditorState extends _$EditorState {
     state = state.copyWith(title: title);
   }
 
+  void updateInstruction(String instruction) {
+    state = state.copyWith(instruction: instruction);
+  }
+
   void updateBranding({String? schoolName, String? logo, int? logoIndex}) {
     if (logoIndex != null) {
       final newLogos = List<String>.from(state.logos);
@@ -67,13 +90,15 @@ class EditorState extends _$EditorState {
         logos: newLogos,
       );
     } else {
-      state = state.copyWith(
-        schoolName: schoolName ?? state.schoolName,
-      );
+      state = state.copyWith(schoolName: schoolName ?? state.schoolName);
     }
   }
 
-  void addHeaderField({String label = 'New Field', String value = '', bool isPlaceholder = false}) {
+  void addHeaderField({
+    String label = 'New Field',
+    String value = '',
+    bool isPlaceholder = false,
+  }) {
     final newField = PaperHeaderField(
       id: const Uuid().v4(),
       label: label,
@@ -83,7 +108,12 @@ class EditorState extends _$EditorState {
     state = state.copyWith(headerFields: [...state.headerFields, newField]);
   }
 
-  void updateHeaderField(String id, {String? label, String? value, bool? isPlaceholder}) {
+  void updateHeaderField(
+    String id, {
+    String? label,
+    String? value,
+    bool? isPlaceholder,
+  }) {
     state = state.copyWith(
       headerFields: state.headerFields.map((f) {
         if (f.id == id) {
@@ -96,6 +126,12 @@ class EditorState extends _$EditorState {
         return f;
       }).toList(),
     );
+  }
+
+  void updateCustomHeaderValue(String key, String value) {
+    final values = Map<String, String>.from(state.customHeaderValues);
+    values[key] = value;
+    state = state.copyWith(customHeaderValues: values);
   }
 
   void deleteHeaderField(String id) {
@@ -120,7 +156,8 @@ class EditorState extends _$EditorState {
     state = state.copyWith(sections: [...state.sections, newSection]);
   }
 
-  void updateSection(String sectionId, {
+  void updateSection(
+    String sectionId, {
     String? title,
     String? instruction,
     String? prefix,
@@ -161,7 +198,14 @@ class EditorState extends _$EditorState {
     state = state.copyWith(sections: sections);
   }
 
-  void addQuestion(String sectionId, String text, {QuestionType type = QuestionType.descriptive, double marks = 1.0, List<QuestionOption> options = const [], bool isOptional = false}) {
+  void addQuestion(
+    String sectionId,
+    String text, {
+    QuestionType type = QuestionType.descriptive,
+    double marks = 1.0,
+    List<QuestionOption> options = const [],
+    bool isOptional = false,
+  }) {
     state = state.copyWith(
       sections: state.sections.map((section) {
         if (section.id == sectionId) {
@@ -173,14 +217,18 @@ class EditorState extends _$EditorState {
             options: options,
             isOptional: isOptional,
           );
-          return section.copyWith(questions: [...section.questions, newQuestion]);
+          return section.copyWith(
+            questions: [...section.questions, newQuestion],
+          );
         }
         return section;
       }).toList(),
     );
   }
 
-  void updateQuestion(String sectionId, String questionId, {
+  void updateQuestion(
+    String sectionId,
+    String questionId, {
     String? text,
     QuestionType? type,
     double? marks,
@@ -219,7 +267,9 @@ class EditorState extends _$EditorState {
       sections: state.sections.map((section) {
         if (section.id == sectionId) {
           return section.copyWith(
-            questions: section.questions.where((q) => q.id != questionId).toList(),
+            questions: section.questions
+                .where((q) => q.id != questionId)
+                .toList(),
           );
         }
         return section;
@@ -248,46 +298,67 @@ class EditorState extends _$EditorState {
 
   void updateTemplate(String templateId) {
     final templates = ref.read(templateProvider).all;
-    final template = templates.firstWhere((t) => t.id == templateId, orElse: () => templates.first);
-    
+    final template = templates.firstWhere(
+      (t) => t.id == templateId,
+      orElse: () => templates.first,
+    );
+
     state = state.copyWith(templateId: templateId);
 
-    // Automatic Field and Logo Detection
-    if (template.headerLayout == HeaderLayout.custom && template.customLayout != null) {
-      final elements = template.customLayout!.elements;
-      
-      // Sync Logos slots
-      final logoCount = elements.where((e) => e.type == ElementType.logo).length;
-      final List<String> currentLogos = List<String>.from(state.logos);
-      if (currentLogos.length < logoCount) {
-        currentLogos.addAll(List.generate(logoCount - currentLogos.length, (_) => ''));
-      }
-      
-      // Sync Fields
-      final fieldsBlocks = elements.where((e) => e.type == ElementType.headerFieldsBlock);
-      List<PaperHeaderField> newFields = [...state.headerFields];
-      bool fieldsChanged = false;
+    final elements = template.effectiveLayout.elements;
 
-      if (fieldsBlocks.isNotEmpty) {
-        final List<String> labels = List<String>.from(fieldsBlocks.first.properties['fieldLabels'] ?? []);
-        final currentLabels = state.headerFields.map((f) => f.label.toLowerCase()).toList();
-        
-        for (var label in labels) {
-          if (!currentLabels.contains(label.toLowerCase())) {
-            newFields.add(PaperHeaderField(
+    // Sync logo slots used by the selected template.
+    final logoCount = elements.where((e) => e.type == ElementType.logo).length;
+    final currentLogos = List<String>.from(state.logos);
+    if (currentLogos.length < logoCount) {
+      currentLogos.addAll(
+        List.generate(logoCount - currentLogos.length, (_) => ''),
+      );
+    }
+
+    // Sync all fields mentioned by all header field blocks.
+    final fieldsBlocks = elements.where(
+      (e) => e.type == ElementType.headerFieldsBlock,
+    );
+    final newFields = [...state.headerFields];
+    var fieldsChanged = false;
+    final currentLabels = state.headerFields
+        .map((f) => f.label.toLowerCase())
+        .toSet();
+
+    for (final block in fieldsBlocks) {
+      final labels = List<String>.from(block.properties['fieldLabels'] ?? []);
+      for (final label in labels) {
+        if (!currentLabels.contains(label.toLowerCase())) {
+          newFields.add(
+            PaperHeaderField(
               id: const Uuid().v4(),
               label: label,
               isPlaceholder: true,
-            ));
-            fieldsChanged = true;
-          }
+            ),
+          );
+          currentLabels.add(label.toLowerCase());
+          fieldsChanged = true;
         }
       }
-
-      state = state.copyWith(
-        logos: currentLogos,
-        headerFields: fieldsChanged ? newFields : null,
-      );
     }
+
+    // Sync editable static text defaults from the template.
+    final customValues = Map<String, String>.from(state.customHeaderValues);
+    var customValuesChanged = false;
+    for (final element in elements.where(
+      (e) => e.type == ElementType.staticText,
+    )) {
+      if (!customValues.containsKey(element.paperBindingKey)) {
+        customValues[element.paperBindingKey] = element.content;
+        customValuesChanged = true;
+      }
+    }
+
+    state = state.copyWith(
+      logos: currentLogos,
+      headerFields: fieldsChanged ? newFields : null,
+      customHeaderValues: customValuesChanged ? customValues : null,
+    );
   }
 }

@@ -13,7 +13,8 @@ class AddEditQuestionScreen extends ConsumerStatefulWidget {
   const AddEditQuestionScreen({super.key, this.question});
 
   @override
-  ConsumerState<AddEditQuestionScreen> createState() => _AddEditQuestionScreenState();
+  ConsumerState<AddEditQuestionScreen> createState() =>
+      _AddEditQuestionScreenState();
 }
 
 class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
@@ -30,16 +31,29 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
   @override
   void initState() {
     super.initState();
-    _textController = TextEditingController(text: widget.question?.question.text ?? '');
-    _subjectController = TextEditingController(text: widget.question?.subject ?? '');
-    _chapterController = TextEditingController(text: widget.question?.chapter ?? '');
-    _tagsController = TextEditingController(text: widget.question?.tags.join(', ') ?? '');
+    _textController = TextEditingController(
+      text: widget.question?.question.text ?? '',
+    );
+    _subjectController = TextEditingController(
+      text: widget.question?.subject ?? '',
+    );
+    _chapterController = TextEditingController(
+      text: widget.question?.chapter ?? '',
+    );
+    _tagsController = TextEditingController(
+      text: widget.question?.tags.join(', ') ?? '',
+    );
     _difficulty = widget.question?.difficulty ?? Difficulty.medium;
     _type = widget.question?.question.type ?? QuestionType.mcq;
-    _options = widget.question?.question.options.map((o) => o.copyWith()).toList() ?? [];
-    
+    _options =
+        widget.question?.question.options.map((o) => o.copyWith()).toList() ??
+        [];
+
     if (_options.isEmpty && _type == QuestionType.mcq) {
-      _options = List.generate(4, (i) => QuestionOption(id: const Uuid().v4(), text: 'Option ${i + 1}'));
+      _options = List.generate(
+        4,
+        (i) => QuestionOption(id: const Uuid().v4(), text: 'Option ${i + 1}'),
+      );
     }
 
     for (final opt in _options) {
@@ -62,7 +76,7 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
   void _save({bool addNext = false}) {
     if (_formKey.currentState!.validate()) {
       final id = widget.question?.question.id ?? const Uuid().v4();
-      
+
       if (_type == QuestionType.mcq) {
         for (int i = 0; i < _options.length; i++) {
           _options[i] = _options[i].copyWith(text: _optionControllers[i].text);
@@ -80,7 +94,11 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
         subject: _subjectController.text,
         chapter: _chapterController.text,
         difficulty: _difficulty,
-        tags: _tagsController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+        tags: _tagsController.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
         isFavorite: widget.question?.isFavorite ?? false,
       );
 
@@ -95,7 +113,13 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
           _textController.clear();
           _tagsController.clear();
           if (_type == QuestionType.mcq) {
-            _options = List.generate(4, (i) => QuestionOption(id: const Uuid().v4(), text: 'Option ${i + 1}'));
+            _options = List.generate(
+              4,
+              (i) => QuestionOption(
+                id: const Uuid().v4(),
+                text: 'Option ${i + 1}',
+              ),
+            );
             for (int i = 0; i < _optionControllers.length; i++) {
               if (i < 4) {
                 _optionControllers[i].text = 'Option ${i + 1}';
@@ -106,7 +130,9 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
             if (_optionControllers.length > 4) {
               _optionControllers.removeRange(4, _optionControllers.length);
             }
-            _options = _options.map((o) => o.copyWith(isCorrect: false)).toList();
+            _options = _options
+                .map((o) => o.copyWith(isCorrect: false))
+                .toList();
           }
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -120,6 +146,57 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
         Navigator.pop(context);
       }
     }
+  }
+
+  TextStyle _bookTextStyle(bool isDark, {double fontSize = 18}) {
+    return TextStyle(
+      fontFamily: 'serif',
+      fontSize: fontSize,
+      height: 1.45,
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.92)
+          : const Color(0xFF1F2933),
+    );
+  }
+
+  InputDecoration _bookInputDecoration(
+    bool isDark, {
+    String? labelText,
+    String? hintText,
+    bool isDense = false,
+    Color? fillColor,
+  }) {
+    final baseFill = isDark
+        ? Colors.white.withValues(alpha: 0.04)
+        : const Color(0xFFFFFCF5);
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      alignLabelWithHint: true,
+      isDense: isDense,
+      filled: true,
+      fillColor: fillColor ?? baseFill,
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: isDense ? 12 : 16,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white24 : const Color(0xFFD8C7A0),
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white24 : const Color(0xFFD8C7A0),
+        ),
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(6)),
+        borderSide: BorderSide(color: Colors.blue, width: 1.4),
+      ),
+    );
   }
 
   @override
@@ -140,10 +217,20 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
           if (widget.question == null)
             TextButton(
               onPressed: () => _save(addNext: true),
-              child: const Text('SAVE & NEXT', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'SAVE & NEXT',
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           IconButton(
-            icon: const Icon(Icons.check_circle_rounded, color: Colors.blue, size: 28),
+            icon: const Icon(
+              Icons.check_circle_rounded,
+              color: Colors.blue,
+              size: 28,
+            ),
             onPressed: () => _save(),
           ),
           const SizedBox(width: 8),
@@ -164,45 +251,73 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Question Text', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      const Text(
+                        'Question Text',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
                       TextButton.icon(
                         onPressed: () async {
                           final text = await Navigator.push<String>(
                             context,
-                            MaterialPageRoute(builder: (context) => const OCRScreen()),
+                            MaterialPageRoute(
+                              builder: (context) => const OCRScreen(),
+                            ),
                           );
                           if (text != null && mounted) {
                             final currentText = _textController.text;
                             final selection = _textController.selection;
                             if (selection.isValid) {
-                              final newText = currentText.replaceRange(selection.start, selection.end, text);
+                              final newText = currentText.replaceRange(
+                                selection.start,
+                                selection.end,
+                                text,
+                              );
                               _textController.text = newText;
-                              _textController.selection = TextSelection.collapsed(offset: selection.start + text.length);
+                              _textController.selection =
+                                  TextSelection.collapsed(
+                                    offset: selection.start + text.length,
+                                  );
                             } else {
                               _textController.text = currentText + text;
                             }
                           }
                         },
-                        icon: const Icon(Icons.document_scanner_outlined, size: 18),
-                        label: const Text('Scan', style: TextStyle(fontWeight: FontWeight.bold)),
-                        style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
+                        icon: const Icon(
+                          Icons.document_scanner_outlined,
+                          size: 18,
+                        ),
+                        label: const Text(
+                          'Scan',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
                   MathKeyboardField(
                     controller: _textController,
-                    builder: (context, fieldFocusNode, isMathActive) => TextFormField(
-                      controller: _textController,
-                      focusNode: fieldFocusNode,
-                      maxLines: 4,
-                      keyboardType: isMathActive ? TextInputType.none : TextInputType.multiline,
-                      decoration: InputDecoration(
-                        hintText: 'Type or scan your question here...',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                      validator: (v) => v!.isEmpty ? 'Required' : null,
-                    ),
+                    builder: (context, fieldFocusNode, isMathActive) =>
+                        TextFormField(
+                          controller: _textController,
+                          focusNode: fieldFocusNode,
+                          style: _bookTextStyle(isDark),
+                          maxLines: 4,
+                          keyboardType: isMathActive
+                              ? TextInputType.none
+                              : TextInputType.multiline,
+                          decoration: _bookInputDecoration(
+                            isDark,
+                            hintText: 'Type or scan your question here...',
+                          ),
+                          validator: (v) => v!.isEmpty ? 'Required' : null,
+                        ),
                   ),
                 ],
               ),
@@ -221,7 +336,9 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                           controller: _subjectController,
                           decoration: InputDecoration(
                             labelText: 'Subject',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           validator: (v) => v!.isEmpty ? 'Required' : null,
                         ),
@@ -232,7 +349,9 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                           controller: _chapterController,
                           decoration: InputDecoration(
                             labelText: 'Chapter',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           validator: (v) => v!.isEmpty ? 'Required' : null,
                         ),
@@ -244,9 +363,18 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                     value: _difficulty,
                     decoration: InputDecoration(
                       labelText: 'Difficulty',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    items: Difficulty.values.map((d) => DropdownMenuItem(value: d, child: Text(d.name.toUpperCase()))).toList(),
+                    items: Difficulty.values
+                        .map(
+                          (d) => DropdownMenuItem(
+                            value: d,
+                            child: Text(d.name.toUpperCase()),
+                          ),
+                        )
+                        .toList(),
                     onChanged: (v) => setState(() => _difficulty = v!),
                   ),
                   const SizedBox(height: 16),
@@ -254,7 +382,9 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                     controller: _tagsController,
                     decoration: InputDecoration(
                       labelText: 'Tags (comma separated)',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       prefixIcon: const Icon(Icons.tag_rounded, size: 18),
                     ),
                   ),
@@ -273,22 +403,45 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                     value: _type,
                     decoration: InputDecoration(
                       labelText: 'Type',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    items: QuestionType.values.map((t) => DropdownMenuItem(value: t, child: Text(t.name.toUpperCase()))).toList(),
+                    items: QuestionType.values
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(t.name.toUpperCase()),
+                          ),
+                        )
+                        .toList(),
                     onChanged: (v) => setState(() {
                       _type = v!;
                       if (_type == QuestionType.mcq && _options.isEmpty) {
-                        _options = List.generate(4, (i) => QuestionOption(id: const Uuid().v4(), text: 'Option ${i + 1}'));
+                        _options = List.generate(
+                          4,
+                          (i) => QuestionOption(
+                            id: const Uuid().v4(),
+                            text: 'Option ${i + 1}',
+                          ),
+                        );
                         for (final opt in _options) {
-                          _optionControllers.add(TextEditingController(text: opt.text));
+                          _optionControllers.add(
+                            TextEditingController(text: opt.text),
+                          );
                         }
                       }
                     }),
                   ),
                   if (_type == QuestionType.mcq) ...[
                     const SizedBox(height: 24),
-                    const Text('Configure Options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    const Text(
+                      'Configure Options',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     ..._options.asMap().entries.map((entry) {
                       final i = entry.key;
@@ -302,23 +455,43 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                               groupValue: opt.isCorrect,
                               activeColor: Colors.green,
                               onChanged: (v) => setState(() {
-                                _options = _options.asMap().entries.map((e) => e.value.copyWith(isCorrect: e.key == i)).toList();
+                                _options = _options
+                                    .asMap()
+                                    .entries
+                                    .map(
+                                      (e) => e.value.copyWith(
+                                        isCorrect: e.key == i,
+                                      ),
+                                    )
+                                    .toList();
                               }),
                             ),
                             Expanded(
                               child: MathKeyboardField(
                                 controller: _optionControllers[i],
-                                builder: (context, fieldFocusNode, isMathActive) => TextFormField(
-                                  controller: _optionControllers[i],
-                                  focusNode: fieldFocusNode,
-                                  keyboardType: isMathActive ? TextInputType.none : TextInputType.text,
-                                  decoration: InputDecoration(
-                                    labelText: 'Option ${i + 1}',
-                                    isDense: true,
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                    fillColor: opt.isCorrect ? Colors.green.withOpacity(isDark ? 0.1 : 0.05) : null,
-                                  ),
-                                ),
+                                builder:
+                                    (context, fieldFocusNode, isMathActive) =>
+                                        TextFormField(
+                                          controller: _optionControllers[i],
+                                          focusNode: fieldFocusNode,
+                                          style: _bookTextStyle(
+                                            isDark,
+                                            fontSize: 16,
+                                          ),
+                                          keyboardType: isMathActive
+                                              ? TextInputType.none
+                                              : TextInputType.text,
+                                          decoration: _bookInputDecoration(
+                                            isDark,
+                                            labelText: 'Option ${i + 1}',
+                                            isDense: true,
+                                            fillColor: opt.isCorrect
+                                                ? Colors.green.withValues(
+                                                    alpha: isDark ? 0.1 : 0.05,
+                                                  )
+                                                : null,
+                                          ),
+                                        ),
                               ),
                             ),
                           ],
@@ -395,10 +568,7 @@ class _FormSection extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: child,
-          ),
+          Padding(padding: const EdgeInsets.all(16), child: child),
         ],
       ),
     );

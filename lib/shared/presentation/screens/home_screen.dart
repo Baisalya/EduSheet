@@ -7,13 +7,55 @@ import '../../../features/editor/presentation/providers/editor_provider.dart';
 import '../../../features/omr/presentation/pages/omr_generator_page.dart';
 import '../../../features/question_bank/presentation/screens/question_bank_screen.dart';
 import '../../../features/document_reader/presentation/screens/document_reader_screen.dart';
+import '../../../features/calculator/presentation/screens/calculator_screen.dart';
+import '../providers/privacy_provider.dart';
+import '../widgets/privacy_policy_dialog.dart';
 import 'settings_screen.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkPrivacyPolicy();
+    });
+  }
+
+  void _checkPrivacyPolicy() {
+    final privacyState = ref.read(privacyProvider);
+    privacyState.whenData((version) {
+      if (ref.read(privacyProvider.notifier).needsApproval) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const PrivacyPolicyDialog(),
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Listen for privacy changes to show dialog if state updates asynchronously
+    ref.listen(privacyProvider, (previous, next) {
+      next.whenData((version) {
+        if (ref.read(privacyProvider.notifier).needsApproval) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const PrivacyPolicyDialog(),
+          );
+        }
+      });
+    });
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -114,8 +156,10 @@ class HomeScreen extends ConsumerWidget {
               lottieAsset: 'assets/lottie/calculator.json',
               icon: Icons.calculate,
               color: Colors.teal,
-              onTap: () {},
-              isComingSoon: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CalculatorScreen()),
+              ),
             ),
           ],
         ),

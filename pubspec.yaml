@@ -40,6 +40,9 @@ dependencies:
 
   flutter_localizations:
     sdk: flutter
+  math_expressions: ^2.7.0
+  shared_preferences: ^2.5.5
+  app_links: ^7.0.0
 
 dev_dependencies:
   flutter_test:

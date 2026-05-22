@@ -17,22 +17,21 @@ class TemplateHeaderPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final layout = template.effectiveLayout;
-    
-    // Calculate scale factor
-    // A4 width in points is 595.27. Standard margins are 32 on each side.
-    const double a4Width = 595.27;
-    const double contentWidth = a4Width - 64;
-    
+
+    const double contentWidth = CustomLayout.designWidth;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final double scale = constraints.maxWidth / contentWidth;
-        
+
         int logoIdx = 0;
         final elements = layout.elements.map((el) {
           Widget? child;
           if (el.type == ElementType.logo) {
             final currentIdx = logoIdx++;
-            final String? logoPath = paper.logos.length > currentIdx ? paper.logos[currentIdx] : null;
+            final String? logoPath = paper.logos.length > currentIdx
+                ? paper.logos[currentIdx]
+                : null;
             child = _buildElement(el, paper, logoPath, template, scale);
           } else {
             child = _buildElement(el, paper, null, template, scale);
@@ -52,20 +51,29 @@ class TemplateHeaderPreview extends StatelessWidget {
         return Container(
           height: layout.canvasHeight * scale,
           width: constraints.maxWidth,
-          color: Colors.white,
-          child: Stack(
-            children: elements,
-          ),
+          decoration: const BoxDecoration(color: Colors.white),
+          clipBehavior: Clip.hardEdge,
+          child: Stack(children: elements),
         );
       },
     );
   }
 
-  Widget _buildElement(TemplateElement el, Paper paper, String? logoPath, PaperTemplate template, double scale) {
+  Widget _buildElement(
+    TemplateElement el,
+    Paper paper,
+    String? logoPath,
+    PaperTemplate template,
+    double scale,
+  ) {
     final style = TextStyle(
       fontSize: (el.properties['fontSize']?.toDouble() ?? 12) * scale,
-      fontWeight: el.properties['bold'] == true ? FontWeight.bold : FontWeight.normal,
-      color: el.properties['color'] != null ? Color(el.properties['color']) : Colors.black,
+      fontWeight: el.properties['bold'] == true
+          ? FontWeight.bold
+          : FontWeight.normal,
+      color: el.properties['color'] != null
+          ? Color(el.properties['color'])
+          : Colors.black,
     );
 
     final alignment = _getAlignment(el.properties['alignment']);
@@ -74,35 +82,57 @@ class TemplateHeaderPreview extends StatelessWidget {
       case ElementType.schoolName:
         return Container(
           alignment: alignment,
-          child: Text(paper.schoolName, style: style),
+          child: Text(
+            paper.schoolName,
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         );
       case ElementType.paperTitle:
         return Container(
           alignment: alignment,
-          child: Text(paper.title, style: style),
+          child: Text(
+            paper.title,
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         );
       case ElementType.logo:
         Widget? logoWidget;
-        if (el.content.isNotEmpty) {
-           logoWidget = Image.file(File(el.content), fit: BoxFit.contain);
-        } else if (logoPath != null && logoPath.isNotEmpty) {
-           logoWidget = Image.file(File(logoPath), fit: BoxFit.contain);
+        if (logoPath != null && logoPath.isNotEmpty) {
+          logoWidget = Image.file(File(logoPath), fit: BoxFit.contain);
+        } else if (el.content.isNotEmpty) {
+          logoWidget = Image.file(File(el.content), fit: BoxFit.contain);
         }
 
         return Container(
           alignment: alignment,
-          child: logoWidget ?? Container(
-            color: Colors.grey.withAlpha(50),
-            child: Center(child: Icon(Icons.image, size: 20 * scale, color: Colors.grey)),
-          ),
+          child:
+              logoWidget ??
+              Container(
+                color: Colors.grey.withAlpha(50),
+                child: Center(
+                  child: Icon(
+                    Icons.image,
+                    size: 20 * scale,
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
         );
       case ElementType.maxMarks:
         return Container(
           alignment: alignment,
-          child: Text('Max Marks: ${paper.totalMarks.toStringAsFixed(0)}', style: style),
+          child: Text(
+            'Max Marks: ${paper.totalMarks.toStringAsFixed(0)}',
+            style: style,
+          ),
         );
       case ElementType.headerFieldsBlock:
-        final List<dynamic> labels = el.properties['fieldLabels'] ?? ['Subject', 'Date'];
+        final List<dynamic> labels =
+            el.properties['fieldLabels'] ?? ['Subject', 'Date'];
         return Wrap(
           spacing: 16 * scale,
           runSpacing: 4 * scale,
@@ -110,12 +140,21 @@ class TemplateHeaderPreview extends StatelessWidget {
           children: labels.map((l) {
             final field = paper.headerFields.firstWhere(
               (f) => f.label.toLowerCase() == l.toString().toLowerCase(),
-              orElse: () => PaperHeaderField(id: '', label: l.toString(), isPlaceholder: true),
+              orElse: () => PaperHeaderField(
+                id: '',
+                label: l.toString(),
+                isPlaceholder: true,
+              ),
             );
-            final content = field.isPlaceholder ? '________________' : field.value;
+            final content = field.isPlaceholder
+                ? '________________'
+                : field.value;
             return RichText(
               text: TextSpan(
-                style: style.copyWith(fontSize: style.fontSize! * 0.85, color: Colors.black),
+                style: style.copyWith(
+                  fontSize: style.fontSize! * 0.85,
+                  color: Colors.black,
+                ),
                 children: [
                   TextSpan(
                     text: '${field.label}: ',
@@ -128,9 +167,16 @@ class TemplateHeaderPreview extends StatelessWidget {
           }).toList(),
         );
       case ElementType.staticText:
+        final content =
+            paper.customHeaderValues[el.paperBindingKey] ?? el.content;
         return Container(
           alignment: alignment,
-          child: Text(el.content, style: style),
+          child: Text(
+            content,
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         );
       case ElementType.horizontalLine:
         return Center(
@@ -140,6 +186,29 @@ class TemplateHeaderPreview extends StatelessWidget {
             color: style.color,
           ),
         );
+      case ElementType.rectangular:
+        return Container(
+          decoration: BoxDecoration(
+            color: el.properties['fillColor'] != null
+                ? Color(el.properties['fillColor'])
+                : null,
+            border: Border.all(
+              color: el.properties['borderColor'] != null
+                  ? Color(el.properties['borderColor'])
+                  : Colors.black,
+              width: (el.properties['borderWidth']?.toDouble() ?? 1.0) * scale,
+            ),
+            borderRadius: el.properties['borderRadius'] != null
+                ? BorderRadius.circular(
+                    el.properties['borderRadius'].toDouble() * scale,
+                  )
+                : null,
+          ),
+          alignment: alignment,
+          child: el.content.isNotEmpty ? Text(el.content, style: style) : null,
+        );
+      default:
+        return const SizedBox();
     }
   }
 

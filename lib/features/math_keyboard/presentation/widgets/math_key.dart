@@ -43,9 +43,10 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 100),
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.9,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -88,22 +89,26 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
           ScaleTransition(
             scale: _scaleAnimation,
             child: Material(
-              color: widget.color ?? (_isPressed 
-                  ? theme.colorScheme.surfaceContainerHighest 
-                  : theme.colorScheme.surfaceContainerHigh),
+              color:
+                  widget.color ??
+                  (_isPressed
+                      ? theme.colorScheme.surfaceContainerHighest
+                      : theme.colorScheme.surfaceContainerHigh),
               borderRadius: BorderRadius.circular(8),
               elevation: _isPressed ? 0 : 1,
               child: Container(
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: theme.dividerColor.withValues(alpha: 0.1), 
-                    width: 0.5
+                    color: theme.dividerColor.withValues(alpha: 0.1),
+                    width: 0.5,
                   ),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 padding: const EdgeInsets.all(2),
                 child: Center(
-                  child: widget.child ?? _buildContent(context, effectiveLabel, effectiveTex),
+                  child:
+                      widget.child ??
+                      _buildContent(context, effectiveLabel, effectiveTex),
                 ),
               ),
             ),
@@ -147,7 +152,9 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
                   ],
                 ),
                 child: Center(
-                  child: widget.child ?? _buildContent(context, label, tex, preview: true),
+                  child:
+                      widget.child ??
+                      _buildContent(context, label, tex, preview: true),
                 ),
               ),
               CustomPaint(
@@ -163,7 +170,12 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
     );
   }
 
-  Widget _buildContent(BuildContext context, String? label, String? tex, {bool preview = false}) {
+  Widget _buildContent(
+    BuildContext context,
+    String? label,
+    String? tex, {
+    bool preview = false,
+  }) {
     final theme = Theme.of(context);
     final style = TextStyle(
       fontSize: (widget.fontSize ?? 18) * (preview ? 1.2 : 1.0),
@@ -171,25 +183,38 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
       color: widget.textColor ?? theme.colorScheme.onSurfaceVariant,
     );
 
-    final isTex = tex != null && (tex.contains('\\') || tex.contains('^') || tex.contains('_') || tex.contains('{'));
+    final isTex =
+        tex != null &&
+        (tex.contains('\\') ||
+            tex.contains('^') ||
+            tex.contains('_') ||
+            tex.contains('{'));
 
     if (isTex) {
       String displayTex = tex
           .replaceAll(r'\frac{1}{2}', r'\frac{1}{2}')
+          .replaceAll(r'\frac{1}{3}', r'\frac{1}{3}')
+          .replaceAll(r'\frac{2}{3}', r'\frac{2}{3}')
           .replaceAll(r'\frac{d}{dx}', r'\frac{d}{dx}')
           .replaceAll(r'\frac{dy}{dx}', r'\frac{dy}{dx}')
           .replaceAll(r'\frac{d^2}{dx^2}', r'\frac{d^2}{dx^2}')
           .replaceAll(r'\int_{}^{}^{}', r'\int_{a}^{b}')
+          .replaceAll(r'\int_{}^{}', r'\int_{a}^{b}')
           .replaceAll(r'\sqrt{}', r'\sqrt{\square}')
           .replaceAll(r'\sqrt[3]{}', r'\sqrt[3]{\square}')
           .replaceAll(r'\sqrt[]{}', r'\sqrt[n]{\square}')
           .replaceAll(r'^{}', r'x^{\square}')
+          .replaceAll(r'^{2}', r'x^{2}')
+          .replaceAll(r'^{3}', r'x^{3}')
           .replaceAll(r'_{}', r'x_{\square}')
           .replaceAll(r'\frac{}{}', r'\frac{\square}{\square}')
           .replaceAll(r'\sum_{}^{}', r'\sum_{n=1}^{\infty}')
           .replaceAll(r'\prod_{}^{}', r'\prod_{n=1}^{\infty}')
-          .replaceAll(r'\int_{}^{}', r'\int_{a}^{b}')
           .replaceAll(r'|{}|', r'|x|')
+          .replaceAll(r'\log_{}', r'\log_{a}')
+          .replaceAll(r'\langle\rangle', r'\langle x\rangle')
+          .replaceAll(r'\lfloor\rfloor', r'\lfloor x\rfloor')
+          .replaceAll(r'\lceil\rceil', r'\lceil x\rceil')
           .replaceAll('{}', '')
           .replaceAll('{ }', '')
           .replaceAll('&', '')
@@ -220,11 +245,7 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
       );
     }
 
-    return Text(
-      label ?? tex ?? '',
-      textAlign: TextAlign.center,
-      style: style,
-    );
+    return Text(label ?? tex ?? '', textAlign: TextAlign.center, style: style);
   }
 }
 

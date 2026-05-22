@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/theme_provider.dart';
+import '../widgets/privacy_policy_dialog.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -68,6 +69,19 @@ class SettingsScreen extends ConsumerWidget {
                     color: Colors.teal,
                     onTap: () {
                       _showDeveloperDetails(context);
+                    },
+                  ),
+                  const Divider(height: 1, indent: 48),
+                  _SettingsActionCard(
+                    title: 'Privacy Policy',
+                    subtitle: 'Review our terms and data usage',
+                    icon: Icons.privacy_tip_rounded,
+                    color: Colors.blueGrey,
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => const PrivacyPolicyDialog(),
+                      );
                     },
                   ),
                 ],

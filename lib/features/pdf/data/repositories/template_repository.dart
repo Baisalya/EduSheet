@@ -22,7 +22,6 @@ class TemplateRepository {
       final List<dynamic> jsonList = json.decode(content);
       return jsonList.map((e) => _fromJson(e)).toList();
     } catch (e) {
-      print('Error loading templates: $e');
       return [];
     }
   }

@@ -18,8 +18,12 @@ abstract class HeaderBuilder {
     // Group fields in rows of 2 or 3 depending on length
     List<List<PaperHeaderField>> rows = [];
     for (var i = 0; i < paper.headerFields.length; i += 2) {
-      rows.add(paper.headerFields.sublist(
-          i, i + 2 > paper.headerFields.length ? paper.headerFields.length : i + 2));
+      rows.add(
+        paper.headerFields.sublist(
+          i,
+          i + 2 > paper.headerFields.length ? paper.headerFields.length : i + 2,
+        ),
+      );
     }
 
     return pw.Column(
@@ -28,14 +32,17 @@ abstract class HeaderBuilder {
           padding: const pw.EdgeInsets.symmetric(vertical: 2),
           child: pw.Row(
             children: row.map((field) {
-              final content = field.isPlaceholder ? '________________' : field.value;
+              final content = field.isPlaceholder
+                  ? '________________'
+                  : field.value;
               return pw.Expanded(
                 child: pw.RichText(
                   text: pw.TextSpan(
                     children: [
                       pw.TextSpan(
-                          text: '${field.label}: ',
-                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        text: '${field.label}: ',
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                      ),
                       pw.TextSpan(text: content),
                     ],
                   ),
@@ -62,7 +69,11 @@ class CenteredHeaderBuilder extends HeaderBuilder {
       children: [
         if (logoImage != null)
           pw.Container(
-              width: 50, height: 50, margin: const pw.EdgeInsets.only(bottom: 8), child: pw.Image(logoImage)),
+            width: 50,
+            height: 50,
+            margin: const pw.EdgeInsets.only(bottom: 8),
+            child: pw.Image(logoImage),
+          ),
         pw.Text(
           paper.schoolName,
           style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
@@ -70,7 +81,10 @@ class CenteredHeaderBuilder extends HeaderBuilder {
         ),
         pw.Text(
           paper.title,
-          style: pw.TextStyle(fontSize: template.headerFontSize, fontWeight: pw.FontWeight.bold),
+          style: pw.TextStyle(
+            fontSize: template.headerFontSize,
+            fontWeight: pw.FontWeight.bold,
+          ),
           textAlign: pw.TextAlign.center,
         ),
         pw.SizedBox(height: 10),
@@ -78,7 +92,10 @@ class CenteredHeaderBuilder extends HeaderBuilder {
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.end,
           children: [
-            pw.Text('Max Marks: ${paper.totalMarks}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Max Marks: ${paper.totalMarks}',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
           ],
         ),
         pw.Divider(thickness: 2),
@@ -104,8 +121,11 @@ class LogoSideHeaderBuilder extends HeaderBuilder {
         ? pw.Container(
             width: 60,
             height: 60,
-            margin: isLogoLeft ? const pw.EdgeInsets.only(right: 16) : const pw.EdgeInsets.only(left: 16),
-            child: pw.Image(logoImage))
+            margin: isLogoLeft
+                ? const pw.EdgeInsets.only(right: 16)
+                : const pw.EdgeInsets.only(left: 16),
+            child: pw.Image(logoImage),
+          )
         : pw.SizedBox();
 
     return pw.Column(
@@ -116,15 +136,23 @@ class LogoSideHeaderBuilder extends HeaderBuilder {
             if (isLogoLeft) logo,
             pw.Expanded(
               child: pw.Column(
-                crossAxisAlignment: isLogoLeft ? pw.CrossAxisAlignment.start : pw.CrossAxisAlignment.end,
+                crossAxisAlignment: isLogoLeft
+                    ? pw.CrossAxisAlignment.start
+                    : pw.CrossAxisAlignment.end,
                 children: [
                   pw.Text(
                     paper.schoolName,
-                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                    style: pw.TextStyle(
+                      fontSize: 18,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
                   ),
                   pw.Text(
                     paper.title,
-                    style: pw.TextStyle(fontSize: template.headerFontSize, fontWeight: pw.FontWeight.bold),
+                    style: pw.TextStyle(
+                      fontSize: template.headerFontSize,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -133,9 +161,14 @@ class LogoSideHeaderBuilder extends HeaderBuilder {
           ],
         ),
         pw.Row(
-          mainAxisAlignment: isLogoLeft ? pw.MainAxisAlignment.end : pw.MainAxisAlignment.start,
+          mainAxisAlignment: isLogoLeft
+              ? pw.MainAxisAlignment.end
+              : pw.MainAxisAlignment.start,
           children: [
-            pw.Text('Max Marks: ${paper.totalMarks}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            pw.Text(
+              'Max Marks: ${paper.totalMarks}',
+              style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            ),
           ],
         ),
         pw.SizedBox(height: 10),
@@ -167,7 +200,9 @@ class ModernCoachingHeaderBuilder extends HeaderBuilder {
       padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
         color: template.secondaryColor,
-        border: pw.Border(bottom: pw.BorderSide(color: template.primaryColor, width: 2)),
+        border: pw.Border(
+          bottom: pw.BorderSide(color: template.primaryColor, width: 2),
+        ),
       ),
       child: pw.Column(
         children: [
@@ -187,18 +222,17 @@ class ModernCoachingHeaderBuilder extends HeaderBuilder {
                       color: template.primaryColor,
                     ),
                   ),
-                  pw.Text(
-                    paper.title,
-                    style: pw.TextStyle(fontSize: 16),
-                  ),
+                  pw.Text(paper.title, style: pw.TextStyle(fontSize: 16)),
                 ],
               ),
               pw.Spacer(),
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
-                  pw.Text('Max Marks: ${paper.totalMarks}',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.Text(
+                    'Max Marks: ${paper.totalMarks}',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
                 ],
               ),
             ],
@@ -227,7 +261,11 @@ class MinimalHeaderBuilder extends HeaderBuilder {
           children: [
             pw.Text(
               paper.schoolName.toUpperCase(),
-              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey),
+              style: pw.TextStyle(
+                fontSize: 10,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey,
+              ),
             ),
             pw.Text(
               'MM: ${paper.totalMarks}',
@@ -258,47 +296,62 @@ class CustomHeaderBuilder extends HeaderBuilder {
   }) {
     final layout = template.customLayout ?? template.effectiveLayout;
 
-    // Map logo elements to indices
-    int logoIdx = 0;
-    final elements = layout.elements.map((el) {
-      if (el.type == ElementType.logo) {
-        final currentIdx = logoIdx++;
-        pw.ImageProvider? logoImg;
-        if (el.content.isNotEmpty) {
-          logoImg = customImages?[el.content];
-        } else if (logos.length > currentIdx) {
-          logoImg = logos[currentIdx];
-        }
+    return pw.LayoutBuilder(
+      builder: (context, constraints) {
+        final contentWidth = constraints?.maxWidth.isFinite == true
+            ? constraints!.maxWidth
+            : CustomLayout.designWidth;
+        final scale = contentWidth / CustomLayout.designWidth;
 
-        return pw.Positioned(
-          left: el.x,
-          top: el.y,
-          child: _buildElement(el, paper, logoImg, template),
+        int logoIdx = 0;
+        final elements = layout.elements.map((el) {
+          pw.ImageProvider? logoImg;
+          if (el.type == ElementType.logo) {
+            final currentIdx = logoIdx++;
+            if (logos.length > currentIdx && logos[currentIdx] != null) {
+              logoImg = logos[currentIdx];
+            } else if (el.content.isNotEmpty) {
+              logoImg = customImages?[el.content];
+            }
+          }
+
+          return pw.Positioned(
+            left: el.x * scale,
+            top: el.y * scale,
+            child: _buildElement(el, paper, logoImg, template, scale),
+          );
+        }).toList();
+
+        return pw.Container(
+          height: layout.canvasHeight * scale,
+          width: contentWidth,
+          child: pw.Stack(children: elements),
         );
-      }
-      return pw.Positioned(
-        left: el.x,
-        top: el.y,
-        child: _buildElement(el, paper, null, template),
-      );
-    }).toList();
-
-    return pw.Container(
-      height: layout.canvasHeight,
-      width: 595.27 - 64, // A4 width minus margins (32 * 2)
-      child: pw.Stack(
-        children: elements,
-      ),
+      },
     );
   }
 
-  pw.Widget _buildElement(TemplateElement el, Paper paper, pw.ImageProvider? logoImage, PaperTemplate template) {
+  pw.Widget _buildElement(
+    TemplateElement el,
+    Paper paper,
+    pw.ImageProvider? logoImage,
+    PaperTemplate template,
+    double scale,
+  ) {
     final style = pw.TextStyle(
-      fontSize: el.properties['fontSize']?.toDouble() ?? 12,
-      fontWeight: el.properties['bold'] == true ? pw.FontWeight.bold : pw.FontWeight.normal,
-      fontStyle: el.properties['italic'] == true ? pw.FontStyle.italic : pw.FontStyle.normal,
-      decoration: el.properties['decoration'] == 'underline' ? pw.TextDecoration.underline : pw.TextDecoration.none,
-      color: el.properties['color'] != null ? PdfColor.fromInt(el.properties['color']) : PdfColors.black,
+      fontSize: (el.properties['fontSize']?.toDouble() ?? 12) * scale,
+      fontWeight: el.properties['bold'] == true
+          ? pw.FontWeight.bold
+          : pw.FontWeight.normal,
+      fontStyle: el.properties['italic'] == true
+          ? pw.FontStyle.italic
+          : pw.FontStyle.normal,
+      decoration: el.properties['decoration'] == 'underline'
+          ? pw.TextDecoration.underline
+          : pw.TextDecoration.none,
+      color: el.properties['color'] != null
+          ? PdfColor.fromInt(el.properties['color'])
+          : PdfColors.black,
     );
 
     final alignment = _getPdfAlignment(el.properties['alignment']);
@@ -306,51 +359,68 @@ class CustomHeaderBuilder extends HeaderBuilder {
     switch (el.type) {
       case ElementType.schoolName:
         return pw.Container(
-          width: el.width,
+          width: el.width != null ? el.width! * scale : null,
+          height: el.height != null ? el.height! * scale : null,
           alignment: alignment,
-          child: pw.Text(paper.schoolName, style: style),
+          child: pw.Text(paper.schoolName, style: style, maxLines: 1),
         );
       case ElementType.paperTitle:
         return pw.Container(
-          width: el.width,
+          width: el.width != null ? el.width! * scale : null,
+          height: el.height != null ? el.height! * scale : null,
           alignment: alignment,
-          child: pw.Text(paper.title, style: style),
+          child: pw.Text(paper.title, style: style, maxLines: 1),
         );
       case ElementType.logo:
         if (logoImage != null) {
           return pw.Container(
-            width: el.width ?? 50,
-            height: el.height ?? 50,
+            width: (el.width ?? 50) * scale,
+            height: (el.height ?? 50) * scale,
             child: pw.Image(logoImage, fit: pw.BoxFit.contain),
           );
         }
         return pw.SizedBox();
       case ElementType.maxMarks:
         return pw.Container(
-          width: el.width,
+          width: el.width != null ? el.width! * scale : null,
+          height: el.height != null ? el.height! * scale : null,
           alignment: alignment,
-          child: pw.Text('Max Marks: ${paper.totalMarks.toStringAsFixed(0)}', style: style),
+          child: pw.Text(
+            'Max Marks: ${paper.totalMarks.toStringAsFixed(0)}',
+            style: style,
+          ),
         );
       case ElementType.headerFieldsBlock:
-        final List<dynamic> labels = el.properties['fieldLabels'] ?? ['Subject', 'Date'];
+        final List<dynamic> labels =
+            el.properties['fieldLabels'] ?? ['Subject', 'Date'];
         return pw.Container(
-          width: el.width ?? 300,
+          width: (el.width ?? 300) * scale,
+          height: el.height != null ? el.height! * scale : null,
           child: pw.Wrap(
-            spacing: 16,
-            runSpacing: 4,
+            spacing: 16 * scale,
+            runSpacing: 4 * scale,
             alignment: _getWrapAlignment(el.properties['alignment']),
             children: labels.map((l) {
               final field = paper.headerFields.firstWhere(
                 (f) => f.label.toLowerCase() == l.toString().toLowerCase(),
-                orElse: () => PaperHeaderField(id: '', label: l.toString(), isPlaceholder: true),
+                orElse: () => PaperHeaderField(
+                  id: '',
+                  label: l.toString(),
+                  isPlaceholder: true,
+                ),
               );
-              final content = field.isPlaceholder ? '________________' : field.value;
+              final content = field.isPlaceholder
+                  ? '________________'
+                  : field.value;
               return pw.RichText(
                 text: pw.TextSpan(
                   children: [
                     pw.TextSpan(
                       text: '${field.label}: ',
-                      style: style.copyWith(fontWeight: pw.FontWeight.bold, fontSize: style.fontSize! * 0.85),
+                      style: style.copyWith(
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: style.fontSize! * 0.85,
+                      ),
                     ),
                     pw.TextSpan(
                       text: content,
@@ -363,17 +433,70 @@ class CustomHeaderBuilder extends HeaderBuilder {
           ),
         );
       case ElementType.staticText:
+        final hasBorder = el.properties['border'] == true;
+        final content =
+            paper.customHeaderValues[el.paperBindingKey] ?? el.content;
         return pw.Container(
-          width: el.width,
+          width: el.width != null ? el.width! * scale : null,
+          height: el.height != null ? el.height! * scale : null,
+          padding: pw.EdgeInsets.symmetric(
+            vertical:
+                (el.properties['paddingVertical']?.toDouble() ?? 0) * scale,
+            horizontal:
+                (el.properties['paddingHorizontal']?.toDouble() ?? 0) * scale,
+          ),
+          decoration: hasBorder
+              ? pw.BoxDecoration(
+                  border: pw.Border.all(
+                    color: el.properties['borderColor'] != null
+                        ? PdfColor.fromInt(el.properties['borderColor'])
+                        : PdfColors.black,
+                    width:
+                        (el.properties['borderWidth']?.toDouble() ?? 1) * scale,
+                  ),
+                  borderRadius: el.properties['borderRadius'] != null
+                      ? pw.BorderRadius.circular(
+                          el.properties['borderRadius'].toDouble() * scale,
+                        )
+                      : null,
+                )
+              : null,
           alignment: alignment,
-          child: pw.Text(el.content, style: style),
+          child: pw.Text(content, style: style, maxLines: 1),
         );
       case ElementType.horizontalLine:
         return pw.Container(
-          width: el.width ?? 100,
-          height: 1,
+          width: (el.width ?? 100) * scale,
+          height: (el.properties['thickness']?.toDouble() ?? 1) * scale,
           color: style.color,
         );
+      case ElementType.rectangular:
+        return pw.Container(
+          width: el.width != null ? el.width! * scale : null,
+          height: el.height != null ? el.height! * scale : null,
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(
+              color: el.properties['borderColor'] != null
+                  ? PdfColor.fromInt(el.properties['borderColor'])
+                  : PdfColors.black,
+              width: (el.properties['borderWidth']?.toDouble() ?? 1) * scale,
+            ),
+            borderRadius: el.properties['borderRadius'] != null
+                ? pw.BorderRadius.circular(
+                    el.properties['borderRadius'].toDouble() * scale,
+                  )
+                : null,
+            color: el.properties['fillColor'] != null
+                ? PdfColor.fromInt(el.properties['fillColor'])
+                : null,
+          ),
+          alignment: alignment,
+          child: el.content.isNotEmpty
+              ? pw.Text(el.content, style: style, maxLines: 1)
+              : null,
+        );
+      default:
+        return pw.SizedBox();
     }
   }
 

@@ -14,61 +14,46 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 
 class QuestionPaperService {
+  static Future<pw.ThemeData>? _themeFuture;
+
   static Future<pw.ThemeData> _loadTheme() async {
-    final baseFont = await PdfGoogleFonts.notoSansRegular();
-    final mathFont = await PdfGoogleFonts.notoSansMathRegular();
-    final symbols2Font = await PdfGoogleFonts.notoSansSymbols2Regular();
-    final devanagariFont = await PdfGoogleFonts.notoSansDevanagariRegular();
-    final odiaFont = await PdfGoogleFonts.notoSansOriyaRegular();
-    final bengaliFont = await PdfGoogleFonts.notoSansBengaliRegular();
-    final tamilFont = await PdfGoogleFonts.notoSansTamilRegular();
-    final teluguFont = await PdfGoogleFonts.notoSansTeluguRegular();
-    final kannadaFont = await PdfGoogleFonts.notoSansKannadaRegular();
-    final gujaratiFont = await PdfGoogleFonts.notoSansGujaratiRegular();
-    final malayalamFont = await PdfGoogleFonts.notoSansMalayalamRegular();
-    final gurmukhiFont = await PdfGoogleFonts.notoSansGurmukhiRegular();
-    final arabicFont = await PdfGoogleFonts.notoSansArabicRegular();
-    final cjkFont = await PdfGoogleFonts.notoSansJPRegular();
+    final cachedTheme = _themeFuture;
+    if (cachedTheme != null) return cachedTheme;
+
+    _themeFuture = _buildTheme();
+    return _themeFuture!;
+  }
+
+  static void preloadTheme() {
+    _loadTheme();
+  }
+
+  static Future<pw.ThemeData> _buildTheme() async {
+    final fonts = await Future.wait([
+      PdfGoogleFonts.notoSansRegular(),
+      PdfGoogleFonts.notoSansMathRegular(),
+      PdfGoogleFonts.notoSansSymbols2Regular(),
+      PdfGoogleFonts.notoSansDevanagariRegular(),
+      PdfGoogleFonts.notoSansOriyaRegular(),
+      PdfGoogleFonts.notoSansBengaliRegular(),
+      PdfGoogleFonts.notoSansTamilRegular(),
+      PdfGoogleFonts.notoSansTeluguRegular(),
+      PdfGoogleFonts.notoSansKannadaRegular(),
+      PdfGoogleFonts.notoSansGujaratiRegular(),
+      PdfGoogleFonts.notoSansMalayalamRegular(),
+      PdfGoogleFonts.notoSansGurmukhiRegular(),
+      PdfGoogleFonts.notoSansArabicRegular(),
+      PdfGoogleFonts.notoSansJPRegular(),
+    ]);
 
     return pw.ThemeData.withFont(
-      base: baseFont,
-      fontFallback: [
-        mathFont,
-        symbols2Font,
-        devanagariFont,
-        odiaFont,
-        bengaliFont,
-        tamilFont,
-        teluguFont,
-        kannadaFont,
-        gujaratiFont,
-        malayalamFont,
-        gurmukhiFont,
-        arabicFont,
-        cjkFont,
-      ],
+      base: fonts[0],
+      fontFallback: fonts.sublist(1),
     );
   }
 
   static HeaderBuilder _getHeaderBuilder(HeaderLayout layout) {
-    switch (layout) {
-      case HeaderLayout.centered:
-        return CenteredHeaderBuilder();
-      case HeaderLayout.logoLeft:
-        return LogoLeftHeaderBuilder();
-      case HeaderLayout.modernCoaching:
-        return ModernCoachingHeaderBuilder();
-      case HeaderLayout.minimal:
-        return MinimalHeaderBuilder();
-      case HeaderLayout.logoRight:
-        return LogoRightHeaderBuilder();
-      case HeaderLayout.academic:
-      case HeaderLayout.ssvm:
-      case HeaderLayout.dps:
-      case HeaderLayout.custom:
-        return CustomHeaderBuilder();
-
-    }
+    return CustomHeaderBuilder();
   }
 
   static PdfPageFormat _getPageFormat(PaperSize size) {
@@ -86,36 +71,46 @@ class QuestionPaperService {
     }
   }
 
-  static Future<pw.Document> generateDocument(Paper paper, PaperTemplate template) async {
+  static Future<pw.Document> generateDocument(
+    Paper paper,
+    PaperTemplate template,
+  ) async {
     final theme = await _loadTheme();
     final pdf = pw.Document(theme: theme);
 
-    // Pre-load standard logos
-    final List<pw.ImageProvider?> logos = [];
-    for (var path in paper.logos) {
-      if (path.isNotEmpty) {
-        final file = File(path);
-        if (await file.exists()) {
-          logos.add(pw.MemoryImage(await file.readAsBytes()));
-        } else {
-          logos.add(null);
-        }
-      } else {
-        logos.add(null);
-      }
-    }
-
-    // Pre-load custom template images
-    final Map<String, pw.ImageProvider> customImages = {};
-    final layout = template.customLayout ?? template.effectiveLayout;
-    for (var el in layout.elements) {
-      if (el.type == ElementType.logo && el.content.isNotEmpty) {
-        if (!customImages.containsKey(el.content)) {
-          final file = File(el.content);
+    // Pre-load standard logos in parallel
+    final List<pw.ImageProvider?> logos = await Future.wait(
+      paper.logos.map((path) async {
+        if (path.isNotEmpty) {
+          final file = File(path);
           if (await file.exists()) {
-            customImages[el.content] = pw.MemoryImage(await file.readAsBytes());
+            return pw.MemoryImage(await file.readAsBytes());
           }
         }
+        return null;
+      }),
+    );
+
+    // Pre-load custom template images in parallel
+    final Map<String, pw.ImageProvider> customImages = {};
+    final layout = template.customLayout ?? template.effectiveLayout;
+    final logoElements = layout.elements
+        .where((el) => el.type == ElementType.logo && el.content.isNotEmpty)
+        .toList();
+
+    final customImageEntries = await Future.wait(
+      logoElements.map((el) async {
+        final file = File(el.content);
+        if (await file.exists()) {
+          return MapEntry(el.content, pw.MemoryImage(await file.readAsBytes()));
+        }
+        return null;
+      }),
+    );
+
+    for (var entry in customImageEntries) {
+      if (entry != null) {
+        customImages[entry.key] = entry.value;
       }
     }
 
@@ -134,7 +129,10 @@ class QuestionPaperService {
                 child: pw.Container(
                   margin: const pw.EdgeInsets.all(10),
                   decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: template.primaryColor, width: 1),
+                    border: pw.Border.all(
+                      color: template.primaryColor,
+                      width: 1,
+                    ),
                   ),
                 ),
               );
@@ -143,9 +141,28 @@ class QuestionPaperService {
           },
         ),
         build: (context) => [
-          headerBuilder.build(paper, logos, template, customImages: customImages),
+          headerBuilder.build(
+            paper,
+            logos,
+            template,
+            customImages: customImages,
+          ),
+          if (paper.instruction.trim().isNotEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(top: 8, bottom: 8),
+              child: pw.Text(
+                paper.instruction.trim(),
+                style: pw.TextStyle(
+                  fontSize: template.questionFontSize,
+                  fontStyle: pw.FontStyle.italic,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+                textAlign: pw.TextAlign.center,
+              ),
+            ),
           ...paper.sections.map((section) => _buildSection(section, template)),
-          if (paper.includeOmr) ..._buildOmrSheet(paper, logos.isNotEmpty ? logos.first : null),
+          if (paper.includeOmr)
+            ..._buildOmrSheet(paper, logos.isNotEmpty ? logos.first : null),
         ],
       ),
     );
@@ -165,11 +182,14 @@ class QuestionPaperService {
                 ? pw.BoxDecoration(color: template.secondaryColor)
                 : null,
             child: pw.Text(
-              '${section.prefix} ${section.showTitle ? section.title : ""}'.trim(),
+              '${section.prefix} ${section.showTitle ? section.title : ""}'
+                  .trim(),
               style: pw.TextStyle(
                 fontSize: 18,
                 fontWeight: pw.FontWeight.bold,
-                color: template.type == TemplateType.coaching ? template.primaryColor : PdfColors.black,
+                color: template.type == TemplateType.coaching
+                    ? template.primaryColor
+                    : PdfColors.black,
               ),
             ),
           ),
@@ -191,7 +211,11 @@ class QuestionPaperService {
     );
   }
 
-  static pw.Widget _buildQuestion(int index, Question q, PaperTemplate template) {
+  static pw.Widget _buildQuestion(
+    int index,
+    Question q,
+    PaperTemplate template,
+  ) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 8),
       child: pw.Column(
@@ -201,17 +225,29 @@ class QuestionPaperService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.SizedBox(
-                  width: 25,
-                  child: pw.Text('$index.',
-                      style: pw.TextStyle(fontSize: template.questionFontSize, fontWeight: pw.FontWeight.bold))),
+                width: 25,
+                child: pw.Text(
+                  '$index.',
+                  style: pw.TextStyle(
+                    fontSize: template.questionFontSize,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
               pw.Expanded(
                 child: _parseRichTextToPdf(q.text, template.questionFontSize),
               ),
               pw.SizedBox(
-                  width: 40,
-                  child: pw.Text('[${q.marks}]',
-                      textAlign: pw.TextAlign.right,
-                      style: pw.TextStyle(fontSize: template.questionFontSize, fontWeight: pw.FontWeight.bold))),
+                width: 40,
+                child: pw.Text(
+                  '[${q.marks}]',
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                    fontSize: template.questionFontSize,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
             ],
           ),
           if (q.type == QuestionType.mcq)
@@ -226,10 +262,20 @@ class QuestionPaperService {
                     child: pw.Row(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text('$optIdx) ', style: pw.TextStyle(fontSize: template.questionFontSize)),
+                        pw.Text(
+                          '$optIdx) ',
+                          style: pw.TextStyle(
+                            fontSize: template.questionFontSize,
+                          ),
+                        ),
                         pw.Expanded(
-                            child: pw.Text(optEntry.value.text,
-                                style: pw.TextStyle(fontSize: template.questionFontSize))),
+                          child: pw.Text(
+                            optEntry.value.text,
+                            style: pw.TextStyle(
+                              fontSize: template.questionFontSize,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -239,8 +285,10 @@ class QuestionPaperService {
           if (q.type == QuestionType.fillInTheBlanks)
             pw.Padding(
               padding: const pw.EdgeInsets.only(left: 25, top: 4),
-              child: pw.Text('Ans: ________________________',
-                  style: pw.TextStyle(fontSize: template.questionFontSize)),
+              child: pw.Text(
+                'Ans: ________________________',
+                style: pw.TextStyle(fontSize: template.questionFontSize),
+              ),
             ),
         ],
       ),
@@ -251,10 +299,16 @@ class QuestionPaperService {
     try {
       if (text.startsWith('[') || text.startsWith('{')) {
         final List<dynamic> deltaJson = jsonDecode(text);
-        final converter = QuillDeltaToHtmlConverter(deltaJson.cast<Map<String, dynamic>>());
+        final converter = QuillDeltaToHtmlConverter(
+          deltaJson.cast<Map<String, dynamic>>(),
+        );
         final html = converter.convert();
         final document = html_parser.parse(html);
-        return pw.RichText(text: pw.TextSpan(children: _domToTextSpans(document.body!, fontSize)));
+        return pw.RichText(
+          text: pw.TextSpan(
+            children: _domToTextSpans(document.body!, fontSize),
+          ),
+        );
       }
     } catch (e) {
       // Fallback to plain text
@@ -268,7 +322,12 @@ class QuestionPaperService {
     for (var child in node.nodes) {
       if (child is dom.Text) {
         if (child.text.trim().isNotEmpty) {
-          spans.add(pw.TextSpan(text: child.text, style: pw.TextStyle(fontSize: fontSize)));
+          spans.add(
+            pw.TextSpan(
+              text: child.text,
+              style: pw.TextStyle(fontSize: fontSize),
+            ),
+          );
         }
       } else if (child is dom.Element) {
         pw.TextStyle style = pw.TextStyle(fontSize: fontSize);
@@ -280,17 +339,26 @@ class QuestionPaperService {
           style = style.copyWith(decoration: pw.TextDecoration.underline);
         }
 
-        spans.add(pw.TextSpan(
-          text: child.nodes.isEmpty ? (child.text.isNotEmpty ? child.text : null) : null,
-          style: style,
-          children: child.nodes.isNotEmpty ? _domToTextSpans(child, fontSize) : null,
-        ));
+        spans.add(
+          pw.TextSpan(
+            text: child.nodes.isEmpty
+                ? (child.text.isNotEmpty ? child.text : null)
+                : null,
+            style: style,
+            children: child.nodes.isNotEmpty
+                ? _domToTextSpans(child, fontSize)
+                : null,
+          ),
+        );
       }
     }
     return spans;
   }
 
-  static List<pw.Widget> _buildOmrSheet(Paper paper, pw.ImageProvider? logoImage) {
+  static List<pw.Widget> _buildOmrSheet(
+    Paper paper,
+    pw.ImageProvider? logoImage,
+  ) {
     int totalQuestions = 0;
     for (var section in paper.sections) {
       totalQuestions += section.questions.length;

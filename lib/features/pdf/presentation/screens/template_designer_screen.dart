@@ -15,26 +15,33 @@ class TemplateDesignerScreen extends ConsumerStatefulWidget {
   const TemplateDesignerScreen({super.key, this.existingTemplate});
 
   @override
-  ConsumerState<TemplateDesignerScreen> createState() => _TemplateDesignerScreenState();
+  ConsumerState<TemplateDesignerScreen> createState() =>
+      _TemplateDesignerScreenState();
 }
 
-class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen> {
+class _TemplateDesignerScreenState
+    extends ConsumerState<TemplateDesignerScreen> {
   late PaperTemplate _template;
   late List<TemplateElement> _elements;
   String? _selectedElementId;
   double _canvasHeight = 250;
-  
+
   // Page size constants in points
   double get _pageWidth => _getPageDimensions(_template.paperSize).width;
   double get _pageHeight => _getPageDimensions(_template.paperSize).height;
 
   Size _getPageDimensions(PaperSize size) {
     switch (size) {
-      case PaperSize.a4: return const Size(595.27, 841.89);
-      case PaperSize.a5: return const Size(419.53, 595.27);
-      case PaperSize.a3: return const Size(841.89, 1190.55);
-      case PaperSize.letter: return const Size(612.0, 792.0);
-      case PaperSize.legal: return const Size(612.0, 1008.0);
+      case PaperSize.a4:
+        return const Size(595.27, 841.89);
+      case PaperSize.a5:
+        return const Size(419.53, 595.27);
+      case PaperSize.a3:
+        return const Size(841.89, 1190.55);
+      case PaperSize.letter:
+        return const Size(612.0, 792.0);
+      case PaperSize.legal:
+        return const Size(612.0, 1008.0);
     }
   }
 
@@ -42,7 +49,53 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
   bool _snapToGrid = true;
   final double _snapSize = 5.0;
   bool _isFullPageView = true;
-  final TransformationController _transformationController = TransformationController();
+  final FocusNode _keyboardFocusNode = FocusNode();
+  final TransformationController _transformationController =
+      TransformationController();
+
+  double get _contentWidth => _pageWidth - 64;
+  double get _editingHeight =>
+      _isFullPageView ? (_pageHeight - 64) : _canvasHeight;
+
+  TemplateElement? get _selectedElement {
+    final selectedId = _selectedElementId;
+    if (selectedId == null) return null;
+    for (final element in _elements) {
+      if (element.id == selectedId) return element;
+    }
+    return null;
+  }
+
+  double _defaultElementWidth(TemplateElement el) {
+    return switch (el.type) {
+      ElementType.logo => 80,
+      ElementType.rectangular => 40,
+      ElementType.horizontalLine => 200,
+      ElementType.headerFieldsBlock => 300,
+      _ => _contentWidth,
+    };
+  }
+
+  double _defaultElementHeight(TemplateElement el) {
+    return switch (el.type) {
+      ElementType.logo => 80,
+      ElementType.rectangular => 30,
+      ElementType.horizontalLine => 1,
+      _ => 24,
+    };
+  }
+
+  double _clampX(double x, double width) {
+    return x
+        .clamp(0.0, (_contentWidth - width).clamp(0.0, _contentWidth))
+        .toDouble();
+  }
+
+  double _clampY(double y, double height) {
+    return y
+        .clamp(0.0, (_editingHeight - height).clamp(0.0, _editingHeight))
+        .toDouble();
+  }
 
   @override
   void initState() {
@@ -69,11 +122,18 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
           type: ElementType.schoolName,
           x: 0,
           y: 20,
-          width: 595.27 - 64, // Default A4
+          width: CustomLayout.designWidth,
           properties: {'fontSize': 20.0, 'bold': true, 'alignment': 'center'},
         ),
       ];
     }
+  }
+
+  @override
+  void dispose() {
+    _keyboardFocusNode.dispose();
+    _transformationController.dispose();
+    super.dispose();
   }
 
   void _centerElement(String id) {
@@ -81,8 +141,8 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
       final index = _elements.indexWhere((e) => e.id == id);
       if (index != -1) {
         final el = _elements[index];
-        final w = el.width ?? (_pageWidth - 64);
-        _elements[index] = el.copyWith(x: ((_pageWidth - 64) - w) / 2);
+        final w = el.width ?? _defaultElementWidth(el);
+        _elements[index] = el.copyWith(x: _clampX((_contentWidth - w) / 2, w));
       }
     });
   }
@@ -92,7 +152,10 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     Map<String, dynamic> extraProps = {};
 
     if (type == ElementType.staticText) {
-      final result = await _showTextEntryDialog('Enter Text', 'Add some text to your template');
+      final result = await _showTextEntryDialog(
+        'Enter Text',
+        'Add some text to your template',
+      );
       if (result == null || result.isEmpty) return;
       content = result;
     } else if (type == ElementType.logo) {
@@ -112,14 +175,27 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         type: type,
         x: 50,
         y: 50,
-        width: type == ElementType.logo ? 80 : (type == ElementType.horizontalLine ? 200 : (_pageWidth - 64)),
-        height: type == ElementType.logo ? 80 : (type == ElementType.horizontalLine ? 1 : null),
+        width: type == ElementType.logo
+            ? 80
+            : (type == ElementType.horizontalLine
+                  ? 200
+                  : (type == ElementType.rectangular ? 40 : _contentWidth)),
+        height: type == ElementType.logo
+            ? 80
+            : (type == ElementType.horizontalLine
+                  ? 1
+                  : (type == ElementType.rectangular ? 30 : null)),
         content: content,
         properties: {
           'fontSize': 14.0,
-          'bold': type == ElementType.schoolName || type == ElementType.paperTitle,
+          'bold':
+              type == ElementType.schoolName || type == ElementType.paperTitle,
           'alignment': 'left',
           'color': 0xFF000000,
+          if (type == ElementType.rectangular) ...{
+            'borderColor': 0xFF000000,
+            'borderWidth': 1.0,
+          },
           ...extraProps,
         },
       );
@@ -128,7 +204,11 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     });
   }
 
-  Future<String?> _showTextEntryDialog(String title, String hint, {String? initialValue}) async {
+  Future<String?> _showTextEntryDialog(
+    String title,
+    String hint, {
+    String? initialValue,
+  }) async {
     final controller = TextEditingController(text: initialValue);
     return showDialog<String>(
       context: context,
@@ -140,16 +220,34 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
           decoration: InputDecoration(hintText: hint),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
   }
 
-  Future<List<String>?> _showFieldsDialog({List<String>? initialSelected}) async {
-    final List<String> available = ['Roll No', 'Name', 'Section', 'Date', 'Subject', 'Time', 'Class'];
-    final List<String> selected = initialSelected != null ? List.from(initialSelected) : ['Subject', 'Date'];
+  Future<List<String>?> _showFieldsDialog({
+    List<String>? initialSelected,
+  }) async {
+    final List<String> available = [
+      'Roll No',
+      'Name',
+      'Section',
+      'Date',
+      'Subject',
+      'Time',
+      'Class',
+    ];
+    final List<String> selected = initialSelected != null
+        ? List.from(initialSelected)
+        : ['Subject', 'Date'];
     final customController = TextEditingController();
 
     // Ensure all initially selected are in available list
@@ -171,20 +269,22 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                   child: ListView(
                     shrinkWrap: true,
                     children: [
-                      ...available.map((f) => CheckboxListTile(
-                        title: Text(f),
-                        dense: true,
-                        value: selected.contains(f),
-                        onChanged: (val) {
-                          setModalState(() {
-                            if (val == true) {
-                              selected.add(f);
-                            } else {
-                              selected.remove(f);
-                            }
-                          });
-                        },
-                      )),
+                      ...available.map(
+                        (f) => CheckboxListTile(
+                          title: Text(f),
+                          dense: true,
+                          value: selected.contains(f),
+                          onChanged: (val) {
+                            setModalState(() {
+                              if (val == true) {
+                                selected.add(f);
+                              } else {
+                                selected.remove(f);
+                              }
+                            });
+                          },
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -221,40 +321,98 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(context, selected), child: const Text('Add Block')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, selected),
+              child: const Text('Add Block'),
+            ),
           ],
         ),
       ),
     );
   }
 
-  void _updateElement(String id, {double? x, double? y, double? width, double? height, Map<String, dynamic>? props}) {
+  void _updateElement(
+    String id, {
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+    Map<String, dynamic>? props,
+  }) {
     setState(() {
       final index = _elements.indexWhere((e) => e.id == id);
       if (index != -1) {
-        double newX = x ?? _elements[index].x;
-        double newY = y ?? _elements[index].y;
+        final current = _elements[index];
+        final newWidth = width ?? current.width;
+        final newHeight = height ?? current.height;
+        final effectiveWidth = newWidth ?? _defaultElementWidth(current);
+        final effectiveHeight = newHeight ?? _defaultElementHeight(current);
+        double newX = x ?? current.x;
+        double newY = y ?? current.y;
 
         if (_snapToGrid && _snapSize > 0) {
           newX = (newX / _snapSize).round() * _snapSize;
           newY = (newY / _snapSize).round() * _snapSize;
         }
 
-        _elements[index] = _elements[index].copyWith(
+        newX = _clampX(newX, effectiveWidth);
+        newY = _clampY(newY, effectiveHeight);
+
+        _elements[index] = current.copyWith(
           x: newX,
           y: newY,
           width: width,
           height: height,
-          properties: props != null ? {..._elements[index].properties, ...props} : null,
+          properties: props != null ? {...current.properties, ...props} : null,
         );
       }
     });
   }
 
+  void _resizeElement(String id, {double? deltaWidth, double? deltaHeight}) {
+    final el = _elements.firstWhere((e) => e.id == id);
+    final minWidth = el.type == ElementType.horizontalLine ? 20.0 : 16.0;
+    final minHeight = el.type == ElementType.horizontalLine ? 1.0 : 12.0;
+    final nextWidth =
+        ((el.width ?? _defaultElementWidth(el)) + (deltaWidth ?? 0)).clamp(
+          minWidth,
+          _contentWidth - el.x,
+        );
+    final shouldResizeHeight =
+        el.type == ElementType.logo || el.type == ElementType.rectangular;
+    final nextHeight = shouldResizeHeight
+        ? ((el.height ?? _defaultElementHeight(el)) + (deltaHeight ?? 0))
+              .clamp(minHeight, _editingHeight - el.y)
+              .toDouble()
+        : el.height;
+
+    _updateElement(id, width: nextWidth.toDouble(), height: nextHeight);
+  }
+
+  void _nudgeSelected(double dx, double dy) {
+    final el = _selectedElement;
+    if (el == null) return;
+    _updateElement(el.id, x: el.x + dx, y: el.y + dy);
+  }
+
+  void _adjustSelectedFont(double delta) {
+    final el = _selectedElement;
+    if (el == null) return;
+    final current = el.properties['fontSize']?.toDouble() ?? 14.0;
+    _updateElement(
+      el.id,
+      props: {'fontSize': (current + delta).clamp(6.0, 72.0)},
+    );
+  }
+
   void _handleKeyEvent(KeyEvent event) {
     if (event is KeyDownEvent && _selectedElementId != null) {
-      if (event.logicalKey == LogicalKeyboardKey.delete || event.logicalKey == LogicalKeyboardKey.backspace) {
+      if (event.logicalKey == LogicalKeyboardKey.delete ||
+          event.logicalKey == LogicalKeyboardKey.backspace) {
         _deleteElement(_selectedElementId!);
       } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
         final el = _elements.firstWhere((e) => e.id == _selectedElementId);
@@ -283,7 +441,9 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Container(
           padding: const EdgeInsets.all(20),
@@ -291,13 +451,18 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Page Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Page Settings',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 20),
               SwitchListTile(
                 title: const Text('Page Border'),
                 value: _template.hasBorder,
                 onChanged: (val) {
-                  setState(() => _template = _template.copyWith(hasBorder: val));
+                  setState(
+                    () => _template = _template.copyWith(hasBorder: val),
+                  );
                   setModalState(() {});
                 },
               ),
@@ -305,10 +470,19 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                 title: const Text('Paper Layout'),
                 trailing: DropdownButton<PaperLayout>(
                   value: _template.paperLayout,
-                  items: PaperLayout.values.map((l) => DropdownMenuItem(value: l, child: Text(l.name.toUpperCase()))).toList(),
+                  items: PaperLayout.values
+                      .map(
+                        (l) => DropdownMenuItem(
+                          value: l,
+                          child: Text(l.name.toUpperCase()),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (val) {
                     if (val != null) {
-                      setState(() => _template = _template.copyWith(paperLayout: val));
+                      setState(
+                        () => _template = _template.copyWith(paperLayout: val),
+                      );
                       setModalState(() {});
                     }
                   },
@@ -318,7 +492,14 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                 title: const Text('Paper Size'),
                 trailing: DropdownButton<PaperSize>(
                   value: _template.paperSize,
-                  items: PaperSize.values.map((s) => DropdownMenuItem(value: s, child: Text(s.name.toUpperCase()))).toList(),
+                  items: PaperSize.values
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s,
+                          child: Text(s.name.toUpperCase()),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (val) {
                     if (val != null) {
                       setState(() {
@@ -331,14 +512,23 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                 ),
               ),
               const Divider(),
-              const Text('Colors', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Colors',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 10),
               _buildColorTile('Primary Color', _template.primaryColor, (color) {
-                setState(() => _template = _template.copyWith(primaryColor: color));
+                setState(
+                  () => _template = _template.copyWith(primaryColor: color),
+                );
                 setModalState(() {});
               }),
-              _buildColorTile('Secondary Color', _template.secondaryColor, (color) {
-                setState(() => _template = _template.copyWith(secondaryColor: color));
+              _buildColorTile('Secondary Color', _template.secondaryColor, (
+                color,
+              ) {
+                setState(
+                  () => _template = _template.copyWith(secondaryColor: color),
+                );
                 setModalState(() {});
               }),
               const SizedBox(height: 20),
@@ -349,11 +539,21 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     );
   }
 
-  Widget _buildColorTile(String title, PdfColor color, ValueChanged<PdfColor> onSelected) {
+  Widget _buildColorTile(
+    String title,
+    PdfColor color,
+    ValueChanged<PdfColor> onSelected,
+  ) {
     final colors = [
-      PdfColors.black, PdfColors.blue900, PdfColors.red900, 
-      PdfColors.green900, PdfColors.purple900, PdfColors.pink900,
-      PdfColors.blue100, PdfColors.grey300, PdfColors.yellow100
+      PdfColors.black,
+      PdfColors.blue900,
+      PdfColors.red900,
+      PdfColors.green900,
+      PdfColors.purple900,
+      PdfColors.pink900,
+      PdfColors.blue100,
+      PdfColors.grey300,
+      PdfColors.yellow100,
     ];
 
     return ListTile(
@@ -361,20 +561,28 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
       subtitle: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
-          children: colors.map((c) => GestureDetector(
-            onTap: () => onSelected(c),
-            child: Container(
-              width: 30,
-              height: 30,
-              margin: const EdgeInsets.only(right: 8, top: 8),
-              decoration: BoxDecoration(
-                color: Color(c.toInt()),
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
-                boxShadow: color == c ? [const BoxShadow(color: Colors.blue, blurRadius: 4)] : null,
-              ),
-            ),
-          )).toList(),
+          children: colors
+              .map(
+                (c) => GestureDetector(
+                  onTap: () => onSelected(c),
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    margin: const EdgeInsets.only(right: 8, top: 8),
+                    decoration: BoxDecoration(
+                      color: Color(c.toInt()),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                      ),
+                      boxShadow: color == c
+                          ? [const BoxShadow(color: Colors.blue, blurRadius: 4)]
+                          : null,
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
         ),
       ),
     );
@@ -392,8 +600,14 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
           autofocus: true,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
@@ -401,7 +615,10 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     if (name != null && name.isNotEmpty) {
       final updatedTemplate = _template.copyWith(
         name: name,
-        customLayout: CustomLayout(elements: _elements, canvasHeight: _canvasHeight),
+        customLayout: CustomLayout(
+          elements: _elements,
+          canvasHeight: _canvasHeight,
+        ),
       );
       final navigator = Navigator.of(context);
       await ref.read(templateProvider.notifier).saveTemplate(updatedTemplate);
@@ -414,12 +631,17 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isMobile = MediaQuery.sizeOf(context).width < 700;
+    final selectedElement = _selectedElement;
 
     return KeyboardListener(
-      focusNode: FocusNode()..requestFocus(),
+      focusNode: _keyboardFocusNode,
+      autofocus: true,
       onKeyEvent: _handleKeyEvent,
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF5F5F5),
+        backgroundColor: isDark
+            ? const Color(0xFF1A1A1A)
+            : const Color(0xFFF5F5F5),
         appBar: AppBar(
           elevation: 0,
           title: Text(_template.name, style: const TextStyle(fontSize: 14)),
@@ -434,53 +656,81 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         ),
         body: Column(
           children: [
-            _buildConsolidatedRibbon(),
+            _buildConsolidatedRibbon(isCompact: isMobile),
             Expanded(
-              child: Stack(
-                children: [
-                  _buildCanvas(),
-                  _buildCanvasControls(),
-                ],
-              ),
+              child: Stack(children: [_buildCanvas(), _buildCanvasControls()]),
             ),
+            if (isMobile) _buildMobileInspector(selectedElement),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildConsolidatedRibbon() {
-    final el = _selectedElementId != null 
-        ? _elements.firstWhere((e) => e.id == _selectedElementId) 
-        : null;
+  Widget _buildConsolidatedRibbon({bool isCompact = false}) {
+    final el = _selectedElement;
 
     return Container(
-      height: 140, // Increased height to accommodate dual sliders
+      height: isCompact ? 92 : 140,
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+        ),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: isCompact ? 8 : 16,
+          vertical: 8,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             _RibbonGroup(
               label: 'INSERT',
               children: [
-                _RibbonButton(icon: Icons.text_fields, label: 'School', onTap: () => _addElement(ElementType.schoolName)),
-                _RibbonButton(icon: Icons.title, label: 'Title', onTap: () => _addElement(ElementType.paperTitle)),
-                _RibbonButton(icon: Icons.image, label: 'Logo', onTap: () => _addElement(ElementType.logo)),
-                _RibbonButton(icon: Icons.grid_view, label: 'Fields', onTap: () => _addElement(ElementType.headerFieldsBlock)),
-                _RibbonButton(icon: Icons.horizontal_rule, label: 'Line', onTap: () => _addElement(ElementType.horizontalLine)),
+                _RibbonButton(
+                  icon: Icons.text_fields,
+                  label: 'School',
+                  onTap: () => _addElement(ElementType.schoolName),
+                ),
+                _RibbonButton(
+                  icon: Icons.title,
+                  label: 'Title',
+                  onTap: () => _addElement(ElementType.paperTitle),
+                ),
+                _RibbonButton(
+                  icon: Icons.image,
+                  label: 'Logo',
+                  onTap: () => _addElement(ElementType.logo),
+                ),
+                _RibbonButton(
+                  icon: Icons.grid_view,
+                  label: 'Fields',
+                  onTap: () => _addElement(ElementType.headerFieldsBlock),
+                ),
+                _RibbonButton(
+                  icon: Icons.horizontal_rule,
+                  label: 'Line',
+                  onTap: () => _addElement(ElementType.horizontalLine),
+                ),
+                _RibbonButton(
+                  icon: Icons.check_box_outline_blank,
+                  label: 'Box',
+                  onTap: () => _addElement(ElementType.rectangular),
+                ),
               ],
             ),
             _VerticalDivider(),
-            if (el != null) ...[
+            if (el != null && !isCompact) ...[
               _RibbonGroup(
                 label: 'FORMATTING',
                 children: [
@@ -490,24 +740,63 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                       Row(
                         children: [
                           _buildMiniDropDown<double>(
-                            value: el.properties['fontSize']?.toDouble() ?? 14.0,
-                            items: [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32],
-                            onChanged: (v) => _updateElement(el.id, props: {'fontSize': v}),
+                            value:
+                                el.properties['fontSize']?.toDouble() ?? 14.0,
+                            items: [
+                              8,
+                              9,
+                              10,
+                              11,
+                              12,
+                              14,
+                              16,
+                              18,
+                              20,
+                              24,
+                              28,
+                              32,
+                            ],
+                            onChanged: (v) =>
+                                _updateElement(el.id, props: {'fontSize': v}),
                           ),
                           const SizedBox(width: 4),
                           _ToggleButton(
                             icon: Icons.format_bold,
                             isActive: el.properties['bold'] == true,
-                            onTap: () => _updateElement(el.id, props: {'bold': !(el.properties['bold'] == true)}),
+                            onTap: () => _updateElement(
+                              el.id,
+                              props: {'bold': !(el.properties['bold'] == true)},
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          _AlignmentButton(icon: Icons.format_align_left, isActive: el.properties['alignment'] == 'left', onTap: () => _updateElement(el.id, props: {'alignment': 'left'})),
-                          _AlignmentButton(icon: Icons.format_align_center, isActive: el.properties['alignment'] == 'center', onTap: () => _updateElement(el.id, props: {'alignment': 'center'})),
-                          _AlignmentButton(icon: Icons.format_align_right, isActive: el.properties['alignment'] == 'right', onTap: () => _updateElement(el.id, props: {'alignment': 'right'})),
+                          _AlignmentButton(
+                            icon: Icons.format_align_left,
+                            isActive: el.properties['alignment'] == 'left',
+                            onTap: () => _updateElement(
+                              el.id,
+                              props: {'alignment': 'left'},
+                            ),
+                          ),
+                          _AlignmentButton(
+                            icon: Icons.format_align_center,
+                            isActive: el.properties['alignment'] == 'center',
+                            onTap: () => _updateElement(
+                              el.id,
+                              props: {'alignment': 'center'},
+                            ),
+                          ),
+                          _AlignmentButton(
+                            icon: Icons.format_align_right,
+                            isActive: el.properties['alignment'] == 'right',
+                            onTap: () => _updateElement(
+                              el.id,
+                              props: {'alignment': 'right'},
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -523,8 +812,12 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                       icon: Icons.edit_note,
                       label: 'Edit Fields',
                       onTap: () async {
-                        final current = List<String>.from(el.properties['fieldLabels'] ?? []);
-                        final result = await _showFieldsDialog(initialSelected: current);
+                        final current = List<String>.from(
+                          el.properties['fieldLabels'] ?? [],
+                        );
+                        final result = await _showFieldsDialog(
+                          initialSelected: current,
+                        );
                         if (result != null) {
                           _updateElement(el.id, props: {'fieldLabels': result});
                         }
@@ -549,8 +842,12 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                           contentPadding: EdgeInsets.all(8),
                         ),
                         onChanged: (val) => setState(() {
-                          final idx = _elements.indexWhere((e) => e.id == el.id);
-                          _elements[idx] = _elements[idx].copyWith(content: val);
+                          final idx = _elements.indexWhere(
+                            (e) => e.id == el.id,
+                          );
+                          _elements[idx] = _elements[idx].copyWith(
+                            content: val,
+                          );
                         }),
                         controller: TextEditingController(text: el.content),
                       ),
@@ -570,40 +867,66 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                       children: [
                         Row(
                           children: [
-                            const Text('W', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                            const Text(
+                              'W',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                             Expanded(
                               child: SliderTheme(
                                 data: SliderTheme.of(context).copyWith(
                                   trackHeight: 2,
-                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 5,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 10,
+                                  ),
                                 ),
                                 child: Slider(
-                                  value: el.width ?? (el.type == ElementType.logo ? 80 : (_pageWidth - 64)),
+                                  value: (el.width ?? _defaultElementWidth(el))
+                                      .clamp(10.0, _contentWidth),
                                   min: 10,
-                                  max: (_pageWidth - 64),
-                                  onChanged: (val) => _updateElement(el.id, width: val),
+                                  max: _contentWidth,
+                                  onChanged: (val) =>
+                                      _updateElement(el.id, width: val),
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        if (el.type == ElementType.logo) 
+                        if (el.type == ElementType.logo ||
+                            el.type == ElementType.rectangular)
                           Row(
                             children: [
-                              const Text('H', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                              const Text(
+                                'H',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                               Expanded(
                                 child: SliderTheme(
                                   data: SliderTheme.of(context).copyWith(
                                     trackHeight: 2,
-                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                                    thumbShape: const RoundSliderThumbShape(
+                                      enabledThumbRadius: 5,
+                                    ),
+                                    overlayShape: const RoundSliderOverlayShape(
+                                      overlayRadius: 10,
+                                    ),
                                   ),
                                   child: Slider(
-                                    value: el.height ?? 80,
+                                    value:
+                                        (el.height ?? _defaultElementHeight(el))
+                                            .clamp(10.0, 300.0),
                                     min: 10,
                                     max: 300,
-                                    onChanged: (val) => _updateElement(el.id, height: val),
+                                    onChanged: (val) =>
+                                        _updateElement(el.id, height: val),
                                   ),
                                 ),
                               ),
@@ -631,7 +954,7 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                   ),
                 ],
               ),
-            ] else 
+            ] else if (!isCompact)
               _RibbonGroup(
                 label: 'SELECTION',
                 children: [
@@ -640,7 +963,11 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                     child: Text(
                       'Select an element\nto format it',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500], fontStyle: FontStyle.italic),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[500],
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ),
                 ],
@@ -688,7 +1015,18 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     );
   }
 
-  Widget _buildMiniDropDown<T>({required T value, required List<T> items, required ValueChanged<T?> onChanged}) {
+  Widget _buildMiniDropDown<T>({
+    required T value,
+    required List<T> items,
+    required ValueChanged<T?> onChanged,
+  }) {
+    final menuItems = <T>[];
+    for (final item in [...items, value]) {
+      if (!menuItems.contains(item)) {
+        menuItems.add(item);
+      }
+    }
+
     return Container(
       height: 30,
       padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -700,11 +1038,183 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         child: DropdownButton<T>(
           value: value,
           style: const TextStyle(fontSize: 11, color: Colors.black),
-          items: items.map((i) => DropdownMenuItem(value: i, child: Text(i.toString()))).toList(),
+          items: menuItems
+              .map((i) => DropdownMenuItem(value: i, child: Text(i.toString())))
+              .toList(),
           onChanged: onChanged,
         ),
       ),
     );
+  }
+
+  Widget _buildMobileInspector(TemplateElement? el) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(
+            top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.12)),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: el == null
+            ? SizedBox(
+                height: 76,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  children: [
+                    _MobileActionButton(
+                      icon: Icons.text_fields,
+                      label: 'School',
+                      onTap: () => _addElement(ElementType.schoolName),
+                    ),
+                    _MobileActionButton(
+                      icon: Icons.title,
+                      label: 'Title',
+                      onTap: () => _addElement(ElementType.paperTitle),
+                    ),
+                    _MobileActionButton(
+                      icon: Icons.image_outlined,
+                      label: 'Logo',
+                      onTap: () => _addElement(ElementType.logo),
+                    ),
+                    _MobileActionButton(
+                      icon: Icons.grid_view,
+                      label: 'Fields',
+                      onTap: () => _addElement(ElementType.headerFieldsBlock),
+                    ),
+                    _MobileActionButton(
+                      icon: Icons.horizontal_rule,
+                      label: 'Line',
+                      onTap: () => _addElement(ElementType.horizontalLine),
+                    ),
+                    _MobileActionButton(
+                      icon: Icons.check_box_outline_blank,
+                      label: 'Box',
+                      onTap: () => _addElement(ElementType.rectangular),
+                    ),
+                  ],
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _elementTitle(el),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(
+                            Icons.align_horizontal_center,
+                            size: 20,
+                          ),
+                          onPressed: () => _centerElement(el.id),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: () =>
+                              setState(() => _selectedElementId = null),
+                        ),
+                      ],
+                    ),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _NudgePad(onNudge: _nudgeSelected),
+                          const SizedBox(width: 10),
+                          _StepControl(
+                            label: 'Font',
+                            value:
+                                '${(el.properties['fontSize']?.toDouble() ?? 14.0).toStringAsFixed(1)}',
+                            onMinus: () => _adjustSelectedFont(-0.5),
+                            onPlus: () => _adjustSelectedFont(0.5),
+                          ),
+                          const SizedBox(width: 8),
+                          _StepControl(
+                            label: 'Width',
+                            value:
+                                '${(el.width ?? _defaultElementWidth(el)).round()}',
+                            onMinus: () =>
+                                _resizeElement(el.id, deltaWidth: -5),
+                            onPlus: () => _resizeElement(el.id, deltaWidth: 5),
+                          ),
+                          if (el.type == ElementType.logo ||
+                              el.type == ElementType.rectangular) ...[
+                            const SizedBox(width: 8),
+                            _StepControl(
+                              label: 'Height',
+                              value:
+                                  '${(el.height ?? _defaultElementHeight(el)).round()}',
+                              onMinus: () =>
+                                  _resizeElement(el.id, deltaHeight: -5),
+                              onPlus: () =>
+                                  _resizeElement(el.id, deltaHeight: 5),
+                            ),
+                          ],
+                          const SizedBox(width: 8),
+                          _MobileActionButton(
+                            icon: Icons.format_bold,
+                            label: 'Bold',
+                            selected: el.properties['bold'] == true,
+                            onTap: () => _updateElement(
+                              el.id,
+                              props: {'bold': !(el.properties['bold'] == true)},
+                            ),
+                          ),
+                          _MobileActionButton(
+                            icon: Icons.delete_outline,
+                            label: 'Delete',
+                            color: Colors.redAccent,
+                            onTap: () => _deleteElement(el.id),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  String _elementTitle(TemplateElement el) {
+    return switch (el.type) {
+      ElementType.schoolName => 'School name',
+      ElementType.paperTitle => 'Paper title',
+      ElementType.logo => 'Logo',
+      ElementType.maxMarks => 'Max marks',
+      ElementType.headerFieldsBlock => 'Header fields',
+      ElementType.staticText => 'Text',
+      ElementType.horizontalLine => 'Line',
+      ElementType.rectangular => 'Box',
+    };
   }
 
   void _showCanvasHeightDialog() {
@@ -716,14 +1226,20 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Height in points (e.g. 250)'),
+          decoration: const InputDecoration(
+            labelText: 'Height in points (e.g. 250)',
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () {
               setState(() {
-                _canvasHeight = double.tryParse(controller.text) ?? _canvasHeight;
+                _canvasHeight =
+                    double.tryParse(controller.text) ?? _canvasHeight;
                 if (_canvasHeight < _pageHeight) _isFullPageView = false;
               });
               Navigator.pop(context);
@@ -741,7 +1257,7 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         // Calculate auto-scale to fit screen width exactly
         final double availableWidth = constraints.maxWidth;
         final double autoScale = availableWidth / _pageWidth;
-        
+
         // We use a slightly smaller scale to give a tiny breathing room (e.g. 0.95)
         final double baseScale = autoScale * 0.95;
 
@@ -757,14 +1273,15 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
           child: Center(
             child: Container(
               width: _pageWidth * baseScale,
-              height: (_isFullPageView ? _pageHeight : _canvasHeight) * baseScale,
+              height:
+                  (_isFullPageView ? _pageHeight : _canvasHeight) * baseScale,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(2),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2), 
-                    blurRadius: 15, 
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 15,
                     spreadRadius: 2,
                   ),
                 ],
@@ -779,15 +1296,20 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                       top: 32 * baseScale,
                       right: 32 * baseScale,
                       bottom: 32 * baseScale,
-                      child: CustomPaint(painter: GridPainter(scale: baseScale, step: _snapSize)),
+                      child: CustomPaint(
+                        painter: GridPainter(scale: baseScale, step: _snapSize),
+                      ),
                     ),
-                  
+
                   // Margin indicators (Teacher friendly)
                   Positioned.fill(
                     child: Container(
                       margin: EdgeInsets.all(32 * baseScale),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.blue.withValues(alpha: 0.1), width: 0.5),
+                        border: Border.all(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          width: 0.5,
+                        ),
                       ),
                     ),
                   ),
@@ -797,7 +1319,10 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                       child: Container(
                         margin: EdgeInsets.all(10 * baseScale),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Color(_template.primaryColor.toInt()), width: 1.5 * baseScale),
+                          border: Border.all(
+                            color: Color(_template.primaryColor.toInt()),
+                            width: 1.5 * baseScale,
+                          ),
                         ),
                       ),
                     ),
@@ -807,7 +1332,9 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        ..._elements.map((el) => _buildSmartElement(el, baseScale)),
+                        ..._elements.map(
+                          (el) => _buildSmartElement(el, baseScale),
+                        ),
                         if (!_isFullPageView)
                           Positioned(
                             bottom: -40 * baseScale,
@@ -821,35 +1348,52 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
                                     gradient: LinearGradient(
                                       begin: Alignment.topCenter,
                                       end: Alignment.bottomCenter,
-                                      colors: [Colors.blue.withValues(alpha: 0.05), Colors.transparent],
+                                      colors: [
+                                        Colors.blue.withValues(alpha: 0.05),
+                                        Colors.transparent,
+                                      ],
                                     ),
                                   ),
                                   child: Center(
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
-                                        Icon(Icons.arrow_downward, size: 10 * baseScale, color: Colors.blue[300]),
+                                        Icon(
+                                          Icons.arrow_downward,
+                                          size: 10 * baseScale,
+                                          color: Colors.blue[300],
+                                        ),
                                         const SizedBox(width: 8),
-                                        Text('QUESTION AREA STARTS HERE', 
+                                        Text(
+                                          'QUESTION AREA STARTS HERE',
                                           style: TextStyle(
-                                            fontSize: 9 * baseScale, 
-                                            color: Colors.blue[300], 
+                                            fontSize: 9 * baseScale,
+                                            color: Colors.blue[300],
                                             fontWeight: FontWeight.bold,
                                             letterSpacing: 1.2,
-                                          )),
+                                          ),
+                                        ),
                                         const SizedBox(width: 8),
-                                        Icon(Icons.arrow_downward, size: 10 * baseScale, color: Colors.blue[300]),
+                                        Icon(
+                                          Icons.arrow_downward,
+                                          size: 10 * baseScale,
+                                          color: Colors.blue[300],
+                                        ),
                                       ],
                                     ),
                                   ),
                                 ),
-                                if (_template.paperLayout == PaperLayout.twoColumn)
+                                if (_template.paperLayout ==
+                                    PaperLayout.twoColumn)
                                   Container(
                                     height: 150 * baseScale,
                                     width: 1,
                                     color: Colors.blue.withValues(alpha: 0.2),
-                                    margin: EdgeInsets.only(top: 10 * baseScale),
-                                  )
+                                    margin: EdgeInsets.only(
+                                      top: 10 * baseScale,
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -867,6 +1411,7 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
 
   Widget _buildSmartElement(TemplateElement el, double scale) {
     final isSelected = _selectedElementId == el.id;
+    final handleSize = MediaQuery.sizeOf(context).width < 700 ? 22.0 : 12.0;
 
     return Positioned(
       left: el.x * scale,
@@ -875,13 +1420,21 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         onTap: () => setState(() => _selectedElementId = el.id),
         onDoubleTap: () async {
           if (el.type == ElementType.staticText) {
-            final result = await _showTextEntryDialog('Edit Text', 'Enter new text content', initialValue: el.content);
+            final result = await _showTextEntryDialog(
+              'Edit Text',
+              'Enter new text content',
+              initialValue: el.content,
+            );
             if (result != null) {
               final idx = _elements.indexWhere((e) => e.id == el.id);
-              setState(() => _elements[idx] = _elements[idx].copyWith(content: result));
+              setState(
+                () => _elements[idx] = _elements[idx].copyWith(content: result),
+              );
             }
           } else if (el.type == ElementType.headerFieldsBlock) {
-            final current = List<String>.from(el.properties['fieldLabels'] ?? []);
+            final current = List<String>.from(
+              el.properties['fieldLabels'] ?? [],
+            );
             final result = await _showFieldsDialog(initialSelected: current);
             if (result != null) {
               _updateElement(el.id, props: {'fieldLabels': result});
@@ -889,25 +1442,29 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
           }
         },
         onPanUpdate: (details) {
-          _updateElement(el.id, x: el.x + details.delta.dx / scale, y: el.y + details.delta.dy / scale);
+          _updateElement(
+            el.id,
+            x: el.x + details.delta.dx / scale,
+            y: el.y + details.delta.dy / scale,
+          );
         },
         child: MouseRegion(
           cursor: SystemMouseCursors.move,
           child: Container(
             decoration: BoxDecoration(
-              border: isSelected 
-                ? Border.all(color: Colors.blue, width: 1) 
-                : Border.all(color: Colors.transparent),
+              border: isSelected
+                  ? Border.all(color: Colors.blue, width: 1)
+                  : Border.all(color: Colors.transparent),
             ),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
                 _buildElementPreview(el, scale),
                 if (isSelected) ...[
-                  _buildHandle(0, 0),
-                  _buildHandle(null, 0),
-                  _buildHandle(0, null),
-                  _buildHandle(null, null),
+                  _buildHandle(0, 0, handleSize),
+                  _buildHandle(null, 0, handleSize),
+                  _buildHandle(0, null, handleSize),
+                  _buildResizeHandle(el, scale, handleSize),
                 ],
               ],
             ),
@@ -917,34 +1474,63 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
     );
   }
 
-  Widget _buildHandle(double? left, double? top) {
+  Widget _buildHandle(double? left, double? top, double size) {
     return Positioned(
-      left: left == 0 ? -4 : null,
-      right: left == null ? -4 : null,
-      top: top == 0 ? -4 : null,
-      bottom: top == null ? -4 : null,
+      left: left == 0 ? -size / 2 : null,
+      right: left == null ? -size / 2 : null,
+      top: top == 0 ? -size / 2 : null,
+      bottom: top == null ? -size / 2 : null,
       child: Container(
-        width: 8,
-        height: 8,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(color: Colors.blue),
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResizeHandle(TemplateElement el, double scale, double size) {
+    return Positioned(
+      right: -size / 2,
+      bottom: -size / 2,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanUpdate: (details) => _resizeElement(
+          el.id,
+          deltaWidth: details.delta.dx / scale,
+          deltaHeight: details.delta.dy / scale,
+        ),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: Colors.blue,
+            border: Border.all(color: Colors.white, width: 2),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.open_in_full, color: Colors.white, size: 11),
         ),
       ),
     );
   }
 
   Widget _buildElementPreview(TemplateElement el, double scale) {
-    final color = el.properties['color'] != null 
-        ? Color(el.properties['color']) 
-        : (el.type == ElementType.schoolName && _template.type == TemplateType.coaching 
-            ? Color(_template.primaryColor.toInt()) 
-            : Colors.black);
+    final color = el.properties['color'] != null
+        ? Color(el.properties['color'])
+        : (el.type == ElementType.schoolName &&
+                  _template.type == TemplateType.coaching
+              ? Color(_template.primaryColor.toInt())
+              : Colors.black);
 
     final fontSize = (el.properties['fontSize']?.toDouble() ?? 14.0) * scale;
     final style = TextStyle(
       fontSize: fontSize,
-      fontWeight: el.properties['bold'] == true ? FontWeight.bold : FontWeight.normal,
+      fontWeight: el.properties['bold'] == true
+          ? FontWeight.bold
+          : FontWeight.normal,
       color: color,
     );
 
@@ -971,11 +1557,12 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
             border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
           ),
           child: el.content.isNotEmpty
-            ? Image.file(File(el.content), fit: BoxFit.contain)
-            : const Center(child: Icon(Icons.add_a_photo, size: 20)),
+              ? Image.file(File(el.content), fit: BoxFit.contain)
+              : const Center(child: Icon(Icons.add_a_photo, size: 20)),
         );
       case ElementType.headerFieldsBlock:
-        final List<dynamic> labels = el.properties['fieldLabels'] ?? ['Subject', 'Date'];
+        final List<dynamic> labels =
+            el.properties['fieldLabels'] ?? ['Subject', 'Date'];
         return Container(
           width: (el.width ?? 300) * scale,
           padding: const EdgeInsets.all(4),
@@ -986,8 +1573,14 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
           child: Wrap(
             spacing: 16,
             runSpacing: 4,
-            children: labels.map((l) => Text('$l: __________', 
-              style: style.copyWith(fontSize: fontSize * 0.85))).toList(),
+            children: labels
+                .map(
+                  (l) => Text(
+                    '$l: __________',
+                    style: style.copyWith(fontSize: fontSize * 0.85),
+                  ),
+                )
+                .toList(),
           ),
         );
       case ElementType.maxMarks:
@@ -1008,6 +1601,31 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
           height: 2,
           color: style.color,
         );
+      case ElementType.rectangular:
+        return Container(
+          width: (el.width ?? 50) * scale,
+          height: (el.height ?? 50) * scale,
+          decoration: BoxDecoration(
+            color: el.properties['fillColor'] != null
+                ? Color(el.properties['fillColor'])
+                : null,
+            border: Border.all(
+              color: el.properties['borderColor'] != null
+                  ? Color(el.properties['borderColor'])
+                  : Colors.black,
+              width: (el.properties['borderWidth']?.toDouble() ?? 1.0) * scale,
+            ),
+            borderRadius: el.properties['borderRadius'] != null
+                ? BorderRadius.circular(
+                    el.properties['borderRadius'].toDouble() * scale,
+                  )
+                : null,
+          ),
+          alignment: alignment,
+          child: el.content.isNotEmpty ? Text(el.content, style: style) : null,
+        );
+      default:
+        return const SizedBox();
     }
   }
 
@@ -1031,9 +1649,21 @@ class _TemplateDesignerScreenState extends ConsumerState<TemplateDesignerScreen>
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 10,
+            ),
+          ],
         ),
-        child: const Text('120% | A4 Layout', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue)),
+        child: const Text(
+          '120% | A4 Layout',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue,
+          ),
+        ),
       ),
     );
   }
@@ -1051,7 +1681,15 @@ class _RibbonGroup extends StatelessWidget {
       children: [
         Expanded(child: Row(children: children)),
         const SizedBox(height: 4),
-        Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey[400], letterSpacing: 0.5)),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[400],
+            letterSpacing: 0.5,
+          ),
+        ),
       ],
     );
   }
@@ -1062,7 +1700,12 @@ class _RibbonButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final Color? iconColor;
-  const _RibbonButton({required this.icon, required this.label, required this.onTap, this.iconColor});
+  const _RibbonButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.iconColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1089,7 +1732,12 @@ class _RibbonToggle extends StatelessWidget {
   final String label;
   final bool value;
   final ValueChanged<bool> onChanged;
-  const _RibbonToggle({required this.icon, required this.label, required this.value, required this.onChanged});
+  const _RibbonToggle({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1102,7 +1750,13 @@ class _RibbonToggle extends StatelessWidget {
           children: [
             Icon(icon, size: 22, color: value ? Colors.blue[800] : Colors.grey),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 10, color: value ? Colors.blue[800] : Colors.black)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: value ? Colors.blue[800] : Colors.black,
+              ),
+            ),
           ],
         ),
       ),
@@ -1115,7 +1769,12 @@ class _VerticalDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(width: 1, height: 60, color: Colors.grey.withValues(alpha: 0.15), margin: const EdgeInsets.symmetric(horizontal: 12));
+    return Container(
+      width: 1,
+      height: 60,
+      color: Colors.grey.withValues(alpha: 0.15),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+    );
   }
 }
 
@@ -1123,7 +1782,11 @@ class _ToggleButton extends StatelessWidget {
   final IconData icon;
   final bool isActive;
   final VoidCallback onTap;
-  const _ToggleButton({required this.icon, required this.isActive, required this.onTap});
+  const _ToggleButton({
+    required this.icon,
+    required this.isActive,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1132,11 +1795,19 @@ class _ToggleButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: isActive ? Colors.blue.withValues(alpha: 0.1) : Colors.transparent,
-          border: Border.all(color: isActive ? Colors.blue : Colors.grey.withValues(alpha: 0.3)),
+          color: isActive
+              ? Colors.blue.withValues(alpha: 0.1)
+              : Colors.transparent,
+          border: Border.all(
+            color: isActive ? Colors.blue : Colors.grey.withValues(alpha: 0.3),
+          ),
           borderRadius: BorderRadius.circular(4),
         ),
-        child: Icon(icon, size: 18, color: isActive ? Colors.blue : Colors.grey[700]),
+        child: Icon(
+          icon,
+          size: 18,
+          color: isActive ? Colors.blue : Colors.grey[700],
+        ),
       ),
     );
   }
@@ -1146,7 +1817,11 @@ class _AlignmentButton extends StatelessWidget {
   final IconData icon;
   final bool isActive;
   final VoidCallback onTap;
-  const _AlignmentButton({required this.icon, required this.isActive, required this.onTap});
+  const _AlignmentButton({
+    required this.icon,
+    required this.isActive,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1156,10 +1831,180 @@ class _AlignmentButton extends StatelessWidget {
         padding: const EdgeInsets.all(4),
         margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
-          color: isActive ? Colors.blue.withValues(alpha: 0.1) : Colors.transparent,
+          color: isActive
+              ? Colors.blue.withValues(alpha: 0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(4),
         ),
-        child: Icon(icon, color: isActive ? Colors.blue : Colors.grey[600], size: 18),
+        child: Icon(
+          icon,
+          color: isActive ? Colors.blue : Colors.grey[600],
+          size: 18,
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+  final Color? color;
+
+  const _MobileActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = color ?? Theme.of(context).colorScheme.primary;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: SizedBox(
+        width: 68,
+        height: 58,
+        child: Material(
+          color: selected
+              ? activeColor.withValues(alpha: 0.12)
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 20, color: activeColor),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: activeColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StepControl extends StatelessWidget {
+  final String label;
+  final String value;
+  final VoidCallback onMinus;
+  final VoidCallback onPlus;
+
+  const _StepControl({
+    required this.label,
+    required this.value,
+    required this.onMinus,
+    required this.onPlus,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.remove, size: 18),
+            onPressed: onMinus,
+          ),
+          SizedBox(
+            width: 54,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.add, size: 18),
+            onPressed: onPlus,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NudgePad extends StatelessWidget {
+  final void Function(double dx, double dy) onNudge;
+
+  const _NudgePad({required this.onNudge});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget nudgeButton(IconData icon, double dx, double dy) {
+      return SizedBox(
+        width: 30,
+        height: 19,
+        child: IconButton(
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          icon: Icon(icon, size: 17),
+          onPressed: () => onNudge(dx, dy),
+        ),
+      );
+    }
+
+    return Container(
+      width: 92,
+      height: 58,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          nudgeButton(Icons.keyboard_arrow_up, 0, -5),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              nudgeButton(Icons.keyboard_arrow_left, -5, 0),
+              nudgeButton(Icons.keyboard_arrow_right, 5, 0),
+            ],
+          ),
+          nudgeButton(Icons.keyboard_arrow_down, 0, 5),
+        ],
       ),
     );
   }

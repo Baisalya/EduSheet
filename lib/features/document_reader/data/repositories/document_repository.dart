@@ -24,8 +24,7 @@ class DocumentRepository {
           return status.isGranted;
         }
       } catch (e) {
-        debugPrint('Error getting device info for permissions: $e');
-        // Fallback: Request standard storage permission if SDK check fails
+        // Error getting device info for permissions
         return await Permission.storage.request().isGranted;
       }
     }
@@ -69,7 +68,7 @@ class DocumentRepository {
             }
           }
         } catch (e) {
-          debugPrint('Error scanning directory $path: $e');
+          // Error scanning directory
         }
       }
     }
@@ -78,5 +77,22 @@ class DocumentRepository {
     documents.sort((a, b) => b.lastModified.compareTo(a.lastModified));
     
     return documents;
+  }
+
+  Future<DocumentFile?> getDocumentFromFilePath(String filePath) async {
+    final file = File(filePath);
+    if (await file.exists()) {
+      final ext = p.extension(filePath).toLowerCase();
+      final stat = await file.stat();
+      return DocumentFile(
+        name: p.basename(filePath),
+        path: filePath,
+        extension: ext,
+        size: stat.size,
+        lastModified: stat.modified,
+        type: DocumentFile.getDocumentType(ext),
+      );
+    }
+    return null;
   }
 }
