@@ -28,6 +28,7 @@ class MathKeyboardField extends ConsumerStatefulWidget {
 class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
   final FocusNode _focusNode = FocusNode();
   bool _isFocused = false;
+  bool _disposed = false;
 
   @override
   void initState() {
@@ -37,12 +38,21 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
 
   @override
   void dispose() {
+    _disposed = true;
     _focusNode.removeListener(_onFocusChange);
+    
+    // Ensure we unregister before disposing the focus node
+    try {
+      ref.read(mathKeyboardControllerProvider.notifier).unregisterController(widget.controller);
+    } catch (_) {}
+    
     _focusNode.dispose();
     super.dispose();
   }
 
   void _onFocusChange() {
+    if (_disposed) return;
+
     setState(() {
       _isFocused = _focusNode.hasFocus;
     });
@@ -60,6 +70,7 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     } else {
       // Small delay to allow potential focus transfer
       Future.delayed(const Duration(milliseconds: 100), () {
+        if (_disposed) return;
         if (!_focusNode.hasFocus) {
           ref
               .read(mathKeyboardControllerProvider.notifier)
@@ -119,6 +130,7 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
                           notifier.showSystemKeyboard();
                           // Re-show system keyboard with a small delay to ensure readOnly is false
                           WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (_disposed) return;
                             SystemChannels.textInput.invokeMethod(
                               'TextInput.show',
                             );
@@ -153,10 +165,16 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     String tex = '';
     final controller = widget.controller;
 
-    if (controller is TextEditingController) {
-      tex = controller.text;
-    } else if (controller is math_kb.MathFieldEditingController) {
-      tex = controller.currentEditingValue();
+    // Safety check: Don't use disposed controllers
+    try {
+      if (controller is TextEditingController) {
+        // This might still throw if disposed but we try our best
+        tex = controller.text;
+      } else if (controller is math_kb.MathFieldEditingController) {
+        tex = controller.currentEditingValue();
+      }
+    } catch (_) {
+      return const SizedBox.shrink();
     }
 
     if (tex.isEmpty) return const SizedBox.shrink();

@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/pdf/presentation/widgets/template_selector.dart';
+import 'package:edusheet/features/pdf/services/export_file_service.dart';
 import 'package:edusheet/features/pdf/services/pdf_service.dart';
 import 'package:edusheet/features/pdf/services/word_export_service.dart';
 import '../widgets/question_editor_sheet.dart';
@@ -64,31 +65,219 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
-  Future<void> _previewPdf(Paper paper) async {
-    await PdfService.generateAndPreview(paper, _templateForPaper(paper));
-  }
+  Future<void> _showSaveAsSheet(Paper paper) async {
+    final controller = TextEditingController(
+      text: ExportFileService.cleanFileNameBase(paper.title),
+    );
+    var selectedFormat = _PaperExportFormat.pdf;
+    var isSaving = false;
+    String? errorText;
 
-  Future<void> _saveAsWord(Paper paper) async {
     try {
-      final file = await WordExportService.exportAndOpen(
-        paper,
-        _templateForPaper(paper),
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (sheetContext) {
+          final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
+          return StatefulBuilder(
+            builder: (context, setSheetState) {
+              Future<void> saveExport() async {
+                final fileNameBase = controller.text.trim();
+                if (fileNameBase.isEmpty) {
+                  setSheetState(() => errorText = 'Enter a file name');
+                  return;
+                }
+                if (ExportFileService.hasInvalidFileNameCharacters(
+                  fileNameBase,
+                )) {
+                  setSheetState(
+                    () => errorText = 'Remove characters like / \\ : * ? " < > |',
+                  );
+                  return;
+                }
+
+                setSheetState(() {
+                  isSaving = true;
+                  errorText = null;
+                });
+
+                final navigator = Navigator.of(sheetContext);
+                final messenger = ScaffoldMessenger.of(context);
+
+                try {
+                  await ref.read(editorStateProvider.notifier).savePaper();
+                  ref.invalidate(savedPapersProvider);
+                  final latestPaper = ref.read(editorStateProvider);
+                  final template = _templateForPaper(latestPaper);
+                  final file = selectedFormat == _PaperExportFormat.pdf
+                      ? await PdfService.export(
+                          latestPaper,
+                          template,
+                          fileNameBase: fileNameBase,
+                        )
+                      : await WordExportService.export(
+                          latestPaper,
+                          template,
+                          fileNameBase: fileNameBase,
+                        );
+
+                  if (!mounted || !navigator.mounted) return;
+                  navigator.pop();
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Saved to ${file.path}'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                } catch (error) {
+                  if (!mounted) return;
+                  setSheetState(() {
+                    isSaving = false;
+                    errorText = 'Could not save file. Please try again.';
+                  });
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Could not save file: $error'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              }
+
+              return Padding(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 18,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.grey[700] : Colors.grey[300],
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Save as',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: isSaving
+                                ? null
+                                : () => Navigator.pop(sheetContext),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      MathKeyboardField(
+                        controller: controller,
+                        builder: (context, focusNode, isMathActive) => TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          enabled: !isSaving,
+                          textInputAction: TextInputAction.done,
+                          decoration: InputDecoration(
+                            labelText: 'File name',
+                            hintText: 'Example: Class 10 Mid Term',
+                            errorText: errorText,
+                            prefixIcon: const Icon(Icons.drive_file_rename_outline),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onChanged: (_) {
+                            if (errorText != null) {
+                              setSheetState(() => errorText = null);
+                            }
+                          },
+                          onSubmitted: (_) => isSaving ? null : saveExport(),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Choose format',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SaveFormatOption(
+                              title: 'PDF',
+                              subtitle: 'Ready to print',
+                              icon: Icons.picture_as_pdf_outlined,
+                              isSelected: selectedFormat == _PaperExportFormat.pdf,
+                              onTap: isSaving
+                                  ? null
+                                  : () => setSheetState(
+                                      () => selectedFormat = _PaperExportFormat.pdf,
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _SaveFormatOption(
+                              title: 'Word',
+                              subtitle: 'Editable file',
+                              icon: Icons.description_outlined,
+                              isSelected: selectedFormat == _PaperExportFormat.word,
+                              onTap: isSaving
+                                  ? null
+                                  : () => setSheetState(
+                                      () =>
+                                          selectedFormat = _PaperExportFormat.word,
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: isSaving ? null : saveExport,
+                        icon: isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.save_alt_rounded),
+                        label: Text(isSaving ? 'Saving...' : 'Save File'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 52),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Word file saved: ${file.path}'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not save Word file: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    } finally {
+      controller.dispose();
     }
   }
 
@@ -127,31 +316,16 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             onPressed: () => setState(() => _showPreview = !_showPreview),
             tooltip: _showPreview ? 'Edit Mode' : 'Preview Mode',
           ),
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'Preview PDF',
-            onPressed: () => _previewPdf(paper),
-          ),
-          IconButton(
-            icon: const Icon(Icons.description_outlined),
-            tooltip: 'Save as Word',
-            onPressed: () => _saveAsWord(paper),
-          ),
-          IconButton(
-            icon: const Icon(Icons.save),
-            tooltip: 'Save Paper',
-            onPressed: () async {
-              await ref.read(editorStateProvider.notifier).savePaper();
-              ref.invalidate(savedPapersProvider);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Paper saved successfully!'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: () => _showSaveAsSheet(paper),
+              icon: const Icon(Icons.save_alt_rounded, size: 20),
+              label: const Text('Save'),
+              style: TextButton.styleFrom(
+                foregroundColor: isDark ? Colors.white : Colors.black,
+              ),
+            ),
           ),
         ],
       ),
@@ -666,328 +840,314 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
 
   Widget _buildSectionEditor(PaperSection section, {required Key key}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Card(
+    return Container(
       key: key,
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.grey.withAlpha(25)),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Theme.of(context).cardTheme.color!,
-              Theme.of(context).colorScheme.surfaceContainer,
-            ],
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor.withAlpha(35)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(isDark ? 38 : 8),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(isDark ? 51 : 10),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+        ],
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        shape: const RoundedRectangleBorder(side: BorderSide.none),
+        collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
+        title: Text(
+          section.title,
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+        ),
+        subtitle: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue.withAlpha(25),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '${section.totalMarks.toStringAsFixed(section.totalMarks.truncateToDouble() == section.totalMarks ? 0 : 1)} Marks',
+                style: const TextStyle(
+                  color: Colors.blue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${section.questions.length} Questions',
+              style: TextStyle(color: Colors.grey[600], fontSize: 11),
             ),
           ],
         ),
-        child: ExpansionTile(
-          initiallyExpanded: true,
-          shape: const RoundedRectangleBorder(side: BorderSide.none),
-          collapsedShape: const RoundedRectangleBorder(side: BorderSide.none),
-          title: Text(
-            section.title,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-          ),
-          subtitle: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withAlpha(25),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${section.totalMarks} Marks',
-                  style: const TextStyle(
-                    color: Colors.blue,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${section.questions.length} Questions',
-                style: TextStyle(color: Colors.grey[600], fontSize: 11),
-              ),
-            ],
-          ),
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          initialValue: section.prefix,
-                          decoration: InputDecoration(
-                            labelText: 'Section Prefix (e.g. Part A)',
-                            isDense: true,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        initialValue: section.prefix,
+                        decoration: InputDecoration(
+                          labelText: 'Section Prefix (e.g. Part A)',
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          onChanged: (val) => ref
-                              .read(editorStateProvider.notifier)
-                              .updateSection(section.id, prefix: val),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: Colors.red,
-                        ),
-                        onPressed: () => _confirmDeleteSection(section),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    initialValue: section.instruction,
-                    maxLines: 2,
-                    decoration: InputDecoration(
-                      labelText: 'Section Instructions',
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        onChanged: (val) => ref
+                            .read(editorStateProvider.notifier)
+                            .updateSection(section.id, prefix: val),
                       ),
                     ),
-                    onChanged: (val) => ref
-                        .read(editorStateProvider.notifier)
-                        .updateSection(section.id, instruction: val),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CheckboxListTile(
-                          title: const Text(
-                            'Show Title',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          value: section.showTitle,
-                          onChanged: (val) => ref
-                              .read(editorStateProvider.notifier)
-                              .updateSection(section.id, showTitle: val),
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          dense: true,
-                        ),
-                      ),
-                      Expanded(
-                        child: CheckboxListTile(
-                          title: const Text(
-                            'Show Divider',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          value: section.showDivider,
-                          onChanged: (val) => ref
-                              .read(editorStateProvider.notifier)
-                              .updateSection(section.id, showDivider: val),
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          dense: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withAlpha(13)
-                          : Colors.orange.withAlpha(13),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange.withAlpha(25)),
+                    const SizedBox(width: 12),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () => _confirmDeleteSection(section),
                     ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.help_outline,
-                          size: 18,
-                          color: Colors.orange,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Student must answer: ',
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  initialValue: section.instruction,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: 'Section Instructions',
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onChanged: (val) => ref
+                      .read(editorStateProvider.notifier)
+                      .updateSection(section.id, instruction: val),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text(
+                          'Show Title',
                           style: TextStyle(
                             fontSize: 13,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 60,
-                          child: TextFormField(
-                            initialValue: section.requiredCount?.toString(),
-                            textAlign: TextAlign.center,
-                            decoration: InputDecoration(
-                              hintText: 'All',
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 8,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
+                        value: section.showTitle,
+                        onChanged: (val) => ref
+                            .read(editorStateProvider.notifier)
+                            .updateSection(section.id, showTitle: val),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                      ),
+                    ),
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text(
+                          'Show Divider',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        value: section.showDivider,
+                        onChanged: (val) => ref
+                            .read(editorStateProvider.notifier)
+                            .updateSection(section.id, showDivider: val),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withAlpha(13)
+                        : Colors.orange.withAlpha(13),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.withAlpha(25)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.help_outline,
+                        size: 18,
+                        color: Colors.orange,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Student must answer: ',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 60,
+                        child: TextFormField(
+                          initialValue: section.requiredCount?.toString(),
+                          textAlign: TextAlign.center,
+                          decoration: InputDecoration(
+                            hintText: 'All',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 8,
                             ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (val) {
-                              final count = int.tryParse(val);
-                              ref
-                                  .read(editorStateProvider.notifier)
-                                  .updateSection(
-                                    section.id,
-                                    requiredCount: count,
-                                    clearRequiredCount: val.isEmpty,
-                                  );
-                            },
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          keyboardType: TextInputType.number,
+                          onChanged: (val) {
+                            final count = int.tryParse(val);
+                            ref
+                                .read(editorStateProvider.notifier)
+                                .updateSection(
+                                  section.id,
+                                  requiredCount: count,
+                                  clearRequiredCount: val.isEmpty,
+                                );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'out of ${section.questions.length}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            onReorder: (oldIdx, newIdx) => ref
+                .read(editorStateProvider.notifier)
+                .reorderQuestions(section.id, oldIdx, newIdx),
+            children: [
+              for (final q in section.questions)
+                Container(
+                  key: ValueKey(q.id),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withAlpha(8)
+                        : Colors.grey.withAlpha(13),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Theme.of(context).dividerColor.withAlpha(25),
+                    ),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: q.isOptional
+                            ? Colors.grey[100]
+                            : Colors.blue[50],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Center(
+                        child: Text(
+                          q.marks.toStringAsFixed(0),
+                          style: TextStyle(
+                            color: q.isOptional
+                                ? Colors.grey[600]
+                                : Colors.blue[700],
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'out of ${section.questions.length}',
-                            style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    title: _buildQuestionPreviewText(q.text),
+                    subtitle: Text(
+                      '${q.type.name.toUpperCase()}${q.isOptional ? " - OPTIONAL" : ""}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: q.isOptional ? Colors.grey : Colors.blueGrey,
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          onPressed: () =>
+                              _showQuestionEditor(section.id, question: q),
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(8),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            size: 20,
+                            color: Colors.redAccent,
                           ),
+                          onPressed: () => ref
+                              .read(editorStateProvider.notifier)
+                              .deleteQuestion(section.id, q.id),
+                          constraints: const BoxConstraints(),
+                          padding: const EdgeInsets.all(8),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            ReorderableListView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              onReorder: (oldIdx, newIdx) => ref
-                  .read(editorStateProvider.notifier)
-                  .reorderQuestions(section.id, oldIdx, newIdx),
-              children: [
-                for (final q in section.questions)
-                  Container(
-                    key: ValueKey(q.id),
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardTheme.color,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Theme.of(context).dividerColor.withAlpha(25),
-                      ),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 4,
-                      ),
-                      leading: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: q.isOptional
-                              ? Colors.grey[100]
-                              : Colors.blue[50],
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            q.marks.toStringAsFixed(0),
-                            style: TextStyle(
-                              color: q.isOptional
-                                  ? Colors.grey[600]
-                                  : Colors.blue[700],
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                      title: _buildQuestionPreviewText(q.text),
-                      subtitle: Text(
-                        '${q.type.name.toUpperCase()}${q.isOptional ? " • OPTIONAL" : ""}',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: q.isOptional ? Colors.grey : Colors.blueGrey,
-                        ),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined, size: 20),
-                            onPressed: () =>
-                                _showQuestionEditor(section.id, question: q),
-                            constraints: const BoxConstraints(),
-                            padding: const EdgeInsets.all(8),
-                          ),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              size: 20,
-                              color: Colors.redAccent,
-                            ),
-                            onPressed: () => ref
-                                .read(editorStateProvider.notifier)
-                                .deleteQuestion(section.id, q.id),
-                            constraints: const BoxConstraints(),
-                            padding: const EdgeInsets.all(8),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: ElevatedButton.icon(
-                onPressed: () => _showQuestionEditor(section.id),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Question'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.blue,
-                  elevation: 0,
-                  side: const BorderSide(color: Colors.blue),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  minimumSize: const Size(double.infinity, 45),
                 ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton.icon(
+              onPressed: () => _showQuestionEditor(section.id),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Question'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.blue,
+                elevation: 0,
+                side: const BorderSide(color: Colors.blue),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                minimumSize: const Size(double.infinity, 45),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1464,6 +1624,69 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
       }
     } catch (_) {}
     return Text(text, textAlign: alignment);
+  }
+}
+
+enum _PaperExportFormat { pdf, word }
+
+class _SaveFormatOption extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback? onTap;
+
+  const _SaveFormatOption({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isSelected ? Colors.blue : Theme.of(context).disabledColor;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.blue.withValues(alpha: 0.08)
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? Colors.blue
+                : Theme.of(context).dividerColor.withAlpha(40),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: isSelected ? Colors.blue : null,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

@@ -1,13 +1,13 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+import 'package:edusheet/features/pdf/services/export_file_service.dart';
+import 'package:edusheet/features/pdf/services/office_text_formatter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 class WordExportService {
   static const _wordNamespace =
@@ -21,22 +21,18 @@ class WordExportService {
     return file;
   }
 
-  static Future<File> export(Paper paper, PaperTemplate template) async {
-    final exportDir = await _exportDirectory();
-    final fileName = '${_safeFileName(paper.title)}.docx';
-    final file = File(p.join(exportDir.path, fileName));
+  static Future<File> export(
+    Paper paper,
+    PaperTemplate template, {
+    String? fileNameBase,
+  }) async {
+    final file = await ExportFileService.uniqueFile(
+      fileNameBase: fileNameBase ?? paper.title,
+      extension: '.docx',
+    );
     final package = await _buildPackage(paper, template);
     await file.writeAsBytes(package, flush: true);
     return file;
-  }
-
-  static Future<Directory> _exportDirectory() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final exportDir = Directory(p.join(directory.path, 'EduSheet Exports'));
-    if (!await exportDir.exists()) {
-      await exportDir.create(recursive: true);
-    }
-    return exportDir;
   }
 
   static Future<List<int>> _buildPackage(
@@ -364,7 +360,7 @@ class WordExportService {
     PaperTemplate template,
   ) {
     final buffer = StringBuffer();
-    final text = _plainQuestionText(question.text).trim();
+    final text = OfficeTextFormatter.questionText(question.text).trim();
     final alignment = _wordAlignment(_flutterTextAlignName(question.alignment));
 
     buffer.write(
@@ -420,26 +416,6 @@ class WordExportService {
     }
 
     return buffer.toString();
-  }
-
-  static String _plainQuestionText(String text) {
-    try {
-      if (text.startsWith('[')) {
-        final data = jsonDecode(text) as List<dynamic>;
-        return data
-            .map((op) {
-              if (op is! Map<String, dynamic>) return '';
-              final insert = op['insert'];
-              return insert is String ? insert : ' ';
-            })
-            .join()
-            .replaceAll('\n', ' ')
-            .trim();
-      }
-    } catch (_) {
-      // Use raw text below.
-    }
-    return text;
   }
 
   static String _paragraph(
@@ -675,21 +651,8 @@ class WordExportService {
     }
   }
 
-  static String _safeFileName(String title) {
-    final sanitized = title
-        .trim()
-        .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
-        .replaceAll(RegExp(r'\s+'), ' ');
-    return sanitized.isEmpty ? 'Question Paper' : sanitized;
-  }
-
   static String _xml(String value) {
-    return value
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&apos;');
+    return OfficeTextFormatter.xml(value);
   }
 }
 

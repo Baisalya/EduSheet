@@ -15,8 +15,6 @@ class MathKeyboardWrapper extends ConsumerStatefulWidget {
 }
 
 class _MathKeyboardWrapperState extends ConsumerState<MathKeyboardWrapper> {
-  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(mathKeyboardControllerProvider);
@@ -62,18 +60,7 @@ class _MathKeyboardWrapperState extends ConsumerState<MathKeyboardWrapper> {
                 },
                 child: SizedBox(
                   height: state.height,
-                  child: HeroControllerScope.none(
-                    child: Navigator(
-                      key: _navigatorKey,
-                      onGenerateRoute: (settings) => PageRouteBuilder(
-                        pageBuilder: (context, animation, secondaryAnimation) =>
-                            const MathKeyboardView(),
-                        transitionsBuilder:
-                            (context, animation, secondaryAnimation, child) =>
-                                child,
-                      ),
-                    ),
-                  ),
+                  child: const MathKeyboardView(),
                 ),
               ),
             ),

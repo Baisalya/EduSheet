@@ -39,6 +39,12 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
 
   DocumentFile get document => widget.document;
 
+  bool get _isOfficeDocument {
+    return document.type == DocumentType.word ||
+        document.type == DocumentType.excel ||
+        document.type == DocumentType.powerpoint;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -99,6 +105,8 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
       body: Column(
         children: [
           _FileSummary(document: document, isDark: isDark),
+          if (_isOfficeDocument)
+            _OfficeFidelityBanner(document: document, isDark: isDark),
           _ZoomToolbar(
             zoom: _zoom,
             canZoomOut: _zoom > _minZoom,
@@ -144,7 +152,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
         }
         return _buildUnsupportedState(
           context,
-          'Internal Word preview supports DOCX files. Open this ${document.extension.toUpperCase()} file externally for full fidelity.',
+          'Simple Word preview supports DOCX files. Open this ${document.extension.toUpperCase()} file in Office/WPS for the closest PC view.',
         );
       case DocumentType.text:
         return _buildTextPreview(context, isDark);
@@ -262,7 +270,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
     if (document.extension != '.xlsx' && document.extension != '.csv') {
       return _buildUnsupportedState(
         context,
-        'Internal spreadsheet preview supports XLSX and CSV files. Open this ${document.extension.toUpperCase()} file externally for full fidelity.',
+        'Simple spreadsheet preview supports XLSX and CSV files. Open this ${document.extension.toUpperCase()} file in Office/WPS for the closest PC view.',
       );
     }
 
@@ -279,7 +287,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
         if (sheets.isEmpty) {
           return _buildUnsupportedState(
             context,
-            'No readable spreadsheet data was found. You can still open this file externally.',
+            'No readable spreadsheet data was found. You can still open this file in Office/WPS.',
           );
         }
         if (_selectedSheetIndex >= sheets.length) {
@@ -316,7 +324,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
     if (document.extension != '.pptx') {
       return _buildUnsupportedState(
         context,
-        'Internal presentation preview supports PPTX files. Open this ${document.extension.toUpperCase()} file externally for full fidelity.',
+        'Simple presentation preview supports PPTX files. Open this ${document.extension.toUpperCase()} file in Office/WPS for the closest PC view.',
       );
     }
 
@@ -333,7 +341,7 @@ class _FilePreviewScreenState extends State<FilePreviewScreen> {
         if (slides.isEmpty) {
           return _buildUnsupportedState(
             context,
-            'No readable slide text was found. You can still open this file externally.',
+            'No readable slide text was found. You can still open this file in Office/WPS.',
           );
         }
         if (_selectedSlideIndex >= slides.length) {
@@ -788,6 +796,73 @@ class _FileSummary extends StatelessWidget {
   }
 }
 
+class _OfficeFidelityBanner extends StatelessWidget {
+  final DocumentFile document;
+  final bool isDark;
+
+  const _OfficeFidelityBanner({required this.document, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _typeColor(document.type);
+
+    return Container(
+      height: 48,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1B1F26) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.verified_outlined, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Simple preview. Office/WPS gives the closest PC view.',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black87,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: () => OpenFilex.open(document.path),
+            icon: const Icon(Icons.open_in_new, size: 16),
+            label: const Text('Office'),
+            style: TextButton.styleFrom(
+              foregroundColor: color,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _typeColor(DocumentType type) {
+    switch (type) {
+      case DocumentType.word:
+        return Colors.blue;
+      case DocumentType.excel:
+        return Colors.green;
+      case DocumentType.powerpoint:
+        return Colors.deepOrange;
+      case DocumentType.pdf:
+      case DocumentType.text:
+      case DocumentType.other:
+        return Colors.blueGrey;
+    }
+  }
+}
+
 class _ZoomToolbar extends StatelessWidget {
   final double zoom;
   final bool canZoomOut;
@@ -955,7 +1030,15 @@ class _SpreadsheetCanvas extends StatelessWidget {
     );
     final safeColumnCount = columnCount.clamp(1, 28);
     final fontSize = 12.0 * zoom;
-    final cellWidth = 128.0 * zoom;
+    final rowHeaderWidth = 52.0 * zoom;
+    final columnWidths = List.generate(safeColumnCount, (index) {
+      final longest = rows.fold<int>(_columnName(index).length, (max, row) {
+        if (index >= row.length) return max;
+        final length = row[index].trim().length;
+        return length > max ? length : max;
+      });
+      return (math.max(96.0, math.min(220.0, longest * 9.0 + 36.0))) * zoom;
+    });
     final rowHeight = 42.0 * zoom;
 
     return Column(
@@ -1012,25 +1095,42 @@ class _SpreadsheetCanvas extends StatelessWidget {
                 border: TableBorder.all(
                   color: isDark ? Colors.white10 : Colors.black12,
                 ),
-                columns: List.generate(
-                  safeColumnCount,
-                  (index) => DataColumn(label: Text(_columnName(index))),
-                ),
-                rows: rows.map((row) {
+                columns: [
+                  const DataColumn(label: Text('#')),
+                  ...List.generate(
+                    safeColumnCount,
+                    (index) => DataColumn(label: Text(_columnName(index))),
+                  ),
+                ],
+                rows: rows.asMap().entries.map((entry) {
+                  final row = entry.value;
                   return DataRow(
-                    cells: List.generate(
-                      safeColumnCount,
-                      (index) => DataCell(
+                    cells: [
+                      DataCell(
                         SizedBox(
-                          width: cellWidth,
+                          width: rowHeaderWidth,
                           child: Text(
-                            index < row.length ? row[index] : '',
-                            maxLines: 2,
+                            '${entry.key + 1}',
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),
                       ),
-                    ),
+                      ...List.generate(
+                        safeColumnCount,
+                        (index) => DataCell(
+                          SizedBox(
+                            width: columnWidths[index],
+                            child: Text(
+                              index < row.length ? row[index] : '',
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   );
                 }).toList(),
               ),

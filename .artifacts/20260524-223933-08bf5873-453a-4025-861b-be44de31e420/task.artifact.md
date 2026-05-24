@@ -1,0 +1,21 @@
+# Task: Improve Math Keyboard UX and Scrolling
+
+- [/] Research and Planning
+	- [x] Research project structure and `AddEditQuestionScreen`
+	- [x] Research `MathKeyboard` implementation
+	- [x] Create implementation plan
+- [/] Implement `KeyboardSmartPreview`
+	- [ ] Create `keyboard_smart_preview.dart`
+	- [ ] Add preview logic for `TextEditingController` and `MathFieldEditingController`
+- [ ] Update `MathKeyboardView`
+	- [ ] Add `KeyboardSmartPreview` to the UI for Math Keyboard
+- [ ] Implement Automatic Scrolling in `MathKeyboardWrapper`
+	- [ ] Add listener for focus, math keyboard visibility, and system keyboard visibility
+	- [ ] Implement `_scrollToActiveField` logic using `Scrollable.ensureVisible`
+- [ ] Support Preview for System Keyboard
+	- [ ] Update `MathKeyboardWrapper` to show `KeyboardSmartPreview` above system keyboard
+- [ ] Refine `MathKeyboardField`
+	- [ ] Adjust in-field preview if necessary
+- [ ] Verification
+	- [ ] Test scrolling on real device/emulator
+	- [ ] Verify preview bar functionality

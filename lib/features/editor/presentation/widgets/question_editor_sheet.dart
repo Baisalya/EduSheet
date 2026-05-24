@@ -35,6 +35,9 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
   late double _marks;
   late bool _isOptional;
   late List<QuestionOption> _options;
+  String? _questionError;
+  String? _marksError;
+  String? _optionsError;
 
   @override
   void initState() {
@@ -67,10 +70,22 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     } else {
       _controller = QuillController.basic();
     }
+
+    if (_type == QuestionType.mcq && _options.isEmpty) {
+      _options = _emptyMcqOptions();
+    }
   }
 
   void _save() {
+    if (!_validate()) return;
+
     final text = jsonEncode(_controller.document.toDelta().toJson());
+    final options = _type == QuestionType.mcq
+        ? _options
+              .where((option) => option.text.trim().isNotEmpty)
+              .map((option) => option.copyWith(text: option.text.trim()))
+              .toList()
+        : <QuestionOption>[];
     if (widget.question == null) {
       ref
           .read(editorStateProvider.notifier)
@@ -79,7 +94,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             text,
             type: _type,
             marks: _marks,
-            options: _options,
+            options: options,
             isOptional: _isOptional,
           );
     } else {
@@ -91,11 +106,53 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             text: text,
             type: _type,
             marks: _marks,
-            options: _options,
+            options: options,
             isOptional: _isOptional,
           );
     }
     Navigator.pop(context);
+  }
+
+  bool _validate() {
+    final questionText = _controller.document.toPlainText().trim();
+    final mcqOptionCount = _options
+        .where((option) => option.text.trim().isNotEmpty)
+        .length;
+
+    setState(() {
+      _questionError = questionText.isEmpty ? 'Write the question first' : null;
+      _marksError = _marks <= 0 ? 'Marks must be more than 0' : null;
+      _optionsError = _type == QuestionType.mcq && mcqOptionCount < 2
+          ? 'Add at least two options'
+          : null;
+    });
+
+    return _questionError == null &&
+        _marksError == null &&
+        _optionsError == null;
+  }
+
+  void _setType(QuestionType type) {
+    setState(() {
+      _type = type;
+      if (_type == QuestionType.mcq && _options.isEmpty) {
+        _options = _emptyMcqOptions();
+      }
+      _optionsError = null;
+    });
+  }
+
+  List<QuestionOption> _emptyMcqOptions() {
+    return List.generate(
+      4,
+      (_) => QuestionOption(id: const Uuid().v4(), text: ''),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -159,50 +216,60 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
               ],
             ),
             const SizedBox(height: 20),
-            Row(
+            Text(
+              'Question type',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+                color: isDark ? Colors.white : Colors.black,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Expanded(
-                  child: DropdownButtonFormField<QuestionType>(
-                    isExpanded: true,
-                    initialValue: _type,
-                    decoration: InputDecoration(
-                      labelText: 'Question Type',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: QuestionType.values
-                        .map(
-                          (t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(
-                              t.name.toUpperCase(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (val) => setState(() => _type = val!),
-                  ),
+                _QuestionTypeChip(
+                  label: 'Descriptive',
+                  icon: Icons.short_text_rounded,
+                  selected: _type == QuestionType.descriptive,
+                  onTap: () => _setType(QuestionType.descriptive),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextFormField(
-                    initialValue: _marks.toString(),
-                    decoration: InputDecoration(
-                      labelText: 'Marks',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (val) => _marks = double.tryParse(val) ?? 1.0,
-                  ),
+                _QuestionTypeChip(
+                  label: 'MCQ',
+                  icon: Icons.check_circle_outline_rounded,
+                  selected: _type == QuestionType.mcq,
+                  onTap: () => _setType(QuestionType.mcq),
+                ),
+                _QuestionTypeChip(
+                  label: 'Fill blanks',
+                  icon: Icons.edit_note_rounded,
+                  selected: _type == QuestionType.fillInTheBlanks,
+                  onTap: () => _setType(QuestionType.fillInTheBlanks),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              initialValue: _marks.toString(),
+              decoration: InputDecoration(
+                labelText: 'Marks',
+                hintText: 'Example: 2',
+                errorText: _marksError,
+                prefixIcon: const Icon(Icons.score_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              onChanged: (val) {
+                _marks = double.tryParse(val) ?? 0;
+                if (_marksError != null && _marks > 0) {
+                  setState(() => _marksError = null);
+                }
+              },
             ),
             const SizedBox(height: 12),
             Container(
@@ -265,7 +332,9 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             Container(
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                  color: _questionError == null
+                      ? (isDark ? Colors.grey[800]! : Colors.grey[200]!)
+                      : Colors.redAccent,
                 ),
                 borderRadius: BorderRadius.circular(16),
                 color: isDark ? Colors.grey[900] : Colors.white,
@@ -313,6 +382,13 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 ],
               ),
             ),
+            if (_questionError != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                _questionError!,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+              ),
+            ],
             if (_type == QuestionType.mcq) ...[
               const SizedBox(height: 24),
               Row(
@@ -341,6 +417,17 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 ],
               ),
               const SizedBox(height: 8),
+              if (_optionsError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _optionsError!,
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
               RadioGroup<int>(
                 groupValue: _options.indexWhere((option) => option.isCorrect),
                 onChanged: (idx) {
@@ -379,8 +466,12 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                                       )
                                     : null,
                               ),
-                              onChanged: (val) =>
-                                  _options[idx] = opt.copyWith(text: val),
+                              onChanged: (val) {
+                                _options[idx] = opt.copyWith(text: val);
+                                if (_optionsError != null) {
+                                  setState(() => _optionsError = null);
+                                }
+                              },
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -421,6 +512,42 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _QuestionTypeChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _QuestionTypeChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      selected: selected,
+      onSelected: (_) => onTap(),
+      avatar: Icon(
+        icon,
+        size: 18,
+        color: selected ? Colors.white : Colors.blueGrey,
+      ),
+      label: Text(label),
+      labelStyle: TextStyle(
+        fontWeight: FontWeight.w700,
+        color: selected ? Colors.white : null,
+      ),
+      selectedColor: Colors.blue,
+      showCheckmark: false,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     );
   }
 }

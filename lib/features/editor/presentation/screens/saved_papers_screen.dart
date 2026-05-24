@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/editor_provider.dart';
 import 'create_paper_screen.dart';
+import '../../../pdf/services/presentation_export_service.dart';
 import '../../../pdf/services/pdf_service.dart';
+import '../../../pdf/services/spreadsheet_export_service.dart';
 import '../../../pdf/services/word_export_service.dart';
 
 class SavedPapersScreen extends ConsumerWidget {
@@ -186,6 +188,19 @@ class _SavedPaperCard extends ConsumerWidget {
                           color: Colors.indigo,
                           onPressed: () => _saveAsWord(context, ref, paper),
                         ),
+                        _ActionButton(
+                          icon: Icons.table_chart_outlined,
+                          label: 'Excel',
+                          color: Colors.green,
+                          onPressed: () => _saveAsExcel(context, ref, paper),
+                        ),
+                        _ActionButton(
+                          icon: Icons.slideshow_outlined,
+                          label: 'PPT',
+                          color: Colors.deepOrange,
+                          onPressed: () =>
+                              _saveAsPowerPoint(context, ref, paper),
+                        ),
                       ],
                     ),
                   ),
@@ -254,6 +269,72 @@ class _SavedPaperCard extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Could not save Word file: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveAsExcel(
+    BuildContext context,
+    WidgetRef ref,
+    Paper paper,
+  ) async {
+    try {
+      final templates = ref.read(templateProvider).all;
+      final template = templates.firstWhere(
+        (t) => t.id == paper.templateId,
+        orElse: () => templates.first,
+      );
+      final file = await SpreadsheetExportService.exportAndOpen(
+        paper,
+        template,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Excel file saved: ${file.path}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save Excel file: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveAsPowerPoint(
+    BuildContext context,
+    WidgetRef ref,
+    Paper paper,
+  ) async {
+    try {
+      final templates = ref.read(templateProvider).all;
+      final template = templates.firstWhere(
+        (t) => t.id == paper.templateId,
+        orElse: () => templates.first,
+      );
+      final file = await PresentationExportService.exportAndOpen(
+        paper,
+        template,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('PowerPoint file saved: ${file.path}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save PowerPoint file: $error'),
           behavior: SnackBarBehavior.floating,
         ),
       );

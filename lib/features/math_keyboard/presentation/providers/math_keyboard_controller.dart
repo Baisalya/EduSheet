@@ -129,7 +129,10 @@ class MathKeyboardController extends _$MathKeyboardController {
   void showSystemKeyboard() {
     state = state.copyWith(isVisible: false, type: KeyboardType.system);
     // The UI (MathKeyboardField) will handle calling TextInput.show after a frame
-    state.activeFocusNode?.requestFocus();
+    final node = state.activeFocusNode;
+    if (node != null && node.canRequestFocus && node.context != null) {
+      node.requestFocus();
+    }
   }
 
   void setCategory(MathCategory category) {
