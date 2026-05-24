@@ -10,7 +10,8 @@ class MathKeyboardWrapper extends ConsumerStatefulWidget {
   const MathKeyboardWrapper({super.key, required this.child});
 
   @override
-  ConsumerState<MathKeyboardWrapper> createState() => _MathKeyboardWrapperState();
+  ConsumerState<MathKeyboardWrapper> createState() =>
+      _MathKeyboardWrapperState();
 }
 
 class _MathKeyboardWrapperState extends ConsumerState<MathKeyboardWrapper> {
@@ -31,10 +32,7 @@ class _MathKeyboardWrapperState extends ConsumerState<MathKeyboardWrapper> {
               children: [
                 Expanded(
                   child: Stack(
-                    children: [
-                      widget.child,
-                      const FloatingElementManager(),
-                    ],
+                    children: [widget.child, const FloatingElementManager()],
                   ),
                 ),
                 // Spacer to prevent content from being hidden behind math keyboard
@@ -68,8 +66,11 @@ class _MathKeyboardWrapperState extends ConsumerState<MathKeyboardWrapper> {
                     child: Navigator(
                       key: _navigatorKey,
                       onGenerateRoute: (settings) => PageRouteBuilder(
-                        pageBuilder: (context, animation, secondaryAnimation) => const MathKeyboardView(),
-                        transitionsBuilder: (context, animation, secondaryAnimation, child) => child,
+                        pageBuilder: (context, animation, secondaryAnimation) =>
+                            const MathKeyboardView(),
+                        transitionsBuilder:
+                            (context, animation, secondaryAnimation, child) =>
+                                child,
                       ),
                     ),
                   ),

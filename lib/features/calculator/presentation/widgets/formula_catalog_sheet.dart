@@ -18,7 +18,8 @@ class _FormulaCatalogSheetState extends State<FormulaCatalogSheet> {
   @override
   Widget build(BuildContext context) {
     final filteredFormulas = FormulaData.formulas.where((f) {
-      final matchesSearch = f.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
+      final matchesSearch =
+          f.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
           f.category.toLowerCase().contains(searchQuery.toLowerCase());
       final matchesSubject = f.subject == selectedSubject;
       return matchesSearch && matchesSubject;
@@ -78,13 +79,15 @@ class _FormulaCatalogSheetState extends State<FormulaCatalogSheet> {
               _SubjectTab(
                 label: 'Physics',
                 isSelected: selectedSubject == ScienceSubject.physics,
-                onTap: () => setState(() => selectedSubject = ScienceSubject.physics),
+                onTap: () =>
+                    setState(() => selectedSubject = ScienceSubject.physics),
               ),
               const SizedBox(width: 12),
               _SubjectTab(
                 label: 'Chemistry',
                 isSelected: selectedSubject == ScienceSubject.chemistry,
-                onTap: () => setState(() => selectedSubject = ScienceSubject.chemistry),
+                onTap: () =>
+                    setState(() => selectedSubject = ScienceSubject.chemistry),
               ),
             ],
           ),
@@ -97,11 +100,19 @@ class _FormulaCatalogSheetState extends State<FormulaCatalogSheet> {
                 return Consumer(
                   builder: (context, ref, _) {
                     return ListTile(
-                      title: Text(formula.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      title: Text(
+                        formula.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       subtitle: Text(formula.expression),
-                      trailing: const Icon(Icons.add_circle_outline, color: Colors.teal),
+                      trailing: const Icon(
+                        Icons.add_circle_outline,
+                        color: Colors.teal,
+                      ),
                       onTap: () {
-                        ref.read(calculatorProvider.notifier).insertFormula(formula.expression);
+                        ref
+                            .read(calculatorProvider.notifier)
+                            .insertFormula(formula.expression);
                         Navigator.pop(context);
                       },
                     );

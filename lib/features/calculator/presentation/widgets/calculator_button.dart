@@ -5,8 +5,8 @@ enum CalculatorButtonShape { round, pill, rect }
 
 class CalculatorButton extends StatelessWidget {
   final String label;
-  final String? secondaryLabel; // Yellow label above
-  final String? alphaLabel; // Red label above
+  final String? secondaryLabel;
+  final String? alphaLabel;
   final VoidCallback onTap;
   final Color bgColor;
   final Color textColor;
@@ -15,6 +15,7 @@ class CalculatorButton extends StatelessWidget {
   final bool isActive;
   final double? width;
   final double? height;
+  final double labelSize;
 
   const CalculatorButton({
     super.key,
@@ -22,113 +23,112 @@ class CalculatorButton extends StatelessWidget {
     this.secondaryLabel,
     this.alphaLabel,
     required this.onTap,
-    this.bgColor = const Color(0xFF3E3E3E),
-    this.textColor = Colors.white,
+    this.bgColor = const Color(0xFFF5F7FA),
+    this.textColor = const Color(0xFF111827),
     this.shape = CalculatorButtonShape.rect,
     this.icon,
     this.isActive = false,
     this.width,
     this.height,
+    this.labelSize = 18,
   });
 
   @override
   Widget build(BuildContext context) {
-    double borderRadius;
-    switch (shape) {
-      case CalculatorButtonShape.round:
-        borderRadius = 25;
-        break;
-      case CalculatorButtonShape.pill:
-        borderRadius = 10;
-        break;
-      case CalculatorButtonShape.rect:
-      default:
-        borderRadius = 6;
-        break;
-    }
+    final theme = Theme.of(context);
+    final radius = shape == CalculatorButtonShape.round ? 22.0 : 8.0;
+    final foreground = isActive ? Colors.white : textColor;
+    final background = isActive ? const Color(0xFF2563EB) : bgColor;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2.0, vertical: 4.0),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Top Labels
-            Row(
+      padding: const EdgeInsets.all(3),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: secondaryLabel == null && alphaLabel == null ? 0 : 14,
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (secondaryLabel != null)
-                  Text(
-                    secondaryLabel!,
-                    style: const TextStyle(
-                      color: Color(0xFFFFD700), // Gold/Yellow
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: Text(
+                      secondaryLabel!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFF59E0B),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 if (secondaryLabel != null && alphaLabel != null)
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                 if (alphaLabel != null)
-                  Text(
-                    alphaLabel!,
-                    style: const TextStyle(
-                      color: Color(0xFFFF5252), // Red/Alpha
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
+                  Flexible(
+                    child: Text(
+                      alphaLabel!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 2),
-            // Button Body
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                onTap();
-              },
-              child: Container(
-                height: height ?? (shape == CalculatorButtonShape.rect ? 38 : 30),
-                width: width ?? (shape == CalculatorButtonShape.round ? 45 : 60),
-                decoration: BoxDecoration(
-                  color: isActive ? Colors.white.withAlpha(50) : bgColor,
-                  borderRadius: BorderRadius.circular(borderRadius),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(150),
-                      offset: const Offset(0, 2),
-                      blurRadius: 1,
+          ),
+          Expanded(
+            child: Material(
+              color: background,
+              borderRadius: BorderRadius.circular(radius),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  onTap();
+                },
+                child: Ink(
+                  width: width,
+                  height: height,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(radius),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withAlpha(100),
                     ),
-                  ],
-                  border: Border.all(
-                    color: Colors.white.withAlpha(30),
-                    width: 0.5,
-                  ),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      bgColor.withAlpha(255),
-                      bgColor.withAlpha(200),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(20),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
                     ],
                   ),
-                ),
-                child: Center(
-                  child: icon != null
-                      ? Icon(icon, color: textColor, size: 18)
-                      : Text(
-                          label,
-                          style: TextStyle(
-                            color: textColor,
-                            fontSize: shape == CalculatorButtonShape.rect ? 16 : 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                  child: Center(
+                    child: icon == null
+                        ? FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: foreground,
+                                fontSize: labelSize,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0,
+                              ),
+                            ),
+                          )
+                        : Icon(icon, color: foreground, size: labelSize + 4),
+                  ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

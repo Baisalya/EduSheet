@@ -1,11 +1,4 @@
-enum DocumentType {
-  pdf,
-  word,
-  excel,
-  powerpoint,
-  text,
-  other
-}
+enum DocumentType { pdf, word, excel, powerpoint, text, other }
 
 class DocumentFile {
   final String name;
@@ -30,12 +23,17 @@ class DocumentFile {
         return DocumentType.pdf;
       case '.doc':
       case '.docx':
+      case '.rtf':
+      case '.odt':
         return DocumentType.word;
       case '.xls':
       case '.xlsx':
+      case '.csv':
+      case '.ods':
         return DocumentType.excel;
       case '.ppt':
       case '.pptx':
+      case '.odp':
         return DocumentType.powerpoint;
       case '.txt':
         return DocumentType.text;

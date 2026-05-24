@@ -21,9 +21,7 @@ class _MathEditorDemoScreenState extends State<MathEditorDemoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Math Keyboard Demo'),
-      ),
+      appBar: AppBar(title: const Text('Math Keyboard Demo')),
       body: Column(
         children: [
           Padding(

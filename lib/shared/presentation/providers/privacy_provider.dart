@@ -6,7 +6,8 @@ class PrivacyNotifier extends StateNotifier<AsyncValue<int>> {
     _init();
   }
 
-  static const int currentPolicyVersion = 2; // Increment this when policy changes
+  static const int currentPolicyVersion =
+      3; // Increment this when policy changes
   static const String _storageKey = 'accepted_privacy_version';
 
   Future<void> _init() async {
@@ -29,6 +30,8 @@ class PrivacyNotifier extends StateNotifier<AsyncValue<int>> {
   }
 }
 
-final privacyProvider = StateNotifierProvider<PrivacyNotifier, AsyncValue<int>>((ref) {
-  return PrivacyNotifier();
-});
+final privacyProvider = StateNotifierProvider<PrivacyNotifier, AsyncValue<int>>(
+  (ref) {
+    return PrivacyNotifier();
+  },
+);

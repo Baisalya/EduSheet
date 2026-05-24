@@ -17,7 +17,7 @@ class LocalPaperRepository implements PaperRepository {
     try {
       final file = await _getFile();
       if (!await file.exists()) return [];
-      
+
       final content = await file.readAsString();
       final List<dynamic> jsonList = json.decode(content);
       return jsonList.map((e) => Paper.fromJson(e)).toList();

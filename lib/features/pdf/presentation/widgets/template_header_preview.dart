@@ -207,8 +207,6 @@ class TemplateHeaderPreview extends StatelessWidget {
           alignment: alignment,
           child: el.content.isNotEmpty ? Text(el.content, style: style) : null,
         );
-      default:
-        return const SizedBox();
     }
   }
 

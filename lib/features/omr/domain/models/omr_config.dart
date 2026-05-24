@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 enum OmrOptionsCount { two, three, four, five }
 
 class OmrConfig {
@@ -51,10 +49,14 @@ class OmrConfig {
 
   int get optionsIntValue {
     switch (optionsCount) {
-      case OmrOptionsCount.two: return 2;
-      case OmrOptionsCount.three: return 3;
-      case OmrOptionsCount.four: return 4;
-      case OmrOptionsCount.five: return 5;
+      case OmrOptionsCount.two:
+        return 2;
+      case OmrOptionsCount.three:
+        return 3;
+      case OmrOptionsCount.four:
+        return 4;
+      case OmrOptionsCount.five:
+        return 5;
     }
   }
 }

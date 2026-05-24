@@ -8,6 +8,7 @@ class CalculatorDisplay extends StatelessWidget {
   final bool isShift;
   final bool isAlpha;
   final bool isHyp;
+  final AngleUnit angleUnit;
 
   const CalculatorDisplay({
     super.key,
@@ -15,75 +16,77 @@ class CalculatorDisplay extends StatelessWidget {
     required this.result,
     required this.isShift,
     required this.isAlpha,
+    required this.angleUnit,
     this.isHyp = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final MathEngine engine = MathEngine();
+    final theme = Theme.of(context);
+    final engine = MathEngine();
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFAEB89D), // Casio LCD Olive/Grey
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: Colors.black.withAlpha(200), width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(100),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // Status Indicators (Small)
           Row(
             children: [
-              if (isShift) _SmallIndicator(label: 'S'),
-              if (isAlpha) _SmallIndicator(label: 'A'),
-              if (isHyp) _SmallIndicator(label: 'HYP'),
+              _StatusChip(
+                label: angleUnit == AngleUnit.degrees ? 'DEG' : 'RAD',
+                isActive: true,
+              ),
+              if (isShift) const _StatusChip(label: 'SHIFT', isActive: true),
+              if (isAlpha) const _StatusChip(label: 'ALPHA', isActive: true),
+              if (isHyp) const _StatusChip(label: 'HYP', isActive: true),
               const Spacer(),
-              _SmallIndicator(label: 'D', isActive: true),
-              const SizedBox(width: 4),
-              _SmallIndicator(label: 'Math', isActive: true),
+              Text(
+                'Scientific',
+                style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 4),
-          // Top Line (Expression)
+          const SizedBox(height: 12),
           SizedBox(
-            height: 40,
+            height: 44,
             width: double.infinity,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              reverse: true,
-              child: Math.tex(
-                engine.toLaTeX(equation.isEmpty ? ' ' : equation),
-                textStyle: const TextStyle(
-                  fontSize: 18,
-                  color: Colors.black87,
-                  fontFamily: 'monospace',
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                reverse: true,
+                child: Math.tex(
+                  engine.toLaTeX(equation.isEmpty ? ' ' : equation),
+                  textStyle: TextStyle(
+                    fontSize: 20,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
           ),
-          // Bottom Line (Result)
           const SizedBox(height: 8),
           Text(
             result,
-            style: const TextStyle(
-              fontSize: 36,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-              fontFamily: 'monospace',
-              letterSpacing: 1,
-            ),
+            textAlign: TextAlign.right,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 40,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0,
+            ),
           ),
         ],
       ),
@@ -91,20 +94,36 @@ class CalculatorDisplay extends StatelessWidget {
   }
 }
 
-class _SmallIndicator extends StatelessWidget {
+class _StatusChip extends StatelessWidget {
   final String label;
   final bool isActive;
 
-  const _SmallIndicator({required this.label, this.isActive = true});
+  const _StatusChip({required this.label, required this.isActive});
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      label,
-      style: TextStyle(
-        fontSize: 8,
-        fontWeight: FontWeight.bold,
-        color: isActive ? Colors.black.withAlpha(180) : Colors.black.withAlpha(40),
+    final theme = Theme.of(context);
+    return Container(
+      height: 22,
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: isActive
+            ? theme.colorScheme.primary.withAlpha(28)
+            : theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isActive
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurfaceVariant,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0,
+        ),
       ),
     );
   }

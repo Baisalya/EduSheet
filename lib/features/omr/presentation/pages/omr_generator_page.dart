@@ -79,7 +79,9 @@ class OmrGeneratorPage extends ConsumerWidget {
                         initialValue: config.barcodeData,
                         decoration: InputDecoration(
                           labelText: 'Barcode Data (Optional)',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                         onChanged: notifier.updateBarcodeData,
                       ),
@@ -117,7 +119,9 @@ class OmrGeneratorPage extends ConsumerWidget {
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
                   padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
               ),
             ),
@@ -128,7 +132,11 @@ class OmrGeneratorPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildBrandingSection(BuildContext context, OmrConfig config, OmrNotifier notifier) {
+  Widget _buildBrandingSection(
+    BuildContext context,
+    OmrConfig config,
+    OmrNotifier notifier,
+  ) {
     return Row(
       children: [
         GestureDetector(
@@ -147,7 +155,11 @@ class OmrGeneratorPage extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: Theme.of(context).cardTheme.color,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
+                  border: Border.all(
+                    color: Theme.of(
+                      context,
+                    ).dividerColor.withValues(alpha: 0.1),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.04),
@@ -158,9 +170,16 @@ class OmrGeneratorPage extends ConsumerWidget {
                 child: config.schoolLogo != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: Image.file(File(config.schoolLogo!), fit: BoxFit.cover),
+                        child: Image.file(
+                          File(config.schoolLogo!),
+                          fit: BoxFit.cover,
+                        ),
                       )
-                    : Icon(Icons.add_a_photo_outlined, size: 32, color: Colors.grey[400]),
+                    : Icon(
+                        Icons.add_a_photo_outlined,
+                        size: 32,
+                        color: Colors.grey[400],
+                      ),
               ),
               if (config.schoolLogo != null)
                 Positioned(
@@ -170,8 +189,15 @@ class OmrGeneratorPage extends ConsumerWidget {
                     onTap: () => notifier.updateSchoolLogo(null),
                     child: Container(
                       padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                      child: const Icon(Icons.close, size: 12, color: Colors.white),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        size: 12,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -187,7 +213,9 @@ class OmrGeneratorPage extends ConsumerWidget {
                 decoration: InputDecoration(
                   labelText: 'School/Institute Name',
                   isDense: true,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onChanged: notifier.updateSchoolName,
               ),
@@ -197,7 +225,9 @@ class OmrGeneratorPage extends ConsumerWidget {
                 decoration: InputDecoration(
                   labelText: 'Exam Name',
                   isDense: true,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 onChanged: notifier.updateExamName,
               ),
@@ -208,31 +238,42 @@ class OmrGeneratorPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildConfigSection(BuildContext context, OmrConfig config, OmrNotifier notifier) {
+  Widget _buildConfigSection(
+    BuildContext context,
+    OmrConfig config,
+    OmrNotifier notifier,
+  ) {
     return Column(
       children: [
         DropdownButtonFormField<int>(
-          value: config.questionCount,
+          initialValue: config.questionCount,
           decoration: InputDecoration(
             labelText: 'Total Questions',
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
           items: [10, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200, 300, 400, 500]
-              .map((c) => DropdownMenuItem(value: c, child: Text('$c Questions')))
+              .map(
+                (c) => DropdownMenuItem(value: c, child: Text('$c Questions')),
+              )
               .toList(),
           onChanged: (val) => notifier.updateQuestionCount(val!),
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<OmrOptionsCount>(
-          value: config.optionsCount,
+          initialValue: config.optionsCount,
           decoration: InputDecoration(
             labelText: 'Options per Question',
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
           items: OmrOptionsCount.values
-              .map((c) => DropdownMenuItem(
+              .map(
+                (c) => DropdownMenuItem(
                   value: c,
-                  child: Text('${c.name.toUpperCase()} ( ${config.optionsIntValue} )')))
+                  child: Text(
+                    '${c.name.toUpperCase()} ( ${config.optionsIntValue} )',
+                  ),
+                ),
+              )
               .toList(),
           onChanged: (val) => notifier.updateOptionsCount(val!),
         ),
@@ -262,10 +303,10 @@ class _OmrCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withOpacity(0.1)),
+        border: Border.all(color: color.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -281,7 +322,7 @@ class _OmrCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: color, size: 20),
@@ -299,10 +340,7 @@ class _OmrCard extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: child,
-          ),
+          Padding(padding: const EdgeInsets.all(16), child: child),
         ],
       ),
     );
@@ -326,10 +364,16 @@ class _ModernSwitch extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: value ? Colors.blue.withOpacity(0.05) : (isDark ? Colors.white.withOpacity(0.02) : Colors.grey[50]),
+        color: value
+            ? Colors.blue.withValues(alpha: 0.05)
+            : (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[50]),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: value ? Colors.blue.withOpacity(0.1) : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[200]!),
+          color: value
+              ? Colors.blue.withValues(alpha: 0.1)
+              : (isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.grey[200]!),
         ),
       ),
       child: SwitchListTile(
@@ -338,7 +382,9 @@ class _ModernSwitch extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: value ? FontWeight.bold : FontWeight.w500,
-            color: value ? Colors.blue[700] : (isDark ? Colors.white70 : Colors.black87),
+            color: value
+                ? Colors.blue[700]
+                : (isDark ? Colors.white70 : Colors.black87),
           ),
         ),
         value: value,

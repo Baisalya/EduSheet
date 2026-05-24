@@ -202,12 +202,41 @@ class QuestionPaperService {
             ),
           ),
         if (section.showDivider) pw.Divider(),
-        ...section.questions.asMap().entries.map((entry) {
-          final idx = entry.key + 1;
-          final q = entry.value;
-          return _buildQuestion(idx, q, template);
-        }),
+        _buildQuestionList(section, template),
       ],
+    );
+  }
+
+  static pw.Widget _buildQuestionList(
+    PaperSection section,
+    PaperTemplate template,
+  ) {
+    final questions = section.questions.asMap().entries.map((entry) {
+      return _buildQuestion(entry.key + 1, entry.value, template);
+    }).toList();
+
+    if (template.paperLayout != PaperLayout.twoColumn) {
+      return pw.Column(children: questions);
+    }
+
+    return pw.LayoutBuilder(
+      builder: (context, constraints) {
+        final contentWidth = constraints?.maxWidth.isFinite == true
+            ? constraints!.maxWidth
+            : CustomLayout.designWidth;
+        final gap = 16.0;
+        final columnWidth = (contentWidth - gap) / 2;
+
+        return pw.Wrap(
+          spacing: gap,
+          runSpacing: 0,
+          children: questions
+              .map(
+                (question) => pw.Container(width: columnWidth, child: question),
+              )
+              .toList(),
+        );
+      },
     );
   }
 
@@ -235,7 +264,11 @@ class QuestionPaperService {
                 ),
               ),
               pw.Expanded(
-                child: _parseRichTextToPdf(q.text, template.questionFontSize),
+                child: _parseRichTextToPdf(
+                  q.text,
+                  template.questionFontSize,
+                  textAlign: _pdfTextAlign(q.alignment),
+                ),
               ),
               pw.SizedBox(
                 width: 40,
@@ -295,7 +328,11 @@ class QuestionPaperService {
     );
   }
 
-  static pw.Widget _parseRichTextToPdf(String text, double fontSize) {
+  static pw.Widget _parseRichTextToPdf(
+    String text,
+    double fontSize, {
+    pw.TextAlign textAlign = pw.TextAlign.left,
+  }) {
     try {
       if (text.startsWith('[') || text.startsWith('{')) {
         final List<dynamic> deltaJson = jsonDecode(text);
@@ -305,6 +342,7 @@ class QuestionPaperService {
         final html = converter.convert();
         final document = html_parser.parse(html);
         return pw.RichText(
+          textAlign: textAlign,
           text: pw.TextSpan(
             children: _domToTextSpans(document.body!, fontSize),
           ),
@@ -313,7 +351,25 @@ class QuestionPaperService {
     } catch (e) {
       // Fallback to plain text
     }
-    return pw.Text(text, style: pw.TextStyle(fontSize: fontSize));
+    return pw.Text(
+      text,
+      textAlign: textAlign,
+      style: pw.TextStyle(fontSize: fontSize),
+    );
+  }
+
+  static pw.TextAlign _pdfTextAlign(dynamic alignment) {
+    switch (alignment.toString().split('.').last) {
+      case 'center':
+        return pw.TextAlign.center;
+      case 'right':
+      case 'end':
+        return pw.TextAlign.right;
+      case 'justify':
+        return pw.TextAlign.justify;
+      default:
+        return pw.TextAlign.left;
+    }
   }
 
   static List<pw.InlineSpan> _domToTextSpans(dom.Node node, double fontSize) {

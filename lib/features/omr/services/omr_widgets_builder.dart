@@ -1,9 +1,11 @@
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../domain/models/omr_config.dart';
 
 class OmrWidgetsBuilder {
-  static List<pw.Widget> build(OmrConfig config, {pw.ImageProvider? logoImage}) {
+  static List<pw.Widget> build(
+    OmrConfig config, {
+    pw.ImageProvider? logoImage,
+  }) {
     return [
       _buildBranding(config, logoImage),
       pw.SizedBox(height: 10),
@@ -14,18 +16,17 @@ class OmrWidgetsBuilder {
     ];
   }
 
-  static pw.Widget _buildBranding(OmrConfig config, pw.ImageProvider? logoImage) {
+  static pw.Widget _buildBranding(
+    OmrConfig config,
+    pw.ImageProvider? logoImage,
+  ) {
     return pw.Column(
       children: [
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
             if (logoImage != null)
-              pw.Container(
-                width: 60,
-                height: 60,
-                child: pw.Image(logoImage),
-              )
+              pw.Container(width: 60, height: 60, child: pw.Image(logoImage))
             else
               pw.SizedBox(width: 60),
             pw.Expanded(
@@ -33,12 +34,12 @@ class OmrWidgetsBuilder {
                 children: [
                   pw.Text(
                     config.schoolName,
-                    style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+                    style: pw.TextStyle(
+                      fontSize: 20,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
                   ),
-                  pw.Text(
-                    config.examName,
-                    style: pw.TextStyle(fontSize: 16),
-                  ),
+                  pw.Text(config.examName, style: pw.TextStyle(fontSize: 16)),
                 ],
               ),
             ),
@@ -111,18 +112,21 @@ class OmrWidgetsBuilder {
   }
 
   static pw.Widget _buildOmrGrid(OmrConfig config) {
-    const questionsPerColumn = 25;
     final totalQuestions = config.questionCount;
-    
+
     // Calculate columns needed
     int actualCols = 4;
-    if (totalQuestions <= 25) actualCols = 1;
-    else if (totalQuestions <= 50) actualCols = 2;
-    else if (totalQuestions <= 75) actualCols = 3;
+    if (totalQuestions <= 25) {
+      actualCols = 1;
+    } else if (totalQuestions <= 50) {
+      actualCols = 2;
+    } else if (totalQuestions <= 75) {
+      actualCols = 3;
+    }
 
     return pw.GridView(
       crossAxisCount: actualCols,
-      childAspectRatio: 0.35, 
+      childAspectRatio: 0.35,
       children: List.generate(totalQuestions, (index) {
         return _buildQuestionRow(index + 1, config.optionsIntValue);
       }),
@@ -137,7 +141,10 @@ class OmrWidgetsBuilder {
         children: [
           pw.SizedBox(
             width: 22,
-            child: pw.Text('$questionNumber.', style: const pw.TextStyle(fontSize: 9)),
+            child: pw.Text(
+              '$questionNumber.',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
           ),
           ...List.generate(optionsCount, (i) {
             return pw.Container(
@@ -167,8 +174,14 @@ class OmrWidgetsBuilder {
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text('Invigilator\'s Signature: __________________', style: const pw.TextStyle(fontSize: 9)),
-          pw.Text('Student\'s Signature: __________________', style: const pw.TextStyle(fontSize: 9)),
+          pw.Text(
+            'Invigilator\'s Signature: __________________',
+            style: const pw.TextStyle(fontSize: 9),
+          ),
+          pw.Text(
+            'Student\'s Signature: __________________',
+            style: const pw.TextStyle(fontSize: 9),
+          ),
         ],
       ),
     );

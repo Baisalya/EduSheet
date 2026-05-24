@@ -33,6 +33,28 @@ void main() {
       expect(engine.evaluate('ln(2.718281828459045)'), '1');
     });
 
+    test('Scientific calculator operations', () {
+      expect(engine.evaluate('sin(90)', angleUnit: AngleUnit.degrees), '1');
+      expect(engine.evaluate('sin(90', angleUnit: AngleUnit.degrees), '1');
+      expect(engine.evaluate('arcsin(1)', angleUnit: AngleUnit.degrees), '90');
+      expect(engine.evaluate('5C2'), '10');
+      expect(engine.evaluate('5P2'), '20');
+      expect(engine.evaluate('5!'), '120');
+      expect(engine.evaluate('2EXP3'), '2000');
+      expect(engine.evaluate('10^3'), '1000');
+      expect(engine.evaluate('cbrt(27)'), '3');
+      expect(engine.evaluate('Ans×2', ans: 12), '24');
+      expect(engine.evaluate('sinh(0)'), '0');
+    });
+
+    test('Calculator-style implicit input', () {
+      expect(engine.evaluate('2π'), '6.2831853072');
+      expect(engine.evaluate('π2'), '6.2831853072');
+      expect(engine.evaluate('2sin(30', angleUnit: AngleUnit.degrees), '1');
+      expect(engine.evaluate('3Ans', ans: 4), '12');
+      expect(engine.evaluate('(2+3)(4+1)'), '25');
+    });
+
     test('Error Handling', () {
       expect(engine.evaluate('1÷0'), 'Error');
       expect(engine.evaluate('invalid'), 'Error');

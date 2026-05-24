@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/theme_provider.dart';
 import '../widgets/privacy_policy_dialog.dart';
+
+const String _developerName = 'Baishalya Roul';
+const String _portfolioUrl = 'https://baisalya.github.io/Baisalya-Roul/';
+const String _phonePeUpiId =
+    'upi://pay?pa=baishalya1999@oksbi&pn=survaycam&cu=INR';
+const bool _isUpiConfigured = _phonePeUpiId != 'baishalya1999@ybl';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -143,7 +151,10 @@ class SettingsScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Help Us', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Help Us',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: const Text(
           'We are constantly working to improve EduSheet. If you have any suggestions, bug reports, or feedback, please reach out to us at support@edusheet.com',
         ),
@@ -158,33 +169,199 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _showDeveloperDetails(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Developer Details', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Created with ❤️ by Baishak.',
-              style: TextStyle(fontWeight: FontWeight.w600),
+        titlePadding: EdgeInsets.zero,
+        contentPadding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
+        title: Container(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+          decoration: BoxDecoration(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            gradient: LinearGradient(
+              colors: [Colors.teal.shade600, Colors.blue.shade700],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            const SizedBox(height: 12),
-            const Text('A passionate developer building tools for educators.'),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Icon(Icons.link_rounded, size: 16, color: Colors.blue[700]),
-                const SizedBox(width: 8),
-                Text(
-                  'github.com/baishak',
-                  style: TextStyle(color: Colors.blue[700]),
+          ),
+          child: const Row(
+            children: [
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: Colors.white,
+                child: Icon(Icons.code_rounded, color: Colors.teal, size: 30),
+              ),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Developer Details',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Creator of EduSheet',
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Made with care for teachers, tutors, and students who need simple tools that just work.',
+                style: TextStyle(
+                  color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 18),
+              InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _launchExternal(context, _portfolioUrl),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.teal.withValues(alpha: 0.16),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Colors.teal,
+                        child: Icon(Icons.person_rounded, color: Colors.white),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _developerName,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Tap to view portfolio',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.teal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        color: Colors.teal.shade700,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.09),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.orange.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.local_cafe_rounded,
+                          color: Colors.orange.shade800,
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'Buy me a coffee',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'EduSheet is free for everyone. If it saved your time, a tiny coffee helps keep new features brewing.',
+                      style: TextStyle(height: 1.4),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.orange.withValues(alpha: 0.22),
+                              ),
+                            ),
+                            child: const Text(
+                              _phonePeUpiId,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          tooltip: 'Copy UPI ID',
+                          onPressed: () => _copyUpiId(context),
+                          icon: const Icon(Icons.copy_rounded),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => _openUpiPayment(context),
+                        icon: const Icon(Icons.volunteer_activism_rounded),
+                        label: const Text('Donate with PhonePe / UPI'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -193,6 +370,73 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _launchExternal(BuildContext context, String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open link right now.')),
+      );
+    }
+  }
+
+  Future<void> _copyUpiId(BuildContext context) async {
+    if (!_isUpiConfigured) {
+      _showMissingUpiMessage(context);
+      return;
+    }
+
+    await Clipboard.setData(const ClipboardData(text: _phonePeUpiId));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('UPI ID copied. Thank you for supporting EduSheet.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openUpiPayment(BuildContext context) async {
+    if (!_isUpiConfigured) {
+      _showMissingUpiMessage(context);
+      return;
+    }
+
+    final uri = Uri(
+      scheme: 'upi',
+      host: 'pay',
+      queryParameters: {
+        'pa': _phonePeUpiId,
+        'pn': _developerName,
+        'tn': 'Thanks for supporting EduSheet',
+        'cu': 'INR',
+      },
+    );
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No UPI app found. You can copy the UPI ID instead.'),
+        ),
+      );
+    }
+  }
+
+  void _showMissingUpiMessage(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('PhonePe UPI ID is not configured yet.')),
     );
   }
 }
@@ -218,10 +462,10 @@ class _SettingsSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withOpacity(0.1)),
+        border: Border.all(color: color.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -237,7 +481,7 @@ class _SettingsSection extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: color, size: 20),
@@ -254,10 +498,7 @@ class _SettingsSection extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: child,
-          ),
+          Padding(padding: const EdgeInsets.all(16), child: child),
         ],
       ),
     );
@@ -303,7 +544,7 @@ class _SettingsActionCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color, size: 22),
@@ -334,7 +575,7 @@ class _SettingsActionCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(100),
                           ),
                           child: const Text(
-                            "SOON",
+                            'SOON',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 8,
@@ -355,10 +596,7 @@ class _SettingsActionCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey[400]),
           ],
         ),
       ),

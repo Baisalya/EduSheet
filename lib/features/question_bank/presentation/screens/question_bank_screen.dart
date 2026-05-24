@@ -54,7 +54,7 @@ class QuestionBankScreen extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -67,7 +67,10 @@ class QuestionBankScreen extends ConsumerWidget {
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                 ),
                 onChanged: notifier.setSearchQuery,
               ),
@@ -83,14 +86,24 @@ class QuestionBankScreen extends ConsumerWidget {
                   selected: state.showOnlyFavorites,
                   onSelected: (_) => notifier.toggleShowOnlyFavorites(),
                   backgroundColor: Theme.of(context).colorScheme.surface,
-                  selectedColor: Colors.red.withOpacity(0.1),
+                  selectedColor: Colors.red.withValues(alpha: 0.1),
                   labelStyle: TextStyle(
-                    color: state.showOnlyFavorites ? Colors.red : (isDark ? Colors.white70 : Colors.black87),
-                    fontWeight: state.showOnlyFavorites ? FontWeight.bold : FontWeight.normal,
+                    color: state.showOnlyFavorites
+                        ? Colors.red
+                        : (isDark ? Colors.white70 : Colors.black87),
+                    fontWeight: state.showOnlyFavorites
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   side: BorderSide(
-                    color: state.showOnlyFavorites ? Colors.red.withOpacity(0.2) : (isDark ? Colors.white.withOpacity(0.1) : Colors.grey[300]!),
+                    color: state.showOnlyFavorites
+                        ? Colors.red.withValues(alpha: 0.2)
+                        : (isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.grey[300]!),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -122,34 +135,46 @@ class QuestionBankScreen extends ConsumerWidget {
             child: state.isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : questions.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.search_off_rounded, size: 64, color: Colors.grey[300]),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No questions found.',
-                              style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off_rounded,
+                          size: 64,
+                          color: Colors.grey[300],
                         ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        itemCount: questions.length,
-                        itemBuilder: (context, index) {
-                          final q = questions[index];
-                          return _QuestionBankCard(q: q, notifier: notifier);
-                        },
-                      ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No questions found.',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    itemCount: questions.length,
+                    itemBuilder: (context, index) {
+                      final q = questions[index];
+                      return _QuestionBankCard(q: q, notifier: notifier);
+                    },
+                  ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const AddEditQuestionScreen()),
+          MaterialPageRoute(
+            builder: (context) => const AddEditQuestionScreen(),
+          ),
         ),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
@@ -217,12 +242,12 @@ class _QuestionBankCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.03),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -255,7 +280,9 @@ class _QuestionBankCard extends StatelessWidget {
                   ),
                   IconButton(
                     icon: Icon(
-                      q.isFavorite ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                      q.isFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_outline_rounded,
                       color: q.isFavorite ? Colors.red : Colors.grey[400],
                       size: 20,
                     ),
@@ -285,7 +312,8 @@ class _QuestionBankCard extends StatelessWidget {
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => AddEditQuestionScreen(question: q),
+                        builder: (context) =>
+                            AddEditQuestionScreen(question: q),
                       ),
                     ),
                     constraints: const BoxConstraints(),
@@ -293,7 +321,11 @@ class _QuestionBankCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.grey),
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
                     onPressed: () => _confirmDelete(context),
                     constraints: const BoxConstraints(),
                     padding: const EdgeInsets.all(4),
@@ -312,10 +344,18 @@ class _QuestionBankCard extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Question?', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: const Text('This action cannot be undone and will remove it from the bank.'),
+        title: const Text(
+          'Delete Question?',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'This action cannot be undone and will remove it from the bank.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
           TextButton(
             onPressed: () {
               notifier.deleteQuestion(q.question.id);
@@ -334,14 +374,18 @@ class _InfoChip extends StatelessWidget {
   final IconData icon;
   final Color color;
 
-  const _InfoChip({required this.label, required this.icon, required this.color});
+  const _InfoChip({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -386,7 +430,11 @@ class _FilterDropdown<T> extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey[300]!),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : Colors.grey[300]!,
+        ),
       ),
       child: DropdownButton<T>(
         value: value,
@@ -394,11 +442,19 @@ class _FilterDropdown<T> extends StatelessWidget {
         underline: const SizedBox(),
         icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
         items: [
-          DropdownMenuItem<T>(value: null, child: Text('All $hint', style: const TextStyle(fontSize: 12))),
-          ...items.map((e) => DropdownMenuItem<T>(
-                value: e,
-                child: Text(labelBuilder?.call(e) ?? e.toString(), style: const TextStyle(fontSize: 12)),
-              )),
+          DropdownMenuItem<T>(
+            value: null,
+            child: Text('All $hint', style: const TextStyle(fontSize: 12)),
+          ),
+          ...items.map(
+            (e) => DropdownMenuItem<T>(
+              value: e,
+              child: Text(
+                labelBuilder?.call(e) ?? e.toString(),
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
         ],
         onChanged: onChanged,
       ),

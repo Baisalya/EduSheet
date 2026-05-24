@@ -15,7 +15,7 @@ class _OCRScreenState extends State<OCRScreen> {
   final ImagePicker _picker = ImagePicker();
   final OCRService _ocrService = OCRService();
   final TextEditingController _resultController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _isHindi = false;
   File? _selectedImage;
@@ -28,6 +28,7 @@ class _OCRScreenState extends State<OCRScreen> {
   }
 
   Future<void> _pickAndProcessImage(ImageSource source) async {
+    final toolbarColor = Theme.of(context).colorScheme.primary;
     final XFile? image = await _picker.pickImage(source: source);
     if (image == null) return;
 
@@ -36,14 +37,12 @@ class _OCRScreenState extends State<OCRScreen> {
       uiSettings: [
         AndroidUiSettings(
           toolbarTitle: 'Crop Question',
-          toolbarColor: Theme.of(context).colorScheme.primary,
+          toolbarColor: toolbarColor,
           toolbarWidgetColor: Colors.white,
           initAspectRatio: CropAspectRatioPreset.original,
           lockAspectRatio: false,
         ),
-        IOSUiSettings(
-          title: 'Crop Question',
-        ),
+        IOSUiSettings(title: 'Crop Question'),
       ],
     );
 
@@ -54,7 +53,11 @@ class _OCRScreenState extends State<OCRScreen> {
       _selectedImage = File(croppedFile.path);
     });
 
-    final text = await _ocrService.recognizeText(croppedFile.path, isHindi: _isHindi);
+    final text = await _ocrService.recognizeText(
+      croppedFile.path,
+      isHindi: _isHindi,
+    );
+    if (!mounted) return;
 
     setState(() {
       _isLoading = false;
@@ -69,7 +72,10 @@ class _OCRScreenState extends State<OCRScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Scan Question', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Scan Question',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: isDark ? Colors.white : Colors.black,
@@ -90,7 +96,9 @@ class _OCRScreenState extends State<OCRScreen> {
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -101,10 +109,14 @@ class _OCRScreenState extends State<OCRScreen> {
                     icon: const Icon(Icons.photo_library_outlined),
                     label: const Text('Gallery'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                      backgroundColor: isDark
+                          ? Colors.grey[800]
+                          : Colors.grey[200],
                       foregroundColor: isDark ? Colors.white : Colors.black87,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       elevation: 0,
                     ),
                   ),
@@ -116,11 +128,19 @@ class _OCRScreenState extends State<OCRScreen> {
               decoration: BoxDecoration(
                 color: isDark ? Colors.grey[850] : Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[200]!),
+                border: Border.all(
+                  color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                ),
               ),
               child: SwitchListTile(
-                title: const Text('Hindi Support', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                subtitle: const Text('Enable for Devanagari text', style: TextStyle(fontSize: 11)),
+                title: const Text(
+                  'Hindi Support',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                subtitle: const Text(
+                  'Enable for Devanagari text',
+                  style: TextStyle(fontSize: 11),
+                ),
                 value: _isHindi,
                 onChanged: (val) => setState(() => _isHindi = val),
               ),
@@ -151,7 +171,9 @@ class _OCRScreenState extends State<OCRScreen> {
                 maxLines: 10,
                 style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                 decoration: InputDecoration(
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   filled: true,
                   fillColor: isDark ? Colors.grey[900] : Colors.white,
                   hintText: 'Recognized text will appear here...',
@@ -167,9 +189,14 @@ class _OCRScreenState extends State<OCRScreen> {
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
-                child: const Text('Use This Text', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                child: const Text(
+                  'Use This Text',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
               ),
             ],
             if (_selectedImage != null && !_isLoading) ...[
@@ -185,7 +212,11 @@ class _OCRScreenState extends State<OCRScreen> {
               const SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: Image.file(_selectedImage!, height: 250, fit: BoxFit.contain),
+                child: Image.file(
+                  _selectedImage!,
+                  height: 250,
+                  fit: BoxFit.contain,
+                ),
               ),
             ],
             const SizedBox(height: 40),

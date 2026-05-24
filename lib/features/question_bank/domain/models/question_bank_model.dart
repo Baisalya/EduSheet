@@ -46,11 +46,9 @@ class QuestionBankQuestion {
       'id': question.id,
       'text': question.text,
       'imageUrl': question.imageUrl,
-      'options': question.options.map((o) => {
-        'id': o.id,
-        'text': o.text,
-        'isCorrect': o.isCorrect,
-      }).toList(),
+      'options': question.options
+          .map((o) => {'id': o.id, 'text': o.text, 'isCorrect': o.isCorrect})
+          .toList(),
       'type': question.type.index,
       'marks': question.marks,
       'alignment': question.alignment.index,
@@ -69,11 +67,15 @@ class QuestionBankQuestion {
         id: json['id'],
         text: json['text'],
         imageUrl: json['imageUrl'],
-        options: (json['options'] as List).map((o) => QuestionOption(
-          id: o['id'],
-          text: o['text'],
-          isCorrect: o['isCorrect'] ?? false,
-        )).toList(),
+        options: (json['options'] as List)
+            .map(
+              (o) => QuestionOption(
+                id: o['id'],
+                text: o['text'],
+                isCorrect: o['isCorrect'] ?? false,
+              ),
+            )
+            .toList(),
         type: QuestionType.values[json['type'] ?? 1],
         marks: (json['marks'] as num?)?.toDouble() ?? 1.0,
         // alignment: TextAlign.values[json['alignment'] ?? 0], // Not easily accessible from core models sometimes, but let's assume it works

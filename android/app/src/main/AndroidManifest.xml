@@ -29,18 +29,60 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Intent filter to handle opening PDF, Word, and PPT files -->
+            <!-- Intent filter to handle opening common document files -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="content" />
-                <data android:scheme="file" />
+                <data android:scheme="content" android:mimeType="application/pdf" />
+                <data android:scheme="file" android:mimeType="application/pdf" />
+                <data android:scheme="content" android:mimeType="application/msword" />
+                <data android:scheme="file" android:mimeType="application/msword" />
+                <data android:scheme="content" android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:scheme="file" android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:scheme="content" android:mimeType="application/rtf" />
+                <data android:scheme="file" android:mimeType="application/rtf" />
+                <data android:scheme="content" android:mimeType="text/rtf" />
+                <data android:scheme="file" android:mimeType="text/rtf" />
+                <data android:scheme="content" android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:scheme="file" android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:scheme="content" android:mimeType="application/vnd.ms-excel" />
+                <data android:scheme="file" android:mimeType="application/vnd.ms-excel" />
+                <data android:scheme="content" android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:scheme="file" android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:scheme="content" android:mimeType="text/csv" />
+                <data android:scheme="file" android:mimeType="text/csv" />
+                <data android:scheme="content" android:mimeType="application/csv" />
+                <data android:scheme="file" android:mimeType="application/csv" />
+                <data android:scheme="content" android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:scheme="file" android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
+                <data android:scheme="content" android:mimeType="application/vnd.ms-powerpoint" />
+                <data android:scheme="file" android:mimeType="application/vnd.ms-powerpoint" />
+                <data android:scheme="content" android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:scheme="file" android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:scheme="content" android:mimeType="application/vnd.oasis.opendocument.presentation" />
+                <data android:scheme="file" android:mimeType="application/vnd.oasis.opendocument.presentation" />
+                <data android:scheme="content" android:mimeType="text/plain" />
+                <data android:scheme="file" android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/msword" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <data android:mimeType="application/rtf" />
+                <data android:mimeType="text/rtf" />
+                <data android:mimeType="application/vnd.oasis.opendocument.text" />
+                <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="application/csv" />
+                <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
                 <data android:mimeType="application/vnd.ms-powerpoint" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+                <data android:mimeType="application/vnd.oasis.opendocument.presentation" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
         <activity
@@ -65,6 +107,10 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
         </intent>
     </queries>
 </manifest>

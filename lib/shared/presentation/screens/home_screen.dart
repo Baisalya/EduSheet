@@ -8,6 +8,7 @@ import '../../../features/omr/presentation/pages/omr_generator_page.dart';
 import '../../../features/question_bank/presentation/screens/question_bank_screen.dart';
 import '../../../features/document_reader/presentation/screens/document_reader_screen.dart';
 import '../../../features/calculator/presentation/screens/calculator_screen.dart';
+import '../../../features/word_converter/presentation/screens/word_converter_screen.dart';
 import '../providers/privacy_provider.dart';
 import '../widgets/privacy_policy_dialog.dart';
 import 'settings_screen.dart';
@@ -63,10 +64,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: const Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(width: 12),
-            _AnimatedGradientTitle(),
-          ],
+          children: [SizedBox(width: 12), _AnimatedGradientTitle()],
         ),
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
@@ -89,7 +87,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ref.read(editorStateProvider.notifier).reset();
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const CreatePaperScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const CreatePaperScreen(),
+                  ),
                 );
               },
             ),
@@ -100,7 +100,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               color: Colors.purple,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const SavedPapersScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const SavedPapersScreen(),
+                ),
               ),
             ),
             _HomeCard(
@@ -110,7 +112,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               color: Colors.orange,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const OmrGeneratorPage()),
+                MaterialPageRoute(
+                  builder: (context) => const OmrGeneratorPage(),
+                ),
               ),
             ),
             _HomeCard(
@@ -120,7 +124,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               color: Colors.green,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const QuestionBankScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const QuestionBankScreen(),
+                ),
               ),
             ),
             _HomeCard(
@@ -140,7 +146,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               color: Colors.redAccent,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const DocumentReaderScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const DocumentReaderScreen(),
+                ),
               ),
             ),
             _HomeCard(
@@ -148,8 +156,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               lottieAsset: 'assets/lottie/convert.json',
               icon: Icons.transform,
               color: Colors.indigo,
-              onTap: () {},
-              isComingSoon: true,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WordConverterScreen(),
+                ),
+              ),
             ),
             _HomeCard(
               title: 'Calculator',
@@ -158,7 +170,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               color: Colors.teal,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const CalculatorScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const CalculatorScreen(),
+                ),
               ),
             ),
           ],
@@ -234,7 +248,6 @@ class _HomeCard extends StatefulWidget {
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
-  final bool isComingSoon;
 
   const _HomeCard({
     required this.title,
@@ -242,7 +255,6 @@ class _HomeCard extends StatefulWidget {
     required this.icon,
     required this.color,
     required this.onTap,
-    this.isComingSoon = false,
   });
 
   @override
@@ -255,57 +267,39 @@ class _HomeCardState extends State<_HomeCard> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor = widget.isComingSoon ? Colors.grey : widget.color;
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _isPressed = true),
       onTapUp: (_) => setState(() => _isPressed = false),
       onTapCancel: () => setState(() => _isPressed = false),
-      onTap: widget.isComingSoon
-          ? () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${widget.title} is coming soon!'),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 1),
-          ),
-        );
-      }
-          : widget.onTap,
+      onTap: widget.onTap,
       child: AnimatedScale(
         scale: _isPressed ? 0.97 : 1,
         duration: const Duration(milliseconds: 140),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          transform: Matrix4.translationValues(
-            0,
-            _isPressed ? 5 : 0,
-            0,
-          ),
+          transform: Matrix4.translationValues(0, _isPressed ? 5 : 0, 0),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: widget.isComingSoon
-                  ? [
-                isDark ? Colors.white.withOpacity(0.05) : Colors.grey.shade100,
-                isDark ? Colors.white.withOpacity(0.02) : Colors.grey.shade50,
-              ]
-                  : [
-                Color.lerp(widget.color, isDark ? Colors.black : Colors.white, 0.88)!,
-                isDark ? Theme.of(context).colorScheme.surfaceContainer : Colors.white,
+              colors: [
+                Color.lerp(
+                  widget.color,
+                  isDark ? Colors.black : Colors.white,
+                  0.88,
+                )!,
+                isDark
+                    ? Theme.of(context).colorScheme.surfaceContainer
+                    : Colors.white,
               ],
             ),
-            border: Border.all(
-              color: widget.isComingSoon
-                  ? (isDark ? Colors.grey.shade800 : Colors.grey.shade200)
-                  : widget.color.withOpacity(0.15),
-            ),
+            border: Border.all(color: widget.color.withValues(alpha: 0.15)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
                 blurRadius: 22,
                 offset: const Offset(0, 10),
                 spreadRadius: -6,
@@ -325,7 +319,9 @@ class _HomeCardState extends State<_HomeCard> {
                     height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: widget.color.withOpacity(isDark ? 0.12 : 0.08),
+                      color: widget.color.withValues(
+                        alpha: isDark ? 0.12 : 0.08,
+                      ),
                     ),
                   ),
                 ),
@@ -338,7 +334,9 @@ class _HomeCardState extends State<_HomeCard> {
                     height: 90,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: (isDark ? Colors.black : Colors.white).withOpacity(0.15),
+                      color: (isDark ? Colors.black : Colors.white).withValues(
+                        alpha: 0.15,
+                      ),
                     ),
                   ),
                 ),
@@ -352,53 +350,30 @@ class _HomeCardState extends State<_HomeCard> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          if (widget.isComingSoon)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.orange,
-                                borderRadius: BorderRadius.circular(100),
-                              ),
-                              child: const Text(
-                                "SOON",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            )
-                          else
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: widget.color.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(100),
-                              ),
-                              child: Text(
-                                "FEATURE",
-                                style: TextStyle(
-                                  color: widget.color,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1,
-                                ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: widget.color.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              "FEATURE",
+                              style: TextStyle(
+                                color: widget.color,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
                               ),
                             ),
+                          ),
 
                           Icon(
                             Icons.arrow_outward_rounded,
                             size: 18,
-                            color: widget.isComingSoon
-                                ? Colors.grey
-                                : widget.color,
+                            color: widget.color,
                           ),
                         ],
                       ),
@@ -415,7 +390,7 @@ class _HomeCardState extends State<_HomeCard> {
                               return Icon(
                                 widget.icon,
                                 size: 60,
-                                color: baseColor,
+                                color: widget.color,
                               );
                             },
                           ),
@@ -434,22 +409,18 @@ class _HomeCardState extends State<_HomeCard> {
                               fontSize: 16,
                               height: 1.15,
                               fontWeight: FontWeight.w800,
-                              color: widget.isComingSoon
-                                  ? Colors.grey.shade600
-                                  : (isDark ? Colors.white : Colors.black87),
+                              color: isDark ? Colors.white : Colors.black87,
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            widget.isComingSoon
-                                ? "Launching soon"
-                                : "Tap to explore",
+                            "Tap to explore",
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
-                              color: widget.isComingSoon
-                                  ? Colors.grey
-                                  : (isDark ? Colors.grey.shade400 : Colors.black54),
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.black54,
                             ),
                           ),
                         ],

@@ -17,7 +17,7 @@ class LocalQuestionBankRepository implements QuestionBankRepository {
     try {
       final file = await _getFile();
       if (!await file.exists()) return [];
-      
+
       final content = await file.readAsString();
       final List<dynamic> jsonList = json.decode(content);
       return jsonList.map((e) => QuestionBankQuestion.fromJson(e)).toList();
@@ -36,7 +36,9 @@ class LocalQuestionBankRepository implements QuestionBankRepository {
   @override
   Future<void> updateQuestion(QuestionBankQuestion question) async {
     final questions = await getAllQuestions();
-    final index = questions.indexWhere((q) => q.question.id == question.question.id);
+    final index = questions.indexWhere(
+      (q) => q.question.id == question.question.id,
+    );
     if (index != -1) {
       questions[index] = question;
       await _saveQuestions(questions);
@@ -65,7 +67,9 @@ class LocalQuestionBankRepository implements QuestionBankRepository {
   @override
   Future<void> importFromJson(String jsonString) async {
     final List<dynamic> jsonList = json.decode(jsonString);
-    final questions = jsonList.map((e) => QuestionBankQuestion.fromJson(e)).toList();
+    final questions = jsonList
+        .map((e) => QuestionBankQuestion.fromJson(e))
+        .toList();
     await _saveQuestions(questions);
   }
 }

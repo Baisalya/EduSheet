@@ -21,7 +21,8 @@ class OmrPdfService {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(20),
-        build: (context) => OmrWidgetsBuilder.build(config, logoImage: logoImage),
+        build: (context) =>
+            OmrWidgetsBuilder.build(config, logoImage: logoImage),
       ),
     );
 

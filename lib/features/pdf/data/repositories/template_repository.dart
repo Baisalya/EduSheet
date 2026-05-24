@@ -17,7 +17,7 @@ class TemplateRepository {
     try {
       final file = await _getFile();
       if (!await file.exists()) return [];
-      
+
       final content = await file.readAsString();
       final List<dynamic> jsonList = json.decode(content);
       return jsonList.map((e) => _fromJson(e)).toList();
@@ -75,7 +75,9 @@ class TemplateRepository {
       headerLayout: HeaderLayout.values[json['headerLayout'] ?? 0],
       paperLayout: PaperLayout.values[json['paperLayout'] ?? 0],
       paperSize: PaperSize.values[json['paperSize'] ?? 0],
-      customLayout: json['customLayout'] != null ? CustomLayout.fromJson(json['customLayout']) : null,
+      customLayout: json['customLayout'] != null
+          ? CustomLayout.fromJson(json['customLayout'])
+          : null,
     );
   }
 }

@@ -8,10 +8,14 @@ class FloatingElementManager extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final elements = ref.watch(mathKeyboardControllerProvider.select((s) => s.floatingElements));
-    
+    final elements = ref.watch(
+      mathKeyboardControllerProvider.select((s) => s.floatingElements),
+    );
+
     return Stack(
-      children: elements.map((e) => FloatingElementWidget(element: e, key: ValueKey(e.id))).toList(),
+      children: elements
+          .map((e) => FloatingElementWidget(element: e, key: ValueKey(e.id)))
+          .toList(),
     );
   }
 }
@@ -22,7 +26,8 @@ class FloatingElementWidget extends ConsumerStatefulWidget {
   const FloatingElementWidget({super.key, required this.element});
 
   @override
-  ConsumerState<FloatingElementWidget> createState() => _FloatingElementWidgetState();
+  ConsumerState<FloatingElementWidget> createState() =>
+      _FloatingElementWidgetState();
 }
 
 class _FloatingElementWidgetState extends ConsumerState<FloatingElementWidget> {
@@ -33,10 +38,9 @@ class _FloatingElementWidgetState extends ConsumerState<FloatingElementWidget> {
     super.initState();
     _textController = TextEditingController(text: widget.element.content);
     _textController.addListener(() {
-      ref.read(mathKeyboardControllerProvider.notifier).updateElement(
-        widget.element.id,
-        content: _textController.text,
-      );
+      ref
+          .read(mathKeyboardControllerProvider.notifier)
+          .updateElement(widget.element.id, content: _textController.text);
     });
   }
 
@@ -65,9 +69,11 @@ class _FloatingElementWidgetState extends ConsumerState<FloatingElementWidget> {
           width: widget.element.size.width,
           height: widget.element.size.height,
           decoration: BoxDecoration(
-            border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.3),
+            ),
             borderRadius: BorderRadius.circular(8),
-            color: widget.element.type == FloatingElementType.textBox 
+            color: widget.element.type == FloatingElementType.textBox
                 ? theme.colorScheme.surface.withValues(alpha: 0.8)
                 : Colors.transparent,
           ),
@@ -77,7 +83,11 @@ class _FloatingElementWidgetState extends ConsumerState<FloatingElementWidget> {
               // Content
               Center(
                 child: widget.element.type == FloatingElementType.shape
-                    ? Icon(widget.element.icon, size: widget.element.size.shortestSide, color: theme.colorScheme.primary)
+                    ? Icon(
+                        widget.element.icon,
+                        size: widget.element.size.shortestSide,
+                        color: theme.colorScheme.primary,
+                      )
                     : _buildTextBox(context),
               ),
 
@@ -90,7 +100,11 @@ class _FloatingElementWidgetState extends ConsumerState<FloatingElementWidget> {
                   child: CircleAvatar(
                     radius: 10,
                     backgroundColor: theme.colorScheme.error,
-                    child: const Icon(Icons.close, size: 12, color: Colors.white),
+                    child: const Icon(
+                      Icons.close,
+                      size: 12,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -104,8 +118,14 @@ class _FloatingElementWidgetState extends ConsumerState<FloatingElementWidget> {
                     controller.updateElement(
                       widget.element.id,
                       size: Size(
-                        (widget.element.size.width + details.delta.dx).clamp(40.0, 500.0),
-                        (widget.element.size.height + details.delta.dy).clamp(40.0, 500.0),
+                        (widget.element.size.width + details.delta.dx).clamp(
+                          40.0,
+                          500.0,
+                        ),
+                        (widget.element.size.height + details.delta.dy).clamp(
+                          40.0,
+                          500.0,
+                        ),
                       ),
                     );
                   },
@@ -114,9 +134,15 @@ class _FloatingElementWidgetState extends ConsumerState<FloatingElementWidget> {
                     height: 15,
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary,
-                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(8)),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(8),
+                      ),
                     ),
-                    child: const Icon(Icons.open_in_full, size: 10, color: Colors.white),
+                    child: const Icon(
+                      Icons.open_in_full,
+                      size: 10,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),

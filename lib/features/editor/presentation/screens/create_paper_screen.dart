@@ -10,6 +10,7 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/pdf/presentation/widgets/template_selector.dart';
 import 'package:edusheet/features/pdf/services/pdf_service.dart';
+import 'package:edusheet/features/pdf/services/word_export_service.dart';
 import '../widgets/question_editor_sheet.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'dart:convert';
@@ -55,6 +56,42 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
+  PaperTemplate _templateForPaper(Paper paper) {
+    final templates = ref.read(templateProvider).all;
+    return templates.firstWhere(
+      (template) => template.id == paper.templateId,
+      orElse: () => templates.first,
+    );
+  }
+
+  Future<void> _previewPdf(Paper paper) async {
+    await PdfService.generateAndPreview(paper, _templateForPaper(paper));
+  }
+
+  Future<void> _saveAsWord(Paper paper) async {
+    try {
+      final file = await WordExportService.exportAndOpen(
+        paper,
+        _templateForPaper(paper),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Word file saved: ${file.path}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save Word file: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final paper = ref.watch(editorStateProvider);
@@ -92,14 +129,13 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
-            onPressed: () {
-              final templates = ref.read(templateProvider).all;
-              final template = templates.firstWhere(
-                (t) => t.id == paper.templateId,
-                orElse: () => templates.first,
-              );
-              PdfService.generateAndPreview(paper, template);
-            },
+            tooltip: 'Preview PDF',
+            onPressed: () => _previewPdf(paper),
+          ),
+          IconButton(
+            icon: const Icon(Icons.description_outlined),
+            tooltip: 'Save as Word',
+            onPressed: () => _saveAsWord(paper),
           ),
           IconButton(
             icon: const Icon(Icons.save),
@@ -1187,41 +1223,42 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 : Colors.grey[200],
             padding: const EdgeInsets.all(16),
             child: SingleChildScrollView(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 800),
-                margin: const EdgeInsets.symmetric(
-                  horizontal: 'auto' == 'auto' ? 0 : 0,
-                ), // Centering hack for web/large screens
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Theme.of(context).cardTheme.color
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(20),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (template.hasBorder)
-                      Container(
-                        margin: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: Color(template.primaryColor.toInt()),
-                            width: 1,
-                          ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 800),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Theme.of(context).cardTheme.color
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(20),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
-                        child: _buildPreviewContent(paper, template),
-                      )
-                    else
-                      _buildPreviewContent(paper, template),
-                  ],
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (template.hasBorder)
+                          Container(
+                            margin: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Color(template.primaryColor.toInt()),
+                                width: 1,
+                              ),
+                            ),
+                            child: _buildPreviewContent(paper, template),
+                          )
+                        else
+                          _buildPreviewContent(paper, template),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1305,83 +1342,112 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             ),
           ),
         if (s.showDivider) const Divider(),
-        ...s.questions.asMap().entries.map((entry) {
-          final qIdx = entry.key + 1;
-          final q = entry.value;
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 25,
-                      child: Text(
-                        '$qIdx. ',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildRichText(q.text),
-                          if (q.isOptional)
-                            const Text(
-                              '(Optional/OR Choice)',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontStyle: FontStyle.italic,
-                                color: Colors.grey,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(
-                      width: 40,
-                      child: Text(
-                        '[${q.marks.toStringAsFixed(0)}]',
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-                if (q.type == QuestionType.mcq)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 25, top: 4),
-                    child: Column(
-                      children: q.options.asMap().entries.map((o) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${String.fromCharCode(65 + o.key)}) '),
-                              Expanded(child: Text(o.value.text)),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                if (q.type == QuestionType.fillInTheBlanks)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 25, top: 4),
-                    child: Text('Ans: ________________________'),
-                  ),
-              ],
-            ),
-          );
-        }),
+        _buildPreviewQuestions(s, template),
       ],
     );
   }
 
-  Widget _buildRichText(String text) {
+  Widget _buildPreviewQuestions(PaperSection section, PaperTemplate template) {
+    final questions = section.questions.asMap().entries.map((entry) {
+      return _buildPreviewQuestion(entry.key + 1, entry.value);
+    }).toList();
+
+    if (template.paperLayout != PaperLayout.twoColumn) {
+      return Column(children: questions);
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 16.0;
+        final columnWidth = (constraints.maxWidth - gap) / 2;
+        return Wrap(
+          spacing: gap,
+          runSpacing: 0,
+          children: questions
+              .map(
+                (question) => SizedBox(
+                  width: columnWidth > 260 ? columnWidth : constraints.maxWidth,
+                  child: question,
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildPreviewQuestion(int index, Question q) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 25,
+                child: Text(
+                  '$index. ',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildRichText(q.text, q.alignment),
+                    if (q.isOptional)
+                      const Text(
+                        '(Optional/OR Choice)',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: 40,
+                child: Text(
+                  '[${q.marks.toStringAsFixed(0)}]',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          if (q.type == QuestionType.mcq)
+            Padding(
+              padding: const EdgeInsets.only(left: 25, top: 4),
+              child: Column(
+                children: q.options.asMap().entries.map((o) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${String.fromCharCode(65 + o.key)}) '),
+                        Expanded(child: Text(o.value.text)),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          if (q.type == QuestionType.fillInTheBlanks)
+            const Padding(
+              padding: EdgeInsets.only(left: 25, top: 4),
+              child: Text('Ans: ________________________'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRichText(String text, TextAlign alignment) {
     try {
       if (text.startsWith('[') || text.startsWith('{')) {
         final List<dynamic> json = jsonDecode(text);
@@ -1397,7 +1463,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         );
       }
     } catch (_) {}
-    return Text(text);
+    return Text(text, textAlign: alignment);
   }
 }
 

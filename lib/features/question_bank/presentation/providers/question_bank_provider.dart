@@ -48,14 +48,24 @@ class QuestionBankState {
 
   List<QuestionBankQuestion> get filteredQuestions {
     return questions.where((q) {
-      final matchesSearch = q.question.text.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          q.tags.any((t) => t.toLowerCase().contains(searchQuery.toLowerCase()));
-      final matchesSubject = selectedSubject == null || q.subject == selectedSubject;
-      final matchesChapter = selectedChapter == null || q.chapter == selectedChapter;
-      final matchesDifficulty = selectedDifficulty == null || q.difficulty == selectedDifficulty;
+      final matchesSearch =
+          q.question.text.toLowerCase().contains(searchQuery.toLowerCase()) ||
+          q.tags.any(
+            (t) => t.toLowerCase().contains(searchQuery.toLowerCase()),
+          );
+      final matchesSubject =
+          selectedSubject == null || q.subject == selectedSubject;
+      final matchesChapter =
+          selectedChapter == null || q.chapter == selectedChapter;
+      final matchesDifficulty =
+          selectedDifficulty == null || q.difficulty == selectedDifficulty;
       final matchesFavorite = !showOnlyFavorites || q.isFavorite;
 
-      return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty && matchesFavorite;
+      return matchesSearch &&
+          matchesSubject &&
+          matchesChapter &&
+          matchesDifficulty &&
+          matchesFavorite;
     }).toList();
   }
 
@@ -100,11 +110,16 @@ class QuestionBankNotifier extends StateNotifier<QuestionBankState> {
     await updateQuestion(question.copyWith(isFavorite: !question.isFavorite));
   }
 
-  void setSearchQuery(String query) => state = state.copyWith(searchQuery: query);
-  void setSubject(String? subject) => state = state.copyWith(selectedSubject: subject, selectedChapter: null);
-  void setChapter(String? chapter) => state = state.copyWith(selectedChapter: chapter);
-  void setDifficulty(Difficulty? difficulty) => state = state.copyWith(selectedDifficulty: difficulty);
-  void toggleShowOnlyFavorites() => state = state.copyWith(showOnlyFavorites: !state.showOnlyFavorites);
+  void setSearchQuery(String query) =>
+      state = state.copyWith(searchQuery: query);
+  void setSubject(String? subject) =>
+      state = state.copyWith(selectedSubject: subject, selectedChapter: null);
+  void setChapter(String? chapter) =>
+      state = state.copyWith(selectedChapter: chapter);
+  void setDifficulty(Difficulty? difficulty) =>
+      state = state.copyWith(selectedDifficulty: difficulty);
+  void toggleShowOnlyFavorites() =>
+      state = state.copyWith(showOnlyFavorites: !state.showOnlyFavorites);
 
   Future<void> importData(String json) async {
     await _repository.importFromJson(json);
@@ -112,6 +127,7 @@ class QuestionBankNotifier extends StateNotifier<QuestionBankState> {
   }
 }
 
-final questionBankProvider = StateNotifierProvider<QuestionBankNotifier, QuestionBankState>((ref) {
-  return QuestionBankNotifier(ref.watch(questionBankRepositoryProvider));
-});
+final questionBankProvider =
+    StateNotifierProvider<QuestionBankNotifier, QuestionBankState>((ref) {
+      return QuestionBankNotifier(ref.watch(questionBankRepositoryProvider));
+    });

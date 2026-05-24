@@ -8,7 +8,8 @@ class RandomGeneratorDialog extends ConsumerStatefulWidget {
   const RandomGeneratorDialog({super.key});
 
   @override
-  ConsumerState<RandomGeneratorDialog> createState() => _RandomGeneratorDialogState();
+  ConsumerState<RandomGeneratorDialog> createState() =>
+      _RandomGeneratorDialogState();
 }
 
 class _RandomGeneratorDialogState extends ConsumerState<RandomGeneratorDialog> {
@@ -28,27 +29,43 @@ class _RandomGeneratorDialogState extends ConsumerState<RandomGeneratorDialog> {
           children: [
             TextFormField(
               initialValue: _count.toString(),
-              decoration: const InputDecoration(labelText: 'Number of Questions'),
+              decoration: const InputDecoration(
+                labelText: 'Number of Questions',
+              ),
               keyboardType: TextInputType.number,
               onChanged: (v) => _count = int.tryParse(v) ?? 10,
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _subject,
-              decoration: const InputDecoration(labelText: 'Subject (Optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Subject (Optional)',
+              ),
               items: [
                 const DropdownMenuItem(value: null, child: Text('Any Subject')),
-                ...state.subjects.map((s) => DropdownMenuItem(value: s, child: Text(s))),
+                ...state.subjects.map(
+                  (s) => DropdownMenuItem(value: s, child: Text(s)),
+                ),
               ],
               onChanged: (v) => setState(() => _subject = v),
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<Difficulty>(
               initialValue: _difficulty,
-              decoration: const InputDecoration(labelText: 'Difficulty (Optional)'),
+              decoration: const InputDecoration(
+                labelText: 'Difficulty (Optional)',
+              ),
               items: [
-                const DropdownMenuItem(value: null, child: Text('Any Difficulty')),
-                ...Difficulty.values.map((d) => DropdownMenuItem(value: d, child: Text(d.name.toUpperCase()))),
+                const DropdownMenuItem(
+                  value: null,
+                  child: Text('Any Difficulty'),
+                ),
+                ...Difficulty.values.map(
+                  (d) => DropdownMenuItem(
+                    value: d,
+                    child: Text(d.name.toUpperCase()),
+                  ),
+                ),
               ],
               onChanged: (v) => setState(() => _difficulty = v),
             ),
@@ -56,18 +73,24 @@ class _RandomGeneratorDialogState extends ConsumerState<RandomGeneratorDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         ElevatedButton(
           onPressed: () {
             final filtered = state.questions.where((q) {
               final matchesSubject = _subject == null || q.subject == _subject;
-              final matchesDifficulty = _difficulty == null || q.difficulty == _difficulty;
+              final matchesDifficulty =
+                  _difficulty == null || q.difficulty == _difficulty;
               return matchesSubject && matchesDifficulty;
             }).toList();
 
             if (filtered.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No questions match the criteria.')),
+                const SnackBar(
+                  content: Text('No questions match the criteria.'),
+                ),
               );
               return;
             }
@@ -103,18 +126,27 @@ class _RandomGeneratorDialogState extends ConsumerState<RandomGeneratorDialog> {
             itemCount: result.length,
             itemBuilder: (context, index) => ListTile(
               leading: Text('${index + 1}.'),
-              title: Text(result[index].question.text, maxLines: 1, overflow: TextOverflow.ellipsis),
+              title: Text(
+                result[index].question.text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
           ElevatedButton(
             onPressed: () {
               // In a real app, we'd add these to a paper editor.
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Questions could be added to a new paper.')),
+                const SnackBar(
+                  content: Text('Questions could be added to a new paper.'),
+                ),
               );
             },
             child: const Text('Use in Paper'),

@@ -32,7 +32,8 @@ class TemplateState {
 class TemplateNotifier extends StateNotifier<TemplateState> {
   final TemplateRepository _repository;
 
-  TemplateNotifier(this._repository) : super(TemplateState(predefined: PaperTemplate.predefinedTemplates)) {
+  TemplateNotifier(this._repository)
+    : super(TemplateState(predefined: PaperTemplate.predefinedTemplates)) {
     loadCustomTemplates();
   }
 
@@ -69,6 +70,8 @@ class TemplateNotifier extends StateNotifier<TemplateState> {
 
 final templateRepositoryProvider = Provider((ref) => TemplateRepository());
 
-final templateProvider = StateNotifierProvider<TemplateNotifier, TemplateState>((ref) {
-  return TemplateNotifier(ref.watch(templateRepositoryProvider));
-});
+final templateProvider = StateNotifierProvider<TemplateNotifier, TemplateState>(
+  (ref) {
+    return TemplateNotifier(ref.watch(templateRepositoryProvider));
+  },
+);

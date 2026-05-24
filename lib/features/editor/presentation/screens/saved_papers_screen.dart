@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/editor_provider.dart';
 import 'create_paper_screen.dart';
 import '../../../pdf/services/pdf_service.dart';
+import '../../../pdf/services/word_export_service.dart';
 
 class SavedPapersScreen extends ConsumerWidget {
   const SavedPapersScreen({super.key});
@@ -31,7 +32,11 @@ class SavedPapersScreen extends ConsumerWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.description_outlined, size: 64, color: Colors.grey[300]),
+                    Icon(
+                      Icons.description_outlined,
+                      size: 64,
+                      color: Colors.grey[300],
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       'No saved papers yet.',
@@ -70,12 +75,12 @@ class _SavedPaperCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
@@ -108,9 +113,12 @@ class _SavedPaperCard extends ConsumerWidget {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
+                      color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
@@ -138,33 +146,49 @@ class _SavedPaperCard extends ConsumerWidget {
               const SizedBox(height: 20),
               Row(
                 children: [
-                  _ActionButton(
-                    icon: Icons.edit_outlined,
-                    label: 'Edit',
-                    color: Colors.blue,
-                    onPressed: () {
-                      ref.read(editorStateProvider.notifier).loadPaper(paper);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const CreatePaperScreen()),
-                      );
-                    },
+                  Expanded(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        _ActionButton(
+                          icon: Icons.edit_outlined,
+                          label: 'Edit',
+                          color: Colors.blue,
+                          onPressed: () {
+                            ref
+                                .read(editorStateProvider.notifier)
+                                .loadPaper(paper);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const CreatePaperScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        _ActionButton(
+                          icon: Icons.picture_as_pdf_outlined,
+                          label: 'PDF',
+                          color: Colors.redAccent,
+                          onPressed: () {
+                            final templates = ref.read(templateProvider).all;
+                            final template = templates.firstWhere(
+                              (t) => t.id == paper.templateId,
+                              orElse: () => templates.first,
+                            );
+                            PdfService.generateAndPreview(paper, template);
+                          },
+                        ),
+                        _ActionButton(
+                          icon: Icons.description_outlined,
+                          label: 'Word',
+                          color: Colors.indigo,
+                          onPressed: () => _saveAsWord(context, ref, paper),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 12),
-                  _ActionButton(
-                    icon: Icons.picture_as_pdf_outlined,
-                    label: 'PDF',
-                    color: Colors.redAccent,
-                    onPressed: () {
-                      final templates = ref.read(templateProvider).all;
-                      final template = templates.firstWhere(
-                        (t) => t.id == paper.templateId,
-                        orElse: () => templates.first,
-                      );
-                      PdfService.generateAndPreview(paper, template);
-                    },
-                  ),
-                  const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.grey),
                     onPressed: () => _confirmDelete(context, ref, paper),
@@ -183,7 +207,10 @@ class _SavedPaperCard extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Paper?', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Delete Paper?',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: Text('Are you sure you want to delete "${paper.title}"?'),
         actions: [
           TextButton(
@@ -201,6 +228,36 @@ class _SavedPaperCard extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _saveAsWord(
+    BuildContext context,
+    WidgetRef ref,
+    Paper paper,
+  ) async {
+    try {
+      final templates = ref.read(templateProvider).all;
+      final template = templates.firstWhere(
+        (t) => t.id == paper.templateId,
+        orElse: () => templates.first,
+      );
+      final file = await WordExportService.exportAndOpen(paper, template);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Word file saved: ${file.path}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save Word file: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }
 
@@ -224,7 +281,7 @@ class _ActionButton extends StatelessWidget {
       icon: Icon(icon, size: 16),
       label: Text(label),
       style: ElevatedButton.styleFrom(
-        backgroundColor: color.withOpacity(0.08),
+        backgroundColor: color.withValues(alpha: 0.08),
         foregroundColor: color,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

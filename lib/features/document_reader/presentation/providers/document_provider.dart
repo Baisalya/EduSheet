@@ -31,7 +31,9 @@ class DocumentState {
       allDocuments: allDocuments ?? this.allDocuments,
       filteredDocuments: filteredDocuments ?? this.filteredDocuments,
       isLoading: isLoading ?? this.isLoading,
-      selectedFilter: clearFilter ? null : (selectedFilter ?? this.selectedFilter),
+      selectedFilter: clearFilter
+          ? null
+          : (selectedFilter ?? this.selectedFilter),
       searchQuery: searchQuery ?? this.searchQuery,
     );
   }
@@ -47,10 +49,7 @@ class DocumentNotifier extends StateNotifier<DocumentState> {
   Future<void> refreshDocuments() async {
     state = state.copyWith(isLoading: true);
     final docs = await _repository.getDocuments();
-    state = state.copyWith(
-      allDocuments: docs,
-      isLoading: false,
-    );
+    state = state.copyWith(allDocuments: docs, isLoading: false);
     _applyFilters();
   }
 
@@ -72,12 +71,18 @@ class DocumentNotifier extends StateNotifier<DocumentState> {
     var filtered = state.allDocuments;
 
     if (state.selectedFilter != null) {
-      filtered = filtered.where((doc) => doc.type == state.selectedFilter).toList();
+      filtered = filtered
+          .where((doc) => doc.type == state.selectedFilter)
+          .toList();
     }
 
     if (state.searchQuery.isNotEmpty) {
       filtered = filtered
-          .where((doc) => doc.name.toLowerCase().contains(state.searchQuery.toLowerCase()))
+          .where(
+            (doc) => doc.name.toLowerCase().contains(
+              state.searchQuery.toLowerCase(),
+            ),
+          )
           .toList();
     }
 
@@ -85,7 +90,9 @@ class DocumentNotifier extends StateNotifier<DocumentState> {
   }
 }
 
-final documentProvider = StateNotifierProvider<DocumentNotifier, DocumentState>((ref) {
-  final repo = ref.watch(documentRepositoryProvider);
-  return DocumentNotifier(repo);
-});
+final documentProvider = StateNotifierProvider<DocumentNotifier, DocumentState>(
+  (ref) {
+    final repo = ref.watch(documentRepositoryProvider);
+    return DocumentNotifier(repo);
+  },
+);

@@ -590,6 +590,7 @@ class _TemplateDesignerScreenState
 
   void _showSaveDialog() async {
     final controller = TextEditingController(text: _template.name);
+    final navigator = Navigator.of(context);
     final String? name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -620,7 +621,6 @@ class _TemplateDesignerScreenState
           canvasHeight: _canvasHeight,
         ),
       );
-      final navigator = Navigator.of(context);
       await ref.read(templateProvider.notifier).saveTemplate(updatedTemplate);
       if (mounted) {
         navigator.pop();
@@ -1624,8 +1624,6 @@ class _TemplateDesignerScreenState
           alignment: alignment,
           child: el.content.isNotEmpty ? Text(el.content, style: style) : null,
         );
-      default:
-        return const SizedBox();
     }
   }
 

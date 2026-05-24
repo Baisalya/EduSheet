@@ -360,7 +360,7 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<Difficulty>(
-                    value: _difficulty,
+                    initialValue: _difficulty,
                     decoration: InputDecoration(
                       labelText: 'Difficulty',
                       border: OutlineInputBorder(
@@ -400,7 +400,7 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   DropdownButtonFormField<QuestionType>(
-                    value: _type,
+                    initialValue: _type,
                     decoration: InputDecoration(
                       labelText: 'Type',
                       border: OutlineInputBorder(
@@ -443,35 +443,42 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    ..._options.asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final opt = entry.value;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Row(
-                          children: [
-                            Radio<bool>(
-                              value: true,
-                              groupValue: opt.isCorrect,
-                              activeColor: Colors.green,
-                              onChanged: (v) => setState(() {
-                                _options = _options
-                                    .asMap()
-                                    .entries
-                                    .map(
-                                      (e) => e.value.copyWith(
-                                        isCorrect: e.key == i,
-                                      ),
-                                    )
-                                    .toList();
-                              }),
-                            ),
-                            Expanded(
-                              child: MathKeyboardField(
-                                controller: _optionControllers[i],
-                                builder:
-                                    (context, fieldFocusNode, isMathActive) =>
-                                        TextFormField(
+                    RadioGroup<int>(
+                      groupValue: _options.indexWhere(
+                        (option) => option.isCorrect,
+                      ),
+                      onChanged: (i) {
+                        if (i == null) return;
+                        setState(() {
+                          _options = _options
+                              .asMap()
+                              .entries
+                              .map(
+                                (entry) => entry.value.copyWith(
+                                  isCorrect: entry.key == i,
+                                ),
+                              )
+                              .toList();
+                        });
+                      },
+                      child: Column(
+                        children: _options.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final opt = entry.value;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              children: [
+                                Radio<int>(value: i, activeColor: Colors.green),
+                                Expanded(
+                                  child: MathKeyboardField(
+                                    controller: _optionControllers[i],
+                                    builder:
+                                        (
+                                          context,
+                                          fieldFocusNode,
+                                          isMathActive,
+                                        ) => TextFormField(
                                           controller: _optionControllers[i],
                                           focusNode: fieldFocusNode,
                                           style: _bookTextStyle(
@@ -492,12 +499,14 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                                                 : null,
                                           ),
                                         ),
-                              ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      );
-                    }),
+                          );
+                        }).toList(),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -531,10 +540,10 @@ class _FormSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withOpacity(0.1)),
+        border: Border.all(color: color.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -550,7 +559,7 @@ class _FormSection extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: color, size: 18),

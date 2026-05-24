@@ -42,10 +42,13 @@ class CalculatorHistoryDrawer extends ConsumerWidget {
                 const Spacer(),
                 if (history.isNotEmpty)
                   TextButton.icon(
-                    onPressed: () => ref.read(calculatorProvider.notifier).clearHistory(),
+                    onPressed: () =>
+                        ref.read(calculatorProvider.notifier).clearHistory(),
                     icon: const Icon(Icons.delete_sweep, size: 18),
                     label: const Text('Clear'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                    ),
                   ),
               ],
             ),
@@ -61,19 +64,29 @@ class CalculatorHistoryDrawer extends ConsumerWidget {
                 : ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     itemCount: history.length,
-                    separatorBuilder: (context, index) => const Divider(color: Colors.white10),
+                    separatorBuilder: (context, index) =>
+                        const Divider(color: Colors.white10),
                     itemBuilder: (context, index) {
                       final entry = history[history.length - 1 - index];
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(
                           entry,
-                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
                         ),
                         trailing: IconButton(
-                          icon: const Icon(Icons.replay, color: Colors.tealAccent, size: 20),
+                          icon: const Icon(
+                            Icons.replay,
+                            color: Colors.tealAccent,
+                            size: 20,
+                          ),
                           onPressed: () {
-                            ref.read(calculatorProvider.notifier).reuseHistory(entry);
+                            ref
+                                .read(calculatorProvider.notifier)
+                                .reuseHistory(entry);
                             Navigator.pop(context);
                           },
                         ),

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:math_keyboard/math_keyboard.dart' as math_kb;
+// ignore: implementation_imports
 import 'package:math_keyboard/src/foundation/node.dart' as math_kb_node;
 import 'package:uuid/uuid.dart';
 import '../../domain/models/math_symbol.dart';

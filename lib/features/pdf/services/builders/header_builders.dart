@@ -495,8 +495,6 @@ class CustomHeaderBuilder extends HeaderBuilder {
               ? pw.Text(el.content, style: style, maxLines: 1)
               : null,
         );
-      default:
-        return pw.SizedBox();
     }
   }
 
