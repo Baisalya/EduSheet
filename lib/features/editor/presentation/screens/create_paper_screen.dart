@@ -15,6 +15,7 @@ import 'package:edusheet/features/pdf/services/word_export_service.dart';
 import '../widgets/question_editor_sheet.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'dart:convert';
+import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
 
 class CreatePaperScreen extends ConsumerStatefulWidget {
@@ -57,228 +58,15 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
-  PaperTemplate _templateForPaper(Paper paper) {
-    final templates = ref.read(templateProvider).all;
-    return templates.firstWhere(
-      (template) => template.id == paper.templateId,
-      orElse: () => templates.first,
-    );
-  }
-
   Future<void> _showSaveAsSheet(Paper paper) async {
-    final controller = TextEditingController(
-      text: ExportFileService.cleanFileNameBase(paper.title),
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _SaveAsSheet(
+        initialFileNameBase: ExportFileService.cleanFileNameBase(paper.title),
+      ),
     );
-    var selectedFormat = _PaperExportFormat.pdf;
-    var isSaving = false;
-    String? errorText;
-
-    try {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        builder: (sheetContext) {
-          final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
-          return StatefulBuilder(
-            builder: (context, setSheetState) {
-              Future<void> saveExport() async {
-                final fileNameBase = controller.text.trim();
-                if (fileNameBase.isEmpty) {
-                  setSheetState(() => errorText = 'Enter a file name');
-                  return;
-                }
-                if (ExportFileService.hasInvalidFileNameCharacters(
-                  fileNameBase,
-                )) {
-                  setSheetState(
-                    () => errorText = 'Remove characters like / \\ : * ? " < > |',
-                  );
-                  return;
-                }
-
-                setSheetState(() {
-                  isSaving = true;
-                  errorText = null;
-                });
-
-                final navigator = Navigator.of(sheetContext);
-                final messenger = ScaffoldMessenger.of(context);
-
-                try {
-                  await ref.read(editorStateProvider.notifier).savePaper();
-                  ref.invalidate(savedPapersProvider);
-                  final latestPaper = ref.read(editorStateProvider);
-                  final template = _templateForPaper(latestPaper);
-                  final file = selectedFormat == _PaperExportFormat.pdf
-                      ? await PdfService.export(
-                          latestPaper,
-                          template,
-                          fileNameBase: fileNameBase,
-                        )
-                      : await WordExportService.export(
-                          latestPaper,
-                          template,
-                          fileNameBase: fileNameBase,
-                        );
-
-                  if (!mounted || !navigator.mounted) return;
-                  navigator.pop();
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text('Saved to ${file.path}'),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                } catch (error) {
-                  if (!mounted) return;
-                  setSheetState(() {
-                    isSaving = false;
-                    errorText = 'Could not save file. Please try again.';
-                  });
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text('Could not save file: $error'),
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              }
-
-              return Padding(
-                padding: EdgeInsets.only(
-                  left: 20,
-                  right: 20,
-                  top: 18,
-                  bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.grey[700] : Colors.grey[300],
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Save as',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: isSaving
-                                ? null
-                                : () => Navigator.pop(sheetContext),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      MathKeyboardField(
-                        controller: controller,
-                        builder: (context, focusNode, isMathActive) => TextField(
-                          controller: controller,
-                          focusNode: focusNode,
-                          enabled: !isSaving,
-                          textInputAction: TextInputAction.done,
-                          decoration: InputDecoration(
-                            labelText: 'File name',
-                            hintText: 'Example: Class 10 Mid Term',
-                            errorText: errorText,
-                            prefixIcon: const Icon(Icons.drive_file_rename_outline),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          onChanged: (_) {
-                            if (errorText != null) {
-                              setSheetState(() => errorText = null);
-                            }
-                          },
-                          onSubmitted: (_) => isSaving ? null : saveExport(),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'Choose format',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SaveFormatOption(
-                              title: 'PDF',
-                              subtitle: 'Ready to print',
-                              icon: Icons.picture_as_pdf_outlined,
-                              isSelected: selectedFormat == _PaperExportFormat.pdf,
-                              onTap: isSaving
-                                  ? null
-                                  : () => setSheetState(
-                                      () => selectedFormat = _PaperExportFormat.pdf,
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _SaveFormatOption(
-                              title: 'Word',
-                              subtitle: 'Editable file',
-                              icon: Icons.description_outlined,
-                              isSelected: selectedFormat == _PaperExportFormat.word,
-                              onTap: isSaving
-                                  ? null
-                                  : () => setSheetState(
-                                      () =>
-                                          selectedFormat = _PaperExportFormat.word,
-                                    ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: isSaving ? null : saveExport,
-                        icon: isSaving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.save_alt_rounded),
-                        label: Text(isSaving ? 'Saving...' : 'Save File'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 52),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      controller.dispose();
-    }
   }
 
   @override
@@ -411,6 +199,15 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
+  double _editorBottomPadding({double base = 100}) {
+    final keyboardState = ref.watch(mathKeyboardControllerProvider);
+    if (keyboardState.isVisible && keyboardState.type == KeyboardType.math) {
+      return keyboardState.height + base;
+    }
+
+    return base;
+  }
+
   Widget _buildSetupSlide(Paper paper) {
     final templates = ref.watch(templateProvider).all;
     final template = templates.firstWhere(
@@ -431,7 +228,8 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     final bool showBranding = showSchoolName || logoElements.isNotEmpty;
 
     return ListView(
-      padding: const EdgeInsets.all(20.0),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(20, 20, 20, _editorBottomPadding()),
       children: [
         if (showBranding)
           _EditorCard(
@@ -584,11 +382,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
 
   Widget _buildSectionSlide(PaperSection section) {
     return ListView(
-      padding: const EdgeInsets.all(20.0),
-      children: [
-        _buildSectionEditor(section, key: ValueKey(section.id)),
-        const SizedBox(height: 80),
-      ],
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(20, 20, 20, _editorBottomPadding()),
+      children: [_buildSectionEditor(section, key: ValueKey(section.id))],
     );
   }
 
@@ -1624,6 +1420,242 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
       }
     } catch (_) {}
     return Text(text, textAlign: alignment);
+  }
+}
+
+class _SaveAsSheet extends ConsumerStatefulWidget {
+  final String initialFileNameBase;
+
+  const _SaveAsSheet({required this.initialFileNameBase});
+
+  @override
+  ConsumerState<_SaveAsSheet> createState() => _SaveAsSheetState();
+}
+
+class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
+  late final TextEditingController _controller;
+  late final MathKeyboardController _mathKeyboardController;
+  var _selectedFormat = _PaperExportFormat.pdf;
+  var _isSaving = false;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialFileNameBase);
+    _mathKeyboardController = ref.read(mathKeyboardControllerProvider.notifier);
+  }
+
+  @override
+  void dispose() {
+    final controller = _controller;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        _mathKeyboardController.unregisterController(controller);
+      } catch (_) {}
+    });
+    _controller.dispose();
+    super.dispose();
+  }
+
+  PaperTemplate _templateForPaper(Paper paper) {
+    final templates = ref.read(templateProvider).all;
+    return templates.firstWhere(
+      (template) => template.id == paper.templateId,
+      orElse: () => templates.first,
+    );
+  }
+
+  Future<void> _saveExport() async {
+    final fileNameBase = _controller.text.trim();
+    if (fileNameBase.isEmpty) {
+      setState(() => _errorText = 'Enter a file name');
+      return;
+    }
+    if (ExportFileService.hasInvalidFileNameCharacters(fileNameBase)) {
+      setState(() => _errorText = 'Remove characters like / \\ : * ? " < > |');
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _errorText = null;
+    });
+
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      await ref.read(editorStateProvider.notifier).savePaper();
+      ref.invalidate(savedPapersProvider);
+      final latestPaper = ref.read(editorStateProvider);
+      final template = _templateForPaper(latestPaper);
+      final file = _selectedFormat == _PaperExportFormat.pdf
+          ? await PdfService.export(
+              latestPaper,
+              template,
+              fileNameBase: fileNameBase,
+            )
+          : await WordExportService.export(
+              latestPaper,
+              template,
+              fileNameBase: fileNameBase,
+            );
+
+      if (!mounted || !navigator.mounted) return;
+      navigator.pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Saved to ${file.path}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+        _errorText = 'Could not save file. Please try again.';
+      });
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not save file: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final keyboardState = ref.watch(mathKeyboardControllerProvider);
+    final mathKeyboardInset =
+        keyboardState.isVisible && keyboardState.type == KeyboardType.math
+        ? keyboardState.height
+        : 0.0;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 18,
+        bottom:
+            MediaQuery.of(context).viewInsets.bottom + mathKeyboardInset + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[700] : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Save as',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _isSaving ? null : () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            MathKeyboardField(
+              controller: _controller,
+              builder: (context, focusNode, isMathActive) => TextField(
+                controller: _controller,
+                focusNode: focusNode,
+                enabled: !_isSaving,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: 'File name',
+                  hintText: 'Example: Class 10 Mid Term',
+                  errorText: _errorText,
+                  prefixIcon: const Icon(Icons.drive_file_rename_outline),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onChanged: (_) {
+                  if (_errorText != null) {
+                    setState(() => _errorText = null);
+                  }
+                },
+                onSubmitted: (_) => _isSaving ? null : _saveExport(),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Choose format',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _SaveFormatOption(
+                    title: 'PDF',
+                    subtitle: 'Ready to print',
+                    icon: Icons.picture_as_pdf_outlined,
+                    isSelected: _selectedFormat == _PaperExportFormat.pdf,
+                    onTap: _isSaving
+                        ? null
+                        : () => setState(
+                            () => _selectedFormat = _PaperExportFormat.pdf,
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SaveFormatOption(
+                    title: 'Word',
+                    subtitle: 'Editable file',
+                    icon: Icons.description_outlined,
+                    isSelected: _selectedFormat == _PaperExportFormat.word,
+                    onTap: _isSaving
+                        ? null
+                        : () => setState(
+                            () => _selectedFormat = _PaperExportFormat.word,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _isSaving ? null : _saveExport,
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_alt_rounded),
+              label: Text(_isSaving ? 'Saving...' : 'Save File'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 52),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

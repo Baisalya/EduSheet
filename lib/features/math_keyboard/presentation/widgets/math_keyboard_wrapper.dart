@@ -17,55 +17,46 @@ class MathKeyboardWrapper extends ConsumerStatefulWidget {
 class _MathKeyboardWrapperState extends ConsumerState<MathKeyboardWrapper> {
   @override
   Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(child: widget.child),
+        const FloatingElementManager(),
+        const _MathKeyboardOverlay(),
+      ],
+    );
+  }
+}
+
+class _MathKeyboardOverlay extends ConsumerWidget {
+  const _MathKeyboardOverlay();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(mathKeyboardControllerProvider);
     final controller = ref.read(mathKeyboardControllerProvider.notifier);
     final isMathVisible = state.isVisible && state.type == KeyboardType.math;
 
-    return Material(
-      child: Stack(
-        children: [
-          // Main Content
-          Positioned.fill(
-            child: Column(
-              children: [
-                Expanded(
-                  child: Stack(
-                    children: [widget.child, const FloatingElementManager()],
-                  ),
-                ),
-                // Spacer to prevent content from being hidden behind math keyboard
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  height: isMathVisible ? state.height : 0,
-                  curve: Curves.easeOut,
-                ),
-              ],
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: AnimatedSlide(
+        offset: isMathVisible ? Offset.zero : const Offset(0, 1),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.fastOutSlowIn,
+        child: GestureDetector(
+          onVerticalDragUpdate: (details) {
+            if (isMathVisible) {
+              controller.setHeight(state.height - details.delta.dy);
+            }
+          },
+          child: Material(
+            child: SizedBox(
+              height: state.height,
+              child: const MathKeyboardView(),
             ),
           ),
-
-          // Floating Math Keyboard
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: AnimatedSlide(
-              offset: isMathVisible ? Offset.zero : const Offset(0, 1),
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.fastOutSlowIn,
-              child: GestureDetector(
-                onVerticalDragUpdate: (details) {
-                  if (isMathVisible) {
-                    controller.setHeight(state.height - details.delta.dy);
-                  }
-                },
-                child: SizedBox(
-                  height: state.height,
-                  child: const MathKeyboardView(),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

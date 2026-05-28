@@ -73,6 +73,7 @@ class MathKeyboardStateData {
     bool? isVisible,
     KeyboardType? type,
     dynamic activeController,
+    bool clearActiveController = false,
     FocusNode? activeFocusNode,
     bool clearActiveFocusNode = false,
     double? height,
@@ -85,7 +86,9 @@ class MathKeyboardStateData {
     return MathKeyboardStateData(
       isVisible: isVisible ?? this.isVisible,
       type: type ?? this.type,
-      activeController: activeController ?? this.activeController,
+      activeController: clearActiveController
+          ? null
+          : (activeController ?? this.activeController),
       activeFocusNode: clearActiveFocusNode
           ? null
           : (activeFocusNode ?? this.activeFocusNode),
@@ -114,7 +117,7 @@ class MathKeyboardController extends _$MathKeyboardController {
   void unregisterController(dynamic controller) {
     if (state.activeController == controller) {
       state = state.copyWith(
-        activeController: null,
+        clearActiveController: true,
         clearActiveFocusNode: true,
         isVisible: false,
       );

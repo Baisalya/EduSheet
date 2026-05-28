@@ -31,10 +31,13 @@ class QuestionEditorSheet extends ConsumerStatefulWidget {
 
 class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
   late QuillController _controller;
+  final ScrollController _sheetScrollController = ScrollController();
+  final ScrollController _questionScrollController = ScrollController();
   late QuestionType _type;
   late double _marks;
   late bool _isOptional;
   late List<QuestionOption> _options;
+  final Map<String, TextEditingController> _optionControllers = {};
   String? _questionError;
   String? _marksError;
   String? _optionsError;
@@ -74,6 +77,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     if (_type == QuestionType.mcq && _options.isEmpty) {
       _options = _emptyMcqOptions();
     }
+    _syncOptionControllers();
   }
 
   void _save() {
@@ -82,8 +86,10 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     final text = jsonEncode(_controller.document.toDelta().toJson());
     final options = _type == QuestionType.mcq
         ? _options
-              .where((option) => option.text.trim().isNotEmpty)
-              .map((option) => option.copyWith(text: option.text.trim()))
+              .where((option) => _optionText(option).trim().isNotEmpty)
+              .map(
+                (option) => option.copyWith(text: _optionText(option).trim()),
+              )
               .toList()
         : <QuestionOption>[];
     if (widget.question == null) {
@@ -116,7 +122,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
   bool _validate() {
     final questionText = _controller.document.toPlainText().trim();
     final mcqOptionCount = _options
-        .where((option) => option.text.trim().isNotEmpty)
+        .where((option) => _optionText(option).trim().isNotEmpty)
         .length;
 
     setState(() {
@@ -138,6 +144,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
       if (_type == QuestionType.mcq && _options.isEmpty) {
         _options = _emptyMcqOptions();
       }
+      _syncOptionControllers();
       _optionsError = null;
     });
   }
@@ -149,9 +156,63 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     );
   }
 
+  void _syncOptionControllers() {
+    final activeIds = _options.map((option) => option.id).toSet();
+    for (final entry in _optionControllers.entries.toList()) {
+      if (!activeIds.contains(entry.key)) {
+        entry.value.dispose();
+        _optionControllers.remove(entry.key);
+      }
+    }
+
+    for (final option in _options) {
+      if (_optionControllers.containsKey(option.id)) continue;
+
+      final controller = TextEditingController(text: option.text);
+      controller.addListener(() => _setOptionText(option.id, controller.text));
+      _optionControllers[option.id] = controller;
+    }
+  }
+
+  TextEditingController _optionController(QuestionOption option) {
+    _syncOptionControllers();
+    return _optionControllers[option.id]!;
+  }
+
+  String _optionText(QuestionOption option) {
+    return _optionControllers[option.id]?.text ?? option.text;
+  }
+
+  void _setOptionText(String optionId, String text) {
+    final index = _options.indexWhere((option) => option.id == optionId);
+    if (index == -1 || _options[index].text == text) return;
+
+    _options[index] = _options[index].copyWith(text: text);
+  }
+
+  void _addOption() {
+    setState(() {
+      _options.add(QuestionOption(id: const Uuid().v4(), text: ''));
+      _syncOptionControllers();
+    });
+  }
+
+  void _removeOptionAt(int index) {
+    final removed = _options[index];
+    setState(() {
+      _options.removeAt(index);
+      _optionControllers.remove(removed.id)?.dispose();
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
+    _sheetScrollController.dispose();
+    _questionScrollController.dispose();
+    for (final controller in _optionControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -160,6 +221,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
     final isMathActive =
         keyboardState.isVisible && keyboardState.type == KeyboardType.math;
+    final mathKeyboardInset = isMathActive ? keyboardState.height : 0.0;
     _controller.readOnly = isMathActive;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -172,12 +234,13 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+        bottom: MediaQuery.of(context).viewInsets.bottom + mathKeyboardInset,
         left: 20,
         right: 20,
         top: 20,
       ),
       child: SingleChildScrollView(
+        controller: _sheetScrollController,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -372,7 +435,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                           child: QuillEditor(
                             controller: _controller,
                             focusNode: fieldFocusNode,
-                            scrollController: ScrollController(),
+                            scrollController: _questionScrollController,
                             config: const QuillEditorConfig(
                               placeholder: 'Start typing the question...',
                             ),
@@ -403,11 +466,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                     ),
                   ),
                   TextButton.icon(
-                    onPressed: () => setState(
-                      () => _options.add(
-                        QuestionOption(id: const Uuid().v4(), text: ''),
-                      ),
-                    ),
+                    onPressed: _addOption,
                     icon: const Icon(Icons.add_circle_outline, size: 18),
                     label: const Text(
                       'Add Option',
@@ -448,29 +507,39 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                         children: [
                           Radio<int>(value: idx, activeColor: Colors.green),
                           Expanded(
-                            child: TextFormField(
-                              initialValue: opt.text,
-                              decoration: InputDecoration(
-                                hintText:
-                                    'Option ${String.fromCharCode(65 + idx)}',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                fillColor: opt.isCorrect
-                                    ? Colors.green.withValues(
-                                        alpha: isDark ? 0.1 : 0.05,
-                                      )
-                                    : null,
-                              ),
-                              onChanged: (val) {
-                                _options[idx] = opt.copyWith(text: val);
-                                if (_optionsError != null) {
-                                  setState(() => _optionsError = null);
-                                }
+                            child: MathKeyboardField(
+                              controller: _optionController(opt),
+                              builder: (context, fieldFocusNode, isMathActive) {
+                                final controller = _optionController(opt);
+                                return TextField(
+                                  controller: controller,
+                                  focusNode: fieldFocusNode,
+                                  keyboardType: isMathActive
+                                      ? TextInputType.none
+                                      : TextInputType.text,
+                                  decoration: InputDecoration(
+                                    hintText:
+                                        'Option ${String.fromCharCode(65 + idx)}',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                    fillColor: opt.isCorrect
+                                        ? Colors.green.withValues(
+                                            alpha: isDark ? 0.1 : 0.05,
+                                          )
+                                        : null,
+                                  ),
+                                  onChanged: (val) {
+                                    _setOptionText(opt.id, val);
+                                    if (_optionsError != null) {
+                                      setState(() => _optionsError = null);
+                                    }
+                                  },
+                                );
                               },
                             ),
                           ),
@@ -481,8 +550,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                               color: Colors.redAccent,
                               size: 22,
                             ),
-                            onPressed: () =>
-                                setState(() => _options.removeAt(idx)),
+                            onPressed: () => _removeOptionAt(idx),
                           ),
                         ],
                       ),
