@@ -53,6 +53,7 @@ class MathKeyboardStateData {
   final MathCategory currentCategory;
   final bool isTabletLayout;
   final bool isPowerMode;
+  final bool isSubscriptMode;
   final int symbolSizeLevel; // -2 to +2 (small to large)
   final List<FloatingElement> floatingElements;
 
@@ -65,6 +66,7 @@ class MathKeyboardStateData {
     this.currentCategory = MathCategory.basic,
     this.isTabletLayout = false,
     this.isPowerMode = false,
+    this.isSubscriptMode = false,
     this.symbolSizeLevel = 0,
     this.floatingElements = const [],
   });
@@ -80,6 +82,7 @@ class MathKeyboardStateData {
     MathCategory? currentCategory,
     bool? isTabletLayout,
     bool? isPowerMode,
+    bool? isSubscriptMode,
     int? symbolSizeLevel,
     List<FloatingElement>? floatingElements,
   }) {
@@ -96,6 +99,7 @@ class MathKeyboardStateData {
       currentCategory: currentCategory ?? this.currentCategory,
       isTabletLayout: isTabletLayout ?? this.isTabletLayout,
       isPowerMode: isPowerMode ?? this.isPowerMode,
+      isSubscriptMode: isSubscriptMode ?? this.isSubscriptMode,
       symbolSizeLevel: symbolSizeLevel ?? this.symbolSizeLevel,
       floatingElements: floatingElements ?? this.floatingElements,
     );
@@ -153,7 +157,17 @@ class MathKeyboardController extends _$MathKeyboardController {
   }
 
   void togglePowerMode() {
-    state = state.copyWith(isPowerMode: !state.isPowerMode);
+    state = state.copyWith(
+      isPowerMode: !state.isPowerMode,
+      isSubscriptMode: false,
+    );
+  }
+
+  void toggleSubscriptMode() {
+    state = state.copyWith(
+      isSubscriptMode: !state.isSubscriptMode,
+      isPowerMode: false,
+    );
   }
 
   void addFloatingElement(FloatingElementType type, {IconData? icon}) {
@@ -257,9 +271,9 @@ class MathKeyboardController extends _$MathKeyboardController {
     final controller = state.activeController;
     if (controller == null) return;
 
-    // Handle space/newline to exit power mode
+    // Handle space/newline to exit power/subscript mode
     if (text == ' ' || text == '\n') {
-      state = state.copyWith(isPowerMode: false);
+      state = state.copyWith(isPowerMode: false, isSubscriptMode: false);
     }
 
     // Determine the text to insert, potentially with sizing prefix
@@ -287,12 +301,12 @@ class MathKeyboardController extends _$MathKeyboardController {
         r'\iint': '∬',
         r'\iiint': '∭',
         r'\oint': '∮',
-        r'\sum_{}^{}^{}': '∑',
-        r'\sum_{}^{}': '∑ₙ',
+        r'\sum_{}^{}': '∑',
         r'\sum': '∑',
         r'\prod_{}^{}^{}': '∏',
-        r'\prod_{}^{}': '∏ₙ',
+        r'\prod_{}^{}': '∏',
         r'\prod': '∏',
+        r'\log': 'log',
         r'\log_{}(': 'logₐ()',
         r'\log_{}': 'logₐ()',
         r'\ln': 'ln()',
@@ -370,35 +384,29 @@ class MathKeyboardController extends _$MathKeyboardController {
         textToInsert = textMapping[text]!;
       } else if (state.isPowerMode &&
           (text.length == 1 || text == r'\pi' || text == 'e')) {
-        // ... (rest of power mode logic remains the same)
         final rawChar = text == r'\pi' ? 'π' : text;
         const superscripts = {
-          '0': '⁰',
-          '1': '¹',
-          '2': '²',
-          '3': '³',
-          '4': '⁴',
-          '5': '⁵',
-          '6': '⁶',
-          '7': '⁷',
-          '8': '⁸',
-          '9': '⁹',
-          '+': '⁺',
-          '-': '⁻',
-          '=': '⁼',
-          '(': '⁽',
-          ')': '⁾',
-          'n': 'ⁿ',
-          'x': 'ˣ',
-          'y': 'ʸ',
-          'z': 'ᶻ',
-          'a': 'ᵃ',
-          'b': 'ᵇ',
-          'c': 'ᶜ',
-          'i': 'ⁱ',
-          'π': 'ᵖ',
+          '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+          '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+          '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+          'n': 'ⁿ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
+          'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'i': 'ⁱ', 'π': 'ᵖ',
         };
         textToInsert = superscripts[rawChar] ?? '^$rawChar';
+      } else if (state.isSubscriptMode &&
+          (text.length == 1 || text == r'\pi' || text == 'e')) {
+        final rawChar = text == r'\pi' ? 'π' : text;
+        const subscripts = {
+          '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+          '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+          '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+          'n': 'ₙ', 'x': 'ₓ', 'y': 'ᵧ', 'z': '₂',
+          'a': 'ₐ', 'e': 'ₑ', 'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ',
+          'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'o': 'ₒ',
+          'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ',
+          'v': 'ᵥ',
+        };
+        textToInsert = subscripts[rawChar] ?? '_$rawChar';
       } else {
         // General cleanup for other LaTeX commands in standard fields
         final symbol = mathSymbols.firstWhere(
@@ -534,6 +542,16 @@ class MathKeyboardController extends _$MathKeyboardController {
         controller.goNext();
       }
 
+      void addLimits(String base) {
+        controller.addLeaf(base);
+        controller.addFunction('_', [math_kb_node.TeXArg.braces]);
+        controller.goNext();
+        controller.addFunction('^', [math_kb_node.TeXArg.braces]);
+        // Move back into the subscript for the user to start typing the lower limit
+        controller.goBack();
+        controller.goBack();
+      }
+
       if (text == r'\frac{1}{2}') {
         addFraction('1', '2');
       } else if (text == r'\frac{1}{3}') {
@@ -567,10 +585,12 @@ class MathKeyboardController extends _$MathKeyboardController {
         controller.addLeaf(r'\to');
         controller.addLeaf(r'\infty');
         controller.goNext();
-      } else if (text == r'\int_{}^{}^{}') {
-        controller.addLeaf(r'\int');
-        controller.addFunction('_', [math_kb_node.TeXArg.braces]);
-        // Cursor stays in subscript for user to fill lower bound
+      } else if (text == r'\int_{}^{}' || text == r'\int_{}^{}^{}') {
+        addLimits(r'\int');
+      } else if (text == r'\sum_{}^{}' || text == r'\sum_{}^{}^{}') {
+        addLimits(r'\sum');
+      } else if (text == r'\prod_{}^{}' || text == r'\prod_{}^{}^{}') {
+        addLimits(r'\prod');
       } else if (text == r'\triangle_{A B C}') {
         controller.addLeaf(r'\triangle');
         controller.addFunction('_', [math_kb_node.TeXArg.braces]);
@@ -630,21 +650,10 @@ class MathKeyboardController extends _$MathKeyboardController {
         }
       } else if (text == r'\int') {
         controller.addLeaf(r'\int');
-      } else if (text == r'\int_{}^{}') {
-        controller.addFunction(r'\int', [
-          math_kb_node.TeXArg.braces,
-          math_kb_node.TeXArg.braces,
-        ]);
-      } else if (text == r'\sum_{}^{}') {
-        controller.addFunction(r'\sum', [
-          math_kb_node.TeXArg.braces,
-          math_kb_node.TeXArg.braces,
-        ]);
-      } else if (text == r'\prod_{}^{}') {
-        controller.addFunction(r'\prod', [
-          math_kb_node.TeXArg.braces,
-          math_kb_node.TeXArg.braces,
-        ]);
+      } else if (text == r'\sum') {
+        controller.addLeaf(r'\sum');
+      } else if (text == r'\prod') {
+        controller.addLeaf(r'\prod');
       } else if (text == r'\log_{}') {
         controller.addLeaf(r'\log');
         controller.addFunction('_', [math_kb_node.TeXArg.braces]);
@@ -690,8 +699,14 @@ class MathKeyboardController extends _$MathKeyboardController {
           math_kb_node.TeXArg.braces,
         ]);
       } else {
-        if (state.isPowerMode && text.length == 1) {
+        if (state.isPowerMode &&
+            (text.length == 1 || text == r'\pi' || text == 'e')) {
           controller.addFunction('^', [math_kb_node.TeXArg.braces]);
+          controller.addLeaf(text);
+          controller.goNext();
+        } else if (state.isSubscriptMode &&
+            (text.length == 1 || text == r'\pi' || text == 'e')) {
+          controller.addFunction('_', [math_kb_node.TeXArg.braces]);
           controller.addLeaf(text);
           controller.goNext();
         } else {

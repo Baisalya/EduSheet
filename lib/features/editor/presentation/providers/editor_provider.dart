@@ -21,11 +21,21 @@ final savedPapersProvider = FutureProvider.autoDispose<List<Paper>>((ref) {
 class EditorState extends _$EditorState {
   @override
   Paper build() {
+    // Auto-save whenever the state changes
+    ref.listenSelf((previous, next) {
+      if (previous != null && previous != next) {
+        savePaper();
+        // Invalidate the list so the UI updates
+        ref.invalidate(savedPapersProvider);
+      }
+    });
+
     return Paper(
       id: const Uuid().v4(),
       title: 'New Paper',
       sections: [],
       logos: ['', '', ''], // Initialize with 3 slots by default
+      createdAt: DateTime.now(),
       headerFields: [
         PaperHeaderField(
           id: const Uuid().v4(),

@@ -8,12 +8,23 @@ import '../../../pdf/services/presentation_export_service.dart';
 import '../../../pdf/services/pdf_service.dart';
 import '../../../pdf/services/spreadsheet_export_service.dart';
 import '../../../pdf/services/word_export_service.dart';
+import 'package:intl/intl.dart';
 
-class SavedPapersScreen extends ConsumerWidget {
+enum PaperSort { dateNewest, dateOldest, titleAZ, marksHigh, marksLow }
+
+class SavedPapersScreen extends ConsumerStatefulWidget {
   const SavedPapersScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SavedPapersScreen> createState() => _SavedPapersScreenState();
+}
+
+class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
+  String _searchQuery = '';
+  PaperSort _sortBy = PaperSort.dateNewest;
+
+  @override
+  Widget build(BuildContext context) {
     final papersAsync = ref.watch(savedPapersProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -27,36 +38,116 @@ class SavedPapersScreen extends ConsumerWidget {
           'Saved Papers',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-      ),
-      body: papersAsync.when(
-        data: (papers) => papers.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.description_outlined,
-                      size: 64,
-                      color: Colors.grey[300],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No saved papers yet.',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 16),
-                    ),
-                  ],
-                ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: papers.length,
-                itemBuilder: (context, index) {
-                  final paper = papers[index];
-                  return _SavedPaperCard(paper: paper);
-                },
+        actions: [
+          PopupMenuButton<PaperSort>(
+            icon: const Icon(Icons.sort_rounded),
+            onSelected: (sort) => setState(() => _sortBy = sort),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: PaperSort.dateNewest,
+                child: Text('Date (Newest First)'),
               ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err')),
+              const PopupMenuItem(
+                value: PaperSort.dateOldest,
+                child: Text('Date (Oldest First)'),
+              ),
+              const PopupMenuItem(
+                value: PaperSort.titleAZ,
+                child: Text('Title (A-Z)'),
+              ),
+              const PopupMenuItem(
+                value: PaperSort.marksHigh,
+                child: Text('Marks (High to Low)'),
+              ),
+              const PopupMenuItem(
+                value: PaperSort.marksLow,
+                child: Text('Marks (Low to High)'),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: TextField(
+              onChanged: (val) => setState(() => _searchQuery = val),
+              decoration: InputDecoration(
+                hintText: 'Search by title or school...',
+                prefixIcon: const Icon(Icons.search),
+                isDense: true,
+                filled: true,
+                fillColor: isDark ? Colors.white.withAlpha(13) : Colors.grey.withAlpha(13),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: papersAsync.when(
+              data: (papers) {
+                var filtered = papers.where((p) {
+                  final query = _searchQuery.toLowerCase();
+                  return p.title.toLowerCase().contains(query) ||
+                      p.schoolName.toLowerCase().contains(query);
+                }).toList();
+
+                // Sorting logic
+                switch (_sortBy) {
+                  case PaperSort.dateNewest:
+                    filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+                    break;
+                  case PaperSort.dateOldest:
+                    filtered.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+                    break;
+                  case PaperSort.titleAZ:
+                    filtered.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+                    break;
+                  case PaperSort.marksHigh:
+                    filtered.sort((a, b) => b.totalMarks.compareTo(a.totalMarks));
+                    break;
+                  case PaperSort.marksLow:
+                    filtered.sort((a, b) => a.totalMarks.compareTo(b.totalMarks));
+                    break;
+                }
+
+                if (filtered.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _searchQuery.isEmpty ? Icons.description_outlined : Icons.search_off,
+                          size: 64,
+                          color: Colors.grey[300],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isEmpty ? 'No saved papers yet.' : 'No papers match your search.',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final paper = filtered[index];
+                    return _SavedPaperCard(paper: paper);
+                  },
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, stack) => Center(child: Text('Error: $err')),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -69,6 +160,7 @@ class _SavedPaperCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dateStr = DateFormat('MMM dd, yyyy • hh:mm a').format(paper.createdAt);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -103,7 +195,7 @@ class _SavedPaperCard extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      paper.title,
+                      paper.title.isEmpty ? 'Untitled Paper' : paper.title,
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -124,7 +216,7 @@ class _SavedPaperCard extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      '${paper.totalMarks} Marks',
+                      '${paper.totalMarks.toStringAsFixed(0)} Marks',
                       style: const TextStyle(
                         color: Colors.blue,
                         fontWeight: FontWeight.bold,
@@ -133,6 +225,15 @@ class _SavedPaperCard extends ConsumerWidget {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                dateStr,
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: 8),
               Text(

@@ -13,6 +13,7 @@ class Paper {
   final List<PaperSection> sections;
   final bool includeOmr;
   final String templateId;
+  final DateTime createdAt;
 
   Paper({
     required this.id,
@@ -25,6 +26,7 @@ class Paper {
     this.sections = const [],
     this.includeOmr = false,
     this.templateId = 'school_formal',
+    required this.createdAt,
   });
 
   Paper copyWith({
@@ -38,6 +40,7 @@ class Paper {
     List<PaperSection>? sections,
     bool? includeOmr,
     String? templateId,
+    DateTime? createdAt,
   }) {
     return Paper(
       id: id ?? this.id,
@@ -50,6 +53,7 @@ class Paper {
       sections: sections ?? this.sections,
       includeOmr: includeOmr ?? this.includeOmr,
       templateId: templateId ?? this.templateId,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
@@ -69,6 +73,7 @@ class Paper {
       'sections': sections.map((s) => s.toJson()).toList(),
       'includeOmr': includeOmr,
       'templateId': templateId,
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 
@@ -96,6 +101,10 @@ class Paper {
           [],
       includeOmr: json['includeOmr'] ?? false,
       templateId: json['templateId'] ?? 'school_formal',
+      createdAt:
+          json['createdAt'] != null
+              ? DateTime.parse(json['createdAt'])
+              : DateTime.now(),
     );
   }
 }

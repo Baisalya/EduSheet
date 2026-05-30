@@ -1435,7 +1435,7 @@ class _SaveAsSheet extends ConsumerStatefulWidget {
 class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
   late final TextEditingController _controller;
   late final MathKeyboardController _mathKeyboardController;
-  var _selectedFormat = _PaperExportFormat.pdf;
+  var _selectedFormat = _PaperExportFormat.app;
   var _isSaving = false;
   String? _errorText;
 
@@ -1486,21 +1486,36 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
     final messenger = ScaffoldMessenger.of(context);
 
     try {
+      // Always save internally first
       await ref.read(editorStateProvider.notifier).savePaper();
       ref.invalidate(savedPapersProvider);
+
+      if (_selectedFormat == _PaperExportFormat.app) {
+        if (!mounted || !navigator.mounted) return;
+        navigator.pop();
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Paper saved to library successfully'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
       final latestPaper = ref.read(editorStateProvider);
       final template = _templateForPaper(latestPaper);
-      final file = _selectedFormat == _PaperExportFormat.pdf
-          ? await PdfService.export(
-              latestPaper,
-              template,
-              fileNameBase: fileNameBase,
-            )
-          : await WordExportService.export(
-              latestPaper,
-              template,
-              fileNameBase: fileNameBase,
-            );
+      final file =
+          _selectedFormat == _PaperExportFormat.pdf
+              ? await PdfService.export(
+                latestPaper,
+                template,
+                fileNameBase: fileNameBase,
+              )
+              : await WordExportService.export(
+                latestPaper,
+                template,
+                fileNameBase: fileNameBase,
+              );
 
       if (!mounted || !navigator.mounted) return;
       navigator.pop();
@@ -1514,11 +1529,11 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
       if (!mounted) return;
       setState(() {
         _isSaving = false;
-        _errorText = 'Could not save file. Please try again.';
+        _errorText = 'Could not save. Please try again.';
       });
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Could not save file: $error'),
+          content: Text('Error: $error'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -1607,29 +1622,46 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
               children: [
                 Expanded(
                   child: _SaveFormatOption(
-                    title: 'PDF',
-                    subtitle: 'Ready to print',
-                    icon: Icons.picture_as_pdf_outlined,
-                    isSelected: _selectedFormat == _PaperExportFormat.pdf,
-                    onTap: _isSaving
-                        ? null
-                        : () => setState(
-                            () => _selectedFormat = _PaperExportFormat.pdf,
-                          ),
+                    title: 'App',
+                    subtitle: 'Library',
+                    icon: Icons.bookmark_added_outlined,
+                    isSelected: _selectedFormat == _PaperExportFormat.app,
+                    onTap:
+                        _isSaving
+                            ? null
+                            : () => setState(
+                              () => _selectedFormat = _PaperExportFormat.app,
+                            ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _SaveFormatOption(
+                    title: 'PDF',
+                    subtitle: 'Print',
+                    icon: Icons.picture_as_pdf_outlined,
+                    isSelected: _selectedFormat == _PaperExportFormat.pdf,
+                    onTap:
+                        _isSaving
+                            ? null
+                            : () => setState(
+                              () => _selectedFormat = _PaperExportFormat.pdf,
+                            ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _SaveFormatOption(
                     title: 'Word',
-                    subtitle: 'Editable file',
+                    subtitle: 'Docx',
                     icon: Icons.description_outlined,
                     isSelected: _selectedFormat == _PaperExportFormat.word,
-                    onTap: _isSaving
-                        ? null
-                        : () => setState(
-                            () => _selectedFormat = _PaperExportFormat.word,
-                          ),
+                    onTap:
+                        _isSaving
+                            ? null
+                            : () => setState(
+                              () => _selectedFormat = _PaperExportFormat.word,
+                            ),
                   ),
                 ),
               ],
@@ -1659,7 +1691,7 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
   }
 }
 
-enum _PaperExportFormat { pdf, word }
+enum _PaperExportFormat { pdf, word, app }
 
 class _SaveFormatOption extends StatelessWidget {
   final String title;

@@ -568,17 +568,47 @@ class MathKeyboardView extends ConsumerWidget {
       itemCount: symbols.length,
       itemBuilder: (context, index) {
         final symbol = symbols[index];
-        final isPowerActive = symbol.label == 'xⁿ' && state.isPowerMode;
+        final isPowerActive =
+            (symbol.label == 'xⁿ' || symbol.label == 'eˣ') && state.isPowerMode;
+        final isSubActive = (symbol.label == 'xᵢ' ||
+                symbol.label == 'Σₙ' ||
+                symbol.label == 'Πₙ' ||
+                symbol.label == '∫ₐᵇ' ||
+                symbol.label == 'logₐ') &&
+            state.isSubscriptMode;
 
         return MathKey(
           symbol: symbol,
-          color: isPowerActive ? theme.colorScheme.primaryContainer : null,
-          textColor: isPowerActive
+          color: (isPowerActive || isSubActive)
+              ? theme.colorScheme.primaryContainer
+              : null,
+          textColor: (isPowerActive || isSubActive)
               ? theme.colorScheme.onPrimaryContainer
               : null,
           onTap: () {
-            if (symbol.label == 'xⁿ') {
+            if (symbol.label == 'xⁿ' || symbol.label == 'eˣ') {
+              if (!state.isPowerMode && symbol.label == 'eˣ') {
+                controller.insertText('e');
+              }
               controller.togglePowerMode();
+            } else if (symbol.label == 'xᵢ' ||
+                symbol.label == 'Σₙ' ||
+                symbol.label == 'Πₙ' ||
+                symbol.label == '∫ₐᵇ' ||
+                symbol.label == 'logₐ') {
+              // If it's a builder symbol like Σₙ, insert the main symbol first if needed
+              if (!state.isSubscriptMode) {
+                if (symbol.label == 'Σₙ') {
+                  controller.insertText(r'\sum');
+                } else if (symbol.label == 'Πₙ') {
+                  controller.insertText(r'\prod');
+                } else if (symbol.label == '∫ₐᵇ') {
+                  controller.insertText(r'\int');
+                } else if (symbol.label == 'logₐ') {
+                  controller.insertText(r'\log');
+                }
+              }
+              controller.toggleSubscriptMode();
             } else {
               controller.insertText(symbol.tex);
             }
