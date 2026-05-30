@@ -5,6 +5,7 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
+import 'package:edusheet/features/geometry_builder/widgets/geometry_attachment_preview.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
 
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
@@ -442,6 +443,10 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                           ),
                         ),
                   ),
+                  GeometryAttachmentPreview(
+                    listenable: _controller,
+                    textProvider: () => _controller.document.toPlainText(),
+                  ),
                 ],
               ),
             ),
@@ -507,40 +512,50 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                         children: [
                           Radio<int>(value: idx, activeColor: Colors.green),
                           Expanded(
-                            child: MathKeyboardField(
-                              controller: _optionController(opt),
-                              builder: (context, fieldFocusNode, isMathActive) {
-                                final controller = _optionController(opt);
-                                return TextField(
-                                  controller: controller,
-                                  focusNode: fieldFocusNode,
-                                  keyboardType: isMathActive
-                                      ? TextInputType.none
-                                      : TextInputType.text,
-                                  decoration: InputDecoration(
-                                    hintText:
-                                        'Option ${String.fromCharCode(65 + idx)}',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    fillColor: opt.isCorrect
-                                        ? Colors.green.withValues(
-                                            alpha: isDark ? 0.1 : 0.05,
-                                          )
-                                        : null,
-                                  ),
-                                  onChanged: (val) {
-                                    _setOptionText(opt.id, val);
-                                    if (_optionsError != null) {
-                                      setState(() => _optionsError = null);
-                                    }
+                            child: Column(
+                              children: [
+                                MathKeyboardField(
+                                  controller: _optionController(opt),
+                                  builder: (context, fieldFocusNode, isMathActive) {
+                                    final controller = _optionController(opt);
+                                    return TextField(
+                                      controller: controller,
+                                      focusNode: fieldFocusNode,
+                                      keyboardType: isMathActive
+                                          ? TextInputType.none
+                                          : TextInputType.text,
+                                      decoration: InputDecoration(
+                                        hintText:
+                                            'Option ${String.fromCharCode(65 + idx)}',
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 12,
+                                            ),
+                                        fillColor: opt.isCorrect
+                                            ? Colors.green.withValues(
+                                                alpha: isDark ? 0.1 : 0.05,
+                                              )
+                                            : null,
+                                      ),
+                                      onChanged: (val) {
+                                        _setOptionText(opt.id, val);
+                                        if (_optionsError != null) {
+                                          setState(() => _optionsError = null);
+                                        }
+                                      },
+                                    );
                                   },
-                                );
-                              },
+                                ),
+                                GeometryAttachmentPreview.textController(
+                                  controller: _optionController(opt),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 8),

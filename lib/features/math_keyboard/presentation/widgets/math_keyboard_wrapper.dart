@@ -15,20 +15,24 @@ class MathKeyboardWrapper extends ConsumerStatefulWidget {
 }
 
 class _MathKeyboardWrapperState extends ConsumerState<MathKeyboardWrapper> {
+  final _keyboardNavigatorKey = GlobalKey<NavigatorState>();
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
         Positioned.fill(child: widget.child),
         const FloatingElementManager(),
-        const _MathKeyboardOverlay(),
+        _MathKeyboardOverlay(navigatorKey: _keyboardNavigatorKey),
       ],
     );
   }
 }
 
 class _MathKeyboardOverlay extends ConsumerWidget {
-  const _MathKeyboardOverlay();
+  final GlobalKey<NavigatorState> navigatorKey;
+
+  const _MathKeyboardOverlay({required this.navigatorKey});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -53,7 +57,14 @@ class _MathKeyboardOverlay extends ConsumerWidget {
           child: Material(
             child: SizedBox(
               height: state.height,
-              child: const MathKeyboardView(),
+              child: HeroControllerScope.none(
+                child: Navigator(
+                  key: navigatorKey,
+                  onGenerateRoute: (settings) => MaterialPageRoute(
+                    builder: (context) => const MathKeyboardView(),
+                  ),
+                ),
+              ),
             ),
           ),
         ),

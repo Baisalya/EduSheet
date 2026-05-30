@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:edusheet/features/geometry_builder/models/geometry_shape.dart';
+import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
+import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_key.dart';
@@ -48,6 +51,8 @@ class MathKeyboardView extends ConsumerWidget {
               duration: const Duration(milliseconds: 200),
               child: state.currentCategory == MathCategory.format
                   ? _buildQuillToolbar(context, state, ref)
+                  : state.currentCategory == MathCategory.geometry
+                  ? _buildGeometryKeyboardPanel(context, controller)
                   : _buildSymbolGrid(context, state, controller),
             ),
           ),
@@ -273,40 +278,185 @@ class MathKeyboardView extends ConsumerWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            Text('Symbol Size:', style: theme.textTheme.labelSmall),
+            Text('GeoDraw:', style: theme.textTheme.labelSmall),
             const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline, size: 18),
-              onPressed: () =>
-                  controller.setSymbolSize(state.symbolSizeLevel - 1),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              // Tooltip removed to fix "No Overlay" error
+            FilledButton.tonalIcon(
+              onPressed: () => _openGeometryBuilder(context, controller),
+              icon: const Icon(Icons.architecture, size: 16),
+              label: const Text('Open Builder'),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                '${state.symbolSizeLevel > 0 ? "+" : ""}${state.symbolSizeLevel}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline, size: 18),
-              onPressed: () =>
-                  controller.setSymbolSize(state.symbolSizeLevel + 1),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              // Tooltip removed to fix "No Overlay" error
-            ),
-            const SizedBox(width: 16),
-            TextButton(
-              onPressed: () => controller.setSymbolSize(0),
-              child: const Text('Reset', style: TextStyle(fontSize: 12)),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: () => controller.insertText('[Geometry Diagram]'),
+              icon: const Icon(Icons.short_text, size: 16),
+              label: const Text('Placeholder'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildGeometryKeyboardPanel(
+    BuildContext context,
+    MathKeyboardController controller,
+  ) {
+    final theme = Theme.of(context);
+    final quickShapes = <_GeometryKeyboardAction>[
+      _GeometryKeyboardAction(
+        'Triangle',
+        Icons.change_history,
+        GeometryShapeType.triangle,
+      ),
+      _GeometryKeyboardAction(
+        'Rectangle',
+        Icons.rectangle_outlined,
+        GeometryShapeType.rectangle,
+      ),
+      _GeometryKeyboardAction(
+        'Circle',
+        Icons.circle_outlined,
+        GeometryShapeType.circle,
+      ),
+      _GeometryKeyboardAction(
+        'Line',
+        Icons.horizontal_rule,
+        GeometryShapeType.line,
+      ),
+      _GeometryKeyboardAction(
+        'Arrow',
+        Icons.arrow_forward,
+        GeometryShapeType.arrow,
+      ),
+      _GeometryKeyboardAction('Polygon', Icons.polyline_outlined, null),
+    ];
+    final sections = <_GeometryKeyboardSection>[
+      _GeometryKeyboardSection('Shapes', quickShapes),
+      _GeometryKeyboardSection('Draw', [
+        _GeometryKeyboardAction('Custom', Icons.edit_outlined, null),
+        _GeometryKeyboardAction(
+          'Axes',
+          Icons.add,
+          GeometryShapeType.coordinateAxes,
+        ),
+        _GeometryKeyboardAction(
+          'Number line',
+          Icons.linear_scale,
+          GeometryShapeType.numberLine,
+        ),
+        _GeometryKeyboardAction(
+          'Cube',
+          Icons.view_in_ar,
+          GeometryShapeType.cube,
+        ),
+      ]),
+      _GeometryKeyboardSection('Labels', [
+        _GeometryKeyboardAction('Side', Icons.straighten, null),
+        _GeometryKeyboardAction('Angle', Icons.architecture, null),
+        _GeometryKeyboardAction('Text', Icons.text_fields, null),
+      ]),
+      _GeometryKeyboardSection('Marks', [
+        _GeometryKeyboardAction(
+          'Right angle',
+          Icons.crop_square,
+          GeometryShapeType.rightTriangle,
+        ),
+        _GeometryKeyboardAction('Height line', Icons.more_vert, null),
+        _GeometryKeyboardAction('Arc', Icons.rotate_right, null),
+      ]),
+      _GeometryKeyboardSection('Export', [
+        _GeometryKeyboardAction('PNG/SVG', Icons.ios_share, null),
+        _GeometryKeyboardAction('TikZ', Icons.functions, null),
+        _GeometryKeyboardAction('Placeholder', Icons.short_text, null),
+      ]),
+    ];
+
+    return ListView(
+      key: const ValueKey('geometry-builder-panel'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      children: [
+        FilledButton.icon(
+          onPressed: () => _openGeometryBuilder(context, controller),
+          icon: const Icon(Icons.architecture),
+          label: const Text('Open Geometry Builder'),
+        ),
+        const SizedBox(height: 10),
+        for (final section in sections) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 6),
+            child: Text(
+              section.title,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          SizedBox(
+            height: 72,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: section.actions.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final action = section.actions[index];
+                return SizedBox(
+                  width: 92,
+                  child: MathKey(
+                    onTap: () => action.shape == null
+                        ? _openGeometryBuilder(context, controller)
+                        : _openGeometryBuilder(
+                            context,
+                            controller,
+                            initialShape: action.shape,
+                          ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          action.icon,
+                          size: 20,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          action.label,
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _openGeometryBuilder(
+    BuildContext context,
+    MathKeyboardController controller, {
+    GeometryShapeType? initialShape,
+  }) async {
+    controller.hideKeyboard();
+    final diagram = await GeometryBuilderScreen.show(
+      context,
+      initialShape: initialShape,
+    );
+    if (diagram == null) return;
+    GeometryDiagramRegistry.instance.save(diagram);
+    controller.insertText(diagram.placeholderToken);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Geometry placeholder inserted')),
+      );
+    }
   }
 
   Widget _buildQuillToolbar(
@@ -570,7 +720,8 @@ class MathKeyboardView extends ConsumerWidget {
         final symbol = symbols[index];
         final isPowerActive =
             (symbol.label == 'xⁿ' || symbol.label == 'eˣ') && state.isPowerMode;
-        final isSubActive = (symbol.label == 'xᵢ' ||
+        final isSubActive =
+            (symbol.label == 'xᵢ' ||
                 symbol.label == 'Σₙ' ||
                 symbol.label == 'Πₙ' ||
                 symbol.label == '∫ₐᵇ' ||
@@ -683,6 +834,21 @@ class _NavButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _GeometryKeyboardSection {
+  final String title;
+  final List<_GeometryKeyboardAction> actions;
+
+  const _GeometryKeyboardSection(this.title, this.actions);
+}
+
+class _GeometryKeyboardAction {
+  final String label;
+  final IconData icon;
+  final GeometryShapeType? shape;
+
+  const _GeometryKeyboardAction(this.label, this.icon, this.shape);
 }
 
 class _ActionBar extends ConsumerWidget {

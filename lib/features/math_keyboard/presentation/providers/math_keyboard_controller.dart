@@ -142,6 +142,11 @@ class MathKeyboardController extends _$MathKeyboardController {
     }
   }
 
+  void hideKeyboard() {
+    state = state.copyWith(isVisible: false, type: KeyboardType.system);
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+  }
+
   void setCategory(MathCategory category) {
     state = state.copyWith(currentCategory: category);
   }
@@ -386,24 +391,69 @@ class MathKeyboardController extends _$MathKeyboardController {
           (text.length == 1 || text == r'\pi' || text == 'e')) {
         final rawChar = text == r'\pi' ? 'π' : text;
         const superscripts = {
-          '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-          '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
-          '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
-          'n': 'ⁿ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
-          'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'i': 'ⁱ', 'π': 'ᵖ',
+          '0': '⁰',
+          '1': '¹',
+          '2': '²',
+          '3': '³',
+          '4': '⁴',
+          '5': '⁵',
+          '6': '⁶',
+          '7': '⁷',
+          '8': '⁸',
+          '9': '⁹',
+          '+': '⁺',
+          '-': '⁻',
+          '=': '⁼',
+          '(': '⁽',
+          ')': '⁾',
+          'n': 'ⁿ',
+          'x': 'ˣ',
+          'y': 'ʸ',
+          'z': 'ᶻ',
+          'a': 'ᵃ',
+          'b': 'ᵇ',
+          'c': 'ᶜ',
+          'i': 'ⁱ',
+          'π': 'ᵖ',
         };
         textToInsert = superscripts[rawChar] ?? '^$rawChar';
       } else if (state.isSubscriptMode &&
           (text.length == 1 || text == r'\pi' || text == 'e')) {
         final rawChar = text == r'\pi' ? 'π' : text;
         const subscripts = {
-          '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
-          '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
-          '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
-          'n': 'ₙ', 'x': 'ₓ', 'y': 'ᵧ', 'z': '₂',
-          'a': 'ₐ', 'e': 'ₑ', 'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ',
-          'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'o': 'ₒ',
-          'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ',
+          '0': '₀',
+          '1': '₁',
+          '2': '₂',
+          '3': '₃',
+          '4': '₄',
+          '5': '₅',
+          '6': '₆',
+          '7': '₇',
+          '8': '₈',
+          '9': '₉',
+          '+': '₊',
+          '-': '₋',
+          '=': '₌',
+          '(': '₍',
+          ')': '₎',
+          'n': 'ₙ',
+          'x': 'ₓ',
+          'y': 'ᵧ',
+          'z': '₂',
+          'a': 'ₐ',
+          'e': 'ₑ',
+          'h': 'ₕ',
+          'i': 'ᵢ',
+          'j': 'ⱼ',
+          'k': 'ₖ',
+          'l': 'ₗ',
+          'm': 'ₘ',
+          'o': 'ₒ',
+          'p': 'ₚ',
+          'r': 'ᵣ',
+          's': 'ₛ',
+          't': 'ₜ',
+          'u': 'ᵤ',
           'v': 'ᵥ',
         };
         textToInsert = subscripts[rawChar] ?? '_$rawChar';
@@ -470,8 +520,13 @@ class MathKeyboardController extends _$MathKeyboardController {
           selection: TextSelection.collapsed(offset: newCursorPos),
         );
       } else if (controller is quill.QuillController) {
-        final index = controller.selection.baseOffset;
-        final length = controller.selection.extentOffset - index;
+        final docEnd = (controller.document.length - 1).clamp(0, 1 << 30);
+        final base = controller.selection.baseOffset;
+        final extent = controller.selection.extentOffset;
+        final safeBase = base < 0 ? docEnd : base.clamp(0, docEnd);
+        final safeExtent = extent < 0 ? safeBase : extent.clamp(0, docEnd);
+        final index = safeBase <= safeExtent ? safeBase : safeExtent;
+        final length = (safeBase - safeExtent).abs();
 
         controller.replaceText(index, length, textToInsert, null);
 
@@ -505,7 +560,7 @@ class MathKeyboardController extends _$MathKeyboardController {
         }
 
         controller.updateSelection(
-          TextSelection.collapsed(offset: index + offset),
+          TextSelection.collapsed(offset: (index + offset).clamp(0, docEnd)),
           quill.ChangeSource.local,
         );
       }

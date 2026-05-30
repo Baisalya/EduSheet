@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/geometry_builder/widgets/geometry_attachment_preview.dart';
 import '../../domain/models/question_bank_model.dart';
 import '../providers/question_bank_provider.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
@@ -319,6 +320,9 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                           validator: (v) => v!.isEmpty ? 'Required' : null,
                         ),
                   ),
+                  GeometryAttachmentPreview.textController(
+                    controller: _textController,
+                  ),
                 ],
               ),
             ),
@@ -471,34 +475,43 @@ class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
                               children: [
                                 Radio<int>(value: i, activeColor: Colors.green),
                                 Expanded(
-                                  child: MathKeyboardField(
-                                    controller: _optionControllers[i],
-                                    builder:
-                                        (
-                                          context,
-                                          fieldFocusNode,
-                                          isMathActive,
-                                        ) => TextFormField(
-                                          controller: _optionControllers[i],
-                                          focusNode: fieldFocusNode,
-                                          style: _bookTextStyle(
-                                            isDark,
-                                            fontSize: 16,
-                                          ),
-                                          keyboardType: isMathActive
-                                              ? TextInputType.none
-                                              : TextInputType.text,
-                                          decoration: _bookInputDecoration(
-                                            isDark,
-                                            labelText: 'Option ${i + 1}',
-                                            isDense: true,
-                                            fillColor: opt.isCorrect
-                                                ? Colors.green.withValues(
-                                                    alpha: isDark ? 0.1 : 0.05,
-                                                  )
-                                                : null,
-                                          ),
-                                        ),
+                                  child: Column(
+                                    children: [
+                                      MathKeyboardField(
+                                        controller: _optionControllers[i],
+                                        builder:
+                                            (
+                                              context,
+                                              fieldFocusNode,
+                                              isMathActive,
+                                            ) => TextFormField(
+                                              controller: _optionControllers[i],
+                                              focusNode: fieldFocusNode,
+                                              style: _bookTextStyle(
+                                                isDark,
+                                                fontSize: 16,
+                                              ),
+                                              keyboardType: isMathActive
+                                                  ? TextInputType.none
+                                                  : TextInputType.text,
+                                              decoration: _bookInputDecoration(
+                                                isDark,
+                                                labelText: 'Option ${i + 1}',
+                                                isDense: true,
+                                                fillColor: opt.isCorrect
+                                                    ? Colors.green.withValues(
+                                                        alpha: isDark
+                                                            ? 0.1
+                                                            : 0.05,
+                                                      )
+                                                    : null,
+                                              ),
+                                            ),
+                                      ),
+                                      GeometryAttachmentPreview.textController(
+                                        controller: _optionControllers[i],
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],

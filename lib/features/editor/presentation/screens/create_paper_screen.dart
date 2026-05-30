@@ -8,6 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+import 'package:edusheet/features/geometry_builder/painters/geometry_painter.dart';
+import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/pdf/presentation/widgets/template_selector.dart';
 import 'package:edusheet/features/pdf/services/export_file_service.dart';
 import 'package:edusheet/features/pdf/services/pdf_service.dart';
@@ -1386,7 +1388,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('${String.fromCharCode(65 + o.key)}) '),
-                        Expanded(child: Text(o.value.text)),
+                        Expanded(child: _buildGeometryAwareText(o.value.text)),
                       ],
                     ),
                   );
@@ -1419,7 +1421,68 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         );
       }
     } catch (_) {}
-    return Text(text, textAlign: alignment);
+    return _buildGeometryAwareText(text, alignment: alignment);
+  }
+
+  Widget _buildGeometryAwareText(
+    String text, {
+    TextAlign alignment = TextAlign.start,
+  }) {
+    final spans = RegExp(r'\{\{geometry:([^}]+)\}\}').allMatches(text).toList();
+    if (spans.isEmpty) return Text(text, textAlign: alignment);
+
+    final children = <Widget>[];
+    var cursor = 0;
+    for (final match in spans) {
+      final before = text.substring(cursor, match.start).trim();
+      if (before.isNotEmpty) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(before, textAlign: alignment),
+          ),
+        );
+      }
+
+      final diagram = GeometryDiagramRegistry.instance.diagramFor(
+        match.group(1)!,
+      );
+      children.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: SizedBox(
+            height: 150,
+            width: double.infinity,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: Colors.black12),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: diagram == null
+                  ? Center(child: Text(match.group(0)!))
+                  : CustomPaint(
+                      painter: GeometryPainter(
+                        diagram: diagram.copyWith(showGrid: false),
+                        showPointHandles: false,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      );
+      cursor = match.end;
+    }
+
+    final after = text.substring(cursor).trim();
+    if (after.isNotEmpty) {
+      children.add(Text(after, textAlign: alignment));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
   }
 }
 
@@ -1504,18 +1567,17 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
 
       final latestPaper = ref.read(editorStateProvider);
       final template = _templateForPaper(latestPaper);
-      final file =
-          _selectedFormat == _PaperExportFormat.pdf
-              ? await PdfService.export(
-                latestPaper,
-                template,
-                fileNameBase: fileNameBase,
-              )
-              : await WordExportService.export(
-                latestPaper,
-                template,
-                fileNameBase: fileNameBase,
-              );
+      final file = _selectedFormat == _PaperExportFormat.pdf
+          ? await PdfService.export(
+              latestPaper,
+              template,
+              fileNameBase: fileNameBase,
+            )
+          : await WordExportService.export(
+              latestPaper,
+              template,
+              fileNameBase: fileNameBase,
+            );
 
       if (!mounted || !navigator.mounted) return;
       navigator.pop();
@@ -1626,12 +1688,11 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
                     subtitle: 'Library',
                     icon: Icons.bookmark_added_outlined,
                     isSelected: _selectedFormat == _PaperExportFormat.app,
-                    onTap:
-                        _isSaving
-                            ? null
-                            : () => setState(
-                              () => _selectedFormat = _PaperExportFormat.app,
-                            ),
+                    onTap: _isSaving
+                        ? null
+                        : () => setState(
+                            () => _selectedFormat = _PaperExportFormat.app,
+                          ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1641,12 +1702,11 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
                     subtitle: 'Print',
                     icon: Icons.picture_as_pdf_outlined,
                     isSelected: _selectedFormat == _PaperExportFormat.pdf,
-                    onTap:
-                        _isSaving
-                            ? null
-                            : () => setState(
-                              () => _selectedFormat = _PaperExportFormat.pdf,
-                            ),
+                    onTap: _isSaving
+                        ? null
+                        : () => setState(
+                            () => _selectedFormat = _PaperExportFormat.pdf,
+                          ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1656,12 +1716,11 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
                     subtitle: 'Docx',
                     icon: Icons.description_outlined,
                     isSelected: _selectedFormat == _PaperExportFormat.word,
-                    onTap:
-                        _isSaving
-                            ? null
-                            : () => setState(
-                              () => _selectedFormat = _PaperExportFormat.word,
-                            ),
+                    onTap: _isSaving
+                        ? null
+                        : () => setState(
+                            () => _selectedFormat = _PaperExportFormat.word,
+                          ),
                   ),
                 ),
               ],
