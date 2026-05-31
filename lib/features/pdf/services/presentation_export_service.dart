@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/office_text_formatter.dart';
 import 'package:open_filex/open_filex.dart';
@@ -106,10 +107,14 @@ class PresentationExportService {
 
       for (final entry in section.questions.asMap().entries) {
         final question = entry.value;
+        final questionNumber = QuestionNumberingService.paperLabel(
+          entry.key + 1,
+          paper,
+        );
         slides.add(
           _SlideSpec(
             title:
-                '$sectionTitle - Q${entry.key + 1} (${_marks(question.marks)} marks)',
+                '$sectionTitle - Q$questionNumber (${_marks(question.marks)} marks)',
             lines: [
               OfficeTextFormatter.questionText(question.text),
               if (question.isOptional) '(Optional/OR Choice)',

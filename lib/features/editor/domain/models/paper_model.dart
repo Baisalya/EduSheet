@@ -2,6 +2,20 @@ import 'package:flutter/material.dart';
 
 enum QuestionType { mcq, descriptive, fillInTheBlanks }
 
+enum QuestionNumberStyle {
+  number,
+  lowerAlpha,
+  upperAlpha,
+  lowerRoman,
+  upperRoman,
+  hindiDigits,
+  odiaDigits,
+  englishWords,
+  hindiLetters,
+  odiaLetters,
+  custom,
+}
+
 class Paper {
   final String id;
   final String title;
@@ -13,6 +27,8 @@ class Paper {
   final List<PaperSection> sections;
   final bool includeOmr;
   final String templateId;
+  final QuestionNumberStyle questionNumberStyle;
+  final List<String> customQuestionNumberLabels;
   final DateTime createdAt;
 
   Paper({
@@ -26,6 +42,8 @@ class Paper {
     this.sections = const [],
     this.includeOmr = false,
     this.templateId = 'school_formal',
+    this.questionNumberStyle = QuestionNumberStyle.number,
+    this.customQuestionNumberLabels = const [],
     required this.createdAt,
   });
 
@@ -40,6 +58,8 @@ class Paper {
     List<PaperSection>? sections,
     bool? includeOmr,
     String? templateId,
+    QuestionNumberStyle? questionNumberStyle,
+    List<String>? customQuestionNumberLabels,
     DateTime? createdAt,
   }) {
     return Paper(
@@ -53,6 +73,9 @@ class Paper {
       sections: sections ?? this.sections,
       includeOmr: includeOmr ?? this.includeOmr,
       templateId: templateId ?? this.templateId,
+      questionNumberStyle: questionNumberStyle ?? this.questionNumberStyle,
+      customQuestionNumberLabels:
+          customQuestionNumberLabels ?? this.customQuestionNumberLabels,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -73,11 +96,14 @@ class Paper {
       'sections': sections.map((s) => s.toJson()).toList(),
       'includeOmr': includeOmr,
       'templateId': templateId,
+      'questionNumberStyle': questionNumberStyle.index,
+      'customQuestionNumberLabels': customQuestionNumberLabels,
       'createdAt': createdAt.toIso8601String(),
     };
   }
 
   factory Paper.fromJson(Map<String, dynamic> json) {
+    final questionNumberStyleIndex = json['questionNumberStyle'];
     return Paper(
       id: json['id'],
       title: json['title'],
@@ -101,10 +127,20 @@ class Paper {
           [],
       includeOmr: json['includeOmr'] ?? false,
       templateId: json['templateId'] ?? 'school_formal',
-      createdAt:
-          json['createdAt'] != null
-              ? DateTime.parse(json['createdAt'])
-              : DateTime.now(),
+      questionNumberStyle:
+          questionNumberStyleIndex is int &&
+              questionNumberStyleIndex >= 0 &&
+              questionNumberStyleIndex < QuestionNumberStyle.values.length
+          ? QuestionNumberStyle.values[questionNumberStyleIndex]
+          : QuestionNumberStyle.number,
+      customQuestionNumberLabels:
+          (json['customQuestionNumberLabels'] as List?)
+              ?.map((label) => label.toString())
+              .toList() ??
+          const [],
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'])
+          : DateTime.now(),
     );
   }
 }

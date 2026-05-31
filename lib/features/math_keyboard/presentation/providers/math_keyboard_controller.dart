@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -292,14 +293,22 @@ class MathKeyboardController extends _$MathKeyboardController {
     if (controller is TextEditingController ||
         controller is quill.QuillController) {
       // Handle geometry diagrams for Quill
-      if (controller is quill.QuillController && text.startsWith('{{geometry:')) {
+      if (controller is quill.QuillController &&
+          text.startsWith('{{geometry:')) {
         final id = text.substring(11, text.length - 2);
         final index = controller.selection.baseOffset;
         final length = controller.selection.extentOffset - index;
+
+        // Store as JSON to support attributes like height
+        final data = jsonEncode({
+          'id': id,
+          'height': 200.0, // Default height
+        });
+
         controller.replaceText(
           index < 0 ? 0 : index,
           length.abs(),
-          quill.BlockEmbed.custom(quill.CustomBlockEmbed('geometry', id)),
+          quill.BlockEmbed.custom(quill.CustomBlockEmbed('geometry', data)),
           null,
         );
         return;

@@ -1,5 +1,6 @@
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:uuid/uuid.dart';
@@ -17,12 +18,40 @@ final savedPapersProvider = FutureProvider.autoDispose<List<Paper>>((ref) {
   return ref.watch(paperRepositoryProvider).getAllPapers();
 });
 
+class QuestionEditorDefaults {
+  final QuestionType type;
+  final double marks;
+  final bool isOptional;
+
+  const QuestionEditorDefaults({
+    this.type = QuestionType.descriptive,
+    this.marks = 1.0,
+    this.isOptional = false,
+  });
+
+  QuestionEditorDefaults copyWith({
+    QuestionType? type,
+    double? marks,
+    bool? isOptional,
+  }) {
+    return QuestionEditorDefaults(
+      type: type ?? this.type,
+      marks: marks ?? this.marks,
+      isOptional: isOptional ?? this.isOptional,
+    );
+  }
+}
+
+final questionEditorDefaultsProvider = StateProvider<QuestionEditorDefaults>(
+  (ref) => const QuestionEditorDefaults(),
+);
+
 @Riverpod(keepAlive: true)
 class EditorState extends _$EditorState {
   @override
   Paper build() {
     // Auto-save whenever the state changes
-    ref.listenSelf((previous, next) {
+    listenSelf((previous, next) {
       if (previous != null && previous != next) {
         savePaper();
         // Invalidate the list so the UI updates
@@ -272,6 +301,17 @@ class EditorState extends _$EditorState {
     );
   }
 
+  void bulkUpdateQuestions(String sectionId, List<Question> questions) {
+    state = state.copyWith(
+      sections: state.sections.map((section) {
+        if (section.id == sectionId) {
+          return section.copyWith(questions: questions);
+        }
+        return section;
+      }).toList(),
+    );
+  }
+
   void deleteQuestion(String sectionId, String questionId) {
     state = state.copyWith(
       sections: state.sections.map((section) {
@@ -304,6 +344,14 @@ class EditorState extends _$EditorState {
 
   void toggleOmr(bool value) {
     state = state.copyWith(includeOmr: value);
+  }
+
+  void updateQuestionNumberStyle(QuestionNumberStyle style) {
+    state = state.copyWith(questionNumberStyle: style);
+  }
+
+  void updateCustomQuestionNumberLabels(List<String> labels) {
+    state = state.copyWith(customQuestionNumberLabels: labels);
   }
 
   void updateTemplate(String templateId) {

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/office_text_formatter.dart';
 import 'package:open_filex/open_filex.dart';
@@ -101,9 +102,13 @@ class SpreadsheetExportService {
           : 'Answer any ${section.requiredCount}';
       for (final entry in section.questions.asMap().entries) {
         final question = entry.value;
+        final questionNumber = QuestionNumberingService.paperLabel(
+          entry.key + 1,
+          paper,
+        );
         rows.add([
           _sectionLabel(section),
-          entry.key + 1,
+          questionNumber,
           _questionType(question.type),
           OfficeTextFormatter.questionText(question.text),
           question.marks,
@@ -123,7 +128,10 @@ class SpreadsheetExportService {
 
     for (final section in paper.sections) {
       for (final questionEntry in section.questions.asMap().entries) {
-        final questionNumber = questionEntry.key + 1;
+        final questionNumber = QuestionNumberingService.paperLabel(
+          questionEntry.key + 1,
+          paper,
+        );
         for (final optionEntry in questionEntry.value.options.asMap().entries) {
           rows.add([
             '${_sectionLabel(section)} Q$questionNumber',

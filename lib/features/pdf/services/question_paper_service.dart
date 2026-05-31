@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/services/builders/header_builders.dart';
@@ -160,7 +161,9 @@ class QuestionPaperService {
                 textAlign: pw.TextAlign.center,
               ),
             ),
-          ...paper.sections.map((section) => _buildSection(section, template)),
+          ...paper.sections.map(
+            (section) => _buildSection(section, template, paper),
+          ),
           if (paper.includeOmr)
             ..._buildOmrSheet(paper, logos.isNotEmpty ? logos.first : null),
         ],
@@ -170,7 +173,11 @@ class QuestionPaperService {
     return pdf;
   }
 
-  static pw.Widget _buildSection(PaperSection section, PaperTemplate template) {
+  static pw.Widget _buildSection(
+    PaperSection section,
+    PaperTemplate template,
+    Paper paper,
+  ) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -202,7 +209,7 @@ class QuestionPaperService {
             ),
           ),
         if (section.showDivider) pw.Divider(),
-        _buildQuestionList(section, template),
+        _buildQuestionList(section, template, paper),
       ],
     );
   }
@@ -210,9 +217,10 @@ class QuestionPaperService {
   static pw.Widget _buildQuestionList(
     PaperSection section,
     PaperTemplate template,
+    Paper paper,
   ) {
     final questions = section.questions.asMap().entries.map((entry) {
-      return _buildQuestion(entry.key + 1, entry.value, template);
+      return _buildQuestion(entry.key + 1, entry.value, template, paper);
     }).toList();
 
     if (template.paperLayout != PaperLayout.twoColumn) {
@@ -244,7 +252,9 @@ class QuestionPaperService {
     int index,
     Question q,
     PaperTemplate template,
+    Paper paper,
   ) {
+    final label = QuestionNumberingService.paperLabel(index, paper);
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 8),
       child: pw.Column(
@@ -254,9 +264,9 @@ class QuestionPaperService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.SizedBox(
-                width: 25,
+                width: 34,
                 child: pw.Text(
-                  '$index.',
+                  '$label.',
                   style: pw.TextStyle(
                     fontSize: template.questionFontSize,
                     fontWeight: pw.FontWeight.bold,
@@ -285,7 +295,7 @@ class QuestionPaperService {
           ),
           if (q.type == QuestionType.mcq)
             pw.Padding(
-              padding: const pw.EdgeInsets.only(left: 25, top: 4),
+              padding: const pw.EdgeInsets.only(left: 34, top: 4),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: q.options.asMap().entries.map((optEntry) {
@@ -317,7 +327,7 @@ class QuestionPaperService {
             ),
           if (q.type == QuestionType.fillInTheBlanks)
             pw.Padding(
-              padding: const pw.EdgeInsets.only(left: 25, top: 4),
+              padding: const pw.EdgeInsets.only(left: 34, top: 4),
               child: pw.Text(
                 'Ans: ________________________',
                 style: pw.TextStyle(fontSize: template.questionFontSize),

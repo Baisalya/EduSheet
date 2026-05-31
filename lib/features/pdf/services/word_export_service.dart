@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/export_file_service.dart';
@@ -126,7 +127,7 @@ class WordExportService {
     }
 
     for (final section in paper.sections) {
-      buffer.write(_sectionXml(section, template));
+      buffer.write(_sectionXml(section, template, paper));
     }
 
     if (paper.includeOmr) {
@@ -285,7 +286,11 @@ class WordExportService {
         '<w:tr>$cells</w:tr></w:tbl>';
   }
 
-  static String _sectionXml(PaperSection section, PaperTemplate template) {
+  static String _sectionXml(
+    PaperSection section,
+    PaperTemplate template,
+    Paper paper,
+  ) {
     final buffer = StringBuffer();
 
     if (section.showTitle || section.prefix.isNotEmpty) {
@@ -338,16 +343,22 @@ class WordExportService {
           index + 1,
           section.questions[index],
           template,
+          paper,
         );
         final right = index + 1 < section.questions.length
-            ? _questionXml(index + 2, section.questions[index + 1], template)
+            ? _questionXml(
+                index + 2,
+                section.questions[index + 1],
+                template,
+                paper,
+              )
             : _paragraph('');
         buffer.write('<w:tr>${_tableCell(left)}${_tableCell(right)}</w:tr>');
       }
       buffer.write('</w:tbl>');
     } else {
       for (final entry in section.questions.asMap().entries) {
-        buffer.write(_questionXml(entry.key + 1, entry.value, template));
+        buffer.write(_questionXml(entry.key + 1, entry.value, template, paper));
       }
     }
 
@@ -358,15 +369,17 @@ class WordExportService {
     int index,
     Question question,
     PaperTemplate template,
+    Paper paper,
   ) {
     final buffer = StringBuffer();
     final text = OfficeTextFormatter.questionText(question.text).trim();
     final alignment = _wordAlignment(_flutterTextAlignName(question.alignment));
+    final label = QuestionNumberingService.paperLabel(index, paper);
 
     buffer.write(
       _paragraphRuns(
         [
-          _Run('$index. ', bold: true, fontSize: template.questionFontSize),
+          _Run('$label. ', bold: true, fontSize: template.questionFontSize),
           _Run(text, fontSize: template.questionFontSize),
           _Run(
             ' [${question.marks.toStringAsFixed(question.marks.truncateToDouble() == question.marks ? 0 : 1)}]',

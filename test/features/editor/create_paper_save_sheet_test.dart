@@ -1,7 +1,10 @@
 import 'dart:io';
 
 import 'package:edusheet/features/editor/presentation/screens/create_paper_screen.dart';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,9 +37,7 @@ void main() {
   testWidgets('Create Paper save button opens PDF and Word save sheet', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: CreatePaperScreen())),
-    );
+    await tester.pumpWidget(const ProviderScope(child: _CreatePaperTestApp()));
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(TextButton, 'Save'));
@@ -53,4 +54,49 @@ void main() {
 
     expect(find.text('Enter a file name'), findsOneWidget);
   });
+
+  testWidgets('Word Mode opens the section editor without layout errors', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const ProviderScope(child: _CreatePaperTestApp()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add Section'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Word Mode'), findsOneWidget);
+
+    await tester.tap(find.text('Word Mode'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Section 1 Word Mode'), findsOneWidget);
+    expect(find.text('Header'), findsOneWidget);
+    expect(find.text('Template'), findsOneWidget);
+
+    await tester.tap(find.text('Header'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Paper Identity'), findsOneWidget);
+    expect(find.text('Header Fields'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+class _CreatePaperTestApp extends StatelessWidget {
+  const _CreatePaperTestApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        FlutterQuillLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('en', 'US'), Locale('hi', 'IN')],
+      builder: (context, child) => MathKeyboardWrapper(child: child!),
+      home: const CreatePaperScreen(),
+    );
+  }
 }

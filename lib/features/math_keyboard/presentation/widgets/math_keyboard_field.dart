@@ -15,11 +15,13 @@ class MathKeyboardField extends ConsumerStatefulWidget {
   builder;
   final dynamic
   controller; // TextEditingController, QuillController, or MathFieldEditingController
+  final FocusNode? focusNode;
 
   const MathKeyboardField({
     super.key,
     required this.builder,
     required this.controller,
+    this.focusNode,
   });
 
   @override
@@ -27,7 +29,8 @@ class MathKeyboardField extends ConsumerStatefulWidget {
 }
 
 class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
-  final FocusNode _focusNode = FocusNode();
+  late FocusNode _focusNode;
+  late bool _ownsFocusNode;
   late final MathKeyboardController _mathKeyboardController;
   bool _isFocused = false;
   bool _disposed = false;
@@ -37,6 +40,8 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
   @override
   void initState() {
     super.initState();
+    _focusNode = widget.focusNode ?? FocusNode();
+    _ownsFocusNode = widget.focusNode == null;
     _mathKeyboardController = ref.read(mathKeyboardControllerProvider.notifier);
     _focusNode.addListener(_onFocusChange);
   }
@@ -44,6 +49,23 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
   @override
   void didUpdateWidget(covariant MathKeyboardField oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.focusNode != widget.focusNode) {
+      _focusNode.removeListener(_onFocusChange);
+      if (_ownsFocusNode) {
+        _focusNode.dispose();
+      }
+      _focusNode = widget.focusNode ?? FocusNode();
+      _ownsFocusNode = widget.focusNode == null;
+      _focusNode.addListener(_onFocusChange);
+      _isFocused = _focusNode.hasFocus;
+      if (_isFocused) {
+        _mathKeyboardController.registerController(
+          widget.controller,
+          _focusNode,
+        );
+      }
+    }
 
     if (oldWidget.controller == widget.controller) return;
 
@@ -68,7 +90,9 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
       }
     });
 
-    _focusNode.dispose();
+    if (_ownsFocusNode) {
+      _focusNode.dispose();
+    }
     super.dispose();
   }
 
