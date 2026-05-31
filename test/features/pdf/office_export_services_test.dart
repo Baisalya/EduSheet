@@ -158,6 +158,7 @@ Paper _samplePaper() {
     title: 'Algebra Test',
     schoolName: 'Sample School',
     instruction: 'Answer carefully.',
+    createdAt: DateTime.now(),
     headerFields: [
       PaperHeaderField(id: 'subject', label: 'Subject', value: 'Math'),
     ],

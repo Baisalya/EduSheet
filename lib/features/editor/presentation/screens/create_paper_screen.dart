@@ -3,6 +3,7 @@ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:edusheet/features/pdf/presentation/widgets/template_header_preview.dart';
 import 'package:flutter/material.dart';
+import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -1417,7 +1418,11 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         );
         return quill.QuillEditor.basic(
           controller: controller,
-          config: const quill.QuillEditorConfig(),
+          config: quill.QuillEditorConfig(
+            embedBuilders: [
+              GeometryEmbedBuilder(),
+            ],
+          ),
         );
       }
     } catch (_) {}

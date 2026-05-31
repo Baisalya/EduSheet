@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:math_keyboard/math_keyboard.dart' as math_kb;
 import '../providers/math_keyboard_controller.dart';
 
@@ -216,6 +217,9 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
       if (controller is TextEditingController) {
         // This might still throw if disposed but we try our best
         tex = controller.text;
+      } else if (controller is quill.QuillController) {
+        // For Quill, we show the plain text in the preview
+        tex = controller.document.toPlainText().trim();
       } else if (controller is math_kb.MathFieldEditingController) {
         tex = controller.currentEditingValue();
       }

@@ -6,6 +6,7 @@ import 'package:edusheet/features/editor/presentation/providers/editor_provider.
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_attachment_preview.dart';
+import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builder.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
 
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
@@ -437,8 +438,11 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                             controller: _controller,
                             focusNode: fieldFocusNode,
                             scrollController: _questionScrollController,
-                            config: const QuillEditorConfig(
+                            config: QuillEditorConfig(
                               placeholder: 'Start typing the question...',
+                              embedBuilders: [
+                                GeometryEmbedBuilder(),
+                              ],
                             ),
                           ),
                         ),
