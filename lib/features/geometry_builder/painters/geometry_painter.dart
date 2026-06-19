@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/geometry_diagram.dart';
+import '../models/geometry_label.dart';
 import '../models/geometry_mark.dart';
 import '../models/geometry_point.dart';
 import '../models/geometry_shape.dart';
@@ -10,8 +11,15 @@ import '../models/geometry_shape.dart';
 class GeometryPainter extends CustomPainter {
   final GeometryDiagram diagram;
   final bool showPointHandles;
+  final String? selectedLabelId;
+  final String? selectedPointId;
 
-  GeometryPainter({required this.diagram, this.showPointHandles = true});
+  GeometryPainter({
+    required this.diagram,
+    this.showPointHandles = true,
+    this.selectedLabelId,
+    this.selectedPointId,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -37,10 +45,18 @@ class GeometryPainter extends CustomPainter {
       _drawMark(canvas, mark, points);
     }
     for (final point in diagram.points) {
-      _drawPoint(canvas, point);
+      _drawPoint(
+        canvas,
+        point,
+        selected: showPointHandles && point.id == selectedPointId,
+      );
     }
     for (final label in diagram.labels) {
-      _drawText(canvas, label.text, label.position, fontSize: 13);
+      _drawLabel(
+        canvas,
+        label,
+        selected: showPointHandles && label.id == selectedLabelId,
+      );
     }
 
     canvas.restore();
@@ -325,24 +341,115 @@ class GeometryPainter extends CustomPainter {
     }
   }
 
-  void _drawPoint(Canvas canvas, GeometryPoint point) {
+  void _drawPoint(
+    Canvas canvas,
+    GeometryPoint point, {
+    required bool selected,
+  }) {
     if (showPointHandles) {
       canvas.drawCircle(point.position, 4.5, Paint()..color = Colors.white);
       canvas.drawCircle(
         point.position,
         4.5,
         Paint()
-          ..color = Colors.black
-          ..strokeWidth = 1.5
+          ..color = selected ? const Color(0xFF1976D2) : Colors.black
+          ..strokeWidth = selected ? 2.2 : 1.5
           ..style = PaintingStyle.stroke,
       );
     }
-    _drawText(
-      canvas,
-      point.label,
-      point.position + const Offset(6, -18),
-      fontSize: 12,
+
+    final span = TextSpan(
+      text: point.label,
+      style: TextStyle(
+        color: Colors.black,
+        fontSize: point.labelFontSize,
+        fontWeight: point.labelBold ? FontWeight.w700 : FontWeight.w400,
+      ),
     );
+    final painter = TextPainter(
+      text: span,
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: 120);
+
+    canvas.save();
+    canvas.translate(point.labelPosition.dx, point.labelPosition.dy);
+    canvas.rotate(point.labelRotation);
+    if (selected) {
+      final selectionRect = Rect.fromLTWH(
+        -5,
+        -4,
+        painter.width + 10,
+        painter.height + 8,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(selectionRect, const Radius.circular(5)),
+        Paint()
+          ..color = const Color(0xFF1976D2).withValues(alpha: 0.08)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(selectionRect, const Radius.circular(5)),
+        Paint()
+          ..color = const Color(0xFF1976D2)
+          ..strokeWidth = 1.4
+          ..style = PaintingStyle.stroke,
+      );
+    }
+    painter.paint(canvas, Offset.zero);
+    canvas.restore();
+  }
+
+  void _drawLabel(
+    Canvas canvas,
+    GeometryLabel label, {
+    required bool selected,
+  }) {
+    final span = TextSpan(
+      text: label.text,
+      style: TextStyle(
+        color: Colors.black,
+        fontSize: label.fontSize,
+        fontWeight: label.isBold ? FontWeight.w700 : FontWeight.w400,
+      ),
+    );
+    final painter = TextPainter(
+      text: span,
+      textDirection: TextDirection.ltr,
+      maxLines: 3,
+    )..layout(maxWidth: 260);
+
+    canvas.save();
+    canvas.translate(label.position.dx, label.position.dy);
+    canvas.rotate(label.rotation);
+    if (selected) {
+      final selectionRect = Rect.fromLTWH(
+        -6,
+        -5,
+        painter.width + 12,
+        painter.height + 10,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(selectionRect, const Radius.circular(5)),
+        Paint()
+          ..color = const Color(0xFF1976D2).withValues(alpha: 0.08)
+          ..style = PaintingStyle.fill,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(selectionRect, const Radius.circular(5)),
+        Paint()
+          ..color = const Color(0xFF1976D2)
+          ..strokeWidth = 1.4
+          ..style = PaintingStyle.stroke,
+      );
+      canvas.drawCircle(
+        Offset(painter.width + 6, painter.height + 5),
+        3.5,
+        Paint()..color = const Color(0xFF1976D2),
+      );
+    }
+    painter.paint(canvas, Offset.zero);
+    canvas.restore();
   }
 
   void _drawText(
@@ -370,6 +477,8 @@ class GeometryPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant GeometryPainter oldDelegate) {
     return oldDelegate.diagram != diagram ||
-        oldDelegate.showPointHandles != showPointHandles;
+        oldDelegate.showPointHandles != showPointHandles ||
+        oldDelegate.selectedLabelId != selectedLabelId ||
+        oldDelegate.selectedPointId != selectedPointId;
   }
 }

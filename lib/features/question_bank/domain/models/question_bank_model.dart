@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import '../../../editor/domain/models/paper_model.dart';
 
 enum Difficulty { easy, medium, hard }
@@ -52,6 +53,7 @@ class QuestionBankQuestion {
       'type': question.type.index,
       'marks': question.marks,
       'alignment': question.alignment.index,
+      'isOptional': question.isOptional,
       'subject': subject,
       'chapter': chapter,
       'difficulty': difficulty.index,
@@ -64,28 +66,57 @@ class QuestionBankQuestion {
   factory QuestionBankQuestion.fromJson(Map<String, dynamic> json) {
     return QuestionBankQuestion(
       question: Question(
-        id: json['id'],
-        text: json['text'],
-        imageUrl: json['imageUrl'],
-        options: (json['options'] as List)
+        id: json['id']?.toString() ?? '',
+        text: json['text']?.toString() ?? '',
+        imageUrl: json['imageUrl']?.toString(),
+        options: (json['options'] as List? ?? const [])
+            .whereType<Map>()
             .map(
               (o) => QuestionOption(
-                id: o['id'],
-                text: o['text'],
-                isCorrect: o['isCorrect'] ?? false,
+                id: o['id']?.toString() ?? '',
+                text: o['text']?.toString() ?? '',
+                isCorrect: o['isCorrect'] == true,
               ),
             )
             .toList(),
-        type: QuestionType.values[json['type'] ?? 1],
+        type: _questionTypeFromIndex(json['type']),
         marks: (json['marks'] as num?)?.toDouble() ?? 1.0,
-        // alignment: TextAlign.values[json['alignment'] ?? 0], // Not easily accessible from core models sometimes, but let's assume it works
+        alignment: _alignmentFromIndex(json['alignment']),
+        isOptional: json['isOptional'] == true,
       ),
-      subject: json['subject'],
-      chapter: json['chapter'],
-      difficulty: Difficulty.values[json['difficulty'] ?? 1],
-      tags: List<String>.from(json['tags'] ?? []),
-      isFavorite: json['isFavorite'] ?? false,
-      createdAt: DateTime.parse(json['createdAt']),
+      subject: json['subject']?.toString() ?? 'General',
+      chapter: json['chapter']?.toString() ?? 'General',
+      difficulty: _difficultyFromIndex(json['difficulty']),
+      tags: (json['tags'] as List? ?? const [])
+          .map((tag) => tag.toString())
+          .toList(),
+      isFavorite: json['isFavorite'] == true,
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
     );
   }
+}
+
+QuestionType _questionTypeFromIndex(dynamic value) {
+  final index = value is int ? value : int.tryParse(value?.toString() ?? '');
+  if (index == null || index < 0 || index >= QuestionType.values.length) {
+    return QuestionType.descriptive;
+  }
+  return QuestionType.values[index];
+}
+
+TextAlign _alignmentFromIndex(dynamic value) {
+  final index = value is int ? value : int.tryParse(value?.toString() ?? '');
+  if (index == null || index < 0 || index >= TextAlign.values.length) {
+    return TextAlign.left;
+  }
+  return TextAlign.values[index];
+}
+
+Difficulty _difficultyFromIndex(dynamic value) {
+  final index = value is int ? value : int.tryParse(value?.toString() ?? '');
+  if (index == null || index < 0 || index >= Difficulty.values.length) {
+    return Difficulty.medium;
+  }
+  return Difficulty.values[index];
 }

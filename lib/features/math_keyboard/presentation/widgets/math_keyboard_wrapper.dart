@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/math_keyboard_controller.dart';
@@ -37,8 +39,12 @@ class _MathKeyboardOverlay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(mathKeyboardControllerProvider);
-    final controller = ref.read(mathKeyboardControllerProvider.notifier);
     final isMathVisible = state.isVisible && state.type == KeyboardType.math;
+
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final adaptiveMax = math.max(240.0, math.min(500.0, screenHeight * 0.62));
+    final adaptiveMin = math.min(280.0, adaptiveMax);
+    final effectiveHeight = state.height.clamp(adaptiveMin, adaptiveMax).toDouble();
 
     return Positioned(
       left: 0,
@@ -48,21 +54,14 @@ class _MathKeyboardOverlay extends ConsumerWidget {
         offset: isMathVisible ? Offset.zero : const Offset(0, 1),
         duration: const Duration(milliseconds: 300),
         curve: Curves.fastOutSlowIn,
-        child: GestureDetector(
-          onVerticalDragUpdate: (details) {
-            if (isMathVisible) {
-              controller.setHeight(state.height - details.delta.dy);
-            }
-          },
-          child: Material(
-            child: SizedBox(
-              height: state.height,
-              child: HeroControllerScope.none(
-                child: Navigator(
-                  key: navigatorKey,
-                  onGenerateRoute: (settings) => MaterialPageRoute(
-                    builder: (context) => const MathKeyboardView(),
-                  ),
+        child: Material(
+          child: SizedBox(
+            height: effectiveHeight,
+            child: HeroControllerScope.none(
+              child: Navigator(
+                key: navigatorKey,
+                onGenerateRoute: (settings) => MaterialPageRoute(
+                  builder: (context) => const MathKeyboardView(),
                 ),
               ),
             ),

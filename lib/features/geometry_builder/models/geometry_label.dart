@@ -17,24 +17,36 @@ class GeometryLabel {
   final GeometryLabelType type;
   final String text;
   final Offset position;
+  final double fontSize;
+  final double rotation;
+  final bool isBold;
 
   const GeometryLabel({
     required this.id,
     required this.type,
     required this.text,
     required this.position,
+    this.fontSize = 14,
+    this.rotation = 0,
+    this.isBold = true,
   });
 
   GeometryLabel copyWith({
     GeometryLabelType? type,
     String? text,
     Offset? position,
+    double? fontSize,
+    double? rotation,
+    bool? isBold,
   }) {
     return GeometryLabel(
       id: id,
       type: type ?? this.type,
       text: text ?? this.text,
       position: position ?? this.position,
+      fontSize: fontSize ?? this.fontSize,
+      rotation: rotation ?? this.rotation,
+      isBold: isBold ?? this.isBold,
     );
   }
 
@@ -44,6 +56,9 @@ class GeometryLabel {
     'text': text,
     'x': position.dx,
     'y': position.dy,
+    'fontSize': fontSize,
+    'rotation': rotation,
+    'isBold': isBold,
   };
 
   factory GeometryLabel.fromJson(Map<String, dynamic> json) {
@@ -58,6 +73,11 @@ class GeometryLabel {
         (json['x'] as num?)?.toDouble() ?? 0,
         (json['y'] as num?)?.toDouble() ?? 0,
       ),
+      fontSize: ((json['fontSize'] as num?)?.toDouble() ?? 14)
+          .clamp(8.0, 42.0)
+          .toDouble(),
+      rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
+      isBold: json['isBold'] as bool? ?? true,
     );
   }
 }

@@ -8,6 +8,8 @@ import 'package:uuid/uuid.dart';
 import 'dart:convert';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_attachment_preview.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builder.dart';
+import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
+import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
 
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
@@ -20,11 +22,13 @@ import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
 class QuestionEditorSheet extends ConsumerStatefulWidget {
   final String sectionId;
   final Question? question;
+  final QuestionType? initialType;
 
   const QuestionEditorSheet({
     super.key,
     required this.sectionId,
     this.question,
+    this.initialType,
   });
 
   @override
@@ -51,7 +55,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
   void initState() {
     super.initState();
     final defaults = ref.read(questionEditorDefaultsProvider);
-    _type = widget.question?.type ?? defaults.type;
+    _type = widget.question?.type ?? widget.initialType ?? defaults.type;
     _marks = widget.question?.marks ?? defaults.marks;
     _isOptional = widget.question?.isOptional ?? defaults.isOptional;
     _marksController = TextEditingController(text: _formatMarks(_marks));
@@ -281,6 +285,137 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     });
   }
 
+  void _setMarks(double value) {
+    final safeValue = value.clamp(0.5, 100.0).toDouble();
+    setState(() {
+      _marks = safeValue;
+      _marksController.text = _formatMarks(safeValue);
+      _marksController.selection = TextSelection.collapsed(
+        offset: _marksController.text.length,
+      );
+      _marksError = null;
+    });
+  }
+
+  void _insertQuestionText(String text) {
+    final range = _safeSelectionRange();
+    _controller.replaceText(range.$1, range.$2, text, null);
+    _controller.updateSelection(
+      TextSelection.collapsed(offset: range.$1 + text.length),
+      ChangeSource.local,
+    );
+    _focusQuestionEditor();
+  }
+
+  Future<void> _insertGeometryDiagram() async {
+    ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
+    final diagram = await GeometryBuilderScreen.show(context);
+    if (diagram == null || !mounted) return;
+
+    GeometryDiagramRegistry.instance.save(diagram);
+    final range = _safeSelectionRange();
+    final data = jsonEncode({
+      'id': diagram.id,
+      'height': 200.0,
+      'widthFactor': 1.0,
+      'alignmentX': 0.0,
+      'diagram': diagram.toJson(),
+    });
+    _controller.replaceText(
+      range.$1,
+      range.$2,
+      BlockEmbed.custom(CustomBlockEmbed('geometry', data)),
+      null,
+    );
+    _controller.updateSelection(
+      TextSelection.collapsed(offset: range.$1 + 1),
+      ChangeSource.local,
+    );
+  }
+
+  (int, int) _safeSelectionRange() {
+    final selection = _controller.selection;
+    final documentEnd = (_controller.document.length - 1)
+        .clamp(0, 1 << 30)
+        .toInt();
+    final rawBase = selection.baseOffset < 0
+        ? documentEnd
+        : selection.baseOffset.clamp(0, documentEnd).toInt();
+    final rawExtent = selection.extentOffset < 0
+        ? rawBase
+        : selection.extentOffset.clamp(0, documentEnd).toInt();
+    final start = rawBase <= rawExtent ? rawBase : rawExtent;
+    return (start, (rawExtent - rawBase).abs());
+  }
+
+  Future<void> _pasteOptions() async {
+    final pasteController = TextEditingController();
+    final pasted = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Paste option list'),
+        content: SizedBox(
+          width: 480,
+          child: TextField(
+            controller: pasteController,
+            autofocus: true,
+            minLines: 5,
+            maxLines: 10,
+            decoration: const InputDecoration(
+              hintText: 'Paste one option per line\nA. First option\nB. Second option',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, pasteController.text),
+            child: const Text('Use options'),
+          ),
+        ],
+      ),
+    );
+    pasteController.dispose();
+    if (pasted == null || !mounted) return;
+
+    final lines = pasted
+        .split(RegExp(r'[\r\n]+'))
+        .map(
+          (line) => line
+              .replaceFirst(
+                RegExp(r'^\s*(?:[A-Ha-h]|\d{1,2})\s*[\.\)\:\-]\s*'),
+                '',
+              )
+              .replaceFirst(RegExp(r'^\s*[•●▪◦]\s*'), '')
+              .trim(),
+        )
+        .where((line) => line.isNotEmpty)
+        .toList();
+    if (lines.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Paste at least two non-empty lines.')),
+      );
+      return;
+    }
+
+    final oldControllers = _optionControllers.values.toList();
+    setState(() {
+      _options = lines
+          .map((line) => QuestionOption(id: const Uuid().v4(), text: line))
+          .toList();
+      _optionControllers.clear();
+      _syncOptionControllers();
+      _optionsError = null;
+    });
+    for (final controller in oldControllers) {
+      controller.dispose();
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -305,9 +440,13 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
     final isMathActive =
         keyboardState.isVisible && keyboardState.type == KeyboardType.math;
-    final mathKeyboardInset = isMathActive ? keyboardState.height : 0.0;
+    final maxKeyboardInset = MediaQuery.sizeOf(context).height * 0.62;
+    final mathKeyboardInset = isMathActive
+        ? keyboardState.height.clamp(0.0, maxKeyboardInset).toDouble()
+        : 0.0;
     _controller.readOnly = isMathActive;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sheetHeightFactor = MediaQuery.sizeOf(context).width < 700 ? 0.98 : 0.9;
 
     return CallbackShortcuts(
       bindings: {
@@ -318,16 +457,16 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
       },
       child: Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.9,
+          maxHeight: MediaQuery.of(context).size.height * sheetHeightFactor,
         ),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom + mathKeyboardInset,
-          left: 20,
-          right: 20,
+          left: MediaQuery.sizeOf(context).width < 360 ? 12 : 20,
+          right: MediaQuery.sizeOf(context).width < 360 ? 12 : 20,
           top: 20,
         ),
         child: SingleChildScrollView(
@@ -404,26 +543,60 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 ],
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _marksController,
-                decoration: InputDecoration(
-                  labelText: 'Marks',
-                  hintText: 'Example: 2',
-                  errorText: _marksError,
-                  prefixIcon: const Icon(Icons.score_outlined),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+              Row(
+                children: [
+                  IconButton.filledTonal(
+                    tooltip: 'Reduce marks',
+                    onPressed: () => _setMarks(_marks - 0.5),
+                    icon: const Icon(Icons.remove_rounded),
                   ),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                onChanged: (val) {
-                  _marks = double.tryParse(val) ?? 0;
-                  if (_marksError != null && _marks > 0) {
-                    setState(() => _marksError = null);
-                  }
-                },
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _marksController,
+                      textAlign: TextAlign.center,
+                      decoration: InputDecoration(
+                        labelText: 'Marks',
+                        hintText: 'Example: 2',
+                        errorText: _marksError,
+                        prefixIcon: const Icon(Icons.score_outlined),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (val) {
+                        _marks = double.tryParse(val) ?? 0;
+                        if (_marksError != null && _marks > 0) {
+                          setState(() => _marksError = null);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: 'Increase marks',
+                    onPressed: () => _setMarks(_marks + 0.5),
+                    icon: const Icon(Icons.add_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  for (final value in const [1.0, 2.0, 3.0, 5.0, 10.0])
+                    ChoiceChip(
+                      label: Text(_formatMarks(value)),
+                      selected: _marks == value,
+                      showCheckmark: false,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) => _setMarks(value),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               Container(
@@ -447,15 +620,28 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 ),
               ),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text(
-                    'Question Content',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      color: isDark ? Colors.white : Colors.black,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Text(
+                      'Question Content',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: isDark ? Colors.white : Colors.black,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _insertGeometryDiagram,
+                    icon: const Icon(Icons.architecture_outlined, size: 18),
+                    label: const Text(
+                      'Diagram',
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                   TextButton.icon(
@@ -467,22 +653,60 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                         ),
                       );
                       if (text != null && mounted) {
-                        _controller.document.insert(
-                          _controller.selection.baseOffset,
-                          text,
-                        );
+                        _insertQuestionText(text);
                       }
                     },
-                    icon: const Icon(Icons.document_scanner_outlined, size: 18),
+                    icon: const Icon(
+                      Icons.document_scanner_outlined,
+                      size: 18,
+                    ),
                     label: const Text(
                       'Scan',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    style: TextButton.styleFrom(foregroundColor: Colors.blue),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.blue,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              Text(
+                'Quick wording',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: isDark ? Colors.grey[300] : Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 7),
+              SizedBox(
+                height: 38,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final prompt in const [
+                      ('Solve', 'Solve: '),
+                      ('Find', 'Find the value of '),
+                      ('Calculate', 'Calculate '),
+                      ('Prove', 'Prove that '),
+                      ('Given', 'Given that '),
+                      ('Draw', 'Draw a neat labelled diagram of '),
+                      ('Reason', 'Give a reason for your answer. '),
+                      ('Blank', '__________'),
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 7),
+                        child: ActionChip(
+                          avatar: const Icon(Icons.add_rounded, size: 15),
+                          label: Text(prompt.$1),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _insertQuestionText(prompt.$2),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               Container(
                 decoration: BoxDecoration(
                   border: Border.all(
@@ -553,22 +777,32 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
               ],
               if (_type == QuestionType.mcq) ...[
                 const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text(
-                      'Options',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                        color: isDark ? Colors.white : Colors.black,
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text(
+                        'Options',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          color: isDark ? Colors.white : Colors.black,
+                        ),
                       ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _pasteOptions,
+                      icon: const Icon(Icons.content_paste_rounded, size: 18),
+                      label: const Text('Paste list'),
                     ),
                     TextButton.icon(
                       onPressed: _addOption,
                       icon: const Icon(Icons.add_circle_outline, size: 18),
                       label: const Text(
-                        'Add Option',
+                        'Add',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),

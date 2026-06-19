@@ -4,6 +4,7 @@ import 'package:edusheet/features/pdf/presentation/providers/template_provider.d
 import 'package:edusheet/features/pdf/presentation/widgets/template_header_preview.dart';
 import 'package:flutter/material.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builder.dart';
+import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -18,6 +19,7 @@ import 'package:edusheet/features/pdf/services/word_export_service.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/editor/services/section_word_parser.dart';
 import '../widgets/question_editor_sheet.dart';
+import '../widgets/question_bank_picker_sheet.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'dart:convert';
 import 'package:flutter/services.dart';
@@ -148,17 +150,26 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         bottomNavigationBar: !_showPreview
             ? _buildBottomNavigation(paper)
             : null,
-        floatingActionButton: !_showPreview && _currentPage == 0
+        floatingActionButton: !_showPreview
             ? FloatingActionButton.extended(
                 onPressed: () {
-                  ref.read(editorStateProvider.notifier).addSection();
-                  final targetPage =
-                      paper.sections.length +
-                      1; // Slide 0 is setup, sections start at 1
-                  _goToPage(targetPage);
+                  if (_currentPage == 0) {
+                    ref.read(editorStateProvider.notifier).addSection();
+                    _goToPage(paper.sections.length + 1);
+                    return;
+                  }
+                  if (_currentPage <= paper.sections.length) {
+                    _showQuestionEditor(paper.sections[_currentPage - 1].id);
+                  }
                 },
-                icon: const Icon(Icons.add),
-                label: const Text('Add Section'),
+                icon: Icon(
+                  _currentPage == 0
+                      ? Icons.add_box_outlined
+                      : Icons.post_add_rounded,
+                ),
+                label: Text(
+                  _currentPage == 0 ? 'Add Section' : 'Add Question',
+                ),
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
@@ -172,50 +183,105 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
 
   Widget _buildBottomNavigation(Paper paper) {
     final totalPages = paper.sections.length + 1;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(
-          top: BorderSide(color: Theme.of(context).dividerColor.withAlpha(13)),
-        ),
-      ),
+    final title = _currentPage == 0
+        ? 'Paper setup'
+        : _currentPage <= paper.sections.length
+        ? paper.sections[_currentPage - 1].title
+        : 'Section';
+
+    return Material(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      elevation: 8,
       child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            IconButton(
-              onPressed: _currentPage > 0
-                  ? () => _goToPage(_currentPage - 1)
-                  : null,
-              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-            ),
-            Row(
-              children: List.generate(totalPages, (index) {
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: _currentPage == index ? 24 : 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: _currentPage == index
-                        ? Colors.blue
-                        : Colors.grey.withAlpha(76),
-                    borderRadius: BorderRadius.circular(4),
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+          child: Row(
+            children: [
+              IconButton.filledTonal(
+                tooltip: 'Previous page',
+                onPressed: _currentPage > 0
+                    ? () => _goToPage(_currentPage - 1)
+                    : null,
+                icon: const Icon(Icons.chevron_left_rounded),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => _showPagePicker(paper),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          'Page ${_currentPage + 1} of $totalPages • tap to jump',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              }),
-            ),
-            IconButton(
-              onPressed: _currentPage < totalPages - 1
-                  ? () => _goToPage(_currentPage + 1)
-                  : null,
-              icon: const Icon(Icons.arrow_forward_ios, size: 20),
-            ),
-          ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                tooltip: 'Next page',
+                onPressed: _currentPage < totalPages - 1
+                    ? () => _goToPage(_currentPage + 1)
+                    : null,
+                icon: const Icon(Icons.chevron_right_rounded),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _showPagePicker(Paper paper) async {
+    final page = await showModalBottomSheet<int>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+        children: [
+          ListTile(
+            leading: const Icon(Icons.tune_rounded),
+            title: const Text('Paper setup'),
+            selected: _currentPage == 0,
+            onTap: () => Navigator.pop(context, 0),
+          ),
+          for (final entry in paper.sections.indexed)
+            ListTile(
+              leading: CircleAvatar(child: Text('${entry.$1 + 1}')),
+              title: Text(entry.$2.title),
+              subtitle: Text(
+                '${entry.$2.questions.length} questions • ${entry.$2.totalMarks.toStringAsFixed(entry.$2.totalMarks == entry.$2.totalMarks.roundToDouble() ? 0 : 1)} marks',
+              ),
+              selected: _currentPage == entry.$1 + 1,
+              onTap: () => Navigator.pop(context, entry.$1 + 1),
+            ),
+        ],
+      ),
+    );
+    if (page != null && mounted) _goToPage(page);
   }
 
   Widget _buildEditor(Paper paper) {
@@ -232,7 +298,10 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   double _editorBottomPadding({double base = 100}) {
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
     if (keyboardState.isVisible && keyboardState.type == KeyboardType.math) {
-      return keyboardState.height + base;
+      final effectiveHeight = keyboardState.height
+          .clamp(0.0, MediaQuery.sizeOf(context).height * 0.62)
+          .toDouble();
+      return effectiveHeight + base;
     }
 
     return base;
@@ -370,8 +439,63 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
             ],
           ),
         ),
+        const SizedBox(height: 20),
+        _buildStartQuestionsCard(paper),
         const SizedBox(height: 80),
       ],
+    );
+  }
+
+  Widget _buildStartQuestionsCard(Paper paper) {
+    final hasSections = paper.sections.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Theme.of(context).colorScheme.primaryContainer,
+            Theme.of(context).colorScheme.secondaryContainer,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.auto_stories_rounded),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Ready to write questions?',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            hasSections
+                ? 'Continue to ${paper.sections.first.title}. You can add MCQ, descriptive, fill-in-the-blank, diagrams, or bank questions.'
+                : 'Create the first section, then start adding questions immediately.',
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                if (!hasSections) {
+                  ref.read(editorStateProvider.notifier).addSection();
+                }
+                _goToPage(1);
+              },
+              icon: Icon(hasSections ? Icons.arrow_forward : Icons.add),
+              label: Text(hasSections ? 'Start writing questions' : 'Create first section'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -421,8 +545,86 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   Widget _buildSectionSlide(PaperSection section) {
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.fromLTRB(20, 20, 20, _editorBottomPadding()),
-      children: [_buildSectionEditor(section, key: ValueKey(section.id))],
+      padding: EdgeInsets.fromLTRB(14, 14, 14, _editorBottomPadding()),
+      children: [
+        _buildQuestionQuickActions(section),
+        const SizedBox(height: 10),
+        _buildSectionEditor(section, key: ValueKey(section.id)),
+      ],
+    );
+  }
+
+  Widget _buildQuestionQuickActions(PaperSection section) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.flash_on_rounded,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 7),
+              const Expanded(
+                child: Text(
+                  'Quick add question',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => _showQuestionBankPicker(section),
+                icon: const Icon(Icons.library_books_outlined, size: 18),
+                label: const Text('Bank'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          SizedBox(
+            height: 42,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _QuickQuestionButton(
+                  label: 'Descriptive',
+                  icon: Icons.subject_rounded,
+                  onPressed: () => _showQuestionEditor(
+                    section.id,
+                    initialType: QuestionType.descriptive,
+                  ),
+                ),
+                _QuickQuestionButton(
+                  label: 'MCQ',
+                  icon: Icons.check_circle_outline_rounded,
+                  onPressed: () => _showQuestionEditor(
+                    section.id,
+                    initialType: QuestionType.mcq,
+                  ),
+                ),
+                _QuickQuestionButton(
+                  label: 'Fill blank',
+                  icon: Icons.edit_note_rounded,
+                  onPressed: () => _showQuestionEditor(
+                    section.id,
+                    initialType: QuestionType.fillInTheBlanks,
+                  ),
+                ),
+                _QuickQuestionButton(
+                  label: 'Word mode',
+                  icon: Icons.article_outlined,
+                  onPressed: () => _showWordModeEditor(section),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -818,55 +1020,71 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     border: Border.all(color: Colors.orange.withAlpha(25)),
                   ),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.help_outline,
-                        size: 18,
-                        color: Colors.orange,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Student must answer: ',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                      const Padding(
+                        padding: EdgeInsets.only(top: 9),
+                        child: Icon(
+                          Icons.help_outline,
+                          size: 18,
+                          color: Colors.orange,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 60,
-                        child: TextFormField(
-                          initialValue: section.requiredCount?.toString(),
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            hintText: 'All',
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 8,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (val) {
-                            final count = int.tryParse(val);
-                            ref
-                                .read(editorStateProvider.notifier)
-                                .updateSection(
-                                  section.id,
-                                  requiredCount: count,
-                                  clearRequiredCount: val.isEmpty,
-                                );
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 9),
                       Expanded(
-                        child: Text(
-                          'out of ${section.questions.length}',
-                          style: const TextStyle(fontSize: 13),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Student must answer',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                SizedBox(
+                                  width: 70,
+                                  child: TextFormField(
+                                    initialValue:
+                                        section.requiredCount?.toString(),
+                                    textAlign: TextAlign.center,
+                                    decoration: InputDecoration(
+                                      hintText: 'All',
+                                      isDense: true,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 8,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (val) {
+                                      final count = int.tryParse(val);
+                                      ref
+                                          .read(editorStateProvider.notifier)
+                                          .updateSection(
+                                            section.id,
+                                            requiredCount: count,
+                                            clearRequiredCount: val.isEmpty,
+                                          );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'out of ${section.questions.length} questions',
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -889,20 +1107,64 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     ),
                   ),
                 ),
-                OutlinedButton.icon(
-                  onPressed: () => _showWordModeEditor(section),
-                  icon: const Icon(Icons.article_outlined, size: 18),
-                  label: const Text('Word Mode'),
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                PopupMenuButton<String>(
+                  tooltip: 'Question tools',
+                  icon: const Icon(Icons.more_vert_rounded),
+                  onSelected: (value) {
+                    if (value == 'bank') {
+                      _showQuestionBankPicker(section);
+                    } else if (value == 'word') {
+                      _showWordModeEditor(section);
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'bank',
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.library_books_outlined),
+                        title: Text('Add from question bank'),
+                      ),
                     ),
-                  ),
+                    PopupMenuItem(
+                      value: 'word',
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.article_outlined),
+                        title: Text('Open Word mode'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
+          if (section.questions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Column(
+                  children: [
+                    Icon(Icons.note_add_outlined, size: 34),
+                    SizedBox(height: 7),
+                    Text(
+                      'No questions yet',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Use Quick add above or the Add Question button below.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ReorderableListView(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -962,27 +1224,51 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         color: q.isOptional ? Colors.grey : Colors.blueGrey,
                       ),
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined, size: 20),
-                          onPressed: () =>
-                              _showQuestionEditor(section.id, question: q),
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.all(8),
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            size: 20,
-                            color: Colors.redAccent,
+                    onTap: () =>
+                        _showQuestionEditor(section.id, question: q),
+                    trailing: PopupMenuButton<String>(
+                      tooltip: 'Question actions',
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'edit':
+                            _showQuestionEditor(section.id, question: q);
+                          case 'duplicate':
+                            ref
+                                .read(editorStateProvider.notifier)
+                                .duplicateQuestion(section.id, q.id);
+                          case 'delete':
+                            ref
+                                .read(editorStateProvider.notifier)
+                                .deleteQuestion(section.id, q.id);
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.edit_outlined),
+                            title: Text('Edit'),
                           ),
-                          onPressed: () => ref
-                              .read(editorStateProvider.notifier)
-                              .deleteQuestion(section.id, q.id),
-                          constraints: const BoxConstraints(),
-                          padding: const EdgeInsets.all(8),
+                        ),
+                        PopupMenuItem(
+                          value: 'duplicate',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.copy_all_outlined),
+                            title: Text('Duplicate'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                            ),
+                            title: Text('Delete'),
+                          ),
                         ),
                       ],
                     ),
@@ -1173,12 +1459,45 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
-  void _showQuestionEditor(String sectionId, {Question? question}) {
+  void _showQuestionEditor(
+    String sectionId, {
+    Question? question,
+    QuestionType? initialType,
+  }) {
     showModalBottomSheet(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
-      builder: (context) =>
-          QuestionEditorSheet(sectionId: sectionId, question: question),
+      builder: (context) => QuestionEditorSheet(
+        sectionId: sectionId,
+        question: question,
+        initialType: initialType,
+      ),
+    );
+  }
+
+  Future<void> _showQuestionBankPicker(PaperSection section) async {
+    final questions = await showModalBottomSheet<List<Question>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => const FractionallySizedBox(
+        heightFactor: 0.9,
+        child: QuestionBankPickerSheet(),
+      ),
+    );
+    if (questions == null || questions.isEmpty || !mounted) return;
+
+    ref
+        .read(editorStateProvider.notifier)
+        .addQuestionsFromBank(section.id, questions);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${questions.length} question${questions.length == 1 ? '' : 's'} added from the bank.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -1837,6 +2156,10 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
 
 enum _PaperExportFormat { pdf, word, app }
 
+enum _WordRibbonTab { home, insert, paper, view }
+
+enum _WordViewMode { page, mobile }
+
 class _SectionWordModeScreen extends ConsumerStatefulWidget {
   final PaperSection section;
 
@@ -1853,17 +2176,28 @@ class _SectionWordModeScreenState
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
   String? _errorText;
+  _WordRibbonTab _selectedRibbonTab = _WordRibbonTab.home;
+  _WordViewMode _viewMode = _WordViewMode.mobile;
+  bool _ribbonExpanded = true;
+  bool _isDirty = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = quill.QuillController.basic();
     final paper = ref.read(editorStateProvider);
-    _controller.document.insert(0, _sectionWordModeText(widget.section, paper));
+    _controller = quill.QuillController(
+      document: _sectionWordModeDocument(widget.section, paper),
+      selection: const TextSelection.collapsed(offset: 0),
+    );
     _controller.addListener(_handleDocumentChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusNode.requestFocus();
+      if (!mounted) return;
+      _viewMode = MediaQuery.sizeOf(context).width < 700
+          ? _WordViewMode.mobile
+          : _WordViewMode.page;
+      _focusNode.requestFocus();
+      setState(() {});
     });
   }
 
@@ -1878,7 +2212,10 @@ class _SectionWordModeScreenState
 
   void _handleDocumentChanged() {
     if (!mounted) return;
-    setState(() {});
+    setState(() {
+      _isDirty = true;
+      _errorText = null;
+    });
   }
 
   PaperTemplate _templateForPaper(Paper paper) {
@@ -1909,24 +2246,27 @@ class _SectionWordModeScreenState
     };
   }
 
-  void _insertTextAtCursor(String text) {
-    final docEnd = (_controller.document.length - 1).clamp(0, 1 << 30);
+  (int, int) _safeSelectionRange() {
+    final documentEnd = (_controller.document.length - 1)
+        .clamp(0, 1 << 30)
+        .toInt();
     final base = _controller.selection.baseOffset;
     final extent = _controller.selection.extentOffset;
-    final safeBase = base < 0 ? docEnd : base.clamp(0, docEnd);
-    final safeExtent = extent < 0 ? safeBase : extent.clamp(0, docEnd);
-    final index = safeBase <= safeExtent ? safeBase : safeExtent;
-    final length = (safeBase - safeExtent).abs();
+    final safeBase = base < 0 ? documentEnd : base.clamp(0, documentEnd).toInt();
+    final safeExtent = extent < 0
+        ? safeBase
+        : extent.clamp(0, documentEnd).toInt();
+    final start = safeBase <= safeExtent ? safeBase : safeExtent;
+    return (start, (safeBase - safeExtent).abs());
+  }
 
-    _controller.replaceText(index, length, text, null);
+  void _insertTextAtCursor(String text) {
+    final range = _safeSelectionRange();
+    _controller.replaceText(range.$1, range.$2, text, null);
     _controller.updateSelection(
-      TextSelection.collapsed(offset: (index + text.length).clamp(0, docEnd)),
+      TextSelection.collapsed(offset: range.$1 + text.length),
       quill.ChangeSource.local,
     );
-
-    if (_errorText != null) {
-      setState(() => _errorText = null);
-    }
     _focusNode.requestFocus();
   }
 
@@ -1945,7 +2285,7 @@ class _SectionWordModeScreenState
 
   void _insertQuestionBlock() {
     final next = _nextQuestionLabel();
-    _insertTextAtCursor('\n\n--- Question $next ---\n');
+    _insertTextAtCursor('\n\n--- Question $next ---\nWrite question here\n');
   }
 
   void _insertMcqBlock() {
@@ -1971,6 +2311,38 @@ class _SectionWordModeScreenState
     _insertTextAtCursor('\n\n--- Page Break ---\n\n');
   }
 
+  Future<void> _insertGeometryDiagram() async {
+    ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
+    final diagram = await GeometryBuilderScreen.show(context);
+    if (diagram == null || !mounted) return;
+
+    GeometryDiagramRegistry.instance.save(diagram);
+    final range = _safeSelectionRange();
+    final data = jsonEncode({
+      'id': diagram.id,
+      'height': 220.0,
+      'widthFactor': 1.0,
+      'alignmentX': 0.0,
+      'diagram': diagram.toJson(),
+    });
+    _controller.replaceText(
+      range.$1,
+      range.$2,
+      quill.BlockEmbed.custom(quill.CustomBlockEmbed('geometry', data)),
+      null,
+    );
+    _controller.updateSelection(
+      TextSelection.collapsed(offset: range.$1 + 1),
+      quill.ChangeSource.local,
+    );
+    _focusNode.requestFocus();
+  }
+
+  void _openMathKeyboard() {
+    _focusNode.requestFocus();
+    ref.read(mathKeyboardControllerProvider.notifier).showMathKeyboard();
+  }
+
   void _formatSelection(quill.Attribute attribute) {
     _controller.formatSelection(attribute);
     _focusNode.requestFocus();
@@ -1986,7 +2358,7 @@ class _SectionWordModeScreenState
         );
     final lineHeight = (template.questionFontSize * 1.65).clamp(18.0, 28.0);
     final linesPerPage = (bodyHeight / lineHeight).floor().clamp(8, 60);
-    return (wrappedLineCount / linesPerPage).ceil().clamp(1, 12);
+    return (wrappedLineCount / linesPerPage).ceil().clamp(1, 99);
   }
 
   void _showHeaderEditor(Paper paper, PaperTemplate template) {
@@ -2024,6 +2396,34 @@ class _SectionWordModeScreenState
     );
   }
 
+  Future<void> _closeEditor() async {
+    if (!_isDirty) {
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+
+    final close = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Discard document changes?'),
+        content: const Text(
+          'The paper header settings are already saved, but edits inside this Word document have not been applied to the section.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (close == true && mounted) Navigator.pop(context);
+  }
+
   void _apply() {
     final defaults = ref.read(questionEditorDefaultsProvider);
     final deltaString = jsonEncode(_controller.document.toDelta().toJson());
@@ -2032,10 +2432,11 @@ class _SectionWordModeScreenState
       defaultType: defaults.type,
       defaultMarks: defaults.marks,
       defaultOptional: defaults.isOptional,
+      sourceQuestions: widget.section.questions,
     );
 
     if (questions.isEmpty) {
-      setState(() => _errorText = 'Add at least one question before applying.');
+      setState(() => _errorText = 'Add at least one question before updating.');
       return;
     }
 
@@ -2043,12 +2444,13 @@ class _SectionWordModeScreenState
         .read(editorStateProvider.notifier)
         .bulkUpdateQuestions(widget.section.id, questions);
 
+    _isDirty = false;
     final messenger = ScaffoldMessenger.of(context);
     Navigator.pop(context);
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          'Updated ${questions.length} question${questions.length == 1 ? '' : 's'}',
+          'Updated ${questions.length} question${questions.length == 1 ? '' : 's'} in ${widget.section.title}',
         ),
         behavior: SnackBarBehavior.floating,
       ),
@@ -2058,7 +2460,9 @@ class _SectionWordModeScreenState
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isMobile = MediaQuery.sizeOf(context).width < 700;
+    final width = MediaQuery.sizeOf(context).width;
+    final isMobile = width < 700;
+    final showUpdateLabel = width >= 410;
     final paper = ref.watch(editorStateProvider);
     final template = _templateForPaper(paper);
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
@@ -2075,21 +2479,50 @@ class _SectionWordModeScreenState
       },
       child: Scaffold(
         backgroundColor: isDark
-            ? const Color(0xFF1A1A1A)
-            : const Color(0xFFF5F5F5),
+            ? const Color(0xFF191A1D)
+            : const Color(0xFFF1F3F6),
         appBar: AppBar(
           elevation: 0,
-          title: Text(
-            '${widget.section.title} Word Mode',
-            style: const TextStyle(fontSize: 14),
+          leading: IconButton(
+            tooltip: 'Close Word editor',
+            onPressed: _closeEditor,
+            icon: const Icon(Icons.close_rounded),
+          ),
+          titleSpacing: 4,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Word editor',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+              Text(
+                widget.section.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
           actions: [
-            TextButton.icon(
-              icon: const Icon(Icons.check_rounded, size: 20),
-              label: const Text('Apply'),
-              onPressed: _apply,
-            ),
-            const SizedBox(width: 8),
+            if (showUpdateLabel)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilledButton.icon(
+                  onPressed: _apply,
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  label: const Text('Update section'),
+                ),
+              )
+            else
+              IconButton.filled(
+                tooltip: 'Update section',
+                onPressed: _apply,
+                icon: const Icon(Icons.check_rounded),
+              ),
+            const SizedBox(width: 6),
           ],
         ),
         body: Column(
@@ -2099,58 +2532,33 @@ class _SectionWordModeScreenState
               template: template,
               isCompact: isMobile,
             ),
+            _WordModeGuideBar(
+              ribbonExpanded: _ribbonExpanded,
+              onShowInsert: () {
+                setState(() {
+                  _selectedRibbonTab = _WordRibbonTab.insert;
+                  _ribbonExpanded = true;
+                });
+              },
+            ),
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(bottom: mathKeyboardInset),
-                child: Stack(
-                  children: [
-                    _buildDocumentWorkspace(isDark, paper, template),
-                    Positioned(
-                      bottom: 20,
-                      left: 20,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).cardColor,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 10,
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          '${widget.section.questions.length} source questions',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[700],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                child: _buildDocumentWorkspace(isDark, paper, template),
               ),
             ),
+            _buildStatusBar(template),
             if (_errorText != null)
               Container(
                 width: double.infinity,
                 color: Colors.redAccent.withValues(alpha: 0.1),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                 child: Text(
                   _errorText!,
                   style: const TextStyle(
                     color: Colors.redAccent,
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -2163,201 +2571,241 @@ class _SectionWordModeScreenState
   Widget _buildWordModeRibbon({
     required Paper paper,
     required PaperTemplate template,
-    bool isCompact = false,
+    required bool isCompact,
   }) {
-    return Container(
-      height: isCompact ? 92 : 140,
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surface,
+      elevation: 2,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 42,
+            child: Row(
+              children: [
+                Expanded(
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    children: [
+                      _WordRibbonTabButton(
+                        label: 'Home',
+                        selected: _selectedRibbonTab == _WordRibbonTab.home,
+                        onTap: () => _selectRibbonTab(_WordRibbonTab.home),
+                      ),
+                      _WordRibbonTabButton(
+                        label: 'Insert',
+                        selected: _selectedRibbonTab == _WordRibbonTab.insert,
+                        onTap: () => _selectRibbonTab(_WordRibbonTab.insert),
+                      ),
+                      _WordRibbonTabButton(
+                        label: 'Paper',
+                        selected: _selectedRibbonTab == _WordRibbonTab.paper,
+                        onTap: () => _selectRibbonTab(_WordRibbonTab.paper),
+                      ),
+                      _WordRibbonTabButton(
+                        label: 'View',
+                        selected: _selectedRibbonTab == _WordRibbonTab.view,
+                        onTap: () => _selectRibbonTab(_WordRibbonTab.view),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: _ribbonExpanded ? 'Collapse ribbon' : 'Expand ribbon',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () =>
+                      setState(() => _ribbonExpanded = !_ribbonExpanded),
+                  icon: Icon(
+                    _ribbonExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ],
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            child: !_ribbonExpanded
+                ? const SizedBox.shrink()
+                : Container(
+                    height: isCompact ? 72 : 78,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerLowest,
+                      border: Border(
+                        top: BorderSide(
+                          color: theme.dividerColor.withValues(alpha: 0.12),
+                        ),
+                      ),
+                    ),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                      child: Row(
+                        children: _ribbonCommands(paper, template),
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.symmetric(
-          horizontal: isCompact ? 8 : 16,
-          vertical: 8,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _WordModeRibbonGroup(
-              label: 'EDIT',
-              children: [
-                _WordModeRibbonButton(
-                  icon: Icons.check_rounded,
-                  label: 'Apply',
-                  onTap: _apply,
-                ),
-                _WordModeRibbonButton(
-                  icon: Icons.close_rounded,
-                  label: 'Close',
-                  onTap: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const _WordModeVerticalDivider(),
-            _WordModeRibbonGroup(
-              label: 'HEADER',
-              children: [
-                _WordModeRibbonButton(
-                  icon: Icons.edit_note_rounded,
-                  label: 'Header',
-                  onTap: () => _showHeaderEditor(paper, template),
-                ),
-                _WordModeRibbonButton(
-                  icon: Icons.style_rounded,
-                  label: 'Template',
-                  onTap: () => _showTemplateChooser(paper),
-                ),
-                _WordModeRibbonButton(
-                  icon: Icons.format_list_numbered_rounded,
-                  label: 'Number',
-                  onTap: () => _showNumberingChooser(paper),
-                ),
-              ],
-            ),
-            const _WordModeVerticalDivider(),
-            _WordModeRibbonGroup(
-              label: 'INSERT',
-              children: [
-                _WordModeRibbonButton(
-                  icon: Icons.add_circle_outline,
-                  label: 'Question',
-                  onTap: _insertQuestionBlock,
-                ),
-                _WordModeRibbonButton(
-                  icon: Icons.checklist_rtl,
-                  label: 'MCQ',
-                  onTap: _insertMcqBlock,
-                ),
-                _WordModeRibbonButton(
-                  icon: Icons.short_text_rounded,
-                  label: 'Blank',
-                  onTap: _insertFillBlankBlock,
-                ),
-                _WordModeRibbonButton(
-                  icon: Icons.note_add_outlined,
-                  label: 'Page',
-                  onTap: _insertPageBreak,
-                ),
-              ],
-            ),
-            const _WordModeVerticalDivider(),
-            _WordModeRibbonGroup(
-              label: 'FORMAT',
-              children: [
-                _WordModeFormatButton(
-                  icon: Icons.format_bold,
-                  label: 'Bold',
-                  onTap: () => _formatSelection(quill.Attribute.bold),
-                ),
-                _WordModeFormatButton(
-                  icon: Icons.format_italic,
-                  label: 'Italic',
-                  onTap: () => _formatSelection(quill.Attribute.italic),
-                ),
-                _WordModeFormatButton(
-                  icon: Icons.format_underlined,
-                  label: 'Line',
-                  onTap: () => _formatSelection(quill.Attribute.underline),
-                ),
-                _WordModeFormatButton(
-                  icon: Icons.format_list_bulleted,
-                  label: 'Bullets',
-                  onTap: () => _formatSelection(quill.Attribute.ul),
-                ),
-                _WordModeFormatButton(
-                  icon: Icons.format_list_numbered,
-                  label: 'Numbers',
-                  onTap: () => _formatSelection(quill.Attribute.ol),
-                ),
-                _WordModeFormatButton(
-                  icon: Icons.format_align_center,
-                  label: 'Center',
-                  onTap: () =>
-                      _formatSelection(quill.Attribute.centerAlignment),
-                ),
-                if (!isCompact)
-                  _WordModeFormatButton(
-                    icon: Icons.format_align_left,
-                    label: 'Left',
-                    onTap: () =>
-                        _formatSelection(quill.Attribute.leftAlignment),
-                  ),
-                if (!isCompact)
-                  _WordModeFormatButton(
-                    icon: Icons.format_align_right,
-                    label: 'Right',
-                    onTap: () =>
-                        _formatSelection(quill.Attribute.rightAlignment),
-                  ),
-              ],
-            ),
-            const _WordModeVerticalDivider(),
-            _WordModeRibbonGroup(
-              label: 'SECTION',
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.section.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${widget.section.questions.length} questions',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _paperSizeLabel(template.paperSize),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        template.paperLayout == PaperLayout.twoColumn
-                            ? 'Two column'
-                            : 'Single column',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
+  }
+
+  void _selectRibbonTab(_WordRibbonTab tab) {
+    setState(() {
+      _selectedRibbonTab = tab;
+      _ribbonExpanded = true;
+    });
+  }
+
+  List<Widget> _ribbonCommands(Paper paper, PaperTemplate template) {
+    return switch (_selectedRibbonTab) {
+      _WordRibbonTab.home => [
+          _WordRibbonCommand(
+            icon: Icons.undo_rounded,
+            label: 'Undo',
+            onTap: () => _controller.undo(),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.redo_rounded,
+            label: 'Redo',
+            onTap: () => _controller.redo(),
+          ),
+          const _WordRibbonDivider(),
+          _WordRibbonCommand(
+            icon: Icons.format_bold_rounded,
+            label: 'Bold',
+            onTap: () => _formatSelection(quill.Attribute.bold),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.format_italic_rounded,
+            label: 'Italic',
+            onTap: () => _formatSelection(quill.Attribute.italic),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.format_underlined_rounded,
+            label: 'Underline',
+            onTap: () => _formatSelection(quill.Attribute.underline),
+          ),
+          const _WordRibbonDivider(),
+          _WordRibbonCommand(
+            icon: Icons.format_list_bulleted_rounded,
+            label: 'Bullets',
+            onTap: () => _formatSelection(quill.Attribute.ul),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.format_list_numbered_rounded,
+            label: 'Numbering',
+            onTap: () => _formatSelection(quill.Attribute.ol),
+          ),
+          const _WordRibbonDivider(),
+          _WordRibbonCommand(
+            icon: Icons.format_align_left_rounded,
+            label: 'Left',
+            onTap: () => _formatSelection(quill.Attribute.leftAlignment),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.format_align_center_rounded,
+            label: 'Centre',
+            onTap: () => _formatSelection(quill.Attribute.centerAlignment),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.format_align_right_rounded,
+            label: 'Right',
+            onTap: () => _formatSelection(quill.Attribute.rightAlignment),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.format_align_justify_rounded,
+            label: 'Justify',
+            onTap: () => _formatSelection(quill.Attribute.justifyAlignment),
+          ),
+        ],
+      _WordRibbonTab.insert => [
+          _WordRibbonCommand(
+            icon: Icons.add_circle_outline_rounded,
+            label: 'Question',
+            emphasized: true,
+            onTap: _insertQuestionBlock,
+          ),
+          _WordRibbonCommand(
+            icon: Icons.checklist_rtl_rounded,
+            label: 'MCQ',
+            onTap: _insertMcqBlock,
+          ),
+          _WordRibbonCommand(
+            icon: Icons.short_text_rounded,
+            label: 'Fill blank',
+            onTap: _insertFillBlankBlock,
+          ),
+          const _WordRibbonDivider(),
+          _WordRibbonCommand(
+            icon: Icons.architecture_outlined,
+            label: 'Diagram',
+            onTap: () => _insertGeometryDiagram(),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.functions_rounded,
+            label: 'Equation',
+            onTap: _openMathKeyboard,
+          ),
+          const _WordRibbonDivider(),
+          _WordRibbonCommand(
+            icon: Icons.insert_page_break_rounded,
+            label: 'Page break',
+            onTap: _insertPageBreak,
+          ),
+        ],
+      _WordRibbonTab.paper => [
+          _WordRibbonCommand(
+            icon: Icons.edit_note_rounded,
+            label: 'Header',
+            emphasized: true,
+            onTap: () => _showHeaderEditor(paper, template),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.style_rounded,
+            label: 'Template',
+            onTap: () => _showTemplateChooser(paper),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.format_list_numbered_rounded,
+            label: 'Question no.',
+            onTap: () => _showNumberingChooser(paper),
+          ),
+          const _WordRibbonDivider(),
+          _WordRibbonInfo(
+            title: _paperSizeLabel(template.paperSize),
+            subtitle: template.paperLayout == PaperLayout.twoColumn
+                ? 'Two columns'
+                : 'Single column',
+          ),
+        ],
+      _WordRibbonTab.view => [
+          _WordRibbonCommand(
+            icon: Icons.description_outlined,
+            label: 'Print view',
+            selected: _viewMode == _WordViewMode.page,
+            onTap: () => setState(() => _viewMode = _WordViewMode.page),
+          ),
+          _WordRibbonCommand(
+            icon: Icons.phone_android_rounded,
+            label: 'Mobile view',
+            selected: _viewMode == _WordViewMode.mobile,
+            onTap: () => setState(() => _viewMode = _WordViewMode.mobile),
+          ),
+          const _WordRibbonDivider(),
+          _WordRibbonInfo(
+            title: '${widget.section.questions.length}',
+            subtitle: 'source questions',
+          ),
+        ],
+    };
   }
 
   Widget _buildDocumentWorkspace(
@@ -2367,142 +2815,429 @@ class _SectionWordModeScreenState
   ) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final pageSize = _paperDimensions(template.paperSize);
-        final pageAspect = pageSize.width / pageSize.height;
-        final horizontalMargin = constraints.maxWidth < 760 ? 14.0 : 36.0;
-        final maxPageWidth = constraints.maxWidth < 760
-            ? constraints.maxWidth - (horizontalMargin * 2)
-            : 720.0;
-        final pageWidth = maxPageWidth.clamp(280.0, 720.0);
-        final pageHeight = (pageWidth / pageAspect).clamp(420.0, 1120.0);
-        final pagePadding = pageWidth < 560 ? 20.0 : 48.0;
-        final firstPageEditorHeight = (pageHeight - 250).clamp(120.0, 760.0);
-        final pageCount = _estimatedPageCount(firstPageEditorHeight, template);
+        if (_viewMode == _WordViewMode.mobile) {
+          return _buildMobileDocument(isDark, paper, template, constraints);
+        }
+        return _buildPageDocument(isDark, paper, template, constraints);
+      },
+    );
+  }
 
-        return SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalMargin,
-            vertical: 28,
+  Widget _buildMobileDocument(
+    bool isDark,
+    Paper paper,
+    PaperTemplate template,
+    BoxConstraints constraints,
+  ) {
+    final editorHeight = (constraints.maxHeight - 190).clamp(360.0, 900.0);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(10, 12, 10, 24),
+      child: Center(
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 760),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _errorText == null
+                  ? Colors.black.withValues(alpha: isDark ? 0.35 : 0.08)
+                  : Colors.redAccent,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 7),
+              ),
+            ],
           ),
-          child: Center(
-            child: Column(
-              children: [
-                _WordModePageShell(
-                  width: pageWidth,
-                  height: pageHeight,
-                  isDark: isDark,
-                  hasError: _errorText != null,
-                  label: '${_paperSizeLabel(template.paperSize)} Page 1',
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 20, 18, 24),
+            child: _buildDocumentContents(
+              paper: paper,
+              template: template,
+              editorHeight: editorHeight,
+              compact: true,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPageDocument(
+    bool isDark,
+    Paper paper,
+    PaperTemplate template,
+    BoxConstraints constraints,
+  ) {
+    final pageSize = _paperDimensions(template.paperSize);
+    final pageAspect = pageSize.width / pageSize.height;
+    final horizontalMargin = constraints.maxWidth < 760 ? 14.0 : 36.0;
+    final maxPageWidth = constraints.maxWidth < 760
+        ? constraints.maxWidth - (horizontalMargin * 2)
+        : 720.0;
+    final pageWidth = maxPageWidth.clamp(280.0, 720.0);
+    final pageHeight = (pageWidth / pageAspect).clamp(440.0, 1120.0);
+    final pagePadding = pageWidth < 560 ? 20.0 : 48.0;
+    final editorHeight = (pageHeight - 250).clamp(180.0, 790.0);
+    final pageCount = _estimatedPageCount(editorHeight, template);
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: horizontalMargin, vertical: 24),
+      child: Center(
+        child: _WordModePageShell(
+          width: pageWidth,
+          height: pageHeight,
+          isDark: isDark,
+          hasError: _errorText != null,
+          label:
+              '${_paperSizeLabel(template.paperSize)} print layout • about $pageCount page${pageCount == 1 ? '' : 's'}',
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: pagePadding,
+              vertical: pageWidth < 560 ? 22 : 42,
+            ),
+            child: _buildDocumentContents(
+              paper: paper,
+              template: template,
+              editorHeight: editorHeight,
+              compact: pageWidth < 560,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDocumentContents({
+    required Paper paper,
+    required PaperTemplate template,
+    required double editorHeight,
+    required bool compact,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TemplateHeaderPreview(paper: paper, template: template),
+        const SizedBox(height: 16),
+        if (widget.section.showTitle)
+          Text(
+            widget.section.title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: template.questionFontSize + 3,
+              fontWeight: FontWeight.w800,
+              color: Colors.black,
+            ),
+          ),
+        if ((widget.section.instruction ?? '').isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            widget.section.instruction!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+              color: Colors.black87,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+            borderRadius: BorderRadius.circular(compact ? 8 : 4),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: MathKeyboardField(
+            controller: _controller,
+            focusNode: _focusNode,
+            builder: (context, fieldFocusNode, isMathActive) {
+              return SizedBox(
+                height: editorHeight,
+                child: Theme(
+                  data: ThemeData.light(useMaterial3: true),
                   child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: pagePadding,
-                      vertical: pageWidth < 560 ? 22 : 42,
-                    ),
-                    child: ClipRect(
-                      child: SingleChildScrollView(
-                        physics: const ClampingScrollPhysics(),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            TemplateHeaderPreview(
-                              paper: paper,
-                              template: template,
-                            ),
-                            const SizedBox(height: 18),
-                            Text(
-                              widget.section.showTitle
-                                  ? widget.section.title
-                                  : '',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: template.questionFontSize + 3,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.black,
-                              ),
-                            ),
-                            if ((widget.section.instruction ?? '')
-                                .isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                widget.section.instruction!,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontStyle: FontStyle.italic,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 14),
-                            ClipRect(
-                              child: MathKeyboardField(
-                                controller: _controller,
-                                focusNode: _focusNode,
-                                builder: (context, fieldFocusNode, isMathActive) {
-                                  return SizedBox(
-                                    height: firstPageEditorHeight,
-                                    child: quill.QuillEditor(
-                                      controller: _controller,
-                                      focusNode: fieldFocusNode,
-                                      scrollController: _scrollController,
-                                      config: quill.QuillEditorConfig(
-                                        placeholder:
-                                            'Tap Question, MCQ, Blank, or Page from the ribbon.',
-                                        embedBuilders: [GeometryEmbedBuilder()],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
+                    padding: const EdgeInsets.all(14),
+                    child: quill.QuillEditor(
+                      controller: _controller,
+                      focusNode: fieldFocusNode,
+                      scrollController: _scrollController,
+                      config: quill.QuillEditorConfig(
+                        placeholder:
+                            'Open Insert and choose Question, MCQ or Fill blank. Then type naturally like a document.',
+                        embedBuilders: [GeometryEmbedBuilder()],
                       ),
                     ),
                   ),
                 ),
-                for (var page = 2; page <= pageCount; page++) ...[
-                  const SizedBox(height: 28),
-                  _WordModePageShell(
-                    width: pageWidth,
-                    height: pageHeight,
-                    isDark: isDark,
-                    hasError: false,
-                    label: '${_paperSizeLabel(template.paperSize)} Page $page',
-                    child: Center(
-                      child: Container(
-                        margin: EdgeInsets.all(pagePadding),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: Colors.blue.withValues(alpha: 0.25),
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                          color: Colors.blue.withValues(alpha: 0.04),
-                        ),
-                        child: Text(
-                          page == 2
-                              ? 'Content continues automatically as the paper grows. Tap Page to force a page break.'
-                              : 'Continuation page $page',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusBar(PaperTemplate template) {
+    final text = _controller.document.toPlainText().trim();
+    final words = text.isEmpty
+        ? 0
+        : text.split(RegExp(r'\s+')).where((word) => word.isNotEmpty).length;
+    final characters = text.length;
+    final pages = _estimatedPageCount(620, template);
+    final theme = Theme.of(context);
+
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.12)),
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final showCharacters = constraints.maxWidth >= 500;
+          final showPages = constraints.maxWidth >= 360;
+          return Row(
+            children: [
+              Icon(
+                _isDirty
+                    ? Icons.edit_rounded
+                    : Icons.check_circle_outline_rounded,
+                size: 15,
+                color: _isDirty
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                _isDirty ? 'Not applied' : 'Applied',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Text('$words words', style: theme.textTheme.labelSmall),
+              if (showCharacters) ...[
+                const SizedBox(width: 12),
+                Text('$characters characters', style: theme.textTheme.labelSmall),
               ],
+              if (showPages) ...[
+                const SizedBox(width: 12),
+                Text('~$pages pages', style: theme.textTheme.labelSmall),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _WordRibbonTabButton extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _WordRibbonTabButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 72),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? theme.colorScheme.primary : Colors.transparent,
+              width: 3,
             ),
           ),
-        );
-      },
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            color: selected
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WordRibbonCommand extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool selected;
+  final bool emphasized;
+
+  const _WordRibbonCommand({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+    this.emphasized = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final background = selected
+        ? theme.colorScheme.primaryContainer
+        : emphasized
+        ? theme.colorScheme.secondaryContainer.withValues(alpha: 0.65)
+        : Colors.transparent;
+    final foreground = selected
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.primary;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Tooltip(
+        message: label,
+        child: Material(
+          color: background,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 66,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 21, color: foreground),
+                    const SizedBox(height: 4),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WordRibbonDivider extends StatelessWidget {
+  const _WordRibbonDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 44,
+      margin: const EdgeInsets.symmetric(horizontal: 7),
+      color: Theme.of(context).dividerColor.withValues(alpha: 0.18),
+    );
+  }
+}
+
+class _WordRibbonInfo extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _WordRibbonInfo({required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      constraints: const BoxConstraints(minWidth: 100),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WordModeGuideBar extends StatelessWidget {
+  final bool ribbonExpanded;
+  final VoidCallback onShowInsert;
+
+  const _WordModeGuideBar({
+    required this.ribbonExpanded,
+    required this.onShowInsert,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+      child: Row(
+        children: [
+          Icon(Icons.lightbulb_outline_rounded, size: 17, color: theme.colorScheme.primary),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              'Edit the whole section like one document. Use Insert > Question to create a new question block.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onShowInsert,
+            child: Text(ribbonExpanded ? 'Insert' : 'Show tools'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2547,7 +3282,7 @@ class _WordModePageShell extends StatelessWidget {
           height: height,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: isDark ? Colors.grey[900] : Colors.white,
+              color: Colors.white,
               border: Border.all(
                 color: hasError
                     ? Colors.redAccent
@@ -2565,112 +3300,6 @@ class _WordModePageShell extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _WordModeRibbonGroup extends StatelessWidget {
-  final String label;
-  final List<Widget> children;
-
-  const _WordModeRibbonGroup({required this.label, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Expanded(
-          child: ClipRect(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Row(children: children),
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey[400],
-            letterSpacing: 0.5,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _WordModeRibbonButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _WordModeRibbonButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(4),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 22, color: Colors.blue[800]),
-            const SizedBox(height: 4),
-            Text(label, style: const TextStyle(fontSize: 10)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WordModeFormatButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _WordModeFormatButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: IconButton(
-          visualDensity: VisualDensity.compact,
-          icon: Icon(icon, size: 20, color: Colors.blue[800]),
-          onPressed: onTap,
-        ),
-      ),
-    );
-  }
-}
-
-class _WordModeVerticalDivider extends StatelessWidget {
-  const _WordModeVerticalDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 60,
-      color: Colors.grey.withValues(alpha: 0.15),
-      margin: const EdgeInsets.symmetric(horizontal: 12),
     );
   }
 }
@@ -3108,32 +3737,76 @@ String _wordModeStaticTextLabel(TemplateElement element, int index) {
   return '${content.substring(0, 28)}...';
 }
 
-String _sectionWordModeText(PaperSection section, Paper paper) {
-  if (section.questions.isEmpty) {
-    final label = QuestionNumberingService.paperLabel(1, paper);
-    return '--- Question $label ---\n';
+quill.Document _sectionWordModeDocument(PaperSection section, Paper paper) {
+  final operations = <Map<String, dynamic>>[];
+
+  void addText(String text, {Map<String, dynamic>? attributes}) {
+    operations.add({
+      'insert': text,
+      if (attributes != null && attributes.isNotEmpty)
+        'attributes': Map<String, dynamic>.from(attributes),
+    });
   }
 
-  return section.questions
-      .asMap()
-      .entries
-      .map((entry) {
-        final question = entry.value;
-        final label = QuestionNumberingService.paperLabel(entry.key + 1, paper);
-        final buffer = StringBuffer()
-          ..writeln('--- Question $label ---')
-          ..writeln(_questionPlainText(question).trim());
+  void addQuestionDelta(Question question) {
+    final questionOperations = _questionDeltaOperations(question);
+    operations.addAll(questionOperations);
+    if (!_deltaEndsWithNewline(questionOperations)) addText('\n');
+  }
 
-        if (question.type == QuestionType.mcq) {
-          for (final optionEntry in question.options.asMap().entries) {
-            final label = String.fromCharCode(97 + optionEntry.key);
-            buffer.writeln('$label) ${optionEntry.value.text}');
-          }
+  if (section.questions.isEmpty) {
+    final label = QuestionNumberingService.paperLabel(1, paper);
+    addText('--- Question $label ---\n');
+    addText('Write question here\n');
+  } else {
+    for (var index = 0; index < section.questions.length; index++) {
+      final question = section.questions[index];
+      final label = QuestionNumberingService.paperLabel(index + 1, paper);
+      addText('--- Question $label ---\n');
+      addQuestionDelta(question);
+
+      if (question.type == QuestionType.mcq) {
+        for (var optionIndex = 0;
+            optionIndex < question.options.length;
+            optionIndex++) {
+          final optionLabel = String.fromCharCode(97 + optionIndex);
+          addText('$optionLabel) ${question.options[optionIndex].text}\n');
         }
+      }
 
-        return buffer.toString().trimRight();
-      })
-      .join('\n\n');
+      if (index < section.questions.length - 1) addText('\n');
+    }
+  }
+
+  if (operations.isEmpty || !_deltaEndsWithNewline(operations)) {
+    addText('\n');
+  }
+  return quill.Document.fromJson(operations);
+}
+
+List<Map<String, dynamic>> _questionDeltaOperations(Question question) {
+  try {
+    final decoded = jsonDecode(question.text);
+    if (decoded is List) {
+      return decoded
+          .whereType<Map>()
+          .map((operation) => Map<String, dynamic>.from(operation))
+          .toList();
+    }
+  } catch (_) {}
+
+  final text = question.text.endsWith('\n')
+      ? question.text
+      : '${question.text}\n';
+  return [
+    {'insert': text},
+  ];
+}
+
+bool _deltaEndsWithNewline(List<Map<String, dynamic>> operations) {
+  if (operations.isEmpty) return false;
+  final insert = operations.last['insert'];
+  return insert is String && insert.endsWith('\n');
 }
 
 String _questionPlainText(Question question) {
@@ -3237,6 +3910,34 @@ class _HeaderFieldAction extends StatelessWidget {
         splashRadius: 20,
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      ),
+    );
+  }
+}
+
+class _QuickQuestionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _QuickQuestionButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilledButton.tonalIcon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+        ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import '../controllers/geometry_controller.dart';
 import '../models/geometry_diagram.dart';
 import '../models/geometry_label.dart';
 import '../models/geometry_mark.dart';
+import '../models/geometry_point.dart';
 import '../models/geometry_shape.dart';
 import 'export_panel.dart';
 import 'geometry_canvas.dart';
@@ -160,10 +161,23 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
                       child: GeometryCanvas(
                         controller: _controller,
                         repaintKey: _repaintKey,
+                        onEditLabel: (label) => _showLabelEditor(
+                          label.type,
+                          initialLabel: label,
+                        ),
+                        onEditPointLabel: _showPointLabelEditor,
                       ),
                     ),
                   ),
                   _ModeBar(controller: _controller, compact: compact),
+                  _SelectedTextBar(
+                    controller: _controller,
+                    onEditLabel: (label) => _showLabelEditor(
+                      label.type,
+                      initialLabel: label,
+                    ),
+                    onEditPoint: _showPointLabelEditor,
+                  ),
                   Expanded(
                     child: _ModeBody(
                       controller: _controller,
@@ -192,14 +206,214 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
     );
   }
 
-  void _showLabelEditor(GeometryLabelType type) {
+  void _showLabelEditor(
+    GeometryLabelType type, {
+    GeometryLabel? initialLabel,
+  }) {
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
+      useSafeArea: true,
       isScrollControlled: true,
       builder: (context) => LabelEditorSheet(
         type: type,
-        onSubmitted: (text) => _controller.addLabel(type, text),
+        initialLabel: initialLabel,
+        onSubmitted: (text, fontSize, rotation, isBold) {
+          if (initialLabel == null) {
+            _controller.addLabel(
+              type,
+              text,
+              fontSize: fontSize,
+              rotation: rotation,
+              isBold: isBold,
+            );
+          } else {
+            _controller.updateLabel(
+              initialLabel.id,
+              text: text,
+              fontSize: fontSize,
+              rotation: rotation,
+              isBold: isBold,
+            );
+          }
+        },
       ),
+    );
+  }
+
+  void _showPointLabelEditor(GeometryPoint point) {
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => PointLabelEditorSheet(
+        point: point,
+        onSubmitted: (text, fontSize, rotation, isBold) {
+          _controller.updatePointLabel(
+            point.id,
+            text: text,
+            fontSize: fontSize,
+            rotation: rotation,
+            isBold: isBold,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SelectedTextBar extends StatelessWidget {
+  final GeometryController controller;
+  final ValueChanged<GeometryLabel> onEditLabel;
+  final ValueChanged<GeometryPoint> onEditPoint;
+
+  const _SelectedTextBar({
+    required this.controller,
+    required this.onEditLabel,
+    required this.onEditPoint,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final label = controller.selectedLabel;
+        final point = controller.selectedPoint;
+        if (label == null && point == null) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.touch_app_outlined,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    'Tap A, B, C or any text to select it. Drag to move; double-tap to edit.',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final theme = Theme.of(context);
+        final isPoint = point != null;
+        final text = point?.label ?? label!.text;
+        return Container(
+          height: 50,
+          margin: const EdgeInsets.fromLTRB(10, 0, 10, 5),
+          padding: const EdgeInsets.symmetric(horizontal: 5),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  onPressed: () {
+                    if (point != null) {
+                      onEditPoint(point);
+                    } else if (label != null) {
+                      onEditLabel(label);
+                    }
+                  },
+                  icon: Icon(
+                    isPoint ? Icons.scatter_plot_outlined : Icons.edit_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    isPoint ? 'Point $text' : text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              _LabelAction(
+                tooltip: 'Smaller text',
+                icon: Icons.text_decrease_rounded,
+                onPressed: () => isPoint
+                    ? controller.resizeSelectedPointLabel(-1)
+                    : controller.resizeSelectedLabel(-1),
+              ),
+              _LabelAction(
+                tooltip: 'Larger text',
+                icon: Icons.text_increase_rounded,
+                onPressed: () => isPoint
+                    ? controller.resizeSelectedPointLabel(1)
+                    : controller.resizeSelectedLabel(1),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Move text',
+                icon: const Icon(Icons.open_with_rounded, size: 20),
+                onSelected: (value) {
+                  final delta = switch (value) {
+                    'up' => const Offset(0, -4),
+                    'down' => const Offset(0, 4),
+                    'left' => const Offset(-4, 0),
+                    'right' => const Offset(4, 0),
+                    _ => Offset.zero,
+                  };
+                  if (delta != Offset.zero) {
+                    if (isPoint) {
+                      controller.nudgeSelectedPointLabel(delta);
+                    } else {
+                      controller.nudgeSelectedLabel(delta);
+                    }
+                  } else if (value == 'delete' && !isPoint) {
+                    controller.removeSelectedLabel();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'up', child: Text('Move up')),
+                  const PopupMenuItem(value: 'down', child: Text('Move down')),
+                  const PopupMenuItem(value: 'left', child: Text('Move left')),
+                  const PopupMenuItem(value: 'right', child: Text('Move right')),
+                  if (!isPoint) const PopupMenuDivider(),
+                  if (!isPoint)
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Delete text'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LabelAction extends StatelessWidget {
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _LabelAction({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 20),
     );
   }
 }
@@ -379,7 +593,13 @@ class _LabelButtons extends StatelessWidget {
       isScrollControlled: true,
       builder: (context) => LabelEditorSheet(
         type: type,
-        onSubmitted: (text) => controller.addLabel(type, text),
+        onSubmitted: (text, fontSize, rotation, isBold) => controller.addLabel(
+          type,
+          text,
+          fontSize: fontSize,
+          rotation: rotation,
+          isBold: isBold,
+        ),
       ),
     );
   }

@@ -265,6 +265,53 @@ class EditorState extends _$EditorState {
     );
   }
 
+  Question _cloneQuestion(Question source) {
+    return Question(
+      id: const Uuid().v4(),
+      text: source.text,
+      imageUrl: source.imageUrl,
+      options: source.options
+          .map(
+            (option) => QuestionOption(
+              id: const Uuid().v4(),
+              text: option.text,
+              isCorrect: option.isCorrect,
+            ),
+          )
+          .toList(),
+      type: source.type,
+      marks: source.marks,
+      alignment: source.alignment,
+      isOptional: source.isOptional,
+    );
+  }
+
+  void addQuestionsFromBank(String sectionId, List<Question> questions) {
+    if (questions.isEmpty) return;
+    final clonedQuestions = questions.map(_cloneQuestion).toList();
+    state = state.copyWith(
+      sections: state.sections.map((section) {
+        if (section.id != sectionId) return section;
+        return section.copyWith(
+          questions: [...section.questions, ...clonedQuestions],
+        );
+      }).toList(),
+    );
+  }
+
+  void duplicateQuestion(String sectionId, String questionId) {
+    state = state.copyWith(
+      sections: state.sections.map((section) {
+        if (section.id != sectionId) return section;
+        final index = section.questions.indexWhere((q) => q.id == questionId);
+        if (index == -1) return section;
+        final questions = [...section.questions];
+        questions.insert(index + 1, _cloneQuestion(questions[index]));
+        return section.copyWith(questions: questions);
+      }).toList(),
+    );
+  }
+
   void updateQuestion(
     String sectionId,
     String questionId, {

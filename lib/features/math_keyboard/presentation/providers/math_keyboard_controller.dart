@@ -7,6 +7,7 @@ import 'package:math_keyboard/math_keyboard.dart' as math_kb;
 // ignore: implementation_imports
 import 'package:math_keyboard/src/foundation/node.dart' as math_kb_node;
 import 'package:uuid/uuid.dart';
+import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import '../../domain/models/math_symbol.dart';
 
 part 'math_keyboard_controller.g.dart';
@@ -57,19 +58,21 @@ class MathKeyboardStateData {
   final bool isSubscriptMode;
   final int symbolSizeLevel; // -2 to +2 (small to large)
   final List<FloatingElement> floatingElements;
+  final List<String> recentSymbols;
 
   MathKeyboardStateData({
     this.isVisible = false,
     this.type = KeyboardType.system,
     this.activeController,
     this.activeFocusNode,
-    this.height = 300,
+    this.height = 320,
     this.currentCategory = MathCategory.basic,
     this.isTabletLayout = false,
     this.isPowerMode = false,
     this.isSubscriptMode = false,
     this.symbolSizeLevel = 0,
     this.floatingElements = const [],
+    this.recentSymbols = const [],
   });
 
   MathKeyboardStateData copyWith({
@@ -86,6 +89,7 @@ class MathKeyboardStateData {
     bool? isSubscriptMode,
     int? symbolSizeLevel,
     List<FloatingElement>? floatingElements,
+    List<String>? recentSymbols,
   }) {
     return MathKeyboardStateData(
       isVisible: isVisible ?? this.isVisible,
@@ -103,6 +107,7 @@ class MathKeyboardStateData {
       isSubscriptMode: isSubscriptMode ?? this.isSubscriptMode,
       symbolSizeLevel: symbolSizeLevel ?? this.symbolSizeLevel,
       floatingElements: floatingElements ?? this.floatingElements,
+      recentSymbols: recentSymbols ?? this.recentSymbols,
     );
   }
 }
@@ -154,7 +159,7 @@ class MathKeyboardController extends _$MathKeyboardController {
 
   void setHeight(double height) {
     // Clamp height between reasonable limits
-    final clampedHeight = height.clamp(200.0, 500.0);
+    final clampedHeight = height.clamp(240.0, 520.0);
     state = state.copyWith(height: clampedHeight);
   }
 
@@ -267,15 +272,33 @@ class MathKeyboardController extends _$MathKeyboardController {
     final controller = state.activeController;
     if (controller is math_kb.MathFieldEditingController) {
       controller.goNext();
-    } else {
-      // For standard fields, tab to next focusable if possible, or just space
-      insertText(' ');
+      return;
     }
+
+    final focusContext = state.activeFocusNode?.context;
+    if (focusContext != null) {
+      FocusScope.of(focusContext).nextFocus();
+    }
+  }
+
+  void clearRecentSymbols() {
+    state = state.copyWith(recentSymbols: const []);
+  }
+
+  void _rememberSymbol(String text) {
+    if (text.trim().isEmpty || text.startsWith('{{geometry:')) return;
+    final recent = <String>[
+      text,
+      ...state.recentSymbols.where((item) => item != text),
+    ];
+    state = state.copyWith(recentSymbols: recent.take(18).toList());
   }
 
   void insertText(String text) {
     final controller = state.activeController;
     if (controller == null) return;
+
+    _rememberSymbol(text);
 
     // Handle space/newline to exit power/subscript mode
     if (text == ' ' || text == '\n') {
@@ -300,9 +323,13 @@ class MathKeyboardController extends _$MathKeyboardController {
         final length = controller.selection.extentOffset - index;
 
         // Store as JSON to support attributes like height
+        final diagram = GeometryDiagramRegistry.instance.diagramFor(id);
         final data = jsonEncode({
           'id': id,
-          'height': 200.0, // Default height
+          'height': 200.0,
+          'widthFactor': 1.0,
+          'alignmentX': 0.0,
+          if (diagram != null) 'diagram': diagram.toJson(),
         });
 
         controller.replaceText(
@@ -352,8 +379,60 @@ class MathKeyboardController extends _$MathKeyboardController {
         r'\overline{AB}': 'AB̅',
         r'\vec{v}': 'v⃗',
         r'\overset{\frown}{AB}': 'arc AB',
+        r'\angle ABC': '∠ABC',
+        r'm\angle ABC': 'm∠ABC',
+        r'\overrightarrow{AB}': 'AB⃗',
+        r'\overleftrightarrow{AB}': 'AB↔',
+        r'\rightangle': '∟',
+        r'\widehat{AB}': '⌒AB',
+        r'\triangle ABC': '△ABC',
+        r'\parallelogram': '▱',
+        r'\diameter': '⌀',
+        r'^{\circ}': '°',
+        r'^{\prime}': '′',
+        r'^{\prime\prime}': '″',
+        r'\text{mm}': 'mm',
+        r'\text{cm}': 'cm',
+        r'\text{m}': 'm',
+        r'\text{km}': 'km',
         r'\text{cm}^{2}': 'cm²',
         r'\text{cm}^{3}': 'cm³',
+        r'\Delta t': 'Δt',
+        r'\vec{F}': 'F⃗',
+        r'^{\circ}\text{C}': '°C',
+        r'\text{m/s}': 'm/s',
+        r'\text{m/s}^{2}': 'm/s²',
+        r'\text{kg}': 'kg',
+        r'\text{N}': 'N',
+        r'\text{J}': 'J',
+        r'\text{W}': 'W',
+        r'\text{Pa}': 'Pa',
+        r'\text{Hz}': 'Hz',
+        r'\text{V}': 'V',
+        r'\text{A}': 'A',
+        r'\text{C}': 'C',
+        r's = ut + \frac{1}{2}at^2': 's = ut + ½at²',
+        r'v^2 = u^2 + 2as': 'v² = u² + 2as',
+        r'E_k = \frac{1}{2}mv^2': 'Eₖ = ½mv²',
+        r'E_p = mgh': 'Eₚ = mgh',
+        r'P = \frac{W}{t}': 'P = W/t',
+        r'v = f\lambda': 'v = fλ',
+        r'\rho = \frac{m}{V}': 'ρ = m/V',
+        r'P = \frac{F}{A}': 'P = F/A',
+        r'Q = mc\Delta T': 'Q = mcΔT',
+        r'\frac{1}{f}=\frac{1}{v}-\frac{1}{u}': '1/f = 1/v - 1/u',
+        r'\bar{x}': 'x̄',
+        r'\sigma^2': 'σ²',
+        r'\sum x': 'Σx',
+        r'P(A\cup B)': 'P(A∪B)',
+        r'P(A\cap B)': 'P(A∩B)',
+        r'\bar{x}=\frac{\sum x}{n}': 'x̄ = Σx/n',
+        r'\sigma^2=\frac{\sum(x-\bar{x})^2}{n}':
+            'σ² = Σ(x-x̄)²/n',
+        r'\sigma=\sqrt{\frac{\sum(x-\bar{x})^2}{n}}':
+            'σ = √(Σ(x-x̄)²/n)',
+        r'{}^nC_r': 'ⁿCᵣ',
+        r'{}^nP_r': 'ⁿPᵣ',
         r'\begin{pmatrix}  & \\  & \end{pmatrix}': '[2×2 matrix]',
         r'\begin{pmatrix}  &  & \\  &  & \\  &  & \end{pmatrix}':
             '[3×3 matrix]',
@@ -462,7 +541,7 @@ class MathKeyboardController extends _$MathKeyboardController {
           'n': 'ₙ',
           'x': 'ₓ',
           'y': 'ᵧ',
-          'z': '₂',
+          'z': '_z',
           'a': 'ₐ',
           'e': 'ₑ',
           'h': 'ₕ',
@@ -675,7 +754,19 @@ class MathKeyboardController extends _$MathKeyboardController {
         // Allow teacher to type labels like ABC
       } else if (text == r'\overline{AB}') {
         controller.addFunction(r'\overline', [math_kb_node.TeXArg.braces]);
-      } else if (text == r'\vec{v}') {
+      } else if (text == r'\overrightarrow{AB}') {
+        controller.addFunction(r'\overrightarrow', [
+          math_kb_node.TeXArg.braces,
+        ]);
+      } else if (text == r'\overleftrightarrow{AB}') {
+        controller.addFunction(r'\overleftrightarrow', [
+          math_kb_node.TeXArg.braces,
+        ]);
+      } else if (text == r'\widehat{AB}') {
+        controller.addFunction(r'\widehat', [math_kb_node.TeXArg.braces]);
+      } else if (text == r'\bar{x}') {
+        controller.addFunction(r'\bar', [math_kb_node.TeXArg.braces]);
+      } else if (text == r'\vec{v}' || text == r'\vec{F}') {
         controller.addFunction(r'\vec', [math_kb_node.TeXArg.braces]);
       } else if (text == r'\text{Graph}') {
         controller.addLeaf(r'\text{Graph Frame}');
