@@ -49,7 +49,7 @@ void main() {
     expect(find.text('Word'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).last, '');
-    await tester.tap(find.widgetWithText(FilledButton, 'Save File'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Save file'));
     await tester.pumpAndSettle();
 
     expect(find.text('Enter a file name'), findsOneWidget);

@@ -6,6 +6,7 @@ import 'package:edusheet/features/geometry_builder/services/geometry_diagram_reg
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
+import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_provider.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_key.dart';
 
 class MathKeyboardView extends ConsumerWidget {
@@ -47,7 +48,7 @@ class MathKeyboardView extends ConsumerWidget {
                         ? _buildQuillToolbar(context, state, ref)
                         : state.currentCategory == MathCategory.geometry
                         ? _buildGeometryKeyboardPanel(context, controller)
-                        : _buildSymbolGrid(context, state, controller),
+                        : _buildSymbolGrid(context, state, controller, ref),
                   ),
                 ),
                 _ActionBar(compact: compact),
@@ -71,12 +72,14 @@ class MathKeyboardView extends ConsumerWidget {
     final theme = Theme.of(context);
     const categories = <MathCategory>[
       MathCategory.recent,
+      MathCategory.favorites,
       MathCategory.basic,
       MathCategory.functions,
       MathCategory.trig,
       MathCategory.calculus,
       MathCategory.geometry,
       MathCategory.physics,
+      MathCategory.chemistry,
       MathCategory.statistics,
       MathCategory.matrices,
       MathCategory.greek,
@@ -149,12 +152,14 @@ class MathKeyboardView extends ConsumerWidget {
   String _categoryLabel(MathCategory category) {
     return switch (category) {
       MathCategory.recent => 'RECENT',
+      MathCategory.favorites => 'FAVOURITES',
       MathCategory.basic => 'COMMON',
       MathCategory.functions => 'ALGEBRA',
       MathCategory.trig => 'TRIG',
       MathCategory.calculus => 'CALCULUS',
       MathCategory.geometry => 'GEOMETRY',
       MathCategory.physics => 'PHYSICS',
+      MathCategory.chemistry => 'CHEMISTRY',
       MathCategory.statistics => 'STATS',
       MathCategory.matrices => 'MATRIX',
       MathCategory.greek => 'GREEK',
@@ -171,12 +176,14 @@ class MathKeyboardView extends ConsumerWidget {
   IconData _categoryIcon(MathCategory category) {
     return switch (category) {
       MathCategory.recent => Icons.history_rounded,
+      MathCategory.favorites => Icons.star_outline_rounded,
       MathCategory.basic => Icons.calculate_outlined,
       MathCategory.functions => Icons.superscript_rounded,
       MathCategory.trig => Icons.show_chart_rounded,
       MathCategory.calculus => Icons.functions_rounded,
       MathCategory.geometry => Icons.architecture_outlined,
       MathCategory.physics => Icons.science_outlined,
+      MathCategory.chemistry => Icons.biotech_outlined,
       MathCategory.statistics => Icons.query_stats_rounded,
       MathCategory.matrices => Icons.grid_4x4_rounded,
       MathCategory.greek => Icons.language_rounded,
@@ -699,9 +706,13 @@ class MathKeyboardView extends ConsumerWidget {
     BuildContext context,
     MathKeyboardStateData state,
     MathKeyboardController controller,
+    WidgetRef ref,
   ) {
+    final favorites = ref.watch(favoriteSymbolsProvider);
     final symbols = state.currentCategory == MathCategory.recent
         ? _recentSymbols(state)
+        : state.currentCategory == MathCategory.favorites
+        ? favorites
         : mathSymbols
               .where((symbol) => symbol.category == state.currentCategory)
               .toList();
@@ -718,6 +729,7 @@ class MathKeyboardView extends ConsumerWidget {
       childAspectRatio = 1.0;
     } else if (state.currentCategory == MathCategory.templates ||
         state.currentCategory == MathCategory.physics ||
+        state.currentCategory == MathCategory.chemistry ||
         state.currentCategory == MathCategory.statistics) {
       crossAxisCount = isTablet ? 4 : 2;
       childAspectRatio = 2.45;
@@ -756,6 +768,8 @@ class MathKeyboardView extends ConsumerWidget {
           textColor: (isPowerActive || isSubActive)
               ? theme.colorScheme.onPrimaryContainer
               : null,
+          onLongPress: () =>
+              _showSymbolActions(context, ref, controller, symbol),
           onTap: () {
             if (symbol.label == 'xⁿ' || symbol.label == 'eˣ') {
               if (!state.isPowerMode && symbol.label == 'eˣ') {
@@ -786,6 +800,60 @@ class MathKeyboardView extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+
+  void _showSymbolActions(
+    BuildContext context,
+    WidgetRef ref,
+    MathKeyboardController controller,
+    MathSymbol symbol,
+  ) {
+    final favorites = ref.read(favoriteSymbolsProvider);
+    final isFavorite = favorites.any((item) => item.tex == symbol.tex);
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.functions_rounded),
+              title: Text(symbol.accessibilityLabel),
+              subtitle: Text(symbol.tex),
+            ),
+            ListTile(
+              minTileHeight: 52,
+              leading: Icon(
+                isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+              ),
+              title: Text(
+                isFavorite ? 'Remove from favourites' : 'Add to favourites',
+              ),
+              onTap: () {
+                ref
+                    .read(favoriteSymbolsProvider.notifier)
+                    .toggleFavorite(symbol);
+                Navigator.pop(context);
+              },
+            ),
+            for (final alternative in symbol.variations ?? const <String>[])
+              ListTile(
+                minTileHeight: 52,
+                leading: const Icon(Icons.subdirectory_arrow_right_rounded),
+                title: Text(alternative),
+                onTap: () {
+                  controller.insertText(alternative);
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -984,6 +1052,7 @@ class _SymbolSearchSheetState extends State<_SymbolSearchSheet> {
                   ),
                   for (final category in MathCategory.values)
                     if (category != MathCategory.recent &&
+                        category != MathCategory.favorites &&
                         category != MathCategory.format)
                       Padding(
                         padding: const EdgeInsets.only(right: 6),

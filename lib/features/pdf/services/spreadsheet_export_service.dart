@@ -262,14 +262,7 @@ class SpreadsheetExportService {
   }
 
   static String _questionType(QuestionType type) {
-    switch (type) {
-      case QuestionType.mcq:
-        return 'MCQ';
-      case QuestionType.fillInTheBlanks:
-        return 'Fill in the blanks';
-      case QuestionType.descriptive:
-        return 'Descriptive';
-    }
+    return type == QuestionType.mcq ? 'MCQ' : type.label;
   }
 
   static String _columnName(int index) {

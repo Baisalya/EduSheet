@@ -1,11 +1,13 @@
 enum MathCategory {
   recent,
+  favorites,
   basic,
   functions,
   trig,
   calculus,
   geometry,
   physics,
+  chemistry,
   statistics,
   matrices,
   greek,
@@ -32,6 +34,38 @@ class MathSymbol {
     this.isBuilder = false,
     this.variations,
   });
+}
+
+extension MathSymbolAccessibility on MathSymbol {
+  String get accessibilityLabel {
+    const descriptions = <String, String>{
+      r'\frac{}{}': 'fraction with numerator and denominator',
+      r'\sqrt{}': 'square root',
+      r'\sqrt[3]{}': 'cube root',
+      r'\sqrt[]{}': 'nth root',
+      r'^{}': 'power or exponent',
+      r'_{}': 'subscript',
+      r'\int': 'integral',
+      r'\iint': 'double integral',
+      r'\iiint': 'triple integral',
+      r'\sum': 'summation',
+      r'\prod': 'product notation',
+      r'\infty': 'infinity',
+      r'\leq': 'less than or equal to',
+      r'\geq': 'greater than or equal to',
+      r'\neq': 'not equal to',
+      r'\approx': 'approximately equal to',
+      r'\therefore': 'therefore',
+      r'\because': 'because',
+      r'\in': 'is an element of',
+      r'\notin': 'is not an element of',
+      r'\cup': 'union',
+      r'\cap': 'intersection',
+      r'\rightarrow': 'right arrow',
+      r'\rightleftharpoons': 'equilibrium reaction arrow',
+    };
+    return descriptions[tex] ?? label;
+  }
 }
 
 const List<MathSymbol> mathSymbols = [
@@ -629,6 +663,66 @@ const List<MathSymbol> mathSymbols = [
     tex: r'\text{Find the value of } x',
     category: MathCategory.templates,
   ),
+
+  // Additional mobile builders for structures requested by school teachers.
+  MathSymbol(
+    label: '1 a⁄b',
+    tex: r'1\frac{}{}',
+    category: MathCategory.functions,
+    isBuilder: true,
+  ),
+  MathSymbol(
+    label: 'a×10ⁿ',
+    tex: r'{}\times 10^{}',
+    category: MathCategory.functions,
+    isBuilder: true,
+  ),
+  MathSymbol(
+    label: '0.3̅',
+    tex: r'0.\overline{3}',
+    category: MathCategory.functions,
+    isBuilder: true,
+  ),
+  MathSymbol(
+    label: 'cases',
+    tex: r'f(x)=\begin{cases} & \\ & \end{cases}',
+    category: MathCategory.functions,
+    isBuilder: true,
+  ),
+  MathSymbol(
+    label: '2 equations',
+    tex: r'\begin{cases} ax+by=c \\ dx+ey=f \end{cases}',
+    category: MathCategory.functions,
+    isBuilder: true,
+  ),
+  MathSymbol(label: '⊃', tex: r'\supset', category: MathCategory.sets),
+  MathSymbol(label: '⊇', tex: r'\supseteq', category: MathCategory.sets),
+  MathSymbol(label: 'U', tex: r'\mathcal{U}', category: MathCategory.sets),
+  MathSymbol(label: 'median', tex: r'\widetilde{x}', category: MathCategory.statistics),
+  MathSymbol(label: 'E(X)', tex: r'\mathbb{E}(X)', category: MathCategory.statistics),
+  MathSymbol(label: 'X~N', tex: r'X\sim N(\mu,\sigma^2)', category: MathCategory.statistics),
+
+  // Chemistry notation, charges, isotopes and reaction structures.
+  MathSymbol(label: '→', tex: r'\rightarrow', category: MathCategory.chemistry),
+  MathSymbol(label: '⇌', tex: r'\rightleftharpoons', category: MathCategory.chemistry),
+  MathSymbol(label: '↑', tex: r'\uparrow', category: MathCategory.chemistry),
+  MathSymbol(label: '↓', tex: r'\downarrow', category: MathCategory.chemistry),
+  MathSymbol(label: 'Δ', tex: r'\Delta', category: MathCategory.chemistry),
+  MathSymbol(label: 'H₂O', tex: r'\mathrm{H_2O}', category: MathCategory.chemistry),
+  MathSymbol(label: 'CO₂', tex: r'\mathrm{CO_2}', category: MathCategory.chemistry),
+  MathSymbol(label: 'O₂', tex: r'\mathrm{O_2}', category: MathCategory.chemistry),
+  MathSymbol(label: 'H⁺', tex: r'\mathrm{H^+}', category: MathCategory.chemistry),
+  MathSymbol(label: 'OH⁻', tex: r'\mathrm{OH^-}', category: MathCategory.chemistry),
+  MathSymbol(label: 'Ca²⁺', tex: r'\mathrm{Ca^{2+}}', category: MathCategory.chemistry),
+  MathSymbol(label: 'Cl⁻', tex: r'\mathrm{Cl^-}', category: MathCategory.chemistry),
+  MathSymbol(label: '⁺ charge', tex: r'^{+}', category: MathCategory.chemistry, isBuilder: true),
+  MathSymbol(label: '⁻ charge', tex: r'^{-}', category: MathCategory.chemistry, isBuilder: true),
+  MathSymbol(label: 'ⁿ⁺ charge', tex: r'^{n+}', category: MathCategory.chemistry, isBuilder: true),
+  MathSymbol(label: 'isotope', tex: r'{}^{A}_{Z}X', category: MathCategory.chemistry, isBuilder: true),
+  MathSymbol(label: '(s)', tex: r'\mathrm{(s)}', category: MathCategory.chemistry),
+  MathSymbol(label: '(l)', tex: r'\mathrm{(l)}', category: MathCategory.chemistry),
+  MathSymbol(label: '(g)', tex: r'\mathrm{(g)}', category: MathCategory.chemistry),
+  MathSymbol(label: '(aq)', tex: r'\mathrm{(aq)}', category: MathCategory.chemistry),
 
   // Miscellaneous classroom symbols.
   MathSymbol(label: '∞', tex: r'\infty', category: MathCategory.misc),

@@ -404,7 +404,20 @@ class WordExportService {
       );
     }
 
-    if (question.type == QuestionType.mcq) {
+    for (final expression in question.mathExpressions) {
+      buffer.write(
+        _paragraph(
+          expression.plainText.trim().isEmpty
+              ? expression.latex
+              : expression.plainText,
+          italic: true,
+          fontSize: template.questionFontSize,
+          indentLeft: 360,
+        ),
+      );
+    }
+
+    if (question.type.usesOptions) {
       for (final option in question.options.asMap().entries) {
         buffer.write(
           _paragraph(

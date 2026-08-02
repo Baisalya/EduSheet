@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import '../../domain/models/document_model.dart';
 
 class DocumentRepository {
@@ -22,35 +20,7 @@ class DocumentRepository {
     '.txt',
   };
 
-  Future<bool> requestPermissions() async {
-    if (Platform.isAndroid) {
-      try {
-        final deviceInfo = await DeviceInfoPlugin().androidInfo;
-        if (deviceInfo.version.sdkInt >= 30) {
-          var status = await Permission.manageExternalStorage.status;
-          if (!status.isGranted) {
-            status = await Permission.manageExternalStorage.request();
-          }
-          return status.isGranted;
-        } else {
-          var status = await Permission.storage.status;
-          if (!status.isGranted) {
-            status = await Permission.storage.request();
-          }
-          return status.isGranted;
-        }
-      } catch (e) {
-        // Error getting device info for permissions
-        return await Permission.storage.request().isGranted;
-      }
-    }
-    return true;
-  }
-
   Future<List<DocumentFile>> getDocuments() async {
-    bool hasPermission = await requestPermissions();
-    if (!hasPermission) return [];
-
     final documents = <DocumentFile>[];
     final seenPaths = <String>{};
 
@@ -125,20 +95,9 @@ class DocumentRepository {
     }
 
     await addIfAvailable(getApplicationDocumentsDirectory());
-    await addIfAvailable(getDownloadsDirectory());
+    await addIfAvailable(getApplicationSupportDirectory());
 
     if (Platform.isAndroid) {
-      paths.addAll([
-        '/storage/emulated/0/Download',
-        '/storage/emulated/0/Downloads',
-        '/storage/emulated/0/Documents',
-        '/storage/emulated/0/Documents/EduSheet',
-        '/storage/emulated/0/EduSheet',
-        '/storage/emulated/0/WhatsApp/Media/WhatsApp Documents',
-        '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents',
-        '/storage/emulated/0/Telegram/Telegram Documents',
-      ]);
-
       try {
         final externalDirs = await getExternalStorageDirectories();
         for (final directory in externalDirs ?? <Directory>[]) {
@@ -148,6 +107,7 @@ class DocumentRepository {
         // External app directories can be unavailable on some devices.
       }
     } else {
+      await addIfAvailable(getDownloadsDirectory());
       final home =
           Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
       if (home != null && home.isNotEmpty) {

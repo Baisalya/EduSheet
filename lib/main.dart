@@ -7,6 +7,7 @@ import 'core/constants/app_constants.dart';
 import 'shared/presentation/screens/home_screen.dart';
 import 'features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 import 'shared/presentation/providers/theme_provider.dart';
+import 'shared/localization/edusheet_localizations.dart';
 import 'features/pdf/services/question_paper_service.dart';
 import 'features/document_reader/domain/models/document_model.dart';
 import 'features/document_reader/presentation/providers/document_provider.dart';
@@ -226,6 +227,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         ),
       ),
       localizationsDelegates: const [
+        EduSheetLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

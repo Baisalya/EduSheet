@@ -30,11 +30,9 @@ dependencies:
   html: ^0.15.6
   vsc_quill_delta_to_html: ^1.0.5
   lottie: ^3.1.2
-  permission_handler: ^11.3.1
   open_filex: ^4.5.0
   path: ^1.9.0
   intl: ^0.20.2
-  device_info_plus: ^11.5.0
   syncfusion_flutter_pdf: ^28.2.7
   syncfusion_flutter_pdfviewer: ^28.2.7
   docx_file_viewer: ^1.0.1
@@ -50,6 +48,8 @@ dependencies:
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0

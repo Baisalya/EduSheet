@@ -130,15 +130,25 @@ class PresentationExportService {
   }
 
   static List<String> _questionDetailLines(Question question) {
-    if (question.type == QuestionType.mcq) {
-      return question.options.asMap().entries.map((entry) {
+    final formulas = question.mathExpressions
+        .map(
+          (expression) => expression.plainText.trim().isEmpty
+              ? expression.latex
+              : expression.plainText,
+        )
+        .toList();
+    if (question.type.usesOptions) {
+      return [
+        ...formulas,
+        ...question.options.asMap().entries.map((entry) {
         return '${String.fromCharCode(65 + entry.key)}) ${entry.value.text}';
-      }).toList();
+        }),
+      ];
     }
     if (question.type == QuestionType.fillInTheBlanks) {
-      return const ['Ans: ________________________'];
+      return [...formulas, 'Ans: ________________________'];
     }
-    return const [];
+    return formulas;
   }
 
   static String _slideXml(_SlideSpec slide, int slideNumber) {

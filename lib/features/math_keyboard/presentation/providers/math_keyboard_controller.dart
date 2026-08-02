@@ -8,6 +8,7 @@ import 'package:math_keyboard/math_keyboard.dart' as math_kb;
 import 'package:math_keyboard/src/foundation/node.dart' as math_kb_node;
 import 'package:uuid/uuid.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/models/math_symbol.dart';
 
 part 'math_keyboard_controller.g.dart';
@@ -114,8 +115,24 @@ class MathKeyboardStateData {
 
 @riverpod
 class MathKeyboardController extends _$MathKeyboardController {
+  static const String _recentStorageKey = 'math_keyboard_recent_symbols_v1';
+  bool _disposed = false;
+
   @override
-  MathKeyboardStateData build() => MathKeyboardStateData();
+  MathKeyboardStateData build() {
+    ref.onDispose(() => _disposed = true);
+    Future<void>.microtask(_loadRecentSymbols);
+    return MathKeyboardStateData();
+  }
+
+  Future<void> _loadRecentSymbols() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (_disposed) return;
+    state = state.copyWith(
+      recentSymbols:
+          preferences.getStringList(_recentStorageKey) ?? const <String>[],
+    );
+  }
 
   void registerController(dynamic controller, FocusNode focusNode) {
     state = state.copyWith(
@@ -283,6 +300,7 @@ class MathKeyboardController extends _$MathKeyboardController {
 
   void clearRecentSymbols() {
     state = state.copyWith(recentSymbols: const []);
+    _persistRecentSymbols(const []);
   }
 
   void _rememberSymbol(String text) {
@@ -291,7 +309,14 @@ class MathKeyboardController extends _$MathKeyboardController {
       text,
       ...state.recentSymbols.where((item) => item != text),
     ];
-    state = state.copyWith(recentSymbols: recent.take(18).toList());
+    final limited = recent.take(18).toList();
+    state = state.copyWith(recentSymbols: limited);
+    _persistRecentSymbols(limited);
+  }
+
+  Future<void> _persistRecentSymbols(List<String> symbols) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setStringList(_recentStorageKey, symbols);
   }
 
   void insertText(String text) {

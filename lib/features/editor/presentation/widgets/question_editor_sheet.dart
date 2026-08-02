@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -14,6 +15,10 @@ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboa
 
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
+import 'package:edusheet/features/templates/domain/models/content_template.dart';
+import 'package:edusheet/features/templates/presentation/providers/content_template_provider.dart';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
 
 // Note: I'll need to check if vsc_quill_delta_to_html is available,
 // if not I might need another way to convert delta to html for storage.
@@ -23,12 +28,14 @@ class QuestionEditorSheet extends ConsumerStatefulWidget {
   final String sectionId;
   final Question? question;
   final QuestionType? initialType;
+  final int? insertAt;
 
   const QuestionEditorSheet({
     super.key,
     required this.sectionId,
     this.question,
     this.initialType,
+    this.insertAt,
   });
 
   @override
@@ -46,20 +53,26 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
   late double _marks;
   late bool _isOptional;
   late List<QuestionOption> _options;
+  late List<MathExpression> _mathExpressions;
   final Map<String, TextEditingController> _optionControllers = {};
   String? _questionError;
   String? _marksError;
   String? _optionsError;
+  int? _nextInsertAt;
 
   @override
   void initState() {
     super.initState();
     final defaults = ref.read(questionEditorDefaultsProvider);
     _type = widget.question?.type ?? widget.initialType ?? defaults.type;
+    _nextInsertAt = widget.insertAt;
     _marks = widget.question?.marks ?? defaults.marks;
     _isOptional = widget.question?.isOptional ?? defaults.isOptional;
     _marksController = TextEditingController(text: _formatMarks(_marks));
     _options = widget.question?.options.map((o) => o.copyWith()).toList() ?? [];
+    _mathExpressions =
+        widget.question?.mathExpressions.map((item) => item.copyWith()).toList() ??
+        [];
 
     if (widget.question != null) {
       // For now, let's assume 'text' is a Delta JSON string
@@ -85,8 +98,8 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
       _controller = QuillController.basic();
     }
 
-    if (_type == QuestionType.mcq && _options.isEmpty) {
-      _options = _emptyMcqOptions();
+    if (_type.usesOptions && _options.isEmpty) {
+      _options = _emptyOptionsForType(_type);
     }
     _syncOptionControllers();
 
@@ -101,7 +114,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     if (!_validate()) return;
 
     final text = jsonEncode(_controller.document.toDelta().toJson());
-    final options = _type == QuestionType.mcq
+    final options = _type.usesOptions
         ? _options
               .where((option) => _optionText(option).trim().isNotEmpty)
               .map(
@@ -127,8 +140,11 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             marks: _marks,
             options: options,
             isOptional: _isOptional,
+            insertAt: _nextInsertAt,
+            mathExpressions: _mathExpressions,
           );
       if (addAnother) {
+        if (_nextInsertAt != null) _nextInsertAt = _nextInsertAt! + 1;
         _resetForNextQuestion();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -150,9 +166,143 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
             marks: _marks,
             options: options,
             isOptional: _isOptional,
+            mathExpressions: _mathExpressions,
           );
     }
     Navigator.pop(context);
+  }
+
+  Future<void> _saveAsTemplate() async {
+    if (!_validate()) return;
+    final details = await _askTemplateDetails();
+    if (details == null || !mounted) return;
+    final text = jsonEncode(_controller.document.toDelta().toJson());
+    final options = _type.usesOptions
+        ? _options
+              .where((option) => _optionText(option).trim().isNotEmpty)
+              .map(
+                (option) => option.copyWith(text: _optionText(option).trim()),
+              )
+              .toList()
+        : <QuestionOption>[];
+    final now = DateTime.now();
+    final question = Question(
+      id: const Uuid().v4(),
+      text: text,
+      type: _type,
+      marks: _marks,
+      options: options,
+      isOptional: _isOptional,
+      subject: details.subject,
+      chapter: details.chapter,
+      topic: details.topic,
+      grade: details.grade,
+      mathExpressions: _mathExpressions,
+      createdAt: now,
+      modifiedAt: now,
+    );
+    await ref.read(contentTemplateRepositoryProvider).saveQuestionTemplate(
+      QuestionTemplate(
+        id: const Uuid().v4(),
+        name: details.name,
+        description: question.plainTextAccessibility,
+        question: question,
+        createdAt: now,
+        modifiedAt: now,
+      ),
+    );
+    ref.invalidate(questionTemplatesProvider);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Question template saved.')),
+    );
+  }
+
+  Future<_QuestionTemplateDetails?> _askTemplateDetails() async {
+    final name = TextEditingController();
+    final grade = TextEditingController();
+    final subject = TextEditingController();
+    final chapter = TextEditingController();
+    final topic = TextEditingController();
+    final result = await showDialog<_QuestionTemplateDetails>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save question as template'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Template name *'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: grade,
+                decoration: const InputDecoration(labelText: 'Class / grade'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: subject,
+                decoration: const InputDecoration(labelText: 'Subject'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: chapter,
+                decoration: const InputDecoration(labelText: 'Chapter'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: topic,
+                decoration: const InputDecoration(labelText: 'Topic'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (name.text.trim().isEmpty) return;
+              Navigator.pop(
+                context,
+                _QuestionTemplateDetails(
+                  name: name.text.trim(),
+                  grade: grade.text.trim(),
+                  subject: subject.text.trim(),
+                  chapter: chapter.text.trim(),
+                  topic: topic.text.trim(),
+                ),
+              );
+            },
+            child: const Text('Save template'),
+          ),
+        ],
+      ),
+    );
+    for (final controller in [name, grade, subject, chapter, topic]) {
+      controller.dispose();
+    }
+    return result;
+  }
+
+  Future<void> _addFormula() async {
+    final expression = await FormulaEditorSheet.show(context);
+    if (expression == null || !mounted) return;
+    setState(() => _mathExpressions.add(expression));
+  }
+
+  Future<void> _editFormula(int index) async {
+    final expression = await FormulaEditorSheet.show(
+      context,
+      initial: _mathExpressions[index],
+    );
+    if (expression == null || !mounted) return;
+    setState(() => _mathExpressions[index] = expression);
   }
 
   void _resetForNextQuestion() {
@@ -163,7 +313,8 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
 
     setState(() {
       _controller = QuillController.basic();
-      _options = _type == QuestionType.mcq ? _emptyMcqOptions() : [];
+      _options = _type.usesOptions ? _emptyOptionsForType(_type) : [];
+      _mathExpressions = [];
       _optionControllers
         ..clear()
         ..addEntries(
@@ -208,7 +359,7 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
     setState(() {
       _questionError = questionText.isEmpty ? 'Write the question first' : null;
       _marksError = _marks <= 0 ? 'Marks must be more than 0' : null;
-      _optionsError = _type == QuestionType.mcq && mcqOptionCount < 2
+      _optionsError = _type.usesOptions && mcqOptionCount < 2
           ? 'Add at least two options'
           : null;
     });
@@ -221,19 +372,115 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
   void _setType(QuestionType type) {
     setState(() {
       _type = type;
-      if (_type == QuestionType.mcq && _options.isEmpty) {
-        _options = _emptyMcqOptions();
+      if (_type.usesOptions && _options.isEmpty) {
+        _options = _emptyOptionsForType(_type);
       }
       _syncOptionControllers();
       _optionsError = null;
     });
   }
 
-  List<QuestionOption> _emptyMcqOptions() {
+  List<QuestionOption> _emptyOptionsForType(QuestionType type) {
+    if (type == QuestionType.trueFalse) {
+      return [
+        QuestionOption(id: const Uuid().v4(), text: 'True'),
+        QuestionOption(id: const Uuid().v4(), text: 'False'),
+      ];
+    }
     return List.generate(
       4,
       (_) => QuestionOption(id: const Uuid().v4(), text: ''),
     );
+  }
+
+  Future<void> _showTypePicker() async {
+    var query = '';
+    final selected = await showModalBottomSheet<QuestionType>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final types = QuestionType.values
+              .where(
+                (type) => type.label.toLowerCase().contains(
+                  query.trim().toLowerCase(),
+                ),
+              )
+              .toList();
+          return FractionallySizedBox(
+            heightFactor: 0.82,
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).dividerColor,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 18, 20, 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Choose question type',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextField(
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      hintText: 'Search question types',
+                      prefixIcon: Icon(Icons.search_rounded),
+                    ),
+                    onChanged: (value) => setSheetState(() => query = value),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    itemCount: types.length,
+                    itemBuilder: (context, index) {
+                      final type = types[index];
+                      return ListTile(
+                        minTileHeight: 52,
+                        leading: Icon(
+                          type == _type
+                              ? Icons.check_circle_rounded
+                              : Icons.quiz_outlined,
+                          color: type == _type ? Colors.blue : null,
+                        ),
+                        title: Text(type.label),
+                        subtitle: type.usesOptions
+                            ? Text(
+                                type.allowsMultipleCorrect
+                                    ? 'Supports multiple correct answers'
+                                    : 'Supports answer options',
+                              )
+                            : null,
+                        onTap: () => Navigator.pop(context, type),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (selected != null && mounted) _setType(selected);
   }
 
   void _syncOptionControllers() {
@@ -523,22 +770,15 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                 runSpacing: 8,
                 children: [
                   _QuestionTypeChip(
-                    label: 'Descriptive',
-                    icon: Icons.short_text_rounded,
-                    selected: _type == QuestionType.descriptive,
-                    onTap: () => _setType(QuestionType.descriptive),
-                  ),
-                  _QuestionTypeChip(
-                    label: 'MCQ',
+                    label: _type.label,
                     icon: Icons.check_circle_outline_rounded,
-                    selected: _type == QuestionType.mcq,
-                    onTap: () => _setType(QuestionType.mcq),
+                    selected: true,
+                    onTap: _showTypePicker,
                   ),
-                  _QuestionTypeChip(
-                    label: 'Fill blanks',
-                    icon: Icons.edit_note_rounded,
-                    selected: _type == QuestionType.fillInTheBlanks,
-                    onTap: () => _setType(QuestionType.fillInTheBlanks),
+                  ActionChip(
+                    avatar: const Icon(Icons.swap_horiz_rounded, size: 18),
+                    label: const Text('Change type'),
+                    onPressed: _showTypePicker,
                   ),
                 ],
               ),
@@ -637,10 +877,26 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                     ),
                   ),
                   TextButton.icon(
+                    onPressed: _addFormula,
+                    icon: const Icon(Icons.functions_rounded, size: 18),
+                    label: const Text(
+                      'Formula',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  TextButton.icon(
                     onPressed: _insertGeometryDiagram,
                     icon: const Icon(Icons.architecture_outlined, size: 18),
                     label: const Text(
                       'Diagram',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _saveAsTemplate,
+                    icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                    label: const Text(
+                      'Template',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -775,7 +1031,43 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                   style: const TextStyle(color: Colors.redAccent, fontSize: 12),
                 ),
               ],
-              if (_type == QuestionType.mcq) ...[
+              if (_mathExpressions.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(
+                  'Formula blocks',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                for (final entry in _mathExpressions.asMap().entries)
+                  Card(
+                    child: ListTile(
+                      minTileHeight: 64,
+                      title: SafeMathExpression(expression: entry.value),
+                      subtitle: Text(entry.value.plainText),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Edit formula',
+                            onPressed: () => _editFormula(entry.key),
+                            icon: const Icon(Icons.edit_outlined),
+                          ),
+                          IconButton(
+                            tooltip: 'Delete formula',
+                            onPressed: () => setState(
+                              () => _mathExpressions.removeAt(entry.key),
+                            ),
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+              if (_type.usesOptions) ...[
                 const SizedBox(height: 24),
                 Wrap(
                   spacing: 6,
@@ -840,7 +1132,25 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
                         padding: const EdgeInsets.only(bottom: 12.0),
                         child: Row(
                           children: [
-                            Radio<int>(value: idx, activeColor: Colors.green),
+                            if (_type.allowsMultipleCorrect)
+                              Checkbox(
+                                value: opt.isCorrect,
+                                activeColor: Colors.green,
+                                semanticLabel:
+                                    'Mark option ${String.fromCharCode(65 + idx)} correct',
+                                onChanged: (value) {
+                                  setState(() {
+                                    _options[idx] = opt.copyWith(
+                                      isCorrect: value == true,
+                                    );
+                                  });
+                                },
+                              )
+                            else
+                              Radio<int>(
+                                value: idx,
+                                activeColor: Colors.green,
+                              ),
                             Expanded(
                               child: Column(
                                 children: [
@@ -981,6 +1291,22 @@ class _QuestionEditorSheetState extends ConsumerState<QuestionEditorSheet> {
       ),
     );
   }
+}
+
+class _QuestionTemplateDetails {
+  final String name;
+  final String grade;
+  final String subject;
+  final String chapter;
+  final String topic;
+
+  const _QuestionTemplateDetails({
+    required this.name,
+    required this.grade,
+    required this.subject,
+    required this.chapter,
+    required this.topic,
+  });
 }
 
 class _QuestionTypeChip extends StatelessWidget {

@@ -35,6 +35,7 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   bool _isPressed = false;
+  bool _hasFocus = false;
 
   @override
   void initState() {
@@ -77,50 +78,89 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
     final effectiveTex = widget.tex ?? widget.symbol?.tex;
     final theme = Theme.of(context);
 
-    return GestureDetector(
-      onTapDown: _handleTapDown,
-      onTapUp: _handleTapUp,
-      onTapCancel: _handleTapCancel,
+    return Semantics(
+      button: true,
+      focusable: true,
+      focused: _hasFocus,
       onTap: widget.onTap,
       onLongPress: widget.onLongPress,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          ScaleTransition(
-            scale: _scaleAnimation,
-            child: Material(
-              color:
-                  widget.color ??
-                  (_isPressed
-                      ? theme.colorScheme.surfaceContainerHighest
-                      : theme.colorScheme.surfaceContainerHigh),
-              borderRadius: BorderRadius.circular(8),
-              elevation: _isPressed ? 0 : 1,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: theme.dividerColor.withValues(alpha: 0.1),
-                    width: 0.5,
+      label:
+          'Insert ${widget.symbol?.accessibilityLabel ?? effectiveLabel ?? 'math symbol'}',
+      hint: widget.onLongPress == null
+          ? null
+          : 'Long press for alternatives or favourites',
+      child: Focus(
+        onFocusChange: (hasFocus) => setState(() => _hasFocus = hasFocus),
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.numpadEnter ||
+                  event.logicalKey == LogicalKeyboardKey.space)) {
+            widget.onTap();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: _handleTapDown,
+          onTapUp: _handleTapUp,
+          onTapCancel: _handleTapCancel,
+          onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: Material(
+                    color:
+                        widget.color ??
+                        (_isPressed
+                            ? theme.colorScheme.surfaceContainerHighest
+                            : theme.colorScheme.surfaceContainerHigh),
+                    borderRadius: BorderRadius.circular(8),
+                    elevation: _isPressed ? 0 : 1,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: _hasFocus
+                              ? theme.colorScheme.primary
+                              : theme.dividerColor.withValues(alpha: 0.1),
+                          width: _hasFocus ? 2 : 0.5,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.all(2),
+                      child: Center(
+                        child:
+                            widget.child ??
+                            _buildContent(
+                              context,
+                              effectiveLabel,
+                              effectiveTex,
+                            ),
+                      ),
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(8),
                 ),
-                padding: const EdgeInsets.all(2),
-                child: Center(
-                  child:
-                      widget.child ??
-                      _buildContent(context, effectiveLabel, effectiveTex),
-                ),
-              ),
+                if (_isPressed)
+                  Positioned(
+                    top: -60,
+                    left: -12,
+                    right: -12,
+                    child: _buildPreviewBubble(
+                      context,
+                      effectiveLabel,
+                      effectiveTex,
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (_isPressed)
-            Positioned(
-              top: -60,
-              left: -12,
-              right: -12,
-              child: _buildPreviewBubble(context, effectiveLabel, effectiveTex),
-            ),
-        ],
+        ),
       ),
     );
   }

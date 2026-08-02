@@ -3,10 +3,12 @@ import 'package:edusheet/features/pdf/presentation/providers/template_provider.d
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:edusheet/features/editor/data/repositories/paper_repository.dart';
 import 'package:edusheet/features/editor/data/repositories/local_paper_repository.dart';
+import 'package:edusheet/features/editor/services/autosave_coordinator.dart';
 
 part 'editor_provider.g.dart';
 
@@ -46,19 +48,48 @@ final questionEditorDefaultsProvider = StateProvider<QuestionEditorDefaults>(
   (ref) => const QuestionEditorDefaults(),
 );
 
+final editorSaveStatusProvider = StateProvider<AutosaveStatus>(
+  (ref) => const AutosaveStatus(AutosavePhase.idle),
+);
+
 @Riverpod(keepAlive: true)
 class EditorState extends _$EditorState {
+  static const int _historyLimit = 50;
+
+  late final AutosaveCoordinator<Paper> _autosave;
+  final List<Paper> _undoStack = [];
+  final List<Paper> _redoStack = [];
+  bool _historyNavigation = false;
+
   @override
   Paper build() {
-    // Auto-save whenever the state changes
+    final repository = ref.read(paperRepositoryProvider);
+    _autosave = AutosaveCoordinator<Paper>(
+      save: repository.savePaper,
+      onStatus: (status) {
+        ref.read(editorSaveStatusProvider.notifier).state = status;
+        if (status.phase == AutosavePhase.saved) {
+          ref.invalidate(savedPapersProvider);
+        }
+      },
+    );
+    ref.onDispose(_autosave.dispose);
+
     listenSelf((previous, next) {
       if (previous != null && previous != next) {
-        savePaper();
-        // Invalidate the list so the UI updates
-        ref.invalidate(savedPapersProvider);
+        if (!_historyNavigation) {
+          _undoStack.add(previous);
+          if (_undoStack.length > _historyLimit) _undoStack.removeAt(0);
+          _redoStack.clear();
+        }
+        _autosave.schedule(next);
       }
     });
 
+    return _newPaper();
+  }
+
+  Paper _newPaper() {
     return Paper(
       id: const Uuid().v4(),
       title: 'New Paper',
@@ -97,16 +128,46 @@ class EditorState extends _$EditorState {
   }
 
   Future<void> savePaper() async {
-    final repo = ref.read(paperRepositoryProvider);
-    await repo.savePaper(state);
+    _autosave.schedule(state);
+    await _autosave.flush();
   }
 
   void loadPaper(Paper paper) {
-    state = paper;
+    _replaceWithoutHistory(paper);
   }
 
   void reset() {
-    state = build();
+    _replaceWithoutHistory(_newPaper());
+  }
+
+  bool get canUndo => _undoStack.isNotEmpty;
+
+  bool get canRedo => _redoStack.isNotEmpty;
+
+  void undo() {
+    if (_undoStack.isEmpty) return;
+    final previous = _undoStack.removeLast();
+    _redoStack.add(state);
+    _historyNavigation = true;
+    state = previous;
+    _historyNavigation = false;
+  }
+
+  void redo() {
+    if (_redoStack.isEmpty) return;
+    final next = _redoStack.removeLast();
+    _undoStack.add(state);
+    _historyNavigation = true;
+    state = next;
+    _historyNavigation = false;
+  }
+
+  void _replaceWithoutHistory(Paper paper) {
+    _undoStack.clear();
+    _redoStack.clear();
+    _historyNavigation = true;
+    state = paper;
+    _historyNavigation = false;
   }
 
   void updateTitle(String title) {
@@ -115,6 +176,24 @@ class EditorState extends _$EditorState {
 
   void updateInstruction(String instruction) {
     state = state.copyWith(instruction: instruction);
+  }
+
+  void updatePaperSettings({
+    double? maximumMarks,
+    bool clearMaximumMarks = false,
+    bool? includeCoverPage,
+    String? headerText,
+    String? footerText,
+    bool? showPageNumbers,
+  }) {
+    state = state.copyWith(
+      maximumMarks: maximumMarks,
+      clearMaximumMarks: clearMaximumMarks,
+      includeCoverPage: includeCoverPage,
+      headerText: headerText,
+      footerText: footerText,
+      showPageNumbers: showPageNumbers,
+    );
   }
 
   void updateBranding({String? schoolName, String? logo, int? logoIndex}) {
@@ -195,6 +274,27 @@ class EditorState extends _$EditorState {
     state = state.copyWith(sections: [...state.sections, newSection]);
   }
 
+  void addSectionFromTemplate(PaperSection source) {
+    final section = PaperSection(
+      id: const Uuid().v4(),
+      title: source.title,
+      instruction: source.instruction,
+      prefix: source.prefix,
+      questions: source.questions.map(_cloneQuestion).toList(),
+      requiredCount: source.requiredCount,
+      showTitle: source.showTitle,
+      showDivider: source.showDivider,
+      numberingStyle: source.numberingStyle,
+      defaultMarks: source.defaultMarks,
+      pageBreakBefore: source.pageBreakBefore,
+      keepTogether: source.keepTogether,
+      answerSpaceLines: source.answerSpaceLines,
+      ruledAnswerArea: source.ruledAnswerArea,
+      graphAnswerArea: source.graphAnswerArea,
+    );
+    state = state.copyWith(sections: [...state.sections, section]);
+  }
+
   void updateSection(
     String sectionId, {
     String? title,
@@ -204,6 +304,15 @@ class EditorState extends _$EditorState {
     bool clearRequiredCount = false,
     bool? showTitle,
     bool? showDivider,
+    QuestionNumberStyle? numberingStyle,
+    bool clearNumberingStyle = false,
+    double? defaultMarks,
+    bool clearDefaultMarks = false,
+    bool? pageBreakBefore,
+    bool? keepTogether,
+    int? answerSpaceLines,
+    bool? ruledAnswerArea,
+    bool? graphAnswerArea,
   }) {
     state = state.copyWith(
       sections: state.sections.map((s) {
@@ -216,6 +325,15 @@ class EditorState extends _$EditorState {
             clearRequiredCount: clearRequiredCount,
             showTitle: showTitle ?? s.showTitle,
             showDivider: showDivider ?? s.showDivider,
+            numberingStyle: numberingStyle ?? s.numberingStyle,
+            clearNumberingStyle: clearNumberingStyle,
+            defaultMarks: defaultMarks ?? s.defaultMarks,
+            clearDefaultMarks: clearDefaultMarks,
+            pageBreakBefore: pageBreakBefore ?? s.pageBreakBefore,
+            keepTogether: keepTogether ?? s.keepTogether,
+            answerSpaceLines: answerSpaceLines ?? s.answerSpaceLines,
+            ruledAnswerArea: ruledAnswerArea ?? s.ruledAnswerArea,
+            graphAnswerArea: graphAnswerArea ?? s.graphAnswerArea,
           );
         }
         return s;
@@ -244,6 +362,8 @@ class EditorState extends _$EditorState {
     double marks = 1.0,
     List<QuestionOption> options = const [],
     bool isOptional = false,
+    int? insertAt,
+    List<MathExpression> mathExpressions = const [],
   }) {
     state = state.copyWith(
       sections: state.sections.map((section) {
@@ -255,10 +375,13 @@ class EditorState extends _$EditorState {
             marks: marks,
             options: options,
             isOptional: isOptional,
+            mathExpressions: mathExpressions,
           );
-          return section.copyWith(
-            questions: [...section.questions, newQuestion],
-          );
+          final questions = [...section.questions];
+          final index =
+              insertAt?.clamp(0, questions.length).toInt() ?? questions.length;
+          questions.insert(index, newQuestion);
+          return section.copyWith(questions: questions);
         }
         return section;
       }).toList(),
@@ -266,10 +389,9 @@ class EditorState extends _$EditorState {
   }
 
   Question _cloneQuestion(Question source) {
-    return Question(
+    final now = DateTime.now();
+    return source.copyWith(
       id: const Uuid().v4(),
-      text: source.text,
-      imageUrl: source.imageUrl,
       options: source.options
           .map(
             (option) => QuestionOption(
@@ -279,10 +401,17 @@ class EditorState extends _$EditorState {
             ),
           )
           .toList(),
-      type: source.type,
-      marks: source.marks,
-      alignment: source.alignment,
-      isOptional: source.isOptional,
+      mathExpressions: source.mathExpressions
+          .map((expression) => expression.copyWith(id: const Uuid().v4()))
+          .toList(),
+      attachments: source.attachments
+          .map((attachment) => attachment.copyWith(id: const Uuid().v4()))
+          .toList(),
+      subQuestions: source.subQuestions.map(_cloneQuestion).toList(),
+      internalChoices: source.internalChoices.map(_cloneQuestion).toList(),
+      createdAt: now,
+      modifiedAt: now,
+      version: 1,
     );
   }
 
@@ -312,6 +441,31 @@ class EditorState extends _$EditorState {
     );
   }
 
+  void duplicateSection(String sectionId) {
+    final sourceIndex = state.sections.indexWhere((item) => item.id == sectionId);
+    if (sourceIndex == -1) return;
+    final source = state.sections[sourceIndex];
+    final duplicate = PaperSection(
+      id: const Uuid().v4(),
+      title: '${source.title} copy',
+      instruction: source.instruction,
+      prefix: source.prefix,
+      questions: source.questions.map(_cloneQuestion).toList(),
+      requiredCount: source.requiredCount,
+      showTitle: source.showTitle,
+      showDivider: source.showDivider,
+      numberingStyle: source.numberingStyle,
+      defaultMarks: source.defaultMarks,
+      pageBreakBefore: source.pageBreakBefore,
+      keepTogether: source.keepTogether,
+      answerSpaceLines: source.answerSpaceLines,
+      ruledAnswerArea: source.ruledAnswerArea,
+      graphAnswerArea: source.graphAnswerArea,
+    );
+    final sections = [...state.sections]..insert(sourceIndex + 1, duplicate);
+    state = state.copyWith(sections: sections);
+  }
+
   void updateQuestion(
     String sectionId,
     String questionId, {
@@ -322,6 +476,7 @@ class EditorState extends _$EditorState {
     TextAlign? alignment,
     List<QuestionOption>? options,
     bool? isOptional,
+    List<MathExpression>? mathExpressions,
   }) {
     state = state.copyWith(
       sections: state.sections.map((section) {
@@ -337,6 +492,7 @@ class EditorState extends _$EditorState {
                   alignment: alignment ?? q.alignment,
                   options: options ?? q.options,
                   isOptional: isOptional ?? q.isOptional,
+                  mathExpressions: mathExpressions ?? q.mathExpressions,
                 );
               }
               return q;
@@ -387,6 +543,52 @@ class EditorState extends _$EditorState {
         return section;
       }).toList(),
     );
+  }
+
+  void moveQuestion({
+    required String fromSectionId,
+    required String toSectionId,
+    required String questionId,
+    int? toIndex,
+  }) {
+    final sections = [...state.sections];
+    final fromIndex = sections.indexWhere((item) => item.id == fromSectionId);
+    final destinationIndex = sections.indexWhere(
+      (item) => item.id == toSectionId,
+    );
+    if (fromIndex == -1 || destinationIndex == -1) return;
+
+    final sourceQuestions = [...sections[fromIndex].questions];
+    final questionIndex = sourceQuestions.indexWhere(
+      (item) => item.id == questionId,
+    );
+    if (questionIndex == -1) return;
+    final question = sourceQuestions.removeAt(questionIndex);
+
+    if (fromIndex == destinationIndex) {
+      final insertion = (toIndex ?? sourceQuestions.length).clamp(
+        0,
+        sourceQuestions.length,
+      ).toInt();
+      sourceQuestions.insert(insertion, question);
+      sections[fromIndex] = sections[fromIndex].copyWith(
+        questions: sourceQuestions,
+      );
+    } else {
+      final destinationQuestions = [...sections[destinationIndex].questions];
+      final insertion = (toIndex ?? destinationQuestions.length).clamp(
+        0,
+        destinationQuestions.length,
+      ).toInt();
+      destinationQuestions.insert(insertion, question);
+      sections[fromIndex] = sections[fromIndex].copyWith(
+        questions: sourceQuestions,
+      );
+      sections[destinationIndex] = sections[destinationIndex].copyWith(
+        questions: destinationQuestions,
+      );
+    }
+    state = state.copyWith(sections: sections);
   }
 
   void toggleOmr(bool value) {

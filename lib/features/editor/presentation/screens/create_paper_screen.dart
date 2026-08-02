@@ -1,4 +1,5 @@
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:edusheet/features/pdf/presentation/widgets/template_header_preview.dart';
@@ -14,10 +15,12 @@ import 'package:edusheet/features/geometry_builder/painters/geometry_painter.dar
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/pdf/presentation/widgets/template_selector.dart';
 import 'package:edusheet/features/pdf/services/export_file_service.dart';
+import 'package:edusheet/features/pdf/services/export_task.dart';
 import 'package:edusheet/features/pdf/services/pdf_service.dart';
 import 'package:edusheet/features/pdf/services/word_export_service.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/editor/services/section_word_parser.dart';
+import 'package:edusheet/features/editor/services/paper_validator.dart';
 import '../widgets/question_editor_sheet.dart';
 import '../widgets/question_bank_picker_sheet.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -25,6 +28,11 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
+import 'package:edusheet/features/templates/domain/models/content_template.dart';
+import 'package:edusheet/features/templates/presentation/widgets/content_template_picker_sheet.dart';
+import 'package:edusheet/features/templates/services/template_clone_service.dart';
+import 'package:edusheet/shared/localization/edusheet_localizations.dart';
 
 class CreatePaperScreen extends ConsumerStatefulWidget {
   const CreatePaperScreen({super.key});
@@ -77,6 +85,136 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     );
   }
 
+  Future<void> _choosePaperBlueprint() async {
+    final blueprint = await showModalBottomSheet<PaperBlueprint>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => const PaperBlueprintPickerSheet(),
+    );
+    if (blueprint == null || !mounted) return;
+
+    final current = ref.read(editorStateProvider);
+    if (current.sections.isNotEmpty) {
+      final replace = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Replace the current draft?'),
+          content: const Text(
+            'Starting from this template replaces the current paper. Cancel if you want to save or export the current draft first.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Use template'),
+            ),
+          ],
+        ),
+      );
+      if (replace != true || !mounted) return;
+    }
+
+    final variables = await _editTemplateVariables(blueprint);
+    if (variables == null || !mounted) return;
+    final paper = TemplateCloneService().instantiatePaper(
+      blueprint,
+      variables: variables,
+    );
+    ref.read(editorStateProvider.notifier).loadPaper(paper);
+    _titleController.text = paper.title;
+    _instructionController.text = paper.instruction;
+    setState(() {
+      _currentPage = 0;
+      _showPreview = false;
+    });
+    if (_pageController.hasClients) _pageController.jumpToPage(0);
+  }
+
+  Future<Map<String, String>?> _editTemplateVariables(
+    PaperBlueprint blueprint,
+  ) async {
+    final controllers = blueprint.variableDefaults.map(
+      (key, value) => MapEntry(key, TextEditingController(text: value)),
+    );
+    final result = await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          12,
+          16,
+          MediaQuery.viewInsetsOf(context).bottom + 16,
+        ),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.82,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.tune_rounded),
+                title: Text(
+                  blueprint.name,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text('Edit details before creating the paper'),
+              ),
+              Expanded(
+                child: ListView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  children: [
+                    for (final entry in controllers.entries)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: TextField(
+                          controller: entry.value,
+                          decoration: InputDecoration(
+                            labelText: _templateVariableLabel(entry.key),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(
+                  context,
+                  controllers.map(
+                    (key, controller) => MapEntry(key, controller.text.trim()),
+                  ),
+                ),
+                icon: const Icon(Icons.check_rounded),
+                label: const Text('Create paper'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+    return result;
+  }
+
+  String _templateVariableLabel(String key) {
+    return key
+        .split('_')
+        .map(
+          (word) => word.isEmpty
+              ? word
+              : '${word[0].toUpperCase()}${word.substring(1)}',
+        )
+        .join(' ');
+  }
+
   Future<void> _savePaperShortcut() async {
     await ref.read(editorStateProvider.notifier).savePaper();
     ref.invalidate(savedPapersProvider);
@@ -93,6 +231,9 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   @override
   Widget build(BuildContext context) {
     final paper = ref.watch(editorStateProvider);
+    final saveStatus = ref.watch(editorSaveStatusProvider);
+    final editor = ref.read(editorStateProvider.notifier);
+    final validation = const PaperValidator().validate(paper);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return CallbackShortcuts(
@@ -118,7 +259,8 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
               ),
               if (!_showPreview)
                 Text(
-                  _currentPage == 0 ? 'Paper Setup' : 'Section $_currentPage',
+                  '${_currentPage == 0 ? 'Paper Setup' : 'Section $_currentPage'}'
+                  ' • ${saveStatus.accessibleLabel}',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[600],
@@ -129,24 +271,63 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
           ),
           actions: [
             IconButton(
-              icon: Icon(_showPreview ? Icons.edit : Icons.remove_red_eye),
-              onPressed: () => setState(() => _showPreview = !_showPreview),
-              tooltip: _showPreview ? 'Edit Mode' : 'Preview Mode',
+              icon: const Icon(Icons.undo_rounded),
+              onPressed: editor.canUndo ? editor.undo : null,
+              tooltip: 'Undo last paper change',
             ),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton.icon(
-                onPressed: () => _showSaveAsSheet(paper),
-                icon: const Icon(Icons.save_alt_rounded, size: 20),
-                label: const Text('Save'),
-                style: TextButton.styleFrom(
-                  foregroundColor: isDark ? Colors.white : Colors.black,
+            IconButton(
+              icon: const Icon(Icons.redo_rounded),
+              onPressed: editor.canRedo ? editor.redo : null,
+              tooltip: 'Redo paper change',
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Paper actions',
+              onSelected: (action) async {
+                if (action == 'template') await _choosePaperBlueprint();
+                if (action == 'preview') {
+                  setState(() => _showPreview = !_showPreview);
+                }
+                if (action == 'export') await _showSaveAsSheet(paper);
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'template',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.dashboard_customize_outlined),
+                    title: Text('Start from template'),
+                  ),
                 ),
-              ),
+                PopupMenuItem(
+                  value: 'preview',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(
+                      _showPreview ? Icons.edit : Icons.remove_red_eye,
+                    ),
+                    title: Text(_showPreview ? 'Edit mode' : 'Preview mode'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'export',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.save_alt_rounded),
+                    title: Text('Save or export'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        body: _showPreview ? _buildPreview(paper) : _buildEditor(paper),
+        body: Column(
+          children: [
+            if (!_showPreview) _PaperValidationBar(result: validation),
+            Expanded(
+              child: _showPreview ? _buildPreview(paper) : _buildEditor(paper),
+            ),
+          ],
+        ),
         bottomNavigationBar: !_showPreview
             ? _buildBottomNavigation(paper)
             : null,
@@ -378,6 +559,69 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                 onChanged: (val) => ref
                     .read(editorStateProvider.notifier)
                     .updateInstruction(val),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: paper.maximumMarks?.toString(),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Expected maximum marks',
+                  hintText: 'Used to detect a marks mismatch',
+                  prefixIcon: Icon(Icons.score_outlined),
+                ),
+                onChanged: (value) {
+                  ref.read(editorStateProvider.notifier).updatePaperSettings(
+                    maximumMarks: double.tryParse(value),
+                    clearMaximumMarks: value.trim().isEmpty,
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilterChip(
+                    avatar: const Icon(Icons.menu_book_outlined, size: 18),
+                    label: const Text('Cover page'),
+                    selected: paper.includeCoverPage,
+                    onSelected: (value) => ref
+                        .read(editorStateProvider.notifier)
+                        .updatePaperSettings(includeCoverPage: value),
+                  ),
+                  FilterChip(
+                    avatar: const Icon(Icons.numbers_rounded, size: 18),
+                    label: const Text('Page numbers'),
+                    selected: paper.showPageNumbers,
+                    onSelected: (value) => ref
+                        .read(editorStateProvider.notifier)
+                        .updatePaperSettings(showPageNumbers: value),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: paper.headerText,
+                decoration: const InputDecoration(
+                  labelText: 'Repeated header text',
+                  prefixIcon: Icon(Icons.vertical_align_top_rounded),
+                ),
+                onChanged: (value) => ref
+                    .read(editorStateProvider.notifier)
+                    .updatePaperSettings(headerText: value),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: paper.footerText,
+                decoration: const InputDecoration(
+                  labelText: 'Repeated footer text',
+                  prefixIcon: Icon(Icons.vertical_align_bottom_rounded),
+                ),
+                onChanged: (value) => ref
+                    .read(editorStateProvider.notifier)
+                    .updatePaperSettings(footerText: value),
               ),
               const SizedBox(height: 20),
               _buildHeaderFieldsSection(paper, template),
@@ -948,6 +1192,13 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     ),
                     const SizedBox(width: 12),
                     IconButton(
+                      tooltip: 'Duplicate section',
+                      icon: const Icon(Icons.copy_all_outlined),
+                      onPressed: () => ref
+                          .read(editorStateProvider.notifier)
+                          .duplicateSection(section.id),
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.delete_outline, color: Colors.red),
                       onPressed: () => _confirmDeleteSection(section),
                     ),
@@ -1008,6 +1259,65 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilterChip(
+                      avatar: const Icon(Icons.insert_page_break_outlined, size: 18),
+                      label: const Text('Page break before'),
+                      selected: section.pageBreakBefore,
+                      onSelected: (value) => ref
+                          .read(editorStateProvider.notifier)
+                          .updateSection(section.id, pageBreakBefore: value),
+                    ),
+                    FilterChip(
+                      avatar: const Icon(Icons.vertical_align_center_rounded, size: 18),
+                      label: const Text('Keep section together'),
+                      selected: section.keepTogether,
+                      onSelected: (value) => ref
+                          .read(editorStateProvider.notifier)
+                          .updateSection(section.id, keepTogether: value),
+                    ),
+                    FilterChip(
+                      avatar: const Icon(Icons.format_line_spacing_rounded, size: 18),
+                      label: const Text('Ruled answer area'),
+                      selected: section.ruledAnswerArea,
+                      onSelected: (value) => ref
+                          .read(editorStateProvider.notifier)
+                          .updateSection(section.id, ruledAnswerArea: value),
+                    ),
+                    FilterChip(
+                      avatar: const Icon(Icons.grid_on_rounded, size: 18),
+                      label: const Text('Graph answer area'),
+                      selected: section.graphAnswerArea,
+                      onSelected: (value) => ref
+                          .read(editorStateProvider.notifier)
+                          .updateSection(section.id, graphAnswerArea: value),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: 190,
+                  child: TextFormField(
+                    initialValue: section.answerSpaceLines.toString(),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Answer-space lines',
+                      prefixIcon: Icon(Icons.notes_rounded),
+                      isDense: true,
+                    ),
+                    onChanged: (value) {
+                      final lines = int.tryParse(value);
+                      if (lines == null || lines < 0) return;
+                      ref
+                          .read(editorStateProvider.notifier)
+                          .updateSection(section.id, answerSpaceLines: lines);
+                    },
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Container(
@@ -1113,6 +1423,10 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   onSelected: (value) {
                     if (value == 'bank') {
                       _showQuestionBankPicker(section);
+                    } else if (value == 'templates') {
+                      _showQuestionTemplatePicker(section);
+                    } else if (value == 'section_template') {
+                      _addSectionFromTemplate();
                     } else if (value == 'word') {
                       _showWordModeEditor(section);
                     }
@@ -1124,6 +1438,22 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         dense: true,
                         leading: Icon(Icons.library_books_outlined),
                         title: Text('Add from question bank'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'templates',
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.content_copy_rounded),
+                        title: Text('Add from question templates'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'section_template',
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.view_agenda_outlined),
+                        title: Text('Add a section template'),
                       ),
                     ),
                     PopupMenuItem(
@@ -1217,7 +1547,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                     ),
                     title: _buildQuestionPreviewText(q.text),
                     subtitle: Text(
-                      '${q.type.name.toUpperCase()}${q.isOptional ? " - OPTIONAL" : ""}',
+                      '${q.type.label}${q.isOptional ? " • Optional" : ""}',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -1228,18 +1558,32 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                         _showQuestionEditor(section.id, question: q),
                     trailing: PopupMenuButton<String>(
                       tooltip: 'Question actions',
-                      onSelected: (value) {
+                      onSelected: (value) async {
                         switch (value) {
                           case 'edit':
                             _showQuestionEditor(section.id, question: q);
+                          case 'add_above':
+                            _showQuestionEditor(
+                              section.id,
+                              insertAt: section.questions.indexOf(q),
+                            );
+                          case 'add_below':
+                            _showQuestionEditor(
+                              section.id,
+                              insertAt: section.questions.indexOf(q) + 1,
+                            );
                           case 'duplicate':
                             ref
                                 .read(editorStateProvider.notifier)
                                 .duplicateQuestion(section.id, q.id);
+                          case 'move':
+                            await _showMoveQuestion(section, q);
                           case 'delete':
-                            ref
-                                .read(editorStateProvider.notifier)
-                                .deleteQuestion(section.id, q.id);
+                            if (await _confirmDeleteQuestion()) {
+                              ref
+                                  .read(editorStateProvider.notifier)
+                                  .deleteQuestion(section.id, q.id);
+                            }
                         }
                       },
                       itemBuilder: (context) => const [
@@ -1252,11 +1596,35 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                           ),
                         ),
                         PopupMenuItem(
+                          value: 'add_above',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.vertical_align_top_rounded),
+                            title: Text('Add question above'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'add_below',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.vertical_align_bottom_rounded),
+                            title: Text('Add question below'),
+                          ),
+                        ),
+                        PopupMenuItem(
                           value: 'duplicate',
                           child: ListTile(
                             dense: true,
                             leading: Icon(Icons.copy_all_outlined),
                             title: Text('Duplicate'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'move',
+                          child: ListTile(
+                            dense: true,
+                            leading: Icon(Icons.drive_file_move_outline),
+                            title: Text('Move to section'),
                           ),
                         ),
                         PopupMenuItem(
@@ -1463,6 +1831,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
     String sectionId, {
     Question? question,
     QuestionType? initialType,
+    int? insertAt,
   }) {
     showModalBottomSheet(
       context: context,
@@ -1472,7 +1841,82 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         sectionId: sectionId,
         question: question,
         initialType: initialType,
+        insertAt: insertAt,
       ),
+    );
+  }
+
+  Future<bool> _confirmDeleteQuestion() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete this question?'),
+        content: const Text(
+          'The question will be removed from this paper. You can still use Undo immediately after deletion.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _showMoveQuestion(
+    PaperSection currentSection,
+    Question question,
+  ) async {
+    final paper = ref.read(editorStateProvider);
+    final destinations = paper.sections
+        .where((section) => section.id != currentSection.id)
+        .toList();
+    if (destinations.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add another section before moving.')),
+      );
+      return;
+    }
+    final destinationId = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const ListTile(
+              leading: Icon(Icons.drive_file_move_outline),
+              title: Text(
+                'Move question to',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            for (final section in destinations)
+              ListTile(
+                minTileHeight: 52,
+                leading: const Icon(Icons.view_agenda_outlined),
+                title: Text(section.title),
+                subtitle: Text('${section.questions.length} questions'),
+                onTap: () => Navigator.pop(context, section.id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (destinationId == null || !mounted) return;
+    ref.read(editorStateProvider.notifier).moveQuestion(
+      fromSectionId: currentSection.id,
+      toSectionId: destinationId,
+      questionId: question.id,
     );
   }
 
@@ -1499,6 +1943,34 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _showQuestionTemplatePicker(PaperSection section) async {
+    final template = await showModalBottomSheet<QuestionTemplate>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => const QuestionTemplatePickerSheet(),
+    );
+    if (template == null || !mounted) return;
+    ref
+        .read(editorStateProvider.notifier)
+        .addQuestionsFromBank(section.id, [template.question]);
+  }
+
+  Future<void> _addSectionFromTemplate() async {
+    final template = await showModalBottomSheet<SectionTemplate>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => const SectionTemplatePickerSheet(),
+    );
+    if (template == null || !mounted) return;
+    final paper = ref.read(editorStateProvider);
+    ref
+        .read(editorStateProvider.notifier)
+        .addSectionFromTemplate(template.section);
+    _goToPage(paper.sections.length + 1);
   }
 
   void _showWordModeEditor(PaperSection section) {
@@ -1757,6 +2229,14 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildRichText(q.text, q.alignment),
+                    for (final expression in q.mathExpressions)
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          vertical:
+                              expression.display.name == 'block' ? 8 : 2,
+                        ),
+                        child: SafeMathExpression(expression: expression),
+                      ),
                     if (q.isOptional)
                       const Text(
                         '(Optional/OR Choice)',
@@ -1779,7 +2259,7 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
               ),
             ],
           ),
-          if (q.type == QuestionType.mcq)
+          if (q.type.usesOptions)
             Padding(
               padding: const EdgeInsets.only(left: 34, top: 4),
               child: Column(
@@ -1890,6 +2370,123 @@ class _CreatePaperScreenState extends ConsumerState<CreatePaperScreen> {
   }
 }
 
+class _PaperValidationBar extends StatelessWidget {
+  final PaperValidationResult result;
+
+  const _PaperValidationBar({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final errors = result.issues
+        .where((issue) => issue.severity == PaperIssueSeverity.error)
+        .length;
+    final warnings = result.warningCount;
+    final color = errors > 0
+        ? Theme.of(context).colorScheme.error
+        : warnings > 0
+        ? Colors.orange
+        : Colors.green;
+    final status = errors > 0
+        ? '$errors issue${errors == 1 ? '' : 's'} need attention'
+        : warnings > 0
+        ? '$warnings suggestion${warnings == 1 ? '' : 's'}'
+        : 'Paper checks passed';
+    final expected = result.expectedMarks;
+    final marks = expected == null
+        ? '${_composerMarks(result.calculatedMarks)} marks'
+        : '${_composerMarks(result.calculatedMarks)} / ${_composerMarks(expected)} marks';
+
+    return Semantics(
+      button: true,
+      label: '$status. $marks.',
+      child: Material(
+        color: color.withValues(alpha: 0.08),
+        child: InkWell(
+          onTap: () => _showIssues(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              children: [
+                Icon(
+                  errors > 0
+                      ? Icons.error_outline_rounded
+                      : warnings > 0
+                      ? Icons.warning_amber_rounded
+                      : Icons.check_circle_outline_rounded,
+                  size: 20,
+                  color: color,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    '$marks • $status',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, size: 18),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showIssues(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.7,
+        child: Column(
+          children: [
+            const ListTile(
+              leading: Icon(Icons.fact_check_outlined),
+              title: Text(
+                'Paper checks',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            Expanded(
+              child: result.issues.isEmpty
+                  ? const Center(child: Text('No issues found.'))
+                  : ListView.builder(
+                      itemCount: result.issues.length,
+                      itemBuilder: (context, index) {
+                        final issue = result.issues[index];
+                        final color = issue.severity == PaperIssueSeverity.error
+                            ? Theme.of(context).colorScheme.error
+                            : issue.severity == PaperIssueSeverity.warning
+                            ? Colors.orange
+                            : Colors.blue;
+                        return ListTile(
+                          minTileHeight: 54,
+                          leading: Icon(Icons.circle, size: 10, color: color),
+                          title: Text(issue.message),
+                          subtitle: Text(issue.code),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _composerMarks(double value) {
+  return value == value.truncateToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toString();
+}
+
 class _SaveAsSheet extends ConsumerStatefulWidget {
   final String initialFileNameBase;
 
@@ -1903,7 +2500,14 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
   late final TextEditingController _controller;
   late final MathKeyboardController _mathKeyboardController;
   var _selectedFormat = _PaperExportFormat.app;
+  var _outputMode = PaperOutputMode.standard;
+  var _pageSize = ExportPageSize.useTemplate;
+  var _orientation = ExportOrientation.portrait;
+  var _colourMode = ExportColourMode.colour;
+  var _bookletEnabled = false;
   var _isSaving = false;
+  ExportCancellationToken? _cancellationToken;
+  String? _exportProgressLabel;
   String? _errorText;
 
   @override
@@ -1934,9 +2538,10 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
   }
 
   Future<void> _saveExport() async {
+    final strings = EduSheetLocalizations.of(context);
     final fileNameBase = _controller.text.trim();
     if (fileNameBase.isEmpty) {
-      setState(() => _errorText = 'Enter a file name');
+      setState(() => _errorText = strings.enterFileName);
       return;
     }
     if (ExportFileService.hasInvalidFileNameCharacters(fileNameBase)) {
@@ -1947,6 +2552,10 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
     setState(() {
       _isSaving = true;
       _errorText = null;
+      _exportProgressLabel = null;
+      _cancellationToken = _selectedFormat == _PaperExportFormat.pdf
+          ? ExportCancellationToken()
+          : null;
     });
 
     final navigator = Navigator.of(context);
@@ -1961,8 +2570,8 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
         if (!mounted || !navigator.mounted) return;
         navigator.pop();
         messenger.showSnackBar(
-          const SnackBar(
-            content: Text('Paper saved to library successfully'),
+          SnackBar(
+            content: Text(strings.paperSaved),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -1976,6 +2585,23 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
               latestPaper,
               template,
               fileNameBase: fileNameBase,
+              config: PaperExportConfig(
+                outputMode: _outputMode,
+                pageSize: _pageSize,
+                orientation: _orientation,
+                colourMode: _colourMode,
+                setLabel: _outputMode == PaperOutputMode.multipleSet ? 'A' : '',
+                booklet: BookletSettings(enabled: _bookletEnabled),
+              ),
+              cancellationToken: _cancellationToken,
+              onProgress: (progress) {
+                if (!mounted) return;
+                setState(
+                  () => _exportProgressLabel = strings.text(
+                    'progress.${progress.stage.name}',
+                  ),
+                );
+              },
             )
           : await WordExportService.export(
               latestPaper,
@@ -1995,11 +2621,12 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
       if (!mounted) return;
       setState(() {
         _isSaving = false;
-        _errorText = 'Could not save. Please try again.';
+        _errorText = const ExportFailureClassifier().userMessage(error);
+        _cancellationToken = null;
       });
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Error: $error'),
+          content: Text(_errorText!),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -2009,6 +2636,7 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final strings = EduSheetLocalizations.of(context);
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
     final mathKeyboardInset =
         keyboardState.isVisible && keyboardState.type == KeyboardType.math
@@ -2041,10 +2669,10 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
             const SizedBox(height: 18),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Save as',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+                    strings.saveAs,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                   ),
                 ),
                 IconButton(
@@ -2062,8 +2690,8 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
                 enabled: !_isSaving,
                 textInputAction: TextInputAction.done,
                 decoration: InputDecoration(
-                  labelText: 'File name',
-                  hintText: 'Example: Class 10 Mid Term',
+                  labelText: strings.fileName,
+                  hintText: strings.fileNameHint,
                   errorText: _errorText,
                   prefixIcon: const Icon(Icons.drive_file_rename_outline),
                   border: OutlineInputBorder(
@@ -2079,9 +2707,9 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Choose format',
-              style: TextStyle(fontWeight: FontWeight.w700),
+            Text(
+              strings.chooseFormat,
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             Row(
@@ -2129,24 +2757,166 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _isSaving ? null : _saveExport,
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+            if (_selectedFormat == _PaperExportFormat.pdf) ...[
+              const SizedBox(height: 18),
+              DropdownButtonFormField<PaperOutputMode>(
+                initialValue: _outputMode,
+                decoration: InputDecoration(
+                  labelText: strings.pdfOutput,
+                  border: const OutlineInputBorder(),
+                ),
+                items: PaperOutputMode.values
+                    .map(
+                      (mode) => DropdownMenuItem(
+                        value: mode,
+                        child: Text(_paperOutputModeLabel(mode, strings)),
+                      ),
                     )
-                  : const Icon(Icons.save_alt_rounded),
-              label: Text(_isSaving ? 'Saving...' : 'Save File'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 52),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                    .toList(),
+                onChanged: _isSaving
+                    ? null
+                    : (mode) => setState(
+                        () => _outputMode = mode ?? PaperOutputMode.standard,
+                      ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<ExportPageSize>(
+                      initialValue: _pageSize,
+                      decoration: InputDecoration(
+                        labelText: strings.pageSize,
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: ExportPageSize.useTemplate,
+                          child: Text('Template default'),
+                        ),
+                        DropdownMenuItem(
+                          value: ExportPageSize.a4,
+                          child: Text('A4'),
+                        ),
+                        DropdownMenuItem(
+                          value: ExportPageSize.letter,
+                          child: Text('Letter'),
+                        ),
+                      ],
+                      onChanged: _isSaving
+                          ? null
+                          : (size) => setState(
+                              () => _pageSize =
+                                  size ?? ExportPageSize.useTemplate,
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: DropdownButtonFormField<ExportOrientation>(
+                      initialValue: _orientation,
+                      decoration: InputDecoration(
+                        labelText: strings.orientation,
+                        border: const OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: ExportOrientation.portrait,
+                          child: Text('Portrait'),
+                        ),
+                        DropdownMenuItem(
+                          value: ExportOrientation.landscape,
+                          child: Text('Landscape'),
+                        ),
+                      ],
+                      onChanged: _isSaving
+                          ? null
+                          : (orientation) => setState(
+                              () => _orientation =
+                                  orientation ?? ExportOrientation.portrait,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SegmentedButton<ExportColourMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: ExportColourMode.colour,
+                    label: Text('Colour'),
+                    icon: Icon(Icons.palette_outlined),
+                  ),
+                  ButtonSegment(
+                    value: ExportColourMode.grayscale,
+                    label: Text('Grayscale'),
+                    icon: Icon(Icons.contrast_outlined),
+                  ),
+                ],
+                selected: {_colourMode},
+                onSelectionChanged: _isSaving
+                    ? null
+                    : (selection) => setState(
+                        () => _colourMode = selection.first,
+                      ),
+              ),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _bookletEnabled,
+                onChanged: _isSaving
+                    ? null
+                    : (value) => setState(() => _bookletEnabled = value),
+                title: Text(strings.bookletMargins),
+                subtitle: Text(strings.bookletGuidance),
+              ),
+            ],
+            const SizedBox(height: 20),
+            if (_errorText != null)
+              Semantics(
+                liveRegion: true,
+                label: _errorText,
+                child: const SizedBox.shrink(),
+              ),
+            Semantics(
+              liveRegion: _isSaving,
+              label: _isSaving
+                  ? (_exportProgressLabel ?? strings.saving)
+                  : strings.saveFile,
+              child: FilledButton.icon(
+                onPressed: _isSaving ? null : _saveExport,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_alt_rounded),
+                label: Text(
+                  _isSaving
+                      ? (_exportProgressLabel ?? strings.saving)
+                      : strings.saveFile,
+                ),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),
+            if (_isSaving && _cancellationToken != null)
+              TextButton.icon(
+                onPressed: () {
+                  _cancellationToken?.cancel();
+                  setState(
+                    () => _exportProgressLabel = strings.text(
+                      'progress.cancelling',
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.cancel_outlined),
+                label: Text(strings.cancelExport),
+              ),
           ],
         ),
       ),
@@ -2155,6 +2925,13 @@ class _SaveAsSheetState extends ConsumerState<_SaveAsSheet> {
 }
 
 enum _PaperExportFormat { pdf, word, app }
+
+String _paperOutputModeLabel(
+  PaperOutputMode mode,
+  EduSheetLocalizations strings,
+) {
+  return strings.outputMode(mode.name);
+}
 
 enum _WordRibbonTab { home, insert, paper, view }
 
@@ -2917,67 +3694,70 @@ class _SectionWordModeScreenState
     required double editorHeight,
     required bool compact,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TemplateHeaderPreview(paper: paper, template: template),
-        const SizedBox(height: 16),
-        if (widget.section.showTitle)
-          Text(
-            widget.section.title,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: template.questionFontSize + 3,
-              fontWeight: FontWeight.w800,
-              color: Colors.black,
+    return SingleChildScrollView(
+      primary: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TemplateHeaderPreview(paper: paper, template: template),
+          const SizedBox(height: 16),
+          if (widget.section.showTitle)
+            Text(
+              widget.section.title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: template.questionFontSize + 3,
+                fontWeight: FontWeight.w800,
+                color: Colors.black,
+              ),
             ),
-          ),
-        if ((widget.section.instruction ?? '').isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            widget.section.instruction!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 11,
-              fontStyle: FontStyle.italic,
-              color: Colors.black87,
+          if ((widget.section.instruction ?? '').isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              widget.section.instruction!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11,
+                fontStyle: FontStyle.italic,
+                color: Colors.black87,
+              ),
             ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
-            borderRadius: BorderRadius.circular(compact ? 8 : 4),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: MathKeyboardField(
-            controller: _controller,
-            focusNode: _focusNode,
-            builder: (context, fieldFocusNode, isMathActive) {
-              return SizedBox(
-                height: editorHeight,
-                child: Theme(
-                  data: ThemeData.light(useMaterial3: true),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: quill.QuillEditor(
-                      controller: _controller,
-                      focusNode: fieldFocusNode,
-                      scrollController: _scrollController,
-                      config: quill.QuillEditorConfig(
-                        placeholder:
-                            'Open Insert and choose Question, MCQ or Fill blank. Then type naturally like a document.',
-                        embedBuilders: [GeometryEmbedBuilder()],
+          ],
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+              borderRadius: BorderRadius.circular(compact ? 8 : 4),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: MathKeyboardField(
+              controller: _controller,
+              focusNode: _focusNode,
+              builder: (context, fieldFocusNode, isMathActive) {
+                return SizedBox(
+                  height: editorHeight,
+                  child: Theme(
+                    data: ThemeData.light(useMaterial3: true),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: quill.QuillEditor(
+                        controller: _controller,
+                        focusNode: fieldFocusNode,
+                        scrollController: _scrollController,
+                        config: quill.QuillEditorConfig(
+                          placeholder:
+                              'Open Insert and choose Question, MCQ or Fill blank. Then type naturally like a document.',
+                          embedBuilders: [GeometryEmbedBuilder()],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -3765,7 +4545,7 @@ quill.Document _sectionWordModeDocument(PaperSection section, Paper paper) {
       addText('--- Question $label ---\n');
       addQuestionDelta(question);
 
-      if (question.type == QuestionType.mcq) {
+      if (question.type.usesOptions) {
         for (var optionIndex = 0;
             optionIndex < question.options.length;
             optionIndex++) {

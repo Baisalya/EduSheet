@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
+import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/services/builders/header_builders.dart';
@@ -74,8 +75,13 @@ class QuestionPaperService {
 
   static Future<pw.Document> generateDocument(
     Paper paper,
-    PaperTemplate template,
-  ) async {
+    PaperTemplate template, {
+    PaperExportConfig config = const PaperExportConfig(),
+  }) async {
+    final configErrors = config.validate();
+    if (configErrors.isNotEmpty) {
+      throw ArgumentError(configErrors.join(' '));
+    }
     final theme = await _loadTheme();
     final pdf = pw.Document(theme: theme);
 
@@ -116,13 +122,25 @@ class QuestionPaperService {
     }
 
     final headerBuilder = _getHeaderBuilder(template.headerLayout);
-    final pageFormat = _getPageFormat(template.paperSize);
+    var pageFormat = switch (config.pageSize) {
+      ExportPageSize.useTemplate => _getPageFormat(template.paperSize),
+      ExportPageSize.a4 => PdfPageFormat.a4,
+      ExportPageSize.letter => PdfPageFormat.letter,
+    };
+    if (config.orientation == ExportOrientation.landscape) {
+      pageFormat = pageFormat.landscape;
+    }
+    final horizontalMargin = config.marginPoints +
+        (config.booklet.enabled ? config.booklet.gutterPoints / 2 : 0);
 
     pdf.addPage(
       pw.MultiPage(
         pageTheme: pw.PageTheme(
           pageFormat: pageFormat,
-          margin: const pw.EdgeInsets.all(32),
+          margin: pw.EdgeInsets.symmetric(
+            horizontal: horizontalMargin,
+            vertical: config.marginPoints,
+          ),
           buildBackground: (context) {
             if (template.hasBorder) {
               return pw.FullPage(
@@ -141,13 +159,75 @@ class QuestionPaperService {
             return pw.SizedBox();
           },
         ),
+        header: (context) {
+          if (paper.headerText.trim().isEmpty || context.pageNumber == 1) {
+            return pw.SizedBox();
+          }
+          return pw.Container(
+            alignment: pw.Alignment.center,
+            padding: const pw.EdgeInsets.only(bottom: 6),
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(bottom: pw.BorderSide(width: 0.5)),
+            ),
+            child: pw.Text(
+              paper.headerText.trim(),
+              style: pw.TextStyle(fontSize: 9 * config.fontScale),
+            ),
+          );
+        },
+        footer: (context) {
+          final parts = <String>[];
+          if (paper.footerText.trim().isNotEmpty) {
+            parts.add(paper.footerText.trim());
+          }
+          if (paper.showPageNumbers) {
+            parts.add('Page ${context.pageNumber} of ${context.pagesCount}');
+          }
+          if (parts.isEmpty) return pw.SizedBox();
+          return pw.Container(
+            alignment: pw.Alignment.center,
+            padding: const pw.EdgeInsets.only(top: 6),
+            child: pw.Text(
+              parts.join('  •  '),
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+          );
+        },
         build: (context) => [
+          if (paper.includeCoverPage) ...[
+            _buildCoverPage(paper, template, config),
+            pw.NewPage(),
+          ],
           headerBuilder.build(
             paper,
             logos,
             template,
             customImages: customImages,
           ),
+          if (config.outputMode == PaperOutputMode.multipleSet)
+            pw.Align(
+              alignment: pw.Alignment.center,
+              child: pw.Text(
+                'SET ${config.setLabel.trim().toUpperCase()}',
+                style: pw.TextStyle(
+                  fontSize: 16 * config.fontScale,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          if (config.includesAnswers)
+            pw.Align(
+              alignment: pw.Alignment.center,
+              child: pw.Text(
+                config.includesSolutions
+                    ? 'TEACHER SOLUTION COPY'
+                    : 'ANSWER KEY',
+                style: pw.TextStyle(
+                  fontSize: 13 * config.fontScale,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
           if (paper.instruction.trim().isNotEmpty)
             pw.Padding(
               padding: const pw.EdgeInsets.only(top: 8, bottom: 8),
@@ -161,8 +241,11 @@ class QuestionPaperService {
                 textAlign: pw.TextAlign.center,
               ),
             ),
-          ...paper.sections.map(
-            (section) => _buildSection(section, template, paper),
+          ...paper.sections.expand(
+            (section) => [
+              if (section.pageBreakBefore) pw.NewPage(),
+              _buildSection(section, template, paper, config),
+            ],
           ),
           if (paper.includeOmr)
             ..._buildOmrSheet(paper, logos.isNotEmpty ? logos.first : null),
@@ -177,11 +260,12 @@ class QuestionPaperService {
     PaperSection section,
     PaperTemplate template,
     Paper paper,
+    PaperExportConfig config,
   ) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.SizedBox(height: 20),
+        pw.SizedBox(height: 20 * config.spacingScale),
         if (section.showTitle || section.prefix.isNotEmpty)
           pw.Container(
             padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -192,7 +276,7 @@ class QuestionPaperService {
               '${section.prefix} ${section.showTitle ? section.title : ""}'
                   .trim(),
               style: pw.TextStyle(
-                fontSize: 18,
+                fontSize: 18 * config.fontScale,
                 fontWeight: pw.FontWeight.bold,
                 color: template.type == TemplateType.coaching
                     ? template.primaryColor
@@ -205,11 +289,14 @@ class QuestionPaperService {
             padding: const pw.EdgeInsets.only(bottom: 8),
             child: pw.Text(
               'Instruction: ${section.instruction}',
-              style: pw.TextStyle(fontStyle: pw.FontStyle.italic, fontSize: 12),
+              style: pw.TextStyle(
+                fontStyle: pw.FontStyle.italic,
+                fontSize: 12 * config.fontScale,
+              ),
             ),
           ),
         if (section.showDivider) pw.Divider(),
-        _buildQuestionList(section, template, paper),
+        _buildQuestionList(section, template, paper, config),
       ],
     );
   }
@@ -218,9 +305,17 @@ class QuestionPaperService {
     PaperSection section,
     PaperTemplate template,
     Paper paper,
+    PaperExportConfig config,
   ) {
     final questions = section.questions.asMap().entries.map((entry) {
-      return _buildQuestion(entry.key + 1, entry.value, template, paper);
+      return _buildQuestion(
+        entry.key + 1,
+        entry.value,
+        template,
+        paper,
+        section,
+        config,
+      );
     }).toList();
 
     if (template.paperLayout != PaperLayout.twoColumn) {
@@ -253,10 +348,23 @@ class QuestionPaperService {
     Question q,
     PaperTemplate template,
     Paper paper,
+    PaperSection section,
+    PaperExportConfig config,
   ) {
     final label = QuestionNumberingService.paperLabel(index, paper);
+    final fontSize = template.questionFontSize * config.fontScale;
+    final requestedAnswerLines = section.answerSpaceLines > 0
+        ? section.answerSpaceLines
+        : (config.includesAnswerSpace ? 4 : 0);
+    final correctOptions = q.options
+        .where((option) => option.isCorrect)
+        .map((option) => option.text)
+        .join(', ');
+    final answer = q.correctAnswer.trim().isNotEmpty
+        ? q.correctAnswer.trim()
+        : correctOptions;
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 8),
+      padding: pw.EdgeInsets.symmetric(vertical: 8 * config.spacingScale),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -268,7 +376,7 @@ class QuestionPaperService {
                 child: pw.Text(
                   '$label.',
                   style: pw.TextStyle(
-                    fontSize: template.questionFontSize,
+                    fontSize: fontSize,
                     fontWeight: pw.FontWeight.bold,
                   ),
                 ),
@@ -276,7 +384,7 @@ class QuestionPaperService {
               pw.Expanded(
                 child: _parseRichTextToPdf(
                   q.text,
-                  template.questionFontSize,
+                  fontSize,
                   textAlign: _pdfTextAlign(q.alignment),
                 ),
               ),
@@ -286,14 +394,27 @@ class QuestionPaperService {
                   '[${q.marks}]',
                   textAlign: pw.TextAlign.right,
                   style: pw.TextStyle(
-                    fontSize: template.questionFontSize,
+                    fontSize: fontSize,
                     fontWeight: pw.FontWeight.bold,
                   ),
                 ),
               ),
             ],
           ),
-          if (q.type == QuestionType.mcq)
+          for (final expression in q.mathExpressions)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(left: 34, top: 5, bottom: 3),
+              child: pw.Text(
+                expression.plainText.trim().isEmpty
+                    ? expression.latex
+                    : expression.plainText,
+                style: pw.TextStyle(
+                  fontSize: fontSize,
+                  fontStyle: pw.FontStyle.italic,
+                ),
+              ),
+            ),
+          if (q.type.usesOptions)
             pw.Padding(
               padding: const pw.EdgeInsets.only(left: 34, top: 4),
               child: pw.Column(
@@ -308,14 +429,14 @@ class QuestionPaperService {
                         pw.Text(
                           '$optIdx) ',
                           style: pw.TextStyle(
-                            fontSize: template.questionFontSize,
+                            fontSize: fontSize,
                           ),
                         ),
                         pw.Expanded(
                           child: pw.Text(
                             optEntry.value.text,
                             style: pw.TextStyle(
-                              fontSize: template.questionFontSize,
+                              fontSize: fontSize,
                             ),
                           ),
                         ),
@@ -330,10 +451,116 @@ class QuestionPaperService {
               padding: const pw.EdgeInsets.only(left: 34, top: 4),
               child: pw.Text(
                 'Ans: ________________________',
-                style: pw.TextStyle(fontSize: template.questionFontSize),
+                style: pw.TextStyle(fontSize: fontSize),
               ),
             ),
+          if (config.includesAnswers)
+            pw.Container(
+              margin: const pw.EdgeInsets.only(left: 34, top: 7),
+              padding: const pw.EdgeInsets.all(7),
+              width: double.infinity,
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey100,
+                border: pw.Border.all(color: PdfColors.grey500, width: 0.5),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    answer.isEmpty ? 'Answer: Not provided' : 'Answer: $answer',
+                    style: pw.TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  if (config.includesSolutions &&
+                      q.explanation.trim().isNotEmpty)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.only(top: 4),
+                      child: pw.Text(
+                        'Explanation: ${q.explanation.trim()}',
+                        style: pw.TextStyle(fontSize: fontSize),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          if (!config.includesAnswers && requestedAnswerLines > 0)
+            _buildAnswerArea(
+              requestedAnswerLines,
+              ruled: section.ruledAnswerArea || !section.graphAnswerArea,
+              graph: section.graphAnswerArea,
+            ),
         ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildCoverPage(
+    Paper paper,
+    PaperTemplate template,
+    PaperExportConfig config,
+  ) {
+    return pw.Container(
+      height: 650,
+      alignment: pw.Alignment.center,
+      child: pw.Column(
+        mainAxisAlignment: pw.MainAxisAlignment.center,
+        children: [
+          pw.Text(
+            paper.schoolName,
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(
+              fontSize: 24 * config.fontScale,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 28),
+          pw.Text(
+            paper.title,
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(
+              fontSize: 30 * config.fontScale,
+              fontWeight: pw.FontWeight.bold,
+              color: config.colourMode == ExportColourMode.grayscale
+                  ? PdfColors.black
+                  : template.primaryColor,
+            ),
+          ),
+          if (config.outputMode == PaperOutputMode.multipleSet) ...[
+            pw.SizedBox(height: 16),
+            pw.Text('SET ${config.setLabel.trim().toUpperCase()}'),
+          ],
+          pw.SizedBox(height: 36),
+          pw.Text('Maximum marks: ${paper.maximumMarks ?? paper.totalMarks}'),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildAnswerArea(
+    int lines, {
+    required bool ruled,
+    required bool graph,
+  }) {
+    final lineHeight = graph ? 14.0 : 18.0;
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(left: 34, top: 8),
+      child: pw.Column(
+        children: List.generate(
+          lines,
+          (_) => pw.Container(
+            height: lineHeight,
+            decoration: pw.BoxDecoration(
+              border: pw.Border(
+                bottom: pw.BorderSide(
+                  color: ruled || graph ? PdfColors.grey500 : PdfColors.white,
+                  width: 0.4,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

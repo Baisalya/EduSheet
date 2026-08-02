@@ -69,15 +69,22 @@ class TemplateElement {
   }
 
   factory TemplateElement.fromJson(Map<String, dynamic> json) {
+    final typeIndex = (json['type'] as num?)?.toInt();
     return TemplateElement(
-      id: json['id'],
-      type: ElementType.values[json['type']],
-      x: (json['x'] as num).toDouble(),
-      y: (json['y'] as num).toDouble(),
-      width: json['width']?.toDouble(),
-      height: json['height']?.toDouble(),
-      content: json['content'] ?? '',
-      properties: json['properties'] ?? {},
+      id: json['id']?.toString() ?? '',
+      type: typeIndex != null &&
+              typeIndex >= 0 &&
+              typeIndex < ElementType.values.length
+          ? ElementType.values[typeIndex]
+          : ElementType.staticText,
+      x: (json['x'] as num?)?.toDouble() ?? 0,
+      y: (json['y'] as num?)?.toDouble() ?? 0,
+      width: (json['width'] as num?)?.toDouble(),
+      height: (json['height'] as num?)?.toDouble(),
+      content: json['content']?.toString() ?? '',
+      properties: json['properties'] is Map
+          ? Map<String, dynamic>.from(json['properties'] as Map)
+          : const {},
     );
   }
 }
@@ -99,8 +106,13 @@ class CustomLayout {
 
   factory CustomLayout.fromJson(Map<String, dynamic> json) {
     return CustomLayout(
-      elements: (json['elements'] as List)
-          .map((e) => TemplateElement.fromJson(e))
+      elements: (json['elements'] as List? ?? const [])
+          .whereType<Map>()
+          .map(
+            (item) => TemplateElement.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          )
           .toList(),
       canvasHeight: (json['canvasHeight'] as num?)?.toDouble() ?? 200,
     );
