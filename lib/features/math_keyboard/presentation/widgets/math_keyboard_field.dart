@@ -13,8 +13,7 @@ class MathKeyboardField extends ConsumerStatefulWidget {
     bool isMathActive,
   )
   builder;
-  final dynamic
-  controller; // TextEditingController, QuillController, or MathFieldEditingController
+  final Object controller; // TextEditingController, QuillController, or MathFieldEditingController
   final FocusNode? focusNode;
 
   const MathKeyboardField({
@@ -113,9 +112,10 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
         _ensureVisibleAboveKeyboard();
       }
     } else {
-      // Small delay to allow potential focus transfer
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_disposed) return;
+      // Defer by one frame so focus can transfer to another math field
+      // without leaving a Timer alive during route/widget teardown.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_disposed || !mounted) return;
         if (!_focusNode.hasFocus) {
           _mathKeyboardController.unregisterController(widget.controller);
         }
@@ -137,8 +137,8 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed || !mounted) return;
       reveal();
-      Future<void>.delayed(const Duration(milliseconds: 320), reveal);
     });
   }
 

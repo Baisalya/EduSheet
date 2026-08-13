@@ -5,6 +5,7 @@ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboa
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:math_keyboard/math_keyboard.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,7 +17,7 @@ void main() {
   late Directory tempDir;
 
   setUp(() async {
-    tempDir = await Directory.systemTemp.createTemp('create_paper_test_');
+    tempDir = await Directory.systemTemp.createTemp('paper_composer_test_');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(pathProviderChannel, (call) async {
           if (call.method == 'getApplicationDocumentsDirectory') {
@@ -34,50 +35,73 @@ void main() {
     }
   });
 
-  testWidgets('Create Paper save button opens PDF and Word save sheet', (
-    tester,
-  ) async {
+  testWidgets('Create Paper opens the new focused composer', (tester) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(const ProviderScope(child: _CreatePaperTestApp()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(TextButton, 'Save'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Save as'), findsOneWidget);
-    expect(find.text('File name'), findsOneWidget);
-    expect(find.text('PDF'), findsOneWidget);
-    expect(find.text('Word'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextField).last, '');
-    await tester.tap(find.widgetWithText(FilledButton, 'Save file'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Enter a file name'), findsOneWidget);
+    expect(find.text('Create questions, not forms'), findsOneWidget);
+    expect(find.text('Write first question'), findsOneWidget);
+    expect(find.text('Word Mode'), findsNothing);
+    expect(find.text('Start from template'), findsNothing);
   });
 
-  testWidgets('Word Mode opens the section editor without layout errors', (
+  testWidgets('expanded Windows-style composer exposes outline and inspector', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(const ProviderScope(child: _CreatePaperTestApp()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Add Section'));
+    expect(find.text('OUTLINE'), findsOneWidget);
+    expect(find.text('PAPER'), findsOneWidget);
+    expect(find.text('Paper details'), findsOneWidget);
+    expect(find.text('Paper style'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('teacher can create a section and reach focused question editor', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const ProviderScope(child: _CreatePaperTestApp()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Word Mode'), findsOneWidget);
-
-    await tester.tap(find.text('Word Mode'));
+    await tester.tap(find.text('Write first question'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Section 1 Word Mode'), findsOneWidget);
-    expect(find.text('Header'), findsOneWidget);
-    expect(find.text('Template'), findsOneWidget);
+    expect(find.text('New question'), findsOneWidget);
+    expect(find.text('Math'), findsOneWidget);
+    expect(find.text('Formula block'), findsNothing);
+    expect(find.text('Geometry'), findsOneWidget);
+    expect(find.text('Answer & more details'), findsOneWidget);
+    expect(find.text('Save & next'), findsOneWidget);
 
-    await tester.tap(find.text('Header'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.text('Math'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
-    expect(find.text('Paper Identity'), findsOneWidget);
-    expect(find.text('Header Fields'), findsOneWidget);
+    expect(find.text('Add math formula'), findsOneWidget);
+    expect(find.text('Formula'), findsOneWidget);
+    expect(find.text('Add formula'), findsOneWidget);
+    expect(find.text('Advanced'), findsOneWidget);
+    expect(find.text('Readable description *'), findsNothing);
+    // Create Paper must enter a structured MathField session. The old
+    // behavior registered the Quill question body directly and converted
+    // fraction/root/function keys into plain Unicode approximations.
+    expect(find.byType(MathField), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

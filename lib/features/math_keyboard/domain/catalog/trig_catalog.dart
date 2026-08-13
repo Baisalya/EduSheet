@@ -1,0 +1,36 @@
+import '../models/math_symbol.dart';
+
+const List<MathSymbol> trigMathSymbols = <MathSymbol>[
+  MathSymbol(id: 'math.f5356d1e9240', kind: MathEntryKind.function, priority: 50, label: 'sin', tex: r'\sin', category: MathCategory.trig),
+  MathSymbol(id: 'math.b9dabf8d0bda', kind: MathEntryKind.function, priority: 50, label: 'cos', tex: r'\cos', category: MathCategory.trig),
+  MathSymbol(id: 'math.e05a168ce0ea', kind: MathEntryKind.function, priority: 50, label: 'tan', tex: r'\tan', category: MathCategory.trig),
+  MathSymbol(id: 'math.3cd73b1d39e2', kind: MathEntryKind.function, priority: 50, label: 'csc', tex: r'\csc', category: MathCategory.trig),
+  MathSymbol(id: 'math.804b891df1f8', kind: MathEntryKind.function, priority: 50, label: 'sec', tex: r'\sec', category: MathCategory.trig),
+  MathSymbol(id: 'math.3cdf789f70fb', kind: MathEntryKind.function, priority: 50, label: 'cot', tex: r'\cot', category: MathCategory.trig),
+  MathSymbol(
+      id: 'math.8b6c324c421d',
+      kind: MathEntryKind.function,
+      priority: 50,
+      label: 'sin²θ',
+      tex: r'\sin^2 \theta',
+      category: MathCategory.trig,
+    ),
+  MathSymbol(
+      id: 'math.9631b8358c43',
+      kind: MathEntryKind.function,
+      priority: 50,
+      label: 'cos²θ',
+      tex: r'\cos^2 \theta',
+      category: MathCategory.trig,
+    ),
+  MathSymbol(id: 'math.091960def66d', kind: MathEntryKind.function, priority: 50, label: 'tanθ', tex: r'\tan \theta', category: MathCategory.trig),
+  MathSymbol(id: 'math.d07e3f04547f', kind: MathEntryKind.function, priority: 50, label: 'arcsin', tex: r'\arcsin', category: MathCategory.trig),
+  MathSymbol(id: 'math.38b552192a05', kind: MathEntryKind.function, priority: 50, label: 'arccos', tex: r'\arccos', category: MathCategory.trig),
+  MathSymbol(id: 'math.510548472ca0', kind: MathEntryKind.function, priority: 50, label: 'arctan', tex: r'\arctan', category: MathCategory.trig),
+  MathSymbol(id: 'math.6ae5ede6fcda', kind: MathEntryKind.function, priority: 50, label: 'sinh', tex: r'\sinh', category: MathCategory.trig),
+  MathSymbol(id: 'math.0403480f182a', kind: MathEntryKind.function, priority: 50, label: 'cosh', tex: r'\cosh', category: MathCategory.trig),
+  MathSymbol(id: 'math.a12be8b8923c', kind: MathEntryKind.function, priority: 50, label: 'tanh', tex: r'\tanh', category: MathCategory.trig),
+  MathSymbol(id: 'math.cb005d76f9f2', kind: MathEntryKind.function, priority: 50, label: 'θ', tex: r'\theta', category: MathCategory.trig),
+  MathSymbol(id: 'math.411e715f9ab9', kind: MathEntryKind.function, priority: 50, label: 'φ', tex: r'\phi', category: MathCategory.trig),
+  MathSymbol(id: 'math.5be9c83dff6a', kind: MathEntryKind.function, priority: 50, label: '°', tex: r'^{\circ}', category: MathCategory.trig),
+];

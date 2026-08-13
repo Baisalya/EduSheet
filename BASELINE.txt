@@ -1,0 +1,3 @@
+Apply on top of EduSheet_structured_math_timer_fix_full.zip.
+No files are deleted in this patch.
+No dependency or persisted data schema changes are included.

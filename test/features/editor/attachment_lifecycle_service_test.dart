@@ -1,6 +1,7 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/attachment_lifecycle_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as path;
 
 void main() {
   test('finds nested references and reports only true orphans', () {
@@ -42,7 +43,7 @@ void main() {
         ],
         [paper],
       ),
-      {'/managed/orphan.png'},
+      {path.normalize('/managed/orphan.png')},
     );
   });
 }

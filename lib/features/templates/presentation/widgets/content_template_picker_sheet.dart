@@ -96,7 +96,7 @@ class _QuestionTemplatePickerSheetState
               );
             },
             loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
           ),
           const SizedBox(height: 8),
           Expanded(
@@ -305,7 +305,7 @@ class _SimpleTemplateSheet<T> extends StatelessWidget {
           Expanded(
             child: value.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => const _TemplateError(
+              error: (_, _) => const _TemplateError(
                 message: 'Could not load templates.',
               ),
               data: (items) => ListView.builder(

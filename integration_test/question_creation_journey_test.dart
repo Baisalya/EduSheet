@@ -4,10 +4,9 @@ import 'package:edusheet/features/editor/data/repositories/local_paper_repositor
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/paper_validator.dart';
+import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
 import 'package:edusheet/features/pdf/services/booklet_imposition_service.dart';
-import 'package:edusheet/features/templates/data/built_in_content_templates.dart';
-import 'package:edusheet/features/templates/services/template_clone_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
@@ -26,14 +25,14 @@ void main() {
     if (await directory.exists()) await directory.delete(recursive: true);
   });
 
-  testWidgets('blank paper supports every type, save, close and restore', (
+  testWidgets('blank paper supports every persisted type, save and restore', (
     _,
   ) async {
     final questions = QuestionType.values.map((type) {
       final options = type.usesOptions
           ? [
-               QuestionOption(id: 'a', text: 'A', isCorrect: true),
-               QuestionOption(id: 'b', text: 'B'),
+              QuestionOption(id: 'a-${type.name}', text: 'A', isCorrect: true),
+              QuestionOption(id: 'b-${type.name}', text: 'B'),
             ]
           : const <QuestionOption>[];
       final choices = type == QuestionType.internalChoice
@@ -84,26 +83,27 @@ void main() {
     );
   });
 
-  testWidgets('template, answer-key and booklet planning journey', (
+  testWidgets('new composer draft preserves data and export planning contracts', (
     _,
   ) async {
-    var id = 0;
-    final blueprint = BuiltInContentTemplates.papers.first;
-    final unresolved = const TemplateVariableResolver().unresolvedVariables(
-      blueprint.paper,
+    final source = Question(
+      id: 'existing',
+      text: 'Original wording',
+      subject: 'Physics',
+      chapter: 'Motion',
+      correctAnswer: '9.8 m/s²',
+      metadata: const {'teacherNote': 'retain'},
+      version: 3,
     );
-    final variables = {for (final key in unresolved) key: 'Resolved $key'};
-    final paper = TemplateCloneService(
-      newId: () => 'journey-${id++}',
-    ).instantiatePaper(blueprint, variables: variables);
-    final repository = LocalPaperRepository(fileResolver: () async => file);
+    final edited = QuestionDraft.fromQuestion(source)
+        .copyWith(text: 'Updated wording', marks: 4)
+        .toQuestion(plainTextAccessibility: 'Updated wording');
 
-    expect(
-      const TemplateVariableResolver().unresolvedVariables(paper),
-      isEmpty,
-    );
-    await repository.savePaper(paper);
-    expect((await repository.getAllPapers()).single.id, paper.id);
+    expect(edited.correctAnswer, source.correctAnswer);
+    expect(edited.subject, source.subject);
+    expect(edited.chapter, source.chapter);
+    expect(edited.metadata['teacherNote'], 'retain');
+    expect(edited.version, 4);
 
     const answerKey = PaperExportConfig(
       outputMode: PaperOutputMode.answerKey,

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
@@ -401,7 +402,7 @@ class QuestionPaperService {
               ),
             ],
           ),
-          for (final expression in q.mathExpressions)
+          for (final expression in MathExpression.unplacedInRichText(q.text, q.mathExpressions))
             pw.Padding(
               padding: const pw.EdgeInsets.only(left: 34, top: 5, bottom: 3),
               child: pw.Text(
@@ -573,9 +574,26 @@ class QuestionPaperService {
     try {
       if (text.startsWith('[') || text.startsWith('{')) {
         final List<dynamic> deltaJson = jsonDecode(text);
-        final converter = QuillDeltaToHtmlConverter(
-          deltaJson.cast<Map<String, dynamic>>(),
-        );
+        final normalizedDelta = deltaJson.map((raw) {
+          if (raw is! Map) return <String, dynamic>{};
+          final operation = Map<String, dynamic>.from(raw);
+          final insert = operation['insert'];
+          if (insert is Map) {
+            if (insert.containsKey(MathExpression.quillEmbedKey)) {
+              final expression = MathExpression.tryFromQuillEmbedData(
+                insert[MathExpression.quillEmbedKey],
+              );
+              final plain = expression?.plainText.trim() ?? '';
+              operation['insert'] = expression == null
+                  ? '[formula]'
+                  : (plain.isEmpty ? expression.latex : plain);
+            } else if (insert.containsKey('geometry')) {
+              operation['insert'] = '[diagram]';
+            }
+          }
+          return operation;
+        }).toList();
+        final converter = QuillDeltaToHtmlConverter(normalizedDelta);
         final html = converter.convert();
         final document = html_parser.parse(html);
         return pw.RichText(

@@ -1,5 +1,6 @@
 import 'package:edusheet/shared/localization/edusheet_localizations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -21,7 +22,12 @@ void main() {
       MaterialApp(
         locale: const Locale('hi'),
         supportedLocales: const [Locale('en'), Locale('hi')],
-        localizationsDelegates: const [EduSheetLocalizations.delegate],
+        localizationsDelegates: const [
+          EduSheetLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         home: Builder(
           builder: (context) => Text(EduSheetLocalizations.of(context).saveAs),
         ),

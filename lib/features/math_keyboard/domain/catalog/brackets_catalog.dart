@@ -1,0 +1,58 @@
+import '../models/math_symbol.dart';
+
+const List<MathSymbol> bracketsMathSymbols = <MathSymbol>[
+  MathSymbol(
+      id: 'math.28ed3a797da3',
+      kind: MathEntryKind.structure,
+      priority: 100,
+      label: '()',
+      tex: '(',
+      category: MathCategory.brackets,
+      isBuilder: true,
+    ),
+  MathSymbol(
+      id: 'math.1e5c2f367f02',
+      kind: MathEntryKind.structure,
+      priority: 100,
+      label: '[]',
+      tex: '[',
+      category: MathCategory.brackets,
+      isBuilder: true,
+    ),
+  MathSymbol(
+      id: 'math.60ba4b2daa4e',
+      kind: MathEntryKind.structure,
+      priority: 100,
+      label: '{}',
+      tex: '{',
+      category: MathCategory.brackets,
+      isBuilder: true,
+    ),
+  MathSymbol(
+      id: 'math.137155b257d6',
+      kind: MathEntryKind.structure,
+      priority: 100,
+      label: '⟨⟩',
+      tex: r'\langle\rangle',
+      category: MathCategory.brackets,
+      isBuilder: true,
+    ),
+  MathSymbol(
+      id: 'math.1599008bec80',
+      kind: MathEntryKind.structure,
+      priority: 100,
+      label: '⌊⌋',
+      tex: r'\lfloor\rfloor',
+      category: MathCategory.brackets,
+      isBuilder: true,
+    ),
+  MathSymbol(
+      id: 'math.a0fbdcca8339',
+      kind: MathEntryKind.structure,
+      priority: 100,
+      label: '⌈⌉',
+      tex: r'\lceil\rceil',
+      category: MathCategory.brackets,
+      isBuilder: true,
+    ),
+];

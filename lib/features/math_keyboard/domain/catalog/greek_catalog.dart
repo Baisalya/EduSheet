@@ -1,0 +1,28 @@
+import '../models/math_symbol.dart';
+
+const List<MathSymbol> greekMathSymbols = <MathSymbol>[
+  MathSymbol(id: 'math.f7c665b45932', priority: 100, label: 'α', tex: r'\alpha', category: MathCategory.greek),
+  MathSymbol(id: 'math.6499d503bfc0', priority: 100, label: 'β', tex: r'\beta', category: MathCategory.greek),
+  MathSymbol(id: 'math.67833ee2012e', priority: 100, label: 'γ', tex: r'\gamma', category: MathCategory.greek),
+  MathSymbol(id: 'math.3a6a16552e24', priority: 100, label: 'δ', tex: r'\delta', category: MathCategory.greek),
+  MathSymbol(id: 'math.b64244d4b91c', priority: 100, label: 'ε', tex: r'\epsilon', category: MathCategory.greek),
+  MathSymbol(id: 'math.08fe2529d084', priority: 100, label: 'ζ', tex: r'\zeta', category: MathCategory.greek),
+  MathSymbol(id: 'math.2899aeb886ad', priority: 100, label: 'η', tex: r'\eta', category: MathCategory.greek),
+  MathSymbol(id: 'math.cb005d76f9f2', priority: 100, label: 'θ', tex: r'\theta', category: MathCategory.greek),
+  MathSymbol(id: 'math.b3931f1ce298', priority: 100, label: 'λ', tex: r'\lambda', category: MathCategory.greek),
+  MathSymbol(id: 'math.3a4e56595df1', priority: 100, label: 'μ', tex: r'\mu', category: MathCategory.greek),
+  MathSymbol(id: 'math.6ac47b6d7372', priority: 100, label: 'π', tex: r'\pi', category: MathCategory.greek),
+  MathSymbol(id: 'math.c77a25750c58', priority: 100, label: 'ρ', tex: r'\rho', category: MathCategory.greek),
+  MathSymbol(id: 'math.69c15416b63f', priority: 100, label: 'σ', tex: r'\sigma', category: MathCategory.greek),
+  MathSymbol(id: 'math.c9148a5f77a3', priority: 100, label: 'τ', tex: r'\tau', category: MathCategory.greek),
+  MathSymbol(id: 'math.411e715f9ab9', priority: 100, label: 'φ', tex: r'\phi', category: MathCategory.greek),
+  MathSymbol(id: 'math.73b077a63e22', priority: 100, label: 'ω', tex: r'\omega', category: MathCategory.greek),
+  MathSymbol(id: 'math.4c596c27eb47', priority: 100, label: 'Γ', tex: r'\Gamma', category: MathCategory.greek),
+  MathSymbol(id: 'math.763bcca756ef', priority: 100, label: 'Δ', tex: r'\Delta', category: MathCategory.greek),
+  MathSymbol(id: 'math.8f42a32ead6a', priority: 100, label: 'Θ', tex: r'\Theta', category: MathCategory.greek),
+  MathSymbol(id: 'math.29ac27e34d4f', priority: 100, label: 'Λ', tex: r'\Lambda', category: MathCategory.greek),
+  MathSymbol(id: 'math.ca3db286daee', priority: 100, label: 'Π', tex: r'\Pi', category: MathCategory.greek),
+  MathSymbol(id: 'math.cb5615b3fcee', priority: 100, label: 'Σ', tex: r'\Sigma', category: MathCategory.greek),
+  MathSymbol(id: 'math.b51f9a1a7fe0', priority: 100, label: 'Φ', tex: r'\Phi', category: MathCategory.greek),
+  MathSymbol(id: 'math.4959627bdb88', priority: 100, label: 'Ω', tex: r'\Omega', category: MathCategory.greek),
+];

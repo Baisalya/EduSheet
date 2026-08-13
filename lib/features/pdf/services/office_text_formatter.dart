@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:edusheet/features/editor/domain/models/math_expression.dart';
+
 class OfficeTextFormatter {
   static String questionText(String text) {
     try {
@@ -10,7 +12,21 @@ class OfficeTextFormatter {
             .map((op) {
               if (op is! Map<String, dynamic>) return '';
               final insert = op['insert'];
-              return insert is String ? insert : ' ';
+              if (insert is String) return insert;
+              if (insert is Map) {
+                if (insert.containsKey(MathExpression.quillEmbedKey)) {
+                  final expression = MathExpression.tryFromQuillEmbedData(
+                    insert[MathExpression.quillEmbedKey],
+                  );
+                  if (expression != null) {
+                    final plain = expression.plainText.trim();
+                    return plain.isEmpty ? expression.latex : plain;
+                  }
+                  return '[formula]';
+                }
+                if (insert.containsKey('geometry')) return '[diagram]';
+              }
+              return ' ';
             })
             .join()
             .replaceAll('\n', ' ')

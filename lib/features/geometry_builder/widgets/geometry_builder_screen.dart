@@ -126,7 +126,7 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
           resizeToAvoidBottomInset: true,
           appBar: AppBar(
             automaticallyImplyLeading: false,
-            title: const Text('Geometry Builder'),
+            title: const Text('Geometry Studio'),
             toolbarHeight: compact ? 48 : kToolbarHeight,
             actions: [
               IconButton(

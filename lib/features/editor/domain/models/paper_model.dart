@@ -953,7 +953,17 @@ String _plainTextFromRich(String text) {
           buffer.write(insert);
         } else if (insert is Map) {
           if (insert.containsKey('geometry')) buffer.write('[diagram]');
-          if (insert.containsKey('formula')) buffer.write('[formula]');
+          if (insert.containsKey(MathExpression.quillEmbedKey)) {
+            final expression = MathExpression.tryFromQuillEmbedData(
+              insert[MathExpression.quillEmbedKey],
+            );
+            if (expression != null) {
+              final plain = expression.plainText.trim();
+              buffer.write(plain.isEmpty ? expression.latex : plain);
+            } else {
+              buffer.write('[formula]');
+            }
+          }
         }
       }
       final plain = buffer.toString().trim();

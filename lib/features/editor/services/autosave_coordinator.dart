@@ -74,7 +74,7 @@ class AutosaveCoordinator<T> {
     final operation = _writeTail.then((_) => save(value));
     _writeTail = operation.then<void>(
       (_) {},
-      onError: (Object _, StackTrace __) {},
+      onError: (Object _, StackTrace _) {},
     );
 
     try {

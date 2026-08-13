@@ -4,10 +4,14 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:edusheet/features/geometry_builder/models/geometry_shape.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
+import 'package:edusheet/features/math_keyboard/domain/catalog/math_symbol_catalog.dart';
 import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
+import 'package:edusheet/features/math_keyboard/domain/services/math_smart_palette.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_provider.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_key.dart';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_action_bar.dart';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart';
 
 class MathKeyboardView extends ConsumerWidget {
   const MathKeyboardView({super.key});
@@ -40,7 +44,7 @@ class MathKeyboardView extends ConsumerWidget {
             return Column(
               children: [
                 _buildHeader(context, state, controller, compact: compact),
-                _buildQuickBar(context, controller, compact: compact),
+                _buildQuickBar(context, state, controller, compact: compact),
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 160),
@@ -51,7 +55,7 @@ class MathKeyboardView extends ConsumerWidget {
                         : _buildSymbolGrid(context, state, controller, ref),
                   ),
                 ),
-                _ActionBar(compact: compact),
+                MathKeyboardActionBar(compact: compact),
               ],
             );
           },
@@ -70,27 +74,26 @@ class MathKeyboardView extends ConsumerWidget {
     required bool compact,
   }) {
     final theme = Theme.of(context);
-    const categories = <MathCategory>[
-      MathCategory.recent,
-      MathCategory.favorites,
-      MathCategory.basic,
-      MathCategory.functions,
-      MathCategory.trig,
-      MathCategory.calculus,
-      MathCategory.geometry,
-      MathCategory.physics,
-      MathCategory.chemistry,
-      MathCategory.statistics,
-      MathCategory.matrices,
-      MathCategory.greek,
-      MathCategory.operators,
-      MathCategory.brackets,
-      MathCategory.arrows,
-      MathCategory.sets,
-      MathCategory.templates,
-      MathCategory.format,
-      MathCategory.misc,
+    final primary = <({String label, IconData icon, MathCategory category})>[
+      (label: '123', icon: Icons.pin_outlined, category: MathCategory.basic),
+      (
+        label: compact ? 'ALG' : 'Algebra',
+        icon: Icons.superscript_rounded,
+        category: MathCategory.functions,
+      ),
+      (
+        label: compact ? 'CALC' : 'Calculus',
+        icon: Icons.functions_rounded,
+        category: MathCategory.calculus,
+      ),
+      (
+        label: compact ? 'SCI' : 'Science',
+        icon: Icons.science_outlined,
+        category: MathCategory.physics,
+      ),
     ];
+    final primaryCategories = primary.map((item) => item.category).toSet();
+    final moreSelected = !primaryCategories.contains(state.currentCategory);
 
     return Container(
       height: compact ? 46 : 50,
@@ -120,7 +123,7 @@ class MathKeyboardView extends ConsumerWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Search every symbol',
+            tooltip: 'Find symbol or formula',
             visualDensity: VisualDensity.compact,
             onPressed: () => _showSymbolSearch(context, controller),
             icon: const Icon(Icons.search_rounded, size: 20),
@@ -129,16 +132,34 @@ class MathKeyboardView extends ConsumerWidget {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(vertical: 4),
-              itemCount: categories.length,
+              itemCount: primary.length + 1,
               separatorBuilder: (_, _) => const SizedBox(width: 3),
               itemBuilder: (context, index) {
-                final category = categories[index];
+                if (index == primary.length) {
+                  return _CategoryPill(
+                    icon: moreSelected
+                        ? _categoryIcon(state.currentCategory)
+                        : Icons.grid_view_rounded,
+                    label: moreSelected
+                        ? _categoryLabel(state.currentCategory)
+                        : 'MORE',
+                    selected: moreSelected,
+                    showLabel: !compact,
+                    onTap: () => _showCategoryPicker(
+                      context,
+                      state,
+                      controller,
+                    ),
+                  );
+                }
+
+                final item = primary[index];
                 return _CategoryPill(
-                  icon: _categoryIcon(category),
-                  label: _categoryLabel(category),
-                  selected: state.currentCategory == category,
-                  showLabel: !compact,
-                  onTap: () => controller.setCategory(category),
+                  icon: item.icon,
+                  label: item.label,
+                  selected: state.currentCategory == item.category,
+                  showLabel: !compact || item.label == '123',
+                  onTap: () => controller.setCategory(item.category),
                 );
               },
             ),
@@ -148,6 +169,91 @@ class MathKeyboardView extends ConsumerWidget {
     );
   }
 
+  void _showCategoryPicker(
+    BuildContext context,
+    MathKeyboardStateData state,
+    MathKeyboardController controller,
+  ) {
+    const groups = <String, List<MathCategory>>{
+      'MY KEYS': <MathCategory>[
+        MathCategory.recent,
+        MathCategory.favorites,
+      ],
+      'MATHEMATICS': <MathCategory>[
+        MathCategory.trig,
+        MathCategory.geometry,
+        MathCategory.statistics,
+        MathCategory.matrices,
+        MathCategory.sets,
+      ],
+      'SCIENCE': <MathCategory>[
+        MathCategory.physics,
+        MathCategory.chemistry,
+      ],
+      'SYMBOLS': <MathCategory>[
+        MathCategory.greek,
+        MathCategory.operators,
+        MathCategory.brackets,
+        MathCategory.arrows,
+      ],
+      'TOOLS': <MathCategory>[
+        MathCategory.templates,
+        MathCategory.format,
+        MathCategory.misc,
+      ],
+    };
+
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'More math & science keys',
+              style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final group in groups.entries) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 6),
+                child: Text(
+                  group.key,
+                  style: Theme.of(sheetContext).textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final category in group.value)
+                    ChoiceChip(
+                      avatar: Icon(_categoryIcon(category), size: 18),
+                      label: Text(_categoryLabel(category)),
+                      selected: state.currentCategory == category,
+                      onSelected: (_) {
+                        controller.setCategory(category);
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   String _categoryLabel(MathCategory category) {
     return switch (category) {
@@ -211,10 +317,10 @@ class MathKeyboardView extends ConsumerWidget {
       showDragHandle: true,
       builder: (context) => FractionallySizedBox(
         heightFactor: 0.9,
-        child: _SymbolSearchSheet(
+        child: MathSymbolSearchSheet(
           categoryLabel: _categoryLabel,
           onSelected: (symbol) {
-            controller.insertText(symbol.tex);
+            controller.insertSymbol(symbol);
             Navigator.pop(context);
           },
         ),
@@ -224,33 +330,15 @@ class MathKeyboardView extends ConsumerWidget {
 
   Widget _buildQuickBar(
     BuildContext context,
+    MathKeyboardStateData state,
     MathKeyboardController controller, {
     required bool compact,
   }) {
-    const quickSymbols = [
-      '1',
-      '2',
-      '3',
-      '4',
-      '5',
-      '6',
-      '7',
-      '8',
-      '9',
-      '0',
-      '+',
-      '-',
-      '×',
-      '÷',
-      '=',
-      'x²',
-      '√',
-      'a⁄b',
-    ];
     final theme = Theme.of(context);
+    final symbols = MathSmartPalette.forCategory(state.currentCategory);
 
     return Container(
-      height: compact ? 42 : 46,
+      height: compact ? 44 : 48,
       padding: const EdgeInsets.symmetric(vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.24),
@@ -258,32 +346,21 @@ class MathKeyboardView extends ConsumerWidget {
           bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.08)),
         ),
       ),
-      child: ListView.builder(
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 7),
-        itemCount: quickSymbols.length,
+        itemCount: symbols.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 4),
         itemBuilder: (context, index) {
-          final label = quickSymbols[index];
-          final tex = switch (label) {
-            '×' => r'\times',
-            '÷' => r'\div',
-            'x²' => r'^{2}',
-            '√' => r'\sqrt{}',
-            'a⁄b' => r'\frac{}{}',
-            _ => label,
-          };
+          final symbol = symbols[index];
 
           return SizedBox(
-            width: compact ? 39 : 42,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: MathKey(
-                label: label,
-                tex: tex,
-                fontSize: compact ? 16 : 18,
-                color: theme.colorScheme.surface,
-                onTap: () => controller.insertText(tex),
-              ),
+            width: _quickKeyWidth(symbol.label, compact: compact),
+            child: MathKey(
+              symbol: symbol,
+              fontSize: compact ? 15 : 17,
+              color: theme.colorScheme.surface,
+              onTap: () => controller.insertSymbol(symbol),
             ),
           );
         },
@@ -291,15 +368,18 @@ class MathKeyboardView extends ConsumerWidget {
     );
   }
 
+  double _quickKeyWidth(String label, {required bool compact}) {
+    if (label.length >= 7) return compact ? 70 : 78;
+    if (label.length >= 4) return compact ? 56 : 62;
+    return compact ? 46 : 50;
+  }
 
   Widget _buildGeometryKeyboardPanel(
     BuildContext context,
     MathKeyboardController controller,
   ) {
     final theme = Theme.of(context);
-    final notation = mathSymbols
-        .where((symbol) => symbol.category == MathCategory.geometry)
-        .toList();
+    final notation = MathSymbolCatalog.forCategory(MathCategory.geometry);
     const quickShapes = <_GeometryKeyboardAction>[
       _GeometryKeyboardAction(
         'Triangle',
@@ -377,7 +457,7 @@ class MathKeyboardView extends ConsumerWidget {
             return MathKey(
               symbol: symbol,
               fontSize: symbol.label.length > 5 ? 12 : 17,
-              onTap: () => controller.insertText(symbol.tex),
+              onTap: () => controller.insertSymbol(symbol),
             );
           },
         ),
@@ -482,12 +562,24 @@ class MathKeyboardView extends ConsumerWidget {
     }
   }
 
+  void _toggleQuillAttribute(
+    quill.QuillController controller,
+    quill.Attribute attribute,
+  ) {
+    final current = controller.getSelectionStyle().attributes[attribute.key];
+    final isActive = current?.value == attribute.value;
+    controller.formatSelection(
+      isActive ? quill.Attribute.clone(attribute, null) : attribute,
+    );
+  }
+
   Widget _buildQuillToolbar(
     BuildContext context,
     MathKeyboardStateData state,
     WidgetRef ref,
   ) {
-    if (state.activeController is! quill.QuillController) {
+    final activeEditor = state.activeController;
+    if (activeEditor is! quill.QuillController) {
       return const Center(
         child: Text('Formatting only available for text editors'),
       );
@@ -514,24 +606,25 @@ class MathKeyboardView extends ConsumerWidget {
         'label': 'Bold',
         'icon': Icons.format_bold,
         'onTap': () =>
-            state.activeController.toggleAttribute(quill.Attribute.bold),
+            _toggleQuillAttribute(activeEditor, quill.Attribute.bold),
       },
       {
         'label': 'Italic',
         'icon': Icons.format_italic,
         'onTap': () =>
-            state.activeController.toggleAttribute(quill.Attribute.italic),
+            _toggleQuillAttribute(activeEditor, quill.Attribute.italic),
       },
       {
         'label': 'Under',
         'icon': Icons.format_underlined,
         'onTap': () =>
-            state.activeController.toggleAttribute(quill.Attribute.underline),
+            _toggleQuillAttribute(activeEditor, quill.Attribute.underline),
       },
       {
         'label': 'Strike',
         'icon': Icons.format_strikethrough,
-        'onTap': () => state.activeController.toggleAttribute(
+        'onTap': () => _toggleQuillAttribute(
+          activeEditor,
           quill.Attribute.strikeThrough,
         ),
       },
@@ -539,39 +632,39 @@ class MathKeyboardView extends ConsumerWidget {
         'label': 'Bullet',
         'icon': Icons.format_list_bulleted,
         'onTap': () =>
-            state.activeController.toggleAttribute(quill.Attribute.ul),
+            _toggleQuillAttribute(activeEditor, quill.Attribute.ul),
       },
       {
         'label': 'Number',
         'icon': Icons.format_list_numbered,
         'onTap': () =>
-            state.activeController.toggleAttribute(quill.Attribute.ol),
+            _toggleQuillAttribute(activeEditor, quill.Attribute.ol),
       },
       {
         'label': 'Left',
         'icon': Icons.format_align_left,
-        'onTap': () => state.activeController.formatSelection(
+        'onTap': () => activeEditor.formatSelection(
           quill.Attribute.leftAlignment,
         ),
       },
       {
         'label': 'Center',
         'icon': Icons.format_align_center,
-        'onTap': () => state.activeController.formatSelection(
+        'onTap': () => activeEditor.formatSelection(
           quill.Attribute.centerAlignment,
         ),
       },
       {
         'label': 'Right',
         'icon': Icons.format_align_right,
-        'onTap': () => state.activeController.formatSelection(
+        'onTap': () => activeEditor.formatSelection(
           quill.Attribute.rightAlignment,
         ),
       },
       {
         'label': 'Justify',
         'icon': Icons.format_align_justify,
-        'onTap': () => state.activeController.formatSelection(
+        'onTap': () => activeEditor.formatSelection(
           quill.Attribute.justifyAlignment,
         ),
       },
@@ -713,9 +806,7 @@ class MathKeyboardView extends ConsumerWidget {
         ? _recentSymbols(state)
         : state.currentCategory == MathCategory.favorites
         ? favorites
-        : mathSymbols
-              .where((symbol) => symbol.category == state.currentCategory)
-              .toList();
+        : MathSymbolCatalog.forCategory(state.currentCategory);
     final isTablet =
         MediaQuery.of(context).size.width > 600 || state.isTabletLayout;
     final theme = Theme.of(context);
@@ -725,7 +816,7 @@ class MathKeyboardView extends ConsumerWidget {
     final double childAspectRatio;
 
     if (state.currentCategory == MathCategory.basic) {
-      crossAxisCount = isTablet ? 10 : 6;
+      crossAxisCount = isTablet ? 10 : 5;
       childAspectRatio = 1.0;
     } else if (state.currentCategory == MathCategory.templates ||
         state.currentCategory == MathCategory.physics ||
@@ -734,7 +825,7 @@ class MathKeyboardView extends ConsumerWidget {
       crossAxisCount = isTablet ? 4 : 2;
       childAspectRatio = 2.45;
     } else {
-      crossAxisCount = isTablet ? 10 : 6;
+      crossAxisCount = isTablet ? 10 : 5;
       childAspectRatio = 1.0;
     }
 
@@ -751,13 +842,10 @@ class MathKeyboardView extends ConsumerWidget {
       itemBuilder: (context, index) {
         final symbol = symbols[index];
         final isPowerActive =
-            (symbol.label == 'xⁿ' || symbol.label == 'eˣ') && state.isPowerMode;
+            symbol.inputBehavior == MathInputBehavior.powerMode &&
+            state.isPowerMode;
         final isSubActive =
-            (symbol.label == 'xᵢ' ||
-                symbol.label == 'Σₙ' ||
-                symbol.label == 'Πₙ' ||
-                symbol.label == '∫ₐᵇ' ||
-                symbol.label == 'logₐ') &&
+            symbol.inputBehavior == MathInputBehavior.subscriptMode &&
             state.isSubscriptMode;
 
         return MathKey(
@@ -770,34 +858,7 @@ class MathKeyboardView extends ConsumerWidget {
               : null,
           onLongPress: () =>
               _showSymbolActions(context, ref, controller, symbol),
-          onTap: () {
-            if (symbol.label == 'xⁿ' || symbol.label == 'eˣ') {
-              if (!state.isPowerMode && symbol.label == 'eˣ') {
-                controller.insertText('e');
-              }
-              controller.togglePowerMode();
-            } else if (symbol.label == 'xᵢ' ||
-                symbol.label == 'Σₙ' ||
-                symbol.label == 'Πₙ' ||
-                symbol.label == '∫ₐᵇ' ||
-                symbol.label == 'logₐ') {
-              // If it's a builder symbol like Σₙ, insert the main symbol first if needed
-              if (!state.isSubscriptMode) {
-                if (symbol.label == 'Σₙ') {
-                  controller.insertText(r'\sum');
-                } else if (symbol.label == 'Πₙ') {
-                  controller.insertText(r'\prod');
-                } else if (symbol.label == '∫ₐᵇ') {
-                  controller.insertText(r'\int');
-                } else if (symbol.label == 'logₐ') {
-                  controller.insertText(r'\log');
-                }
-              }
-              controller.toggleSubscriptMode();
-            } else {
-              controller.insertText(symbol.tex);
-            }
-          },
+          onTap: () => controller.insertSymbol(symbol),
         );
       },
     );
@@ -810,7 +871,7 @@ class MathKeyboardView extends ConsumerWidget {
     MathSymbol symbol,
   ) {
     final favorites = ref.read(favoriteSymbolsProvider);
-    final isFavorite = favorites.any((item) => item.tex == symbol.tex);
+    final isFavorite = favorites.any((item) => item.id == symbol.id);
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
@@ -875,12 +936,13 @@ class MathKeyboardView extends ConsumerWidget {
     final source = state.recentSymbols.isEmpty ? defaults : state.recentSymbols;
     final result = <MathSymbol>[];
     for (final tex in source) {
-      final match = mathSymbols.where((symbol) => symbol.tex == tex);
-      if (match.isNotEmpty) {
-        result.add(match.first);
+      final match = MathSymbolCatalog.findByTex(tex);
+      if (match != null) {
+        result.add(match);
       } else if (tex.trim().isNotEmpty) {
         result.add(
           MathSymbol(
+            id: 'recent:$tex',
             label: tex.length > 12 ? '${tex.substring(0, 11)}…' : tex,
             tex: tex,
             category: MathCategory.recent,
@@ -962,297 +1024,4 @@ class _GeometryKeyboardAction {
   final GeometryShapeType? shape;
 
   const _GeometryKeyboardAction(this.label, this.icon, this.shape);
-}
-
-class _SymbolSearchSheet extends StatefulWidget {
-  final String Function(MathCategory category) categoryLabel;
-  final ValueChanged<MathSymbol> onSelected;
-
-  const _SymbolSearchSheet({
-    required this.categoryLabel,
-    required this.onSelected,
-  });
-
-  @override
-  State<_SymbolSearchSheet> createState() => _SymbolSearchSheetState();
-}
-
-class _SymbolSearchSheetState extends State<_SymbolSearchSheet> {
-  final TextEditingController _searchController = TextEditingController();
-  String _query = '';
-  MathCategory? _category;
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final query = _query.trim().toLowerCase();
-    final symbols = mathSymbols.where((symbol) {
-      final matchesCategory =
-          _category == null || symbol.category == _category;
-      final matchesQuery = query.isEmpty ||
-          symbol.label.toLowerCase().contains(query) ||
-          symbol.tex.toLowerCase().contains(query) ||
-          symbol.category.name.toLowerCase().contains(query);
-      return matchesCategory && matchesQuery;
-    }).toList();
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Find a symbol or formula',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _searchController,
-              autofocus: true,
-              onChanged: (value) => setState(() => _query = value),
-              decoration: InputDecoration(
-                hintText: 'Try: angle, triangle, fraction, sigma…',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _query = '');
-                        },
-                        icon: const Icon(Icons.clear_rounded),
-                      ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 38,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: const Text('ALL'),
-                      selected: _category == null,
-                      onSelected: (_) => setState(() => _category = null),
-                    ),
-                  ),
-                  for (final category in MathCategory.values)
-                    if (category != MathCategory.recent &&
-                        category != MathCategory.favorites &&
-                        category != MathCategory.format)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ChoiceChip(
-                          label: Text(widget.categoryLabel(category)),
-                          selected: _category == category,
-                          onSelected: (_) =>
-                              setState(() => _category = category),
-                        ),
-                      ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${symbols.length} results',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: symbols.isEmpty
-                  ? const Center(child: Text('No matching symbol found'))
-                  : LayoutBuilder(
-                      builder: (context, constraints) {
-                        final columns = constraints.maxWidth > 700
-                            ? 5
-                            : constraints.maxWidth > 460
-                            ? 4
-                            : 3;
-                        return GridView.builder(
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: columns,
-                                mainAxisSpacing: 8,
-                                crossAxisSpacing: 8,
-                                childAspectRatio: 1.45,
-                              ),
-                          itemCount: symbols.length,
-                          itemBuilder: (context, index) {
-                            final symbol = symbols[index];
-                            return Material(
-                              color: theme.colorScheme.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(12),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () => widget.onSelected(symbol),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        symbol.label,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        widget.categoryLabel(symbol.category),
-                                        style: theme.textTheme.labelSmall?.copyWith(
-                                          fontSize: 9,
-                                          color:
-                                              theme.colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionBar extends ConsumerWidget {
-  final bool compact;
-
-  const _ActionBar({required this.compact});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.read(mathKeyboardControllerProvider.notifier);
-    final theme = Theme.of(context);
-
-    return Container(
-      height: compact ? 52 : 58,
-      padding: EdgeInsets.fromLTRB(7, 5, 7, compact ? 5 : 7),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
-        ),
-      ),
-      child: Row(
-        children: [
-          _ActionButton(
-            label: 'ABC',
-            onPressed: controller.showSystemKeyboard,
-            color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.75),
-            textColor: theme.colorScheme.onSecondaryContainer,
-          ),
-          const SizedBox(width: 5),
-          _ActionButton(
-            icon: Icons.chevron_left_rounded,
-            onPressed: controller.moveCursorLeft,
-          ),
-          const SizedBox(width: 5),
-          _ActionButton(
-            icon: Icons.chevron_right_rounded,
-            onPressed: controller.moveCursorRight,
-          ),
-          const SizedBox(width: 5),
-          _ActionButton(
-            icon: Icons.space_bar_rounded,
-            onPressed: () => controller.insertText(' '),
-            flex: 3,
-          ),
-          const SizedBox(width: 5),
-          _ActionButton(
-            icon: Icons.backspace_outlined,
-            onPressed: controller.deleteBackward,
-            color: theme.colorScheme.surfaceContainerHighest,
-          ),
-          const SizedBox(width: 5),
-          _ActionButton(
-            icon: Icons.keyboard_tab_rounded,
-            onPressed: controller.nextField,
-            color: theme.colorScheme.primary,
-            textColor: theme.colorScheme.onPrimary,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-
-class _ActionButton extends StatelessWidget {
-  final IconData? icon;
-  final String? label;
-  final VoidCallback onPressed;
-  final Color? color;
-  final Color? textColor;
-  final int flex;
-
-  const _ActionButton({
-    this.icon,
-    this.label,
-    required this.onPressed,
-    this.color,
-    this.textColor,
-    this.flex = 1,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Expanded(
-      flex: flex,
-      child: SizedBox(
-        height: 48,
-        child: Material(
-          color: color ?? theme.colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: BorderRadius.circular(12),
-            child: Center(
-              child: label != null
-                  ? Text(
-                      label!,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: textColor ?? theme.colorScheme.onSurfaceVariant,
-                        letterSpacing: 1.1,
-                      ),
-                    )
-                  : Icon(
-                      icon,
-                      size: 22,
-                      color: textColor ?? theme.colorScheme.onSurfaceVariant,
-                    ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

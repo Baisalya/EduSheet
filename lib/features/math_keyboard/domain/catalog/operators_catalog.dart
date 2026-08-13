@@ -1,0 +1,30 @@
+import '../models/math_symbol.dart';
+
+const List<MathSymbol> operatorsMathSymbols = <MathSymbol>[
+  MathSymbol(id: 'math.c4dd3c8cdd8d', kind: MathEntryKind.operator, priority: 30, label: '<', tex: '<', category: MathCategory.operators),
+  MathSymbol(id: 'math.091385be99b4', kind: MathEntryKind.operator, priority: 30, label: '>', tex: '>', category: MathCategory.operators),
+  MathSymbol(id: 'math.f0a9328764ed', kind: MathEntryKind.operator, priority: 30, label: '≤', tex: r'\leq', category: MathCategory.operators),
+  MathSymbol(id: 'math.14d75ce806cf', kind: MathEntryKind.operator, priority: 30, label: '≥', tex: r'\geq', category: MathCategory.operators),
+  MathSymbol(id: 'math.01a502f8cd36', kind: MathEntryKind.operator, priority: 30, label: '≠', tex: r'\neq', category: MathCategory.operators),
+  MathSymbol(id: 'math.baf1f8e194a4', kind: MathEntryKind.operator, priority: 30, label: '≈', tex: r'\approx', category: MathCategory.operators),
+  MathSymbol(id: 'math.265a73f0318d', kind: MathEntryKind.operator, priority: 30, label: '≡', tex: r'\equiv', category: MathCategory.operators),
+  MathSymbol(id: 'math.ab831e7ef5cb', kind: MathEntryKind.operator, priority: 30, label: '±', tex: r'\pm', category: MathCategory.operators),
+  MathSymbol(id: 'math.daa893e3d350', kind: MathEntryKind.operator, priority: 30, label: '∓', tex: r'\mp', category: MathCategory.operators),
+  MathSymbol(id: 'math.37c2f2286d14', kind: MathEntryKind.operator, priority: 30, label: '∝', tex: r'\propto', category: MathCategory.operators),
+  MathSymbol(id: 'math.ed267d11030b', kind: MathEntryKind.operator, priority: 30, label: '∴', tex: r'\therefore', category: MathCategory.operators),
+  MathSymbol(id: 'math.f962f10cc2fc', kind: MathEntryKind.operator, priority: 30, label: '∵', tex: r'\because', category: MathCategory.operators),
+  MathSymbol(id: 'math.faf2201eca3f', kind: MathEntryKind.operator, priority: 30, label: '∧', tex: r'\wedge', category: MathCategory.operators),
+  MathSymbol(id: 'math.5e8ef042050c', kind: MathEntryKind.operator, priority: 30, label: '∨', tex: r'\vee', category: MathCategory.operators),
+  MathSymbol(id: 'math.1f95d4968e0a', kind: MathEntryKind.operator, priority: 30, label: '¬', tex: r'\neg', category: MathCategory.operators),
+  MathSymbol(id: 'math.4d97e6841172', kind: MathEntryKind.operator, priority: 30, label: '⇒', tex: r'\Rightarrow', category: MathCategory.operators),
+  MathSymbol(
+      id: 'math.8774ca35b6e6',
+      kind: MathEntryKind.operator,
+      priority: 30,
+      label: '⇔',
+      tex: r'\Leftrightarrow',
+      category: MathCategory.operators,
+    ),
+  MathSymbol(id: 'math.983e5873ee8f', kind: MathEntryKind.operator, priority: 30, label: '∀', tex: r'\forall', category: MathCategory.operators),
+  MathSymbol(id: 'math.e3dfe77c1ac2', kind: MathEntryKind.operator, priority: 30, label: '∃', tex: r'\exists', category: MathCategory.operators),
+];

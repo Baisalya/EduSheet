@@ -1,0 +1,20 @@
+import '../models/math_symbol.dart';
+
+const List<MathSymbol> statisticsMathSymbols = <MathSymbol>[
+  MathSymbol(id: 'math.8eebe76c6f55', priority: 60, label: 'x̄', tex: r'\bar{x}', category: MathCategory.statistics),
+  MathSymbol(id: 'math.3a4e56595df1', priority: 60, label: 'μ', tex: r'\mu', category: MathCategory.statistics),
+  MathSymbol(id: 'math.69c15416b63f', priority: 60, label: 'σ', tex: r'\sigma', category: MathCategory.statistics),
+  MathSymbol(id: 'math.2c832e7f4f66', priority: 60, label: 'σ²', tex: r'\sigma^2', category: MathCategory.statistics),
+  MathSymbol(id: 'math.231b58e19737', priority: 60, label: 'Σx', tex: r'\sum x', category: MathCategory.statistics),
+  MathSymbol(id: 'math.bd04d81692cf', priority: 60, label: 'P(A)', tex: r'P(A)', category: MathCategory.statistics),
+  MathSymbol(id: 'math.39704129a02b', priority: 60, label: 'P(A∪B)', tex: r'P(A\cup B)', category: MathCategory.statistics),
+  MathSymbol(id: 'math.766349d42cbd', priority: 60, label: 'P(A∩B)', tex: r'P(A\cap B)', category: MathCategory.statistics),
+  MathSymbol(id: 'math.fbc74d22745f', kind: MathEntryKind.formulaTemplate, priority: 60, label: 'Mean', tex: r'\bar{x}=\frac{\sum x}{n}', category: MathCategory.statistics),
+  MathSymbol(id: 'math.90545ed1febc', kind: MathEntryKind.formulaTemplate, priority: 60, label: 'Variance', tex: r'\sigma^2=\frac{\sum(x-\bar{x})^2}{n}', category: MathCategory.statistics),
+  MathSymbol(id: 'math.08be2c0a51ed', kind: MathEntryKind.formulaTemplate, priority: 60, label: 'Std. dev.', tex: r'\sigma=\sqrt{\frac{\sum(x-\bar{x})^2}{n}}', category: MathCategory.statistics),
+  MathSymbol(id: 'math.047c6d811111', kind: MathEntryKind.structure, priority: 60, label: 'nCr', tex: r'{}^nC_r', category: MathCategory.statistics, isBuilder: true),
+  MathSymbol(id: 'math.f485e4e2c30d', kind: MathEntryKind.structure, priority: 60, label: 'nPr', tex: r'{}^nP_r', category: MathCategory.statistics, isBuilder: true),
+  MathSymbol(id: 'math.3b3a63f162c6', priority: 60, label: 'median', tex: r'\widetilde{x}', category: MathCategory.statistics),
+  MathSymbol(id: 'math.9238878bb67a', priority: 60, label: 'E(X)', tex: r'\mathbb{E}(X)', category: MathCategory.statistics),
+  MathSymbol(id: 'math.a9c0a3c8a760', priority: 60, label: 'X~N', tex: r'X\sim N(\mu,\sigma^2)', category: MathCategory.statistics),
+];

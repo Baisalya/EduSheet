@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
@@ -130,7 +131,10 @@ class PresentationExportService {
   }
 
   static List<String> _questionDetailLines(Question question) {
-    final formulas = question.mathExpressions
+    final formulas = MathExpression.unplacedInRichText(
+      question.text,
+      question.mathExpressions,
+    )
         .map(
           (expression) => expression.plainText.trim().isEmpty
               ? expression.latex

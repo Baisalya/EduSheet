@@ -1,141 +1,137 @@
 import 'package:flutter/material.dart';
 
 import '../models/geometry_shape.dart';
+import '../models/geometry_shape_catalog.dart';
 
-class ShapePicker extends StatelessWidget {
+class ShapePicker extends StatefulWidget {
   final ValueChanged<GeometryShapeType> onSelected;
 
   const ShapePicker({super.key, required this.onSelected});
 
   @override
+  State<ShapePicker> createState() => _ShapePickerState();
+}
+
+class _ShapePickerState extends State<ShapePicker> {
+  GeometryShapeCategory? _category;
+
+  @override
   Widget build(BuildContext context) {
-    final shapes = <_ShapeChoice>[
-      _ShapeChoice('Line', Icons.horizontal_rule, GeometryShapeType.line),
-      _ShapeChoice('Arrow', Icons.arrow_forward, GeometryShapeType.arrow),
-      _ShapeChoice(
-        'Triangle',
-        Icons.change_history,
-        GeometryShapeType.triangle,
-      ),
-      _ShapeChoice(
-        'Right tri.',
-        Icons.signal_cellular_4_bar,
-        GeometryShapeType.rightTriangle,
-      ),
-      _ShapeChoice('Square', Icons.crop_square, GeometryShapeType.square),
-      _ShapeChoice(
-        'Rectangle',
-        Icons.rectangle_outlined,
-        GeometryShapeType.rectangle,
-      ),
-      _ShapeChoice('Circle', Icons.circle_outlined, GeometryShapeType.circle),
-      _ShapeChoice('Semi', Icons.timelapse, GeometryShapeType.semicircle),
-      _ShapeChoice(
-        'Parallelogram',
-        Icons.view_agenda_outlined,
-        GeometryShapeType.parallelogram,
-      ),
-      _ShapeChoice('Trapezium', Icons.filter_none, GeometryShapeType.trapezium),
-      _ShapeChoice(
-        'Rhombus',
-        Icons.diamond_outlined,
-        GeometryShapeType.rhombus,
-      ),
-      _ShapeChoice(
-        'Pentagon',
-        Icons.pentagon_outlined,
-        GeometryShapeType.pentagon,
-      ),
-      _ShapeChoice(
-        'Hexagon',
-        Icons.hexagon_outlined,
-        GeometryShapeType.hexagon,
-      ),
-      _ShapeChoice('Axes', Icons.add, GeometryShapeType.coordinateAxes),
-      _ShapeChoice(
-        'Number line',
-        Icons.linear_scale,
-        GeometryShapeType.numberLine,
-      ),
-      _ShapeChoice('Cube', Icons.view_in_ar, GeometryShapeType.cube),
-      _ShapeChoice(
-        'Cuboid',
-        Icons.inventory_2_outlined,
-        GeometryShapeType.cuboid,
-      ),
-      _ShapeChoice(
-        'Cylinder',
-        Icons.view_column_outlined,
-        GeometryShapeType.cylinder,
-      ),
-      _ShapeChoice('Cone', Icons.change_history, GeometryShapeType.cone),
-      _ShapeChoice('Sphere', Icons.language, GeometryShapeType.sphere),
-    ];
+    final entries = _category == null
+        ? GeometryShapeCatalog.all
+        : GeometryShapeCatalog.inCategory(_category!);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final crossAxisCount = width >= 680
-            ? 6
-            : width >= 520
-            ? 5
-            : width >= 360
-            ? 4
-            : 3;
-
-        return GridView.builder(
-          padding: const EdgeInsets.all(12),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: width < 360 ? 0.98 : 1.08,
-          ),
-          itemCount: shapes.length,
-          itemBuilder: (context, index) {
-            final shape = shapes[index];
-            return Material(
-              color: Theme.of(context).colorScheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(8),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => onSelected(shape.type),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      shape.icon,
-                      size: width < 360 ? 20 : 22,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(height: 6),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text(
-                        shape.label,
-                        maxLines: 2,
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontSize: width < 360 ? 10 : null,
-                        ),
-                      ),
-                    ),
-                  ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 46,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(
+                  label: const Text('All'),
+                  selected: _category == null,
+                  onSelected: (_) => setState(() => _category = null),
                 ),
               ),
-            );
-          },
-        );
-      },
+              for (final category in GeometryShapeCategory.values)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(category.label),
+                    selected: _category == category,
+                    onSelected: (_) => setState(() => _category = category),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final crossAxisCount = width >= 760
+                  ? 5
+                  : width >= 520
+                      ? 4
+                      : width >= 340
+                          ? 3
+                          : 2;
+
+              return GridView.builder(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: width < 380 ? 1.1 : 1.25,
+                ),
+                itemCount: entries.length,
+                itemBuilder: (context, index) {
+                  final entry = entries[index];
+                  return _ShapeCard(
+                    entry: entry,
+                    onTap: () => widget.onSelected(entry.type),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _ShapeChoice {
-  final String label;
-  final IconData icon;
-  final GeometryShapeType type;
+class _ShapeCard extends StatelessWidget {
+  final GeometryShapeCatalogEntry entry;
+  final VoidCallback onTap;
 
-  const _ShapeChoice(this.label, this.icon, this.type);
+  const _ShapeCard({required this.entry, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(entry.icon, size: 24, color: theme.colorScheme.primary),
+              const SizedBox(height: 6),
+              Text(
+                entry.label,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                entry.description,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

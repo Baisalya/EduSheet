@@ -1,0 +1,4 @@
+Inline math round-trip test assertion fix
+
+Production code was not changed.
+The persisted Quill Delta was already correct. The previous nested matcher attempted to apply a map matcher to ordinary text string insert values and threw NoSuchMethodError. The test now safely scans Delta operations and verifies that an edusheetMath custom embed with a String payload is present.

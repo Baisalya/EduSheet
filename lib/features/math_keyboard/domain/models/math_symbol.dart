@@ -20,716 +20,365 @@ enum MathCategory {
   misc,
 }
 
+/// Semantic type of an entry, independent from where the UI chooses to show it.
+enum MathEntryKind {
+  symbol,
+  operator,
+  relation,
+  function,
+  structure,
+  formulaTemplate,
+  unit,
+  constant,
+  text,
+}
+
+/// Broad subject metadata used by search, ranking, and future smart palettes.
+enum MathSubject {
+  general,
+  arithmetic,
+  algebra,
+  trigonometry,
+  calculus,
+  geometry,
+  probability,
+  statistics,
+  linearAlgebra,
+  sets,
+  logic,
+  physics,
+  chemistry,
+}
+
+/// Coarse education levels. These are deliberately curriculum-neutral.
+enum MathEducationLevel {
+  primary,
+  middle,
+  secondary,
+  higherSecondary,
+  university,
+  advanced,
+}
+
+/// Editing behavior is domain metadata, not presentation-layer TeX matching.
+enum MathInputBehavior { insert, powerMode, subscriptMode }
+
 class MathSymbol {
+  /// Stable semantic identity.
+  ///
+  /// Entries with the same TeX meaning intentionally share an id even when
+  /// they are surfaced in multiple categories.
+  final String id;
   final String label;
   final String tex;
   final MathCategory category;
+  final MathEntryKind kind;
+  final MathInputBehavior inputBehavior;
+
+  /// Optional source inserted before activating a modal input behavior.
+  /// Examples: `e` for eˣ, `\sum` for a summation-index builder.
+  final String? modeBaseSource;
+
+  /// Preserved for compatibility with the current insertion layer.
+  /// New domain/UI code should prefer [isStructural].
   final bool isBuilder;
+
+  /// TeX alternatives exposed by the current long-press UI.
   final List<String>? variations;
 
+  /// Plain-language terms a teacher may use to find this entry.
+  final List<String> aliases;
+
+  /// Optional explicit accessibility wording.
+  final String? spokenLabel;
+
+  /// Lower numbers rank earlier in broad search results.
+  final int priority;
+
+  /// Empty lists intentionally fall back to category metadata.
+  final List<MathSubject> subjects;
+  final List<MathEducationLevel> levels;
+
   const MathSymbol({
+    required this.id,
     required this.label,
     required this.tex,
     required this.category,
+    this.kind = MathEntryKind.symbol,
+    this.inputBehavior = MathInputBehavior.insert,
+    this.modeBaseSource,
     this.isBuilder = false,
     this.variations,
+    this.aliases = const <String>[],
+    this.spokenLabel,
+    this.priority = 100,
+    this.subjects = const <MathSubject>[],
+    this.levels = const <MathEducationLevel>[],
   });
-}
 
-extension MathSymbolAccessibility on MathSymbol {
-  String get accessibilityLabel {
-    const descriptions = <String, String>{
-      r'\frac{}{}': 'fraction with numerator and denominator',
-      r'\sqrt{}': 'square root',
-      r'\sqrt[3]{}': 'cube root',
-      r'\sqrt[]{}': 'nth root',
-      r'^{}': 'power or exponent',
-      r'_{}': 'subscript',
-      r'\int': 'integral',
-      r'\iint': 'double integral',
-      r'\iiint': 'triple integral',
-      r'\sum': 'summation',
-      r'\prod': 'product notation',
-      r'\infty': 'infinity',
-      r'\leq': 'less than or equal to',
-      r'\geq': 'greater than or equal to',
-      r'\neq': 'not equal to',
-      r'\approx': 'approximately equal to',
-      r'\therefore': 'therefore',
-      r'\because': 'because',
-      r'\in': 'is an element of',
-      r'\notin': 'is not an element of',
-      r'\cup': 'union',
-      r'\cap': 'intersection',
-      r'\rightarrow': 'right arrow',
-      r'\rightleftharpoons': 'equilibrium reaction arrow',
-    };
-    return descriptions[tex] ?? label;
+  bool get isStructural =>
+      isBuilder ||
+      kind == MathEntryKind.structure ||
+      kind == MathEntryKind.formulaTemplate;
+
+  String get accessibilityLabel =>
+      spokenLabel ?? _spokenMathLabels[tex] ?? label;
+
+  List<String> get effectiveAliases => <String>[
+    ...aliases,
+    ...?_mathSearchAliases[tex],
+  ];
+
+  String get searchableText => <String>[
+    label,
+    accessibilityLabel,
+    ...effectiveAliases,
+    category.name,
+    kind.name,
+    ...effectiveSubjects.map((subject) => subject.name),
+    tex,
+  ].join(' ').toLowerCase();
+
+  List<MathSubject> get effectiveSubjects =>
+      subjects.isNotEmpty ? subjects : category.defaultSubjects;
+
+  List<MathEducationLevel> get effectiveLevels =>
+      levels.isNotEmpty ? levels : category.defaultLevels;
+
+  MathSymbol copyWith({
+    String? id,
+    String? label,
+    String? tex,
+    MathCategory? category,
+    MathEntryKind? kind,
+    MathInputBehavior? inputBehavior,
+    String? modeBaseSource,
+    bool clearModeBaseSource = false,
+    bool? isBuilder,
+    List<String>? variations,
+    List<String>? aliases,
+    String? spokenLabel,
+    int? priority,
+    List<MathSubject>? subjects,
+    List<MathEducationLevel>? levels,
+  }) {
+    return MathSymbol(
+      id: id ?? this.id,
+      label: label ?? this.label,
+      tex: tex ?? this.tex,
+      category: category ?? this.category,
+      kind: kind ?? this.kind,
+      inputBehavior: inputBehavior ?? this.inputBehavior,
+      modeBaseSource: clearModeBaseSource
+          ? null
+          : (modeBaseSource ?? this.modeBaseSource),
+      isBuilder: isBuilder ?? this.isBuilder,
+      variations: variations ?? this.variations,
+      aliases: aliases ?? this.aliases,
+      spokenLabel: spokenLabel ?? this.spokenLabel,
+      priority: priority ?? this.priority,
+      subjects: subjects ?? this.subjects,
+      levels: levels ?? this.levels,
+    );
   }
 }
 
-const List<MathSymbol> mathSymbols = [
-  // Basic numbers, variables, and the operators teachers use constantly.
-  MathSymbol(label: '0', tex: '0', category: MathCategory.basic),
-  MathSymbol(label: '1', tex: '1', category: MathCategory.basic),
-  MathSymbol(label: '2', tex: '2', category: MathCategory.basic),
-  MathSymbol(label: '3', tex: '3', category: MathCategory.basic),
-  MathSymbol(label: '4', tex: '4', category: MathCategory.basic),
-  MathSymbol(label: '5', tex: '5', category: MathCategory.basic),
-  MathSymbol(label: '6', tex: '6', category: MathCategory.basic),
-  MathSymbol(label: '7', tex: '7', category: MathCategory.basic),
-  MathSymbol(label: '8', tex: '8', category: MathCategory.basic),
-  MathSymbol(label: '9', tex: '9', category: MathCategory.basic),
-  MathSymbol(label: '.', tex: '.', category: MathCategory.basic),
-  MathSymbol(label: ',', tex: ',', category: MathCategory.basic),
-  MathSymbol(label: '+', tex: '+', category: MathCategory.basic),
-  MathSymbol(label: '-', tex: '-', category: MathCategory.basic),
-  MathSymbol(label: '×', tex: r'\times', category: MathCategory.basic),
-  MathSymbol(label: '÷', tex: r'\div', category: MathCategory.basic),
-  MathSymbol(label: '=', tex: '=', category: MathCategory.basic),
-  MathSymbol(label: 'x', tex: 'x', category: MathCategory.basic),
-  MathSymbol(label: 'y', tex: 'y', category: MathCategory.basic),
-  MathSymbol(label: 'z', tex: 'z', category: MathCategory.basic),
-  MathSymbol(label: 'a', tex: 'a', category: MathCategory.basic),
-  MathSymbol(label: 'b', tex: 'b', category: MathCategory.basic),
-  MathSymbol(label: 'n', tex: 'n', category: MathCategory.basic),
-  MathSymbol(label: 'π', tex: r'\pi', category: MathCategory.basic),
-  MathSymbol(label: 'e', tex: 'e', category: MathCategory.basic),
-  MathSymbol(label: 'i', tex: 'i', category: MathCategory.basic),
-  MathSymbol(
-    label: '()',
-    tex: '(',
-    category: MathCategory.basic,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'x²',
-    tex: r'^{2}',
-    category: MathCategory.basic,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'x³',
-    tex: r'^{3}',
-    category: MathCategory.basic,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'xⁿ',
-    tex: r'^{}',
-    category: MathCategory.basic,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'xᵢ',
-    tex: r'_{}',
-    category: MathCategory.basic,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '√',
-    tex: r'\sqrt{}',
-    category: MathCategory.basic,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'a⁄b',
-    tex: r'\frac{}{}',
-    category: MathCategory.basic,
-    isBuilder: true,
-  ),
+extension MathCategoryMetadata on MathCategory {
+  List<MathSubject> get defaultSubjects {
+    switch (this) {
+      case MathCategory.basic:
+        return const <MathSubject>[
+          MathSubject.general,
+          MathSubject.arithmetic,
+        ];
+      case MathCategory.functions:
+        return const <MathSubject>[MathSubject.algebra];
+      case MathCategory.trig:
+        return const <MathSubject>[MathSubject.trigonometry];
+      case MathCategory.calculus:
+        return const <MathSubject>[MathSubject.calculus];
+      case MathCategory.geometry:
+        return const <MathSubject>[MathSubject.geometry];
+      case MathCategory.physics:
+        return const <MathSubject>[MathSubject.physics];
+      case MathCategory.chemistry:
+        return const <MathSubject>[MathSubject.chemistry];
+      case MathCategory.statistics:
+        return const <MathSubject>[
+          MathSubject.statistics,
+          MathSubject.probability,
+        ];
+      case MathCategory.matrices:
+        return const <MathSubject>[MathSubject.linearAlgebra];
+      case MathCategory.sets:
+        return const <MathSubject>[MathSubject.sets, MathSubject.logic];
+      case MathCategory.operators:
+        return const <MathSubject>[MathSubject.general, MathSubject.logic];
+      case MathCategory.recent:
+      case MathCategory.favorites:
+      case MathCategory.greek:
+      case MathCategory.brackets:
+      case MathCategory.arrows:
+      case MathCategory.templates:
+      case MathCategory.format:
+      case MathCategory.misc:
+        return const <MathSubject>[MathSubject.general];
+    }
+  }
 
-  // Functions, fractions, roots, and common algebra building blocks.
-  MathSymbol(
-    label: 'a⁄b',
-    tex: r'\frac{}{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '½',
-    tex: r'\frac{1}{2}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '⅓',
-    tex: r'\frac{1}{3}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '⅔',
-    tex: r'\frac{2}{3}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '√x',
-    tex: r'\sqrt{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '∛x',
-    tex: r'\sqrt[3]{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'ⁿ√x',
-    tex: r'\sqrt[]{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '|x|',
-    tex: r'|{}|',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'x²',
-    tex: r'^{2}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'x³',
-    tex: r'^{3}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'xⁿ',
-    tex: r'^{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'xᵢ',
-    tex: r'_{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(label: 'log', tex: r'\log', category: MathCategory.functions),
-  MathSymbol(
-    label: 'logₐ',
-    tex: r'\log_{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(label: 'ln', tex: r'\ln', category: MathCategory.functions),
-  MathSymbol(
-    label: 'eˣ',
-    tex: r'e^{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(label: 'f(x)', tex: 'f(x)', category: MathCategory.functions),
-  MathSymbol(label: 'g(x)', tex: 'g(x)', category: MathCategory.functions),
-  MathSymbol(label: 'x!', tex: '!', category: MathCategory.functions),
-  MathSymbol(label: 'mod', tex: r'\bmod', category: MathCategory.functions),
+  List<MathEducationLevel> get defaultLevels {
+    switch (this) {
+      case MathCategory.basic:
+        return const <MathEducationLevel>[
+          MathEducationLevel.primary,
+          MathEducationLevel.middle,
+          MathEducationLevel.secondary,
+        ];
+      case MathCategory.functions:
+      case MathCategory.geometry:
+      case MathCategory.statistics:
+        return const <MathEducationLevel>[
+          MathEducationLevel.middle,
+          MathEducationLevel.secondary,
+          MathEducationLevel.higherSecondary,
+        ];
+      case MathCategory.trig:
+      case MathCategory.calculus:
+      case MathCategory.matrices:
+        return const <MathEducationLevel>[
+          MathEducationLevel.secondary,
+          MathEducationLevel.higherSecondary,
+          MathEducationLevel.university,
+        ];
+      case MathCategory.recent:
+      case MathCategory.favorites:
+      case MathCategory.physics:
+      case MathCategory.chemistry:
+      case MathCategory.greek:
+      case MathCategory.operators:
+      case MathCategory.brackets:
+      case MathCategory.arrows:
+      case MathCategory.sets:
+      case MathCategory.templates:
+      case MathCategory.format:
+      case MathCategory.misc:
+        return const <MathEducationLevel>[
+          MathEducationLevel.middle,
+          MathEducationLevel.secondary,
+          MathEducationLevel.higherSecondary,
+          MathEducationLevel.university,
+        ];
+    }
+  }
+}
 
-  // Trigonometry.
-  MathSymbol(label: 'sin', tex: r'\sin', category: MathCategory.trig),
-  MathSymbol(label: 'cos', tex: r'\cos', category: MathCategory.trig),
-  MathSymbol(label: 'tan', tex: r'\tan', category: MathCategory.trig),
-  MathSymbol(label: 'csc', tex: r'\csc', category: MathCategory.trig),
-  MathSymbol(label: 'sec', tex: r'\sec', category: MathCategory.trig),
-  MathSymbol(label: 'cot', tex: r'\cot', category: MathCategory.trig),
-  MathSymbol(
-    label: 'sin²θ',
-    tex: r'\sin^2 \theta',
-    category: MathCategory.trig,
-  ),
-  MathSymbol(
-    label: 'cos²θ',
-    tex: r'\cos^2 \theta',
-    category: MathCategory.trig,
-  ),
-  MathSymbol(label: 'tanθ', tex: r'\tan \theta', category: MathCategory.trig),
-  MathSymbol(label: 'arcsin', tex: r'\arcsin', category: MathCategory.trig),
-  MathSymbol(label: 'arccos', tex: r'\arccos', category: MathCategory.trig),
-  MathSymbol(label: 'arctan', tex: r'\arctan', category: MathCategory.trig),
-  MathSymbol(label: 'sinh', tex: r'\sinh', category: MathCategory.trig),
-  MathSymbol(label: 'cosh', tex: r'\cosh', category: MathCategory.trig),
-  MathSymbol(label: 'tanh', tex: r'\tanh', category: MathCategory.trig),
-  MathSymbol(label: 'θ', tex: r'\theta', category: MathCategory.trig),
-  MathSymbol(label: 'φ', tex: r'\phi', category: MathCategory.trig),
-  MathSymbol(label: '°', tex: r'^{\circ}', category: MathCategory.trig),
+const Map<String, String> _spokenMathLabels = <String, String>{
+  r'\frac{}{}': 'fraction with numerator and denominator',
+  r'\sqrt{}': 'square root',
+  r'\sqrt[3]{}': 'cube root',
+  r'\sqrt[]{}': 'nth root',
+  r'\int': 'integral',
+  r'\iint': 'double integral',
+  r'\iiint': 'triple integral',
+  r'\sum': 'summation',
+  r'\prod': 'product notation',
+  r'\infty': 'infinity',
+  r'\leq': 'less than or equal to',
+  r'\geq': 'greater than or equal to',
+  r'\neq': 'not equal to',
+  r'\approx': 'approximately equal to',
+  r'\therefore': 'therefore',
+  r'\because': 'because',
+  r'\in': 'is an element of',
+  r'\notin': 'is not an element of',
+  r'\cup': 'union',
+  r'\cap': 'intersection',
+  r'\rightarrow': 'right arrow',
+  r'\rightleftharpoons': 'equilibrium reaction arrow',
+};
 
-  // Calculus and higher math.
-  MathSymbol(label: '∫', tex: r'\int', category: MathCategory.calculus),
-  MathSymbol(
-    label: '∫ₐᵇ',
-    tex: r'\int_{}^{}',
-    category: MathCategory.calculus,
-    isBuilder: true,
-  ),
-  MathSymbol(label: '∬', tex: r'\iint', category: MathCategory.calculus),
-  MathSymbol(label: '∭', tex: r'\iiint', category: MathCategory.calculus),
-  MathSymbol(label: '∮', tex: r'\oint', category: MathCategory.calculus),
-  MathSymbol(
-    label: 'd/dx',
-    tex: r'\frac{d}{dx}',
-    category: MathCategory.calculus,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'dy/dx',
-    tex: r'\frac{dy}{dx}',
-    category: MathCategory.calculus,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'd²/dx²',
-    tex: r'\frac{d^2}{dx^2}',
-    category: MathCategory.calculus,
-    isBuilder: true,
-  ),
-  MathSymbol(label: '∂', tex: r'\partial', category: MathCategory.calculus),
-  MathSymbol(label: '∇', tex: r'\nabla', category: MathCategory.calculus),
-  MathSymbol(
-    label: 'lim',
-    tex: r'\lim_{x \to \infty}',
-    category: MathCategory.calculus,
-    isBuilder: true,
-  ),
-  MathSymbol(label: 'Σ', tex: r'\sum', category: MathCategory.calculus),
-  MathSymbol(
-    label: 'Σₙ',
-    tex: r'\sum_{}^{}',
-    category: MathCategory.calculus,
-    isBuilder: true,
-  ),
-  MathSymbol(label: 'Π', tex: r'\prod', category: MathCategory.calculus),
-  MathSymbol(
-    label: 'Πₙ',
-    tex: r'\prod_{}^{}',
-    category: MathCategory.calculus,
-    isBuilder: true,
-  ),
-  MathSymbol(label: '∞', tex: r'\infty', category: MathCategory.calculus),
-  MathSymbol(label: '∆', tex: r'\Delta', category: MathCategory.calculus),
-
-  // Operators and relations.
-  MathSymbol(label: '<', tex: '<', category: MathCategory.operators),
-  MathSymbol(label: '>', tex: '>', category: MathCategory.operators),
-  MathSymbol(label: '≤', tex: r'\leq', category: MathCategory.operators),
-  MathSymbol(label: '≥', tex: r'\geq', category: MathCategory.operators),
-  MathSymbol(label: '≠', tex: r'\neq', category: MathCategory.operators),
-  MathSymbol(label: '≈', tex: r'\approx', category: MathCategory.operators),
-  MathSymbol(label: '≡', tex: r'\equiv', category: MathCategory.operators),
-  MathSymbol(label: '±', tex: r'\pm', category: MathCategory.operators),
-  MathSymbol(label: '∓', tex: r'\mp', category: MathCategory.operators),
-  MathSymbol(label: '∝', tex: r'\propto', category: MathCategory.operators),
-  MathSymbol(label: '∴', tex: r'\therefore', category: MathCategory.operators),
-  MathSymbol(label: '∵', tex: r'\because', category: MathCategory.operators),
-  MathSymbol(label: '∧', tex: r'\wedge', category: MathCategory.operators),
-  MathSymbol(label: '∨', tex: r'\vee', category: MathCategory.operators),
-  MathSymbol(label: '¬', tex: r'\neg', category: MathCategory.operators),
-  MathSymbol(label: '⇒', tex: r'\Rightarrow', category: MathCategory.operators),
-  MathSymbol(
-    label: '⇔',
-    tex: r'\Leftrightarrow',
-    category: MathCategory.operators,
-  ),
-  MathSymbol(label: '∀', tex: r'\forall', category: MathCategory.operators),
-  MathSymbol(label: '∃', tex: r'\exists', category: MathCategory.operators),
-
-  // Greek.
-  MathSymbol(label: 'α', tex: r'\alpha', category: MathCategory.greek),
-  MathSymbol(label: 'β', tex: r'\beta', category: MathCategory.greek),
-  MathSymbol(label: 'γ', tex: r'\gamma', category: MathCategory.greek),
-  MathSymbol(label: 'δ', tex: r'\delta', category: MathCategory.greek),
-  MathSymbol(label: 'ε', tex: r'\epsilon', category: MathCategory.greek),
-  MathSymbol(label: 'ζ', tex: r'\zeta', category: MathCategory.greek),
-  MathSymbol(label: 'η', tex: r'\eta', category: MathCategory.greek),
-  MathSymbol(label: 'θ', tex: r'\theta', category: MathCategory.greek),
-  MathSymbol(label: 'λ', tex: r'\lambda', category: MathCategory.greek),
-  MathSymbol(label: 'μ', tex: r'\mu', category: MathCategory.greek),
-  MathSymbol(label: 'π', tex: r'\pi', category: MathCategory.greek),
-  MathSymbol(label: 'ρ', tex: r'\rho', category: MathCategory.greek),
-  MathSymbol(label: 'σ', tex: r'\sigma', category: MathCategory.greek),
-  MathSymbol(label: 'τ', tex: r'\tau', category: MathCategory.greek),
-  MathSymbol(label: 'φ', tex: r'\phi', category: MathCategory.greek),
-  MathSymbol(label: 'ω', tex: r'\omega', category: MathCategory.greek),
-  MathSymbol(label: 'Γ', tex: r'\Gamma', category: MathCategory.greek),
-  MathSymbol(label: 'Δ', tex: r'\Delta', category: MathCategory.greek),
-  MathSymbol(label: 'Θ', tex: r'\Theta', category: MathCategory.greek),
-  MathSymbol(label: 'Λ', tex: r'\Lambda', category: MathCategory.greek),
-  MathSymbol(label: 'Π', tex: r'\Pi', category: MathCategory.greek),
-  MathSymbol(label: 'Σ', tex: r'\Sigma', category: MathCategory.greek),
-  MathSymbol(label: 'Φ', tex: r'\Phi', category: MathCategory.greek),
-  MathSymbol(label: 'Ω', tex: r'\Omega', category: MathCategory.greek),
-
-  // Sets and number systems.
-  MathSymbol(label: '∈', tex: r'\in', category: MathCategory.sets),
-  MathSymbol(label: '∉', tex: r'\notin', category: MathCategory.sets),
-  MathSymbol(label: '⊂', tex: r'\subset', category: MathCategory.sets),
-  MathSymbol(label: '⊆', tex: r'\subseteq', category: MathCategory.sets),
-  MathSymbol(label: '∪', tex: r'\cup', category: MathCategory.sets),
-  MathSymbol(label: '∩', tex: r'\cap', category: MathCategory.sets),
-  MathSymbol(label: '∅', tex: r'\varnothing', category: MathCategory.sets),
-  MathSymbol(label: 'ℕ', tex: r'\mathbb{N}', category: MathCategory.sets),
-  MathSymbol(label: 'ℤ', tex: r'\mathbb{Z}', category: MathCategory.sets),
-  MathSymbol(label: 'ℚ', tex: r'\mathbb{Q}', category: MathCategory.sets),
-  MathSymbol(label: 'ℝ', tex: r'\mathbb{R}', category: MathCategory.sets),
-  MathSymbol(label: 'ℂ', tex: r'\mathbb{C}', category: MathCategory.sets),
-
-  // Brackets.
-  MathSymbol(
-    label: '()',
-    tex: '(',
-    category: MathCategory.brackets,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '[]',
-    tex: '[',
-    category: MathCategory.brackets,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '{}',
-    tex: '{',
-    category: MathCategory.brackets,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '⟨⟩',
-    tex: r'\langle\rangle',
-    category: MathCategory.brackets,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '⌊⌋',
-    tex: r'\lfloor\rfloor',
-    category: MathCategory.brackets,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '⌈⌉',
-    tex: r'\lceil\rceil',
-    category: MathCategory.brackets,
-    isBuilder: true,
-  ),
-
-  // Geometry.
-  MathSymbol(label: '△', tex: r'\triangle', category: MathCategory.geometry),
-  MathSymbol(label: '∠', tex: r'\angle', category: MathCategory.geometry),
-  MathSymbol(label: '⊥', tex: r'\perp', category: MathCategory.geometry),
-  MathSymbol(label: '∥', tex: r'\parallel', category: MathCategory.geometry),
-  MathSymbol(label: '≅', tex: r'\cong', category: MathCategory.geometry),
-  MathSymbol(label: '∼', tex: r'\sim', category: MathCategory.geometry),
-  MathSymbol(label: '○', tex: r'\bigcirc', category: MathCategory.geometry),
-  MathSymbol(label: '□', tex: r'\square', category: MathCategory.geometry),
-  MathSymbol(
-    label: 'v⃗',
-    tex: r'\vec{v}',
-    category: MathCategory.geometry,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'arc',
-    tex: r'\overset{\frown}{AB}',
-    category: MathCategory.geometry,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'cm²',
-    tex: r'\text{cm}^{2}',
-    category: MathCategory.geometry,
-  ),
-  MathSymbol(
-    label: 'cm³',
-    tex: r'\text{cm}^{3}',
-    category: MathCategory.geometry,
-  ),
-  MathSymbol(
-    label: '∠ABC',
-    tex: r'\angle ABC',
-    category: MathCategory.geometry,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'm∠ABC',
-    tex: r'm\angle ABC',
-    category: MathCategory.geometry,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'AB̅',
-    tex: r'\overline{AB}',
-    category: MathCategory.geometry,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'AB⃗',
-    tex: r'\overrightarrow{AB}',
-    category: MathCategory.geometry,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'AB↔',
-    tex: r'\overleftrightarrow{AB}',
-    category: MathCategory.geometry,
-    isBuilder: true,
-  ),
-  MathSymbol(label: '∟', tex: '∟', category: MathCategory.geometry),
-  MathSymbol(label: '⌒AB', tex: r'\widehat{AB}', category: MathCategory.geometry),
-  MathSymbol(label: '△ABC', tex: r'\triangle ABC', category: MathCategory.geometry),
-  MathSymbol(label: '▱', tex: '▱', category: MathCategory.geometry),
-  MathSymbol(label: '⌀', tex: '⌀', category: MathCategory.geometry),
-  MathSymbol(label: '°', tex: r'^{\circ}', category: MathCategory.geometry),
-  MathSymbol(label: '′', tex: r'^{\prime}', category: MathCategory.geometry),
-  MathSymbol(label: '″', tex: r'^{\prime\prime}', category: MathCategory.geometry),
-  MathSymbol(label: 'mm', tex: r'\text{mm}', category: MathCategory.geometry),
-  MathSymbol(label: 'cm', tex: r'\text{cm}', category: MathCategory.geometry),
-  MathSymbol(label: 'm', tex: r'\text{m}', category: MathCategory.geometry),
-  MathSymbol(label: 'km', tex: r'\text{km}', category: MathCategory.geometry),
-
-  // Physics: notation, SI units, and the formulas most often used in school papers.
-  MathSymbol(label: 'Δ', tex: r'\Delta', category: MathCategory.physics),
-  MathSymbol(label: 'Δt', tex: r'\Delta t', category: MathCategory.physics),
-  MathSymbol(label: 'v⃗', tex: r'\vec{v}', category: MathCategory.physics, isBuilder: true),
-  MathSymbol(label: 'F⃗', tex: r'\vec{F}', category: MathCategory.physics, isBuilder: true),
-  MathSymbol(label: 'λ', tex: r'\lambda', category: MathCategory.physics),
-  MathSymbol(label: 'ρ', tex: r'\rho', category: MathCategory.physics),
-  MathSymbol(label: 'ω', tex: r'\omega', category: MathCategory.physics),
-  MathSymbol(label: 'μ', tex: r'\mu', category: MathCategory.physics),
-  MathSymbol(label: 'Ω', tex: r'\Omega', category: MathCategory.physics),
-  MathSymbol(label: '°C', tex: r'^{\circ}\text{C}', category: MathCategory.physics),
-  MathSymbol(label: 'm/s', tex: r'\text{m/s}', category: MathCategory.physics),
-  MathSymbol(label: 'm/s²', tex: r'\text{m/s}^{2}', category: MathCategory.physics),
-  MathSymbol(label: 'kg', tex: r'\text{kg}', category: MathCategory.physics),
-  MathSymbol(label: 'N', tex: r'\text{N}', category: MathCategory.physics),
-  MathSymbol(label: 'J', tex: r'\text{J}', category: MathCategory.physics),
-  MathSymbol(label: 'W', tex: r'\text{W}', category: MathCategory.physics),
-  MathSymbol(label: 'Pa', tex: r'\text{Pa}', category: MathCategory.physics),
-  MathSymbol(label: 'Hz', tex: r'\text{Hz}', category: MathCategory.physics),
-  MathSymbol(label: 'V', tex: r'\text{V}', category: MathCategory.physics),
-  MathSymbol(label: 'A', tex: r'\text{A}', category: MathCategory.physics),
-  MathSymbol(label: 'C', tex: r'\text{C}', category: MathCategory.physics),
-  MathSymbol(label: 'F = ma', tex: r'F = ma', category: MathCategory.physics),
-  MathSymbol(label: 'p = mv', tex: r'p = mv', category: MathCategory.physics),
-  MathSymbol(label: 'v = u+at', tex: r'v = u + at', category: MathCategory.physics),
-  MathSymbol(label: 's = ut+½at²', tex: r's = ut + \frac{1}{2}at^2', category: MathCategory.physics),
-  MathSymbol(label: 'v² = u²+2as', tex: r'v^2 = u^2 + 2as', category: MathCategory.physics),
-  MathSymbol(label: 'KE', tex: r'E_k = \frac{1}{2}mv^2', category: MathCategory.physics),
-  MathSymbol(label: 'PE', tex: r'E_p = mgh', category: MathCategory.physics),
-  MathSymbol(label: 'P = W/t', tex: r'P = \frac{W}{t}', category: MathCategory.physics),
-  MathSymbol(label: 'V = IR', tex: r'V = IR', category: MathCategory.physics),
-  MathSymbol(label: 'P = VI', tex: r'P = VI', category: MathCategory.physics),
-  MathSymbol(label: 'Q = It', tex: r'Q = It', category: MathCategory.physics),
-  MathSymbol(label: 'v = fλ', tex: r'v = f\lambda', category: MathCategory.physics),
-  MathSymbol(label: 'ρ = m/V', tex: r'\rho = \frac{m}{V}', category: MathCategory.physics),
-  MathSymbol(label: 'P = F/A', tex: r'P = \frac{F}{A}', category: MathCategory.physics),
-  MathSymbol(label: 'Q = mcΔT', tex: r'Q = mc\Delta T', category: MathCategory.physics),
-  MathSymbol(label: 'Lens', tex: r'\frac{1}{f}=\frac{1}{v}-\frac{1}{u}', category: MathCategory.physics),
-
-  // Statistics and probability.
-  MathSymbol(label: 'x̄', tex: r'\bar{x}', category: MathCategory.statistics),
-  MathSymbol(label: 'μ', tex: r'\mu', category: MathCategory.statistics),
-  MathSymbol(label: 'σ', tex: r'\sigma', category: MathCategory.statistics),
-  MathSymbol(label: 'σ²', tex: r'\sigma^2', category: MathCategory.statistics),
-  MathSymbol(label: 'Σx', tex: r'\sum x', category: MathCategory.statistics),
-  MathSymbol(label: 'P(A)', tex: r'P(A)', category: MathCategory.statistics),
-  MathSymbol(label: 'P(A∪B)', tex: r'P(A\cup B)', category: MathCategory.statistics),
-  MathSymbol(label: 'P(A∩B)', tex: r'P(A\cap B)', category: MathCategory.statistics),
-  MathSymbol(label: 'Mean', tex: r'\bar{x}=\frac{\sum x}{n}', category: MathCategory.statistics),
-  MathSymbol(label: 'Variance', tex: r'\sigma^2=\frac{\sum(x-\bar{x})^2}{n}', category: MathCategory.statistics),
-  MathSymbol(label: 'Std. dev.', tex: r'\sigma=\sqrt{\frac{\sum(x-\bar{x})^2}{n}}', category: MathCategory.statistics),
-  MathSymbol(label: 'nCr', tex: r'{}^nC_r', category: MathCategory.statistics, isBuilder: true),
-  MathSymbol(label: 'nPr', tex: r'{}^nP_r', category: MathCategory.statistics, isBuilder: true),
-
-  // Arrows.
-  MathSymbol(label: '←', tex: r'\leftarrow', category: MathCategory.arrows),
-  MathSymbol(label: '→', tex: r'\rightarrow', category: MathCategory.arrows),
-  MathSymbol(label: '↑', tex: r'\uparrow', category: MathCategory.arrows),
-  MathSymbol(label: '↓', tex: r'\downarrow', category: MathCategory.arrows),
-  MathSymbol(
-    label: '↔',
-    tex: r'\leftrightarrow',
-    category: MathCategory.arrows,
-  ),
-  MathSymbol(label: '⇒', tex: r'\Rightarrow', category: MathCategory.arrows),
-  MathSymbol(
-    label: '⇔',
-    tex: r'\Leftrightarrow',
-    category: MathCategory.arrows,
-  ),
-
-  // Matrices.
-  MathSymbol(
-    label: '[2×2]',
-    tex: r'\begin{pmatrix}  & \\  & \end{pmatrix}',
-    category: MathCategory.matrices,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '[3×3]',
-    tex: r'\begin{pmatrix}  &  & \\  &  & \\  &  & \end{pmatrix}',
-    category: MathCategory.matrices,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '|A|',
-    tex: r'\begin{vmatrix}  & \\  & \end{vmatrix}',
-    category: MathCategory.matrices,
-    isBuilder: true,
-  ),
-  MathSymbol(label: 'det', tex: r'\det', category: MathCategory.matrices),
-
-  // Ready-made textbook formulas and question starters.
-  MathSymbol(
-    label: 'Quadratic',
-    tex: r'x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Pythagoras',
-    tex: r'a^2 + b^2 = c^2',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Circle',
-    tex: r'(x-h)^2 + (y-k)^2 = r^2',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Line',
-    tex: r'y = mx + c',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Slope',
-    tex: r'm = \frac{y_2-y_1}{x_2-x_1}',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Distance',
-    tex: r'd = \sqrt{(x_2-x_1)^2 + (y_2-y_1)^2}',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'AP nth',
-    tex: r'a_n = a + (n-1)d',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'AP Sum',
-    tex: r'S_n = \frac{n}{2}[2a+(n-1)d]',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'GP nth',
-    tex: r'a_n = ar^{n-1}',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Mean',
-    tex: r'\bar{x} = \frac{\sum x}{n}',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Prob.',
-    tex: r'P(E)=\frac{\text{Favourable outcomes}}{\text{Total outcomes}}',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Area circle',
-    tex: r'A=\pi r^2',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Volume sphere',
-    tex: r'V=\frac{4}{3}\pi r^3',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Solve',
-    tex: r'\text{Solve: }',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Prove',
-    tex: r'\text{Prove that }',
-    category: MathCategory.templates,
-  ),
-  MathSymbol(
-    label: 'Find x',
-    tex: r'\text{Find the value of } x',
-    category: MathCategory.templates,
-  ),
-
-  // Additional mobile builders for structures requested by school teachers.
-  MathSymbol(
-    label: '1 a⁄b',
-    tex: r'1\frac{}{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'a×10ⁿ',
-    tex: r'{}\times 10^{}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '0.3̅',
-    tex: r'0.\overline{3}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: 'cases',
-    tex: r'f(x)=\begin{cases} & \\ & \end{cases}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(
-    label: '2 equations',
-    tex: r'\begin{cases} ax+by=c \\ dx+ey=f \end{cases}',
-    category: MathCategory.functions,
-    isBuilder: true,
-  ),
-  MathSymbol(label: '⊃', tex: r'\supset', category: MathCategory.sets),
-  MathSymbol(label: '⊇', tex: r'\supseteq', category: MathCategory.sets),
-  MathSymbol(label: 'U', tex: r'\mathcal{U}', category: MathCategory.sets),
-  MathSymbol(label: 'median', tex: r'\widetilde{x}', category: MathCategory.statistics),
-  MathSymbol(label: 'E(X)', tex: r'\mathbb{E}(X)', category: MathCategory.statistics),
-  MathSymbol(label: 'X~N', tex: r'X\sim N(\mu,\sigma^2)', category: MathCategory.statistics),
-
-  // Chemistry notation, charges, isotopes and reaction structures.
-  MathSymbol(label: '→', tex: r'\rightarrow', category: MathCategory.chemistry),
-  MathSymbol(label: '⇌', tex: r'\rightleftharpoons', category: MathCategory.chemistry),
-  MathSymbol(label: '↑', tex: r'\uparrow', category: MathCategory.chemistry),
-  MathSymbol(label: '↓', tex: r'\downarrow', category: MathCategory.chemistry),
-  MathSymbol(label: 'Δ', tex: r'\Delta', category: MathCategory.chemistry),
-  MathSymbol(label: 'H₂O', tex: r'\mathrm{H_2O}', category: MathCategory.chemistry),
-  MathSymbol(label: 'CO₂', tex: r'\mathrm{CO_2}', category: MathCategory.chemistry),
-  MathSymbol(label: 'O₂', tex: r'\mathrm{O_2}', category: MathCategory.chemistry),
-  MathSymbol(label: 'H⁺', tex: r'\mathrm{H^+}', category: MathCategory.chemistry),
-  MathSymbol(label: 'OH⁻', tex: r'\mathrm{OH^-}', category: MathCategory.chemistry),
-  MathSymbol(label: 'Ca²⁺', tex: r'\mathrm{Ca^{2+}}', category: MathCategory.chemistry),
-  MathSymbol(label: 'Cl⁻', tex: r'\mathrm{Cl^-}', category: MathCategory.chemistry),
-  MathSymbol(label: '⁺ charge', tex: r'^{+}', category: MathCategory.chemistry, isBuilder: true),
-  MathSymbol(label: '⁻ charge', tex: r'^{-}', category: MathCategory.chemistry, isBuilder: true),
-  MathSymbol(label: 'ⁿ⁺ charge', tex: r'^{n+}', category: MathCategory.chemistry, isBuilder: true),
-  MathSymbol(label: 'isotope', tex: r'{}^{A}_{Z}X', category: MathCategory.chemistry, isBuilder: true),
-  MathSymbol(label: '(s)', tex: r'\mathrm{(s)}', category: MathCategory.chemistry),
-  MathSymbol(label: '(l)', tex: r'\mathrm{(l)}', category: MathCategory.chemistry),
-  MathSymbol(label: '(g)', tex: r'\mathrm{(g)}', category: MathCategory.chemistry),
-  MathSymbol(label: '(aq)', tex: r'\mathrm{(aq)}', category: MathCategory.chemistry),
-
-  // Miscellaneous classroom symbols.
-  MathSymbol(label: '∞', tex: r'\infty', category: MathCategory.misc),
-  MathSymbol(label: '!', tex: '!', category: MathCategory.misc),
-  MathSymbol(label: '?', tex: '?', category: MathCategory.misc),
-  MathSymbol(label: '%', tex: r'\%', category: MathCategory.misc),
-  MathSymbol(label: '‰', tex: r'\permil', category: MathCategory.misc),
-  MathSymbol(label: '…', tex: r'\dots', category: MathCategory.misc),
-  MathSymbol(label: '₹', tex: r'\text{₹}', category: MathCategory.misc),
-];
+const Map<String, List<String>> _mathSearchAliases =
+    <String, List<String>>{
+      r'\frac{}{}': <String>[
+        'fraction',
+        'divide',
+        'numerator',
+        'denominator',
+        'over',
+      ],
+      r'\sqrt{}': <String>['square root', 'root', 'radical'],
+      r'\sqrt[3]{}': <String>['cube root', 'third root'],
+      r'\sqrt[]{}': <String>['nth root', 'index root'],
+      r'^{}': <String>['power', 'exponent', 'superscript'],
+      r'_{}': <String>['subscript', 'index'],
+      r'\int': <String>['integral', 'integration'],
+      r'\iint': <String>['double integral'],
+      r'\iiint': <String>['triple integral'],
+      r'\oint': <String>['contour integral', 'closed integral'],
+      r'\sum': <String>['sum', 'summation', 'sigma'],
+      r'\prod': <String>['product', 'product notation'],
+      r'\partial': <String>['partial derivative', 'partial'],
+      r'\nabla': <String>['nabla', 'del', 'gradient'],
+      r'\infty': <String>['infinity', 'infinite'],
+      r'\leq': <String>['less than or equal', 'at most'],
+      r'\geq': <String>['greater than or equal', 'at least'],
+      r'\neq': <String>['not equal', 'unequal'],
+      r'\approx': <String>[
+        'approximately',
+        'approximately equal',
+        'roughly equal',
+      ],
+      r'\equiv': <String>['equivalent', 'identical'],
+      r'\pm': <String>['plus minus', 'plus or minus'],
+      r'\propto': <String>['proportional', 'proportional to'],
+      r'\in': <String>['element of', 'belongs to'],
+      r'\notin': <String>['not element of', 'does not belong'],
+      r'\subset': <String>['subset'],
+      r'\subseteq': <String>['subset or equal'],
+      r'\cup': <String>['union'],
+      r'\cap': <String>['intersection'],
+      r'\varnothing': <String>['empty set', 'null set'],
+      r'\angle': <String>['angle'],
+      r'\perp': <String>['perpendicular', 'normal'],
+      r'\parallel': <String>['parallel'],
+      r'\cong': <String>['congruent'],
+      r'\rightarrow': <String>['right arrow', 'reaction arrow', 'tends to'],
+      r'\rightleftharpoons': <String>[
+        'equilibrium',
+        'reversible reaction',
+        'equilibrium arrow',
+      ],
+      r'\bar{x}': <String>['mean', 'average', 'x bar'],
+      r'\sigma': <String>['sigma', 'standard deviation'],
+      r'\mu': <String>['mu', 'mean', 'coefficient of friction'],
+      r'\lambda': <String>['lambda', 'wavelength'],
+      r'\omega': <String>['omega', 'angular frequency'],
+      r'\rho': <String>['rho', 'density'],
+      r'\Delta': <String>['delta', 'change', 'difference'],
+      r'\begin{pmatrix}  & \\  & \end{pmatrix}': <String>[
+        '2x2 matrix',
+        'matrix two by two',
+      ],
+      r'\begin{pmatrix}  &  & \\  &  & \\  &  & \end{pmatrix}':
+          <String>['3x3 matrix', 'matrix three by three'],
+      r'\begin{vmatrix}  & \\  & \end{vmatrix}': <String>[
+        'determinant',
+        '2x2 determinant',
+      ],
+      r'f(x)=\begin{cases} & \\ & \end{cases}': <String>[
+        'piecewise',
+        'cases',
+        'piecewise function',
+      ],
+      r'{}^{A}_{Z}X': <String>[
+        'isotope',
+        'atomic number',
+        'mass number',
+        'nuclear notation',
+      ],
+      r'{}\times 10^{}': <String>[
+        'scientific notation',
+        'standard form',
+        'times ten power',
+      ],
+    };

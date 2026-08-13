@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
@@ -404,7 +405,10 @@ class WordExportService {
       );
     }
 
-    for (final expression in question.mathExpressions) {
+    for (final expression in MathExpression.unplacedInRichText(
+      question.text,
+      question.mathExpressions,
+    )) {
       buffer.write(
         _paragraph(
           expression.plainText.trim().isEmpty
