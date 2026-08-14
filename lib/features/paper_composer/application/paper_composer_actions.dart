@@ -27,6 +27,15 @@ class PaperComposerActions {
     _editor.duplicateQuestion(sectionId, questionId);
   }
 
+  void addQuestionsFromBank(String sectionId, List<Question> questions) {
+    _editor.addQuestionsFromBank(sectionId, questions);
+  }
+
+
+  void addSectionWithQuestionsFromBank(List<Question> questions) {
+    _editor.addSectionWithQuestionsFromBank(questions);
+  }
+
   void deleteQuestion(String sectionId, String questionId) {
     _editor.deleteQuestion(sectionId, questionId);
   }

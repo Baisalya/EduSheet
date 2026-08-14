@@ -1,4 +1,5 @@
-import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+import 'package:edusheet/features/pdf/application/paper_style_catalog.dart';
+import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -9,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:edusheet/features/editor/data/repositories/paper_repository.dart';
 import 'package:edusheet/features/editor/data/repositories/local_paper_repository.dart';
 import 'package:edusheet/features/editor/services/autosave_coordinator.dart';
+import 'package:edusheet/features/editor/services/question_copy_service.dart';
+import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 
 part 'editor_provider.g.dart';
 
@@ -56,6 +59,10 @@ final editorSaveStatusProvider = StateProvider<AutosaveStatus>(
 class EditorState extends _$EditorState {
   static const int _historyLimit = 50;
 
+  late final QuestionCopyService _questionCopyService = QuestionCopyService(
+    geometryResolver: GeometryDiagramRegistry.instance.diagramFor,
+  );
+
   late final AutosaveCoordinator<Paper> _autosave;
   final List<Paper> _undoStack = [];
   final List<Paper> _redoStack = [];
@@ -93,34 +100,25 @@ class EditorState extends _$EditorState {
     return Paper(
       id: const Uuid().v4(),
       title: 'New Paper',
-      sections: [],
-      logos: ['', '', ''], // Initialize with 3 slots by default
+      schoolName: '',
+      templateId: PaperStyleCatalog.defaultTemplateId,
+      sections: const [],
+      logos: const [],
       createdAt: DateTime.now(),
       headerFields: [
         PaperHeaderField(
           id: const Uuid().v4(),
           label: 'Subject',
-          value: 'Mathematics',
+          isPlaceholder: true,
         ),
-        PaperHeaderField(id: const Uuid().v4(), label: 'Class', value: '10th'),
         PaperHeaderField(
           id: const Uuid().v4(),
-          label: 'Date',
+          label: 'Class',
           isPlaceholder: true,
         ),
         PaperHeaderField(
           id: const Uuid().v4(),
           label: 'Time',
-          value: '3 Hours',
-        ),
-        PaperHeaderField(
-          id: const Uuid().v4(),
-          label: 'Student Name',
-          isPlaceholder: true,
-        ),
-        PaperHeaderField(
-          id: const Uuid().v4(),
-          label: 'Roll No',
           isPlaceholder: true,
         ),
       ],
@@ -176,6 +174,37 @@ class EditorState extends _$EditorState {
 
   void updateInstruction(String instruction) {
     state = state.copyWith(instruction: instruction);
+  }
+
+  /// Applies the teacher-facing Paper Setup form as one document mutation.
+  ///
+  /// This keeps autosave and undo/redo semantic: pressing Undo after saving
+  /// Paper Setup restores the previous setup in one step instead of walking
+  /// backwards through each individual field edit. Empty header IDs are
+  /// assigned here so presentation widgets never own persistent identifiers.
+  void applyPaperSetup({
+    required String title,
+    required String schoolName,
+    required String instruction,
+    required List<String> logos,
+    required List<PaperHeaderField> headerFields,
+    double? maximumMarks,
+    bool clearMaximumMarks = false,
+  }) {
+    final normalizedFields = headerFields.map((field) {
+      if (field.id.trim().isNotEmpty) return field;
+      return field.copyWith(id: const Uuid().v4());
+    }).toList(growable: false);
+
+    state = state.copyWith(
+      title: title,
+      schoolName: schoolName,
+      instruction: instruction,
+      logos: List<String>.unmodifiable(logos),
+      headerFields: normalizedFields,
+      maximumMarks: maximumMarks,
+      clearMaximumMarks: clearMaximumMarks,
+    );
   }
 
   void updatePaperSettings({
@@ -272,6 +301,18 @@ class EditorState extends _$EditorState {
       title: 'Section ${state.sections.length + 1}',
     );
     state = state.copyWith(sections: [...state.sections, newSection]);
+  }
+
+  void addSectionWithQuestionsFromBank(List<Question> questions) {
+    if (questions.isEmpty) return;
+    final section = PaperSection(
+      id: const Uuid().v4(),
+      title: 'Section ${state.sections.length + 1}',
+      questions: questions.map(_cloneQuestion).toList(),
+    );
+    // Section creation and the complete bank batch are one document mutation,
+    // so a single Undo restores the previously empty paper.
+    state = state.copyWith(sections: [...state.sections, section]);
   }
 
   void addSectionFromTemplate(PaperSection source) {
@@ -389,30 +430,7 @@ class EditorState extends _$EditorState {
   }
 
   Question _cloneQuestion(Question source) {
-    final now = DateTime.now();
-    return source.copyWith(
-      id: const Uuid().v4(),
-      options: source.options
-          .map(
-            (option) => QuestionOption(
-              id: const Uuid().v4(),
-              text: option.text,
-              isCorrect: option.isCorrect,
-            ),
-          )
-          .toList(),
-      mathExpressions: source.mathExpressions
-          .map((expression) => expression.copyWith(id: const Uuid().v4()))
-          .toList(),
-      attachments: source.attachments
-          .map((attachment) => attachment.copyWith(id: const Uuid().v4()))
-          .toList(),
-      subQuestions: source.subQuestions.map(_cloneQuestion).toList(),
-      internalChoices: source.internalChoices.map(_cloneQuestion).toList(),
-      createdAt: now,
-      modifiedAt: now,
-      version: 1,
-    );
+    return _questionCopyService.copyQuestion(source);
   }
 
   void addQuestionsFromBank(String sectionId, List<Question> questions) {
@@ -604,68 +622,10 @@ class EditorState extends _$EditorState {
   }
 
   void updateTemplate(String templateId) {
-    final templates = ref.read(templateProvider).all;
-    final template = templates.firstWhere(
-      (t) => t.id == templateId,
-      orElse: () => templates.first,
+    final resolved = PaperTemplateResolver.resolve(
+      templateId,
+      ref.read(templateProvider).all,
     );
-
-    state = state.copyWith(templateId: templateId);
-
-    final elements = template.effectiveLayout.elements;
-
-    // Sync logo slots used by the selected template.
-    final logoCount = elements.where((e) => e.type == ElementType.logo).length;
-    final currentLogos = List<String>.from(state.logos);
-    if (currentLogos.length < logoCount) {
-      currentLogos.addAll(
-        List.generate(logoCount - currentLogos.length, (_) => ''),
-      );
-    }
-
-    // Sync all fields mentioned by all header field blocks.
-    final fieldsBlocks = elements.where(
-      (e) => e.type == ElementType.headerFieldsBlock,
-    );
-    final newFields = [...state.headerFields];
-    var fieldsChanged = false;
-    final currentLabels = state.headerFields
-        .map((f) => f.label.toLowerCase())
-        .toSet();
-
-    for (final block in fieldsBlocks) {
-      final labels = List<String>.from(block.properties['fieldLabels'] ?? []);
-      for (final label in labels) {
-        if (!currentLabels.contains(label.toLowerCase())) {
-          newFields.add(
-            PaperHeaderField(
-              id: const Uuid().v4(),
-              label: label,
-              isPlaceholder: true,
-            ),
-          );
-          currentLabels.add(label.toLowerCase());
-          fieldsChanged = true;
-        }
-      }
-    }
-
-    // Sync editable static text defaults from the template.
-    final customValues = Map<String, String>.from(state.customHeaderValues);
-    var customValuesChanged = false;
-    for (final element in elements.where(
-      (e) => e.type == ElementType.staticText,
-    )) {
-      if (!customValues.containsKey(element.paperBindingKey)) {
-        customValues[element.paperBindingKey] = element.content;
-        customValuesChanged = true;
-      }
-    }
-
-    state = state.copyWith(
-      logos: currentLogos,
-      headerFields: fieldsChanged ? newFields : null,
-      customHeaderValues: customValuesChanged ? customValues : null,
-    );
+    state = state.copyWith(templateId: resolved.id);
   }
 }

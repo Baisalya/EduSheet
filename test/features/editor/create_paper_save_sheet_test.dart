@@ -63,8 +63,8 @@ void main() {
 
     expect(find.text('OUTLINE'), findsOneWidget);
     expect(find.text('PAPER'), findsOneWidget);
-    expect(find.text('Paper details'), findsOneWidget);
-    expect(find.text('Paper style'), findsOneWidget);
+    expect(find.text('Paper setup'), findsOneWidget);
+    expect(find.text('Appearance'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

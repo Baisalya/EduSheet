@@ -1,13 +1,10 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/editor_provider.dart';
 import 'create_paper_screen.dart';
-import '../../../pdf/services/presentation_export_service.dart';
-import '../../../pdf/services/pdf_service.dart';
-import '../../../pdf/services/spreadsheet_export_service.dart';
-import '../../../pdf/services/word_export_service.dart';
 import 'package:intl/intl.dart';
 
 enum PaperSort { dateNewest, dateOldest, titleAZ, marksHigh, marksLow }
@@ -272,35 +269,15 @@ class _SavedPaperCard extends ConsumerWidget {
                         ),
                         _ActionButton(
                           icon: Icons.picture_as_pdf_outlined,
-                          label: 'PDF',
+                          label: 'Export PDF',
                           color: Colors.redAccent,
-                          onPressed: () {
-                            final templates = ref.read(templateProvider).all;
-                            final template = templates.firstWhere(
-                              (t) => t.id == paper.templateId,
-                              orElse: () => templates.first,
-                            );
-                            PdfService.generateAndPreview(paper, template);
-                          },
+                          onPressed: () => _saveAsPdf(context, ref, paper),
                         ),
                         _ActionButton(
                           icon: Icons.description_outlined,
-                          label: 'Word',
+                          label: 'Export Word',
                           color: Colors.indigo,
                           onPressed: () => _saveAsWord(context, ref, paper),
-                        ),
-                        _ActionButton(
-                          icon: Icons.table_chart_outlined,
-                          label: 'Excel',
-                          color: Colors.green,
-                          onPressed: () => _saveAsExcel(context, ref, paper),
-                        ),
-                        _ActionButton(
-                          icon: Icons.slideshow_outlined,
-                          label: 'PPT',
-                          color: Colors.deepOrange,
-                          onPressed: () =>
-                              _saveAsPowerPoint(context, ref, paper),
                         ),
                       ],
                     ),
@@ -346,18 +323,45 @@ class _SavedPaperCard extends ConsumerWidget {
     );
   }
 
+  Future<void> _saveAsPdf(
+    BuildContext context,
+    WidgetRef ref,
+    Paper paper,
+  ) async {
+    try {
+      final file = await QuestionPaperExportService.exportPdf(
+        paper: paper,
+        availableTemplates: ref.read(templateProvider).all,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('PDF saved: ${file.path}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save PDF: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   Future<void> _saveAsWord(
     BuildContext context,
     WidgetRef ref,
     Paper paper,
   ) async {
     try {
-      final templates = ref.read(templateProvider).all;
-      final template = templates.firstWhere(
-        (t) => t.id == paper.templateId,
-        orElse: () => templates.first,
+      final file = await QuestionPaperExportService.exportWord(
+        paper: paper,
+        availableTemplates: ref.read(templateProvider).all,
+        openAfterExport: true,
       );
-      final file = await WordExportService.exportAndOpen(paper, template);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -376,71 +380,6 @@ class _SavedPaperCard extends ConsumerWidget {
     }
   }
 
-  Future<void> _saveAsExcel(
-    BuildContext context,
-    WidgetRef ref,
-    Paper paper,
-  ) async {
-    try {
-      final templates = ref.read(templateProvider).all;
-      final template = templates.firstWhere(
-        (t) => t.id == paper.templateId,
-        orElse: () => templates.first,
-      );
-      final file = await SpreadsheetExportService.exportAndOpen(
-        paper,
-        template,
-      );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Excel file saved: ${file.path}'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not save Excel file: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
-  Future<void> _saveAsPowerPoint(
-    BuildContext context,
-    WidgetRef ref,
-    Paper paper,
-  ) async {
-    try {
-      final templates = ref.read(templateProvider).all;
-      final template = templates.firstWhere(
-        (t) => t.id == paper.templateId,
-        orElse: () => templates.first,
-      );
-      final file = await PresentationExportService.exportAndOpen(
-        paper,
-        template,
-      );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('PowerPoint file saved: ${file.path}'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not save PowerPoint file: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
 }
 
 class _ActionButton extends StatelessWidget {

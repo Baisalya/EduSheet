@@ -10,6 +10,7 @@ class QuestionCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
   final VoidCallback onDelete;
+  final VoidCallback onSaveToBank;
 
   const QuestionCard({
     super.key,
@@ -18,6 +19,7 @@ class QuestionCard extends StatelessWidget {
     required this.onEdit,
     required this.onDuplicate,
     required this.onDelete,
+    required this.onSaveToBank,
   });
 
   @override
@@ -133,6 +135,9 @@ class QuestionCard extends StatelessWidget {
                     case _QuestionMenuAction.duplicate:
                       onDuplicate();
                       break;
+                    case _QuestionMenuAction.saveToBank:
+                      onSaveToBank();
+                      break;
                     case _QuestionMenuAction.delete:
                       onDelete();
                       break;
@@ -153,6 +158,14 @@ class QuestionCard extends StatelessWidget {
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.copy_rounded),
                       title: Text('Duplicate'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: _QuestionMenuAction.saveToBank,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.bookmark_add_outlined),
+                      title: Text('Save to Question Bank'),
                     ),
                   ),
                   PopupMenuItem(
@@ -179,7 +192,7 @@ class QuestionCard extends StatelessWidget {
   }
 }
 
-enum _QuestionMenuAction { edit, duplicate, delete }
+enum _QuestionMenuAction { edit, duplicate, saveToBank, delete }
 
 class _MetaChip extends StatelessWidget {
   final String label;

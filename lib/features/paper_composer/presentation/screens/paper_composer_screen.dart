@@ -10,10 +10,12 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_prev
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_section_card.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_page.dart';
-import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
-import 'package:edusheet/features/pdf/services/pdf_service.dart';
-import 'package:edusheet/features/pdf/services/word_export_service.dart';
+import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
+import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
+import 'package:edusheet/features/question_bank/presentation/widgets/question_bank_picker_sheet.dart';
+import 'package:edusheet/features/question_bank/presentation/widgets/save_to_question_bank_sheet.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -85,6 +87,23 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     });
   }
 
+  Future<void> _startFromQuestionBank() async {
+    final paper = ref.read(editorStateProvider);
+    if (paper.sections.isNotEmpty) {
+      await _addFromQuestionBank(paper.sections.first);
+      return;
+    }
+
+    final selected = await _pickQuestionsFromBank(paper);
+    if (selected == null || selected.isEmpty || !mounted) return;
+
+    // Do not create an empty Section 1 merely because the teacher opened the
+    // bank and then cancelled. Section creation + import is one undoable edit.
+    final masters = selected.map((entry) => entry.question).toList();
+    _actions.addSectionWithQuestionsFromBank(masters);
+    _showBankImportResult(selected);
+  }
+
   Future<void> _openQuestion(
     String sectionId, {
     Question? question,
@@ -102,6 +121,152 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         ),
       ),
     );
+  }
+
+  Future<List<QuestionBankQuestion>?> _pickQuestionsFromBank(Paper paper) {
+    return QuestionBankPickerSheet.show(
+      context,
+      initialSubject: _paperHeaderValue(paper, 'Subject'),
+      initialGrade: _paperHeaderValue(paper, 'Class'),
+      currentPaperMarks: paper.totalMarks,
+      maximumMarks: paper.maximumMarks,
+    );
+  }
+
+  Future<void> _addFromQuestionBank(PaperSection section) async {
+    final selected = await _pickQuestionsFromBank(ref.read(editorStateProvider));
+    if (selected == null || selected.isEmpty || !mounted) return;
+    _insertBankQuestions(section, selected);
+  }
+
+  void _insertBankQuestions(
+    PaperSection section,
+    List<QuestionBankQuestion> selected,
+  ) {
+    // EditorState owns the canonical deep-copy boundary so this entire batch
+    // becomes one document mutation/undo step without double-cloning IDs.
+    final masters = selected.map((entry) => entry.question).toList();
+    _actions.addQuestionsFromBank(section.id, masters);
+    _showBankImportResult(selected);
+  }
+
+  void _showBankImportResult(List<QuestionBankQuestion> selected) {
+    if (!mounted) return;
+    final marks = selected.fold<double>(
+      0,
+      (sum, entry) => sum + entry.question.marks,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Added ${selected.length} question${selected.length == 1 ? '' : 's'} • ${_formatMarks(marks)} marks',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _saveQuestionToBank(Paper paper, Question question) async {
+    final paperSubject = _paperHeaderValue(paper, 'Subject');
+    final paperGrade = _paperHeaderValue(paper, 'Class');
+    var fallbackSubject = question.subject.trim().isNotEmpty
+        ? question.subject
+        : paperSubject;
+    var fallbackChapter = question.chapter;
+    var fallbackGrade = question.grade.trim().isNotEmpty
+        ? question.grade
+        : paperGrade;
+
+    // Keep the common paper -> bank action one-tap. Chapter is allowed to fall
+    // back to General; ask only when neither the question nor paper can tell us
+    // the subject, because subject is the primary reusable-bank classification.
+    if (fallbackSubject.trim().isEmpty) {
+      final metadata = await SaveToQuestionBankSheet.show(
+        context,
+        subject: fallbackSubject,
+        chapter: fallbackChapter,
+        grade: fallbackGrade,
+      );
+      if (metadata == null || !mounted) return;
+      fallbackSubject = metadata.subject;
+      fallbackChapter = metadata.chapter;
+      fallbackGrade = metadata.grade;
+    }
+
+    final service = ref.read(questionBankApplicationServiceProvider);
+    final entry = service.createMasterCopy(
+      question,
+      fallbackSubject: fallbackSubject,
+      fallbackChapter: fallbackChapter,
+      fallbackGrade: fallbackGrade,
+    );
+    final bankState = ref.read(questionBankProvider);
+    final duplicate = service.findLikelyDuplicate(
+      entry.question,
+      bankState.questions,
+    );
+    if (duplicate != null) {
+      final saveAnother =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Question already in the bank'),
+              content: Text(
+                duplicate.question.plainTextAccessibility.trim().isEmpty
+                    ? 'A very similar reusable question already exists.'
+                    : duplicate.question.plainTextAccessibility,
+                maxLines: 5,
+                overflow: TextOverflow.ellipsis,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Keep existing'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save another'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!saveAnother || !mounted) return;
+    }
+
+    try {
+      await ref.read(questionBankProvider.notifier).addQuestion(entry);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Saved a reusable copy to ${entry.subject} • ${entry.chapter}',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save to Question Bank: $error')),
+      );
+    }
+  }
+
+  String _paperHeaderValue(Paper paper, String label) {
+    final normalized = label.trim().toLowerCase();
+    for (final field in paper.headerFields) {
+      if (field.label.trim().toLowerCase() == normalized) {
+        return field.value.trim();
+      }
+    }
+    return '';
+  }
+
+  static String _formatMarks(double value) {
+    return value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value.toStringAsFixed(1);
   }
 
   Future<void> _renameSection(PaperSection section) async {
@@ -250,26 +415,12 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     );
   }
 
-  PaperTemplate? _selectedTemplate() {
-    final paper = ref.read(editorStateProvider);
-    final templates = ref.read(templateProvider).all;
-    for (final template in templates) {
-      if (template.id == paper.templateId) return template;
-    }
-    return templates.isEmpty ? null : templates.first;
-  }
-
   Future<void> _exportPdf(Paper paper) async {
-    final template = _selectedTemplate();
-    if (template == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No paper style is available.')),
-      );
-      return;
-    }
     try {
-      final file = await PdfService.export(paper, template);
+      final file = await QuestionPaperExportService.exportPdf(
+        paper: paper,
+        availableTemplates: ref.read(templateProvider).all,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -289,16 +440,11 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   }
 
   Future<void> _exportWord(Paper paper) async {
-    final template = _selectedTemplate();
-    if (template == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No paper style is available.')),
-      );
-      return;
-    }
     try {
-      final file = await WordExportService.export(paper, template);
+      final file = await QuestionPaperExportService.exportWord(
+        paper: paper,
+        availableTemplates: ref.read(templateProvider).all,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -313,25 +459,6 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Unable to export Word file: $error')),
-      );
-    }
-  }
-
-  Future<void> _openPdfPreview(Paper paper) async {
-    final template = _selectedTemplate();
-    if (template == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No paper style is available.')),
-      );
-      return;
-    }
-    try {
-      await PdfService.generateAndPreview(paper, template);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to open PDF preview: $error')),
       );
     }
   }
@@ -431,7 +558,8 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                           selectedTemplateId: paper.templateId,
                         ),
                         onPreview: () => _openPreview(paper),
-                        onPrintPreview: () => _openPdfPreview(paper),
+                        onExportPdf: () => _exportPdf(paper),
+                        onExportWord: () => _exportWord(paper),
                       ),
                     ),
                   ],
@@ -501,6 +629,19 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
           onPressed: () => _openPreview(paper),
           icon: const Icon(Icons.visibility_outlined),
         ),
+        if (expanded) ...[
+          OutlinedButton.icon(
+            onPressed: () => _exportPdf(paper),
+            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+            label: const Text('PDF'),
+          ),
+          const SizedBox(width: 6),
+          FilledButton.icon(
+            onPressed: () => _exportWord(paper),
+            icon: const Icon(Icons.description_outlined, size: 18),
+            label: const Text('Word'),
+          ),
+        ],
         if (!compact)
           TextButton.icon(
             onPressed: _saveNow,
@@ -520,9 +661,6 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                   selectedTemplateId: paper.templateId,
                 );
                 break;
-              case _PaperMenuAction.pdfPreview:
-                _openPdfPreview(paper);
-                break;
               case _PaperMenuAction.exportPdf:
                 _exportPdf(paper);
                 break;
@@ -540,7 +678,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.tune_rounded),
-                title: Text('Paper details'),
+                title: Text('Paper setup'),
               ),
             ),
             PopupMenuItem(
@@ -548,22 +686,14 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.style_outlined),
-                title: Text('Paper style'),
-              ),
-            ),
-            PopupMenuItem(
-              value: _PaperMenuAction.pdfPreview,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.picture_as_pdf_outlined),
-                title: Text('PDF / print preview'),
+                title: Text('Appearance'),
               ),
             ),
             PopupMenuItem(
               value: _PaperMenuAction.exportPdf,
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.download_rounded),
+                leading: Icon(Icons.picture_as_pdf_outlined),
                 title: Text('Export PDF'),
               ),
             ),
@@ -626,6 +756,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                       section: section,
                       sectionNumber: index + 1,
                       onAddQuestion: () => _openQuestion(section.id),
+                      onAddFromBank: () => _addFromQuestionBank(section),
                       onEditQuestion: (question) => _openQuestion(
                         section.id,
                         question: question,
@@ -634,6 +765,8 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                           _actions.duplicateQuestion(section.id, question.id),
                       onDeleteQuestion: (question) =>
                           _deleteQuestion(section, question),
+                      onSaveQuestionToBank: (question) =>
+                          _saveQuestionToBank(paper, question),
                       questionKeyFor: (question) =>
                           _keyForQuestion(section.id, question.id),
                       onRename: () => _renameSection(section),
@@ -695,6 +828,11 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                     label: const Text('Write first question'),
                   ),
                   OutlinedButton.icon(
+                    onPressed: _startFromQuestionBank,
+                    icon: const Icon(Icons.inventory_2_outlined),
+                    label: const Text('Choose from Question Bank'),
+                  ),
+                  OutlinedButton.icon(
                     onPressed: () => PaperDetailsSheet.show(context, paper),
                     icon: const Icon(Icons.tune_rounded),
                     label: const Text('Set paper details'),
@@ -716,4 +854,4 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   }
 }
 
-enum _PaperMenuAction { details, style, pdfPreview, exportPdf, exportWord, save }
+enum _PaperMenuAction { details, style, exportPdf, exportWord, save }

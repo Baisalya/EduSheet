@@ -1,598 +1,92 @@
+import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_page.dart';
+import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
+import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
-import '../../../editor/domain/models/paper_model.dart';
-import 'package:edusheet/features/geometry_builder/widgets/geometry_attachment_preview.dart';
-import '../../domain/models/question_bank_model.dart';
-import '../providers/question_bank_provider.dart';
-import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
-import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
 
-class AddEditQuestionScreen extends ConsumerStatefulWidget {
+/// Question Bank authoring now reuses the same rich question composer as paper
+/// authoring. Math, Geometry, options, marks, answers and advanced metadata
+/// therefore have one editing path instead of two incompatible editors.
+class AddEditQuestionScreen extends ConsumerWidget {
   final QuestionBankQuestion? question;
 
   const AddEditQuestionScreen({super.key, this.question});
 
   @override
-  ConsumerState<AddEditQuestionScreen> createState() =>
-      _AddEditQuestionScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    return QuestionComposerPage(
+      question: question?.question,
+      pageTitle: question == null ? 'New bank question' : 'Edit bank question',
+      allowSaveAndNext: question == null,
+      preserveDetailsOnSaveAndNext: question == null,
+      onSaveQuestion: (edited) => _save(context, ref, edited),
+    );
+  }
 
-class _AddEditQuestionScreenState extends ConsumerState<AddEditQuestionScreen> {
-  final _formKey = GlobalKey<FormState>();
-  late TextEditingController _textController;
-  late TextEditingController _subjectController;
-  late TextEditingController _chapterController;
-  late TextEditingController _tagsController;
-  final List<TextEditingController> _optionControllers = [];
-  Difficulty _difficulty = Difficulty.medium;
-  QuestionType _type = QuestionType.mcq;
-  List<QuestionOption> _options = [];
+  Future<bool> _save(
+    BuildContext context,
+    WidgetRef ref,
+    Question edited,
+  ) async {
+    final service = ref.read(questionBankApplicationServiceProvider);
+    final notifier = ref.read(questionBankProvider.notifier);
+    final entry = service.normalizeEditedMaster(
+      edited,
+      existing: question,
+    );
 
-  @override
-  void initState() {
-    super.initState();
-    _textController = TextEditingController(
-      text: widget.question?.question.text ?? '',
-    );
-    _subjectController = TextEditingController(
-      text: widget.question?.subject ?? '',
-    );
-    _chapterController = TextEditingController(
-      text: widget.question?.chapter ?? '',
-    );
-    _tagsController = TextEditingController(
-      text: widget.question?.tags.join(', ') ?? '',
-    );
-    _difficulty = widget.question?.difficulty ?? Difficulty.medium;
-    _type = widget.question?.question.type ?? QuestionType.mcq;
-    _options =
-        widget.question?.question.options.map((o) => o.copyWith()).toList() ??
-        [];
-
-    if (_options.isEmpty && _type == QuestionType.mcq) {
-      _options = List.generate(
-        4,
-        (i) => QuestionOption(id: const Uuid().v4(), text: 'Option ${i + 1}'),
+    if (question == null) {
+      final duplicate = service.findLikelyDuplicate(
+        entry.question,
+        ref.read(questionBankProvider).questions,
       );
-    }
-
-    for (final opt in _options) {
-      _optionControllers.add(TextEditingController(text: opt.text));
-    }
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    _subjectController.dispose();
-    _chapterController.dispose();
-    _tagsController.dispose();
-    for (final controller in _optionControllers) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  void _save({bool addNext = false}) {
-    if (_formKey.currentState!.validate()) {
-      final id = widget.question?.question.id ?? const Uuid().v4();
-
-      if (_type == QuestionType.mcq) {
-        for (int i = 0; i < _options.length; i++) {
-          _options[i] = _options[i].copyWith(text: _optionControllers[i].text);
+      if (duplicate != null) {
+        final saveAnother =
+            await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Similar question already saved'),
+                content: Text(
+                  duplicate.question.plainTextAccessibility.trim().isEmpty
+                      ? 'A very similar question already exists in the Question Bank.'
+                      : duplicate.question.plainTextAccessibility,
+                  maxLines: 5,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Keep existing'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Save another'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+        if (!saveAnother) {
+          return false;
         }
       }
-
-      final q = QuestionBankQuestion(
-        question: Question(
-          id: id,
-          text: _textController.text,
-          type: _type,
-          options: _type == QuestionType.mcq ? _options : [],
-          marks: 1.0,
-        ),
-        subject: _subjectController.text,
-        chapter: _chapterController.text,
-        difficulty: _difficulty,
-        tags: _tagsController.text
-            .split(',')
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList(),
-        isFavorite: widget.question?.isFavorite ?? false,
-      );
-
-      if (widget.question == null) {
-        ref.read(questionBankProvider.notifier).addQuestion(q);
-      } else {
-        ref.read(questionBankProvider.notifier).updateQuestion(q);
-      }
-
-      if (addNext) {
-        setState(() {
-          _textController.clear();
-          _tagsController.clear();
-          if (_type == QuestionType.mcq) {
-            _options = List.generate(
-              4,
-              (i) => QuestionOption(
-                id: const Uuid().v4(),
-                text: 'Option ${i + 1}',
-              ),
-            );
-            for (int i = 0; i < _optionControllers.length; i++) {
-              if (i < 4) {
-                _optionControllers[i].text = 'Option ${i + 1}';
-              } else {
-                _optionControllers[i].dispose();
-              }
-            }
-            if (_optionControllers.length > 4) {
-              _optionControllers.removeRange(4, _optionControllers.length);
-            }
-            _options = _options
-                .map((o) => o.copyWith(isCorrect: false))
-                .toList();
-          }
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Question saved. Add next one!'),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 1),
-          ),
-        );
-      } else {
-        Navigator.pop(context);
-      }
     }
-  }
 
-  TextStyle _bookTextStyle(bool isDark, {double fontSize = 18}) {
-    return TextStyle(
-      fontFamily: 'serif',
-      fontSize: fontSize,
-      height: 1.45,
-      color: isDark
-          ? Colors.white.withValues(alpha: 0.92)
-          : const Color(0xFF1F2933),
-    );
-  }
-
-  InputDecoration _bookInputDecoration(
-    bool isDark, {
-    String? labelText,
-    String? hintText,
-    bool isDense = false,
-    Color? fillColor,
-  }) {
-    final baseFill = isDark
-        ? Colors.white.withValues(alpha: 0.04)
-        : const Color(0xFFFFFCF5);
-    return InputDecoration(
-      labelText: labelText,
-      hintText: hintText,
-      alignLabelWithHint: true,
-      isDense: isDense,
-      filled: true,
-      fillColor: fillColor ?? baseFill,
-      contentPadding: EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: isDense ? 12 : 16,
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: BorderSide(
-          color: isDark ? Colors.white24 : const Color(0xFFD8C7A0),
-        ),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: BorderSide(
-          color: isDark ? Colors.white24 : const Color(0xFFD8C7A0),
-        ),
-      ),
-      focusedBorder: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(6)),
-        borderSide: BorderSide(color: Colors.blue, width: 1.4),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black,
-        title: Text(
-          widget.question == null ? 'Add Question' : 'Edit Question',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          if (widget.question == null)
-            TextButton(
-              onPressed: () => _save(addNext: true),
-              child: const Text(
-                'SAVE & NEXT',
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          IconButton(
-            icon: const Icon(
-              Icons.check_circle_rounded,
-              color: Colors.blue,
-              size: 28,
-            ),
-            onPressed: () => _save(),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            _FormSection(
-              title: 'Content',
-              icon: Icons.edit_note_rounded,
-              color: Colors.blue,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Question Text',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () async {
-                          final text = await Navigator.push<String>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const OCRScreen(),
-                            ),
-                          );
-                          if (text != null && mounted) {
-                            final currentText = _textController.text;
-                            final selection = _textController.selection;
-                            if (selection.isValid) {
-                              final newText = currentText.replaceRange(
-                                selection.start,
-                                selection.end,
-                                text,
-                              );
-                              _textController.text = newText;
-                              _textController.selection =
-                                  TextSelection.collapsed(
-                                    offset: selection.start + text.length,
-                                  );
-                            } else {
-                              _textController.text = currentText + text;
-                            }
-                          }
-                        },
-                        icon: const Icon(
-                          Icons.document_scanner_outlined,
-                          size: 18,
-                        ),
-                        label: const Text(
-                          'Scan',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  MathKeyboardField(
-                    controller: _textController,
-                    builder: (context, fieldFocusNode, isMathActive) =>
-                        TextFormField(
-                          controller: _textController,
-                          focusNode: fieldFocusNode,
-                          style: _bookTextStyle(isDark),
-                          maxLines: 4,
-                          keyboardType: isMathActive
-                              ? TextInputType.none
-                              : TextInputType.multiline,
-                          decoration: _bookInputDecoration(
-                            isDark,
-                            hintText: 'Type or scan your question here...',
-                          ),
-                          validator: (v) => v!.isEmpty ? 'Required' : null,
-                        ),
-                  ),
-                  GeometryAttachmentPreview.textController(
-                    controller: _textController,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            _FormSection(
-              title: 'Categorization',
-              icon: Icons.category_outlined,
-              color: Colors.purple,
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _subjectController,
-                          decoration: InputDecoration(
-                            labelText: 'Subject',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          validator: (v) => v!.isEmpty ? 'Required' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _chapterController,
-                          decoration: InputDecoration(
-                            labelText: 'Chapter',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          validator: (v) => v!.isEmpty ? 'Required' : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<Difficulty>(
-                    initialValue: _difficulty,
-                    decoration: InputDecoration(
-                      labelText: 'Difficulty',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: Difficulty.values
-                        .map(
-                          (d) => DropdownMenuItem(
-                            value: d,
-                            child: Text(d.name.toUpperCase()),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(() => _difficulty = v!),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _tagsController,
-                    decoration: InputDecoration(
-                      labelText: 'Tags (comma separated)',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      prefixIcon: const Icon(Icons.tag_rounded, size: 18),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            _FormSection(
-              title: 'Question Type & Options',
-              icon: Icons.list_rounded,
-              color: Colors.orange,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  DropdownButtonFormField<QuestionType>(
-                    initialValue: _type,
-                    decoration: InputDecoration(
-                      labelText: 'Type',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: QuestionType.values
-                        .map(
-                          (t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(t.name.toUpperCase()),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(() {
-                      _type = v!;
-                      if (_type == QuestionType.mcq && _options.isEmpty) {
-                        _options = List.generate(
-                          4,
-                          (i) => QuestionOption(
-                            id: const Uuid().v4(),
-                            text: 'Option ${i + 1}',
-                          ),
-                        );
-                        for (final opt in _options) {
-                          _optionControllers.add(
-                            TextEditingController(text: opt.text),
-                          );
-                        }
-                      }
-                    }),
-                  ),
-                  if (_type == QuestionType.mcq) ...[
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Configure Options',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    RadioGroup<int>(
-                      groupValue: _options.indexWhere(
-                        (option) => option.isCorrect,
-                      ),
-                      onChanged: (i) {
-                        if (i == null) return;
-                        setState(() {
-                          _options = _options
-                              .asMap()
-                              .entries
-                              .map(
-                                (entry) => entry.value.copyWith(
-                                  isCorrect: entry.key == i,
-                                ),
-                              )
-                              .toList();
-                        });
-                      },
-                      child: Column(
-                        children: _options.asMap().entries.map((entry) {
-                          final i = entry.key;
-                          final opt = entry.value;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Row(
-                              children: [
-                                Radio<int>(value: i, activeColor: Colors.green),
-                                Expanded(
-                                  child: Column(
-                                    children: [
-                                      MathKeyboardField(
-                                        controller: _optionControllers[i],
-                                        builder:
-                                            (
-                                              context,
-                                              fieldFocusNode,
-                                              isMathActive,
-                                            ) => TextFormField(
-                                              controller: _optionControllers[i],
-                                              focusNode: fieldFocusNode,
-                                              style: _bookTextStyle(
-                                                isDark,
-                                                fontSize: 16,
-                                              ),
-                                              keyboardType: isMathActive
-                                                  ? TextInputType.none
-                                                  : TextInputType.text,
-                                              decoration: _bookInputDecoration(
-                                                isDark,
-                                                labelText: 'Option ${i + 1}',
-                                                isDense: true,
-                                                fillColor: opt.isCorrect
-                                                    ? Colors.green.withValues(
-                                                        alpha: isDark
-                                                            ? 0.1
-                                                            : 0.05,
-                                                      )
-                                                    : null,
-                                              ),
-                                            ),
-                                      ),
-                                      GeometryAttachmentPreview.textController(
-                                        controller: _optionControllers[i],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 40),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FormSection extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
-  final Widget child;
-
-  const _FormSection({
-    required this.title,
-    required this.icon,
-    required this.color,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withValues(alpha: 0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 16, top: 16, right: 16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: color, size: 18),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    letterSpacing: 0.5,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(padding: const EdgeInsets.all(16), child: child),
-        ],
-      ),
-    );
+    try {
+      if (question == null) {
+        await notifier.addQuestion(entry);
+      } else {
+        await notifier.updateQuestion(entry);
+      }
+      return true;
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save question: $error')),
+        );
+      }
+      return false;
+    }
   }
 }

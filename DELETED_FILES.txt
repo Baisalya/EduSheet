@@ -1,6 +1,1 @@
-Files intentionally removed (project-relative):
-
-lib/features/geometry_builder/widgets/export_panel.dart
-lib/features/geometry_builder/widgets/geometry_quick_picker_sheet.dart
-lib/features/geometry_builder/widgets/geometry_toolbar.dart
-lib/features/geometry_builder/widgets/shape_picker.dart
+No project files are deleted by this refactor.

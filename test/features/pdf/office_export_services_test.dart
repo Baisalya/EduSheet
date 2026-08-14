@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/export_file_service.dart';
 import 'package:edusheet/features/pdf/services/pdf_service.dart';
@@ -57,6 +58,51 @@ void main() {
       expect(second.path, endsWith('Algebra Test (1).pdf'));
     },
   );
+
+
+  test('question paper export policy exposes PDF and Word', () {
+    expect(
+      QuestionPaperExportPolicy.supportedFormats,
+      equals({
+        QuestionPaperExportFormat.pdf,
+        QuestionPaperExportFormat.word,
+      }),
+    );
+    expect(
+      QuestionPaperExportPolicy.supports(QuestionPaperExportFormat.pdf),
+      isTrue,
+    );
+    expect(
+      QuestionPaperExportPolicy.supports(QuestionPaperExportFormat.word),
+      isTrue,
+    );
+  });
+
+  test('question paper export coordinator creates a PDF', () async {
+    final output = await QuestionPaperExportService.exportPdf(
+      paper: _samplePaper(),
+      availableTemplates: [_sampleTemplate()],
+    );
+
+    expect(output.path, endsWith('.pdf'));
+    expect(await output.exists(), isTrue);
+    expect(await output.length(), greaterThan(0));
+  });
+
+  test('question paper export coordinator creates a DOCX', () async {
+    final output = await QuestionPaperExportService.exportWord(
+      paper: _samplePaper(),
+      availableTemplates: [_sampleTemplate()],
+    );
+
+    expect(output.path, endsWith('.docx'));
+    expect(await output.exists(), isTrue);
+    final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
+    expect(
+      _archiveText(archive, 'word/document.xml'),
+      contains('Algebra Test'),
+    );
+  });
 
   test(
     'WordExportService saves custom file names inside EduSheet folder',

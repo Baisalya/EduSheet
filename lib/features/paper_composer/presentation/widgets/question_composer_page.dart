@@ -10,6 +10,7 @@ import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyb
 import 'package:edusheet/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_expression_embed_builder.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
+import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
 import 'package:edusheet/features/paper_composer/application/paper_composer_actions.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
@@ -21,19 +22,32 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+typedef QuestionSaveCallback = Future<bool> Function(Question question);
+
 class QuestionComposerPage extends ConsumerStatefulWidget {
-  final String sectionId;
+  final String? sectionId;
   final Question? question;
   final QuestionType? initialType;
   final int? insertAt;
+  final QuestionSaveCallback? onSaveQuestion;
+  final String? pageTitle;
+  final bool allowSaveAndNext;
+  final bool preserveDetailsOnSaveAndNext;
 
   const QuestionComposerPage({
     super.key,
-    required this.sectionId,
+    this.sectionId,
     this.question,
     this.initialType,
     this.insertAt,
-  });
+    this.onSaveQuestion,
+    this.pageTitle,
+    this.allowSaveAndNext = true,
+    this.preserveDetailsOnSaveAndNext = false,
+  }) : assert(
+         sectionId != null || onSaveQuestion != null,
+         'A paper section or external question save callback is required.',
+       );
 
   @override
   ConsumerState<QuestionComposerPage> createState() =>
@@ -316,6 +330,24 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     setState(() => _bodyError = null);
   }
 
+  Future<void> _scanQuestionText() async {
+    ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final scanned = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (context) => const OCRScreen()),
+    );
+    if (scanned == null || scanned.trim().isEmpty || !mounted) return;
+    final selection = _safeSelectionRange();
+    final text = scanned.trim();
+    _bodyController.replaceText(selection.$1, selection.$2, text, null);
+    _bodyController.updateSelection(
+      TextSelection.collapsed(offset: selection.$1 + text.length),
+      ChangeSource.local,
+    );
+    setState(() => _bodyError = null);
+    _restoreBodyFocus();
+  }
+
   (int, int) _safeSelectionRange() {
     final selection = _bodyController.selection;
     final documentEnd = (_bodyController.document.length - 1)
@@ -396,7 +428,9 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
 
   Future<void> _save({bool addAnother = false}) async {
     _setMarksFromText(_marksController.text);
-    if (!_validate()) return;
+    if (!_validate()) {
+      return;
+    }
 
     final encoded = _codec.encode(_bodyController.document);
     final bodyAccessibility = _codec.accessibleText(_bodyController.document);
@@ -426,20 +460,34 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
       marks: double.parse(_marksController.text.trim()).clamp(0.5, 100).toDouble(),
     );
 
-    final paper = ref.read(editorStateProvider);
-    final actions = PaperComposerActions(ref.read(editorStateProvider.notifier));
-    final saved = actions.saveQuestion(
-      paper: paper,
-      sectionId: widget.sectionId,
-      draft: draft,
+    final materialized = draft.toQuestion(
       plainTextAccessibility: accessibility,
-      insertAt: widget.insertAt,
     );
+    final bool saved;
+    if (widget.onSaveQuestion != null) {
+      saved = await widget.onSaveQuestion!(materialized);
+    } else {
+      final paper = ref.read(editorStateProvider);
+      final actions = PaperComposerActions(
+        ref.read(editorStateProvider.notifier),
+      );
+      saved = actions.saveQuestion(
+        paper: paper,
+        sectionId: widget.sectionId!,
+        draft: draft,
+        plainTextAccessibility: accessibility,
+        insertAt: widget.insertAt,
+      );
+    }
     if (!saved) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This section no longer exists. The question was not saved.'),
+        SnackBar(
+          content: Text(
+            widget.onSaveQuestion != null
+                ? 'The question was not saved.'
+                : 'This section no longer exists. The question was not saved.',
+          ),
         ),
       );
       return;
@@ -474,11 +522,14 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
       _optionControllers,
     );
     setState(() {
-      _draft = QuestionDraft.create(
+      final nextDraft = QuestionDraft.create(
         type: previous.type,
         marks: previous.marks,
         isOptional: previous.isOptional,
       );
+      _draft = widget.preserveDetailsOnSaveAndNext
+          ? nextDraft.copyWith(details: previous.details)
+          : nextDraft;
       _bodyController = _createBodyController(Document());
       _legacyUnplacedMathIds.clear();
       _marksController.text = _formatMarks(previous.marks);
@@ -517,7 +568,10 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.question == null ? 'New question' : 'Edit question'),
+            Text(
+              widget.pageTitle ??
+                  (widget.question == null ? 'New question' : 'Edit question'),
+            ),
             Text(
               '${_draft.type.label} · ${_formatMarks(_draft.marks)} marks',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -776,6 +830,11 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
               label: 'Geometry',
               onTap: _insertGeometry,
             ),
+            QuestionInsertAction(
+              icon: Icons.document_scanner_outlined,
+              label: 'Scan text',
+              onTap: _scanQuestionText,
+            ),
           ],
         ),
         const SizedBox(height: 8),
@@ -931,7 +990,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                     icon: const Icon(Icons.keyboard_hide_rounded),
                   ),
                 if (mathVisible) const SizedBox(width: 8),
-                if (widget.question == null)
+                if (widget.question == null && widget.allowSaveAndNext)
                   Expanded(
                     child: compact
                         ? OutlinedButton(
@@ -944,7 +1003,8 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                             label: const Text('Save and add next'),
                           ),
                   ),
-                if (widget.question == null) const SizedBox(width: 8),
+                if (widget.question == null && widget.allowSaveAndNext)
+                  const SizedBox(width: 8),
                 Expanded(
                   child: compact
                       ? FilledButton(

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:edusheet/features/pdf/application/paper_style_catalog.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/data/repositories/template_repository.dart';
 import 'package:uuid/uuid.dart';
@@ -15,6 +16,12 @@ class TemplateState {
   });
 
   List<PaperTemplate> get all => [...predefined, ...custom];
+
+  List<PaperTemplate> get selectable => [
+        ...predefined.where((template) =>
+            PaperStyleCatalog.isVisibleBuiltIn(template.id)),
+        ...custom,
+      ];
 
   TemplateState copyWith({
     List<PaperTemplate>? predefined,
@@ -33,7 +40,7 @@ class TemplateNotifier extends StateNotifier<TemplateState> {
   final TemplateRepository _repository;
 
   TemplateNotifier(this._repository)
-    : super(TemplateState(predefined: PaperTemplate.predefinedTemplates)) {
+    : super(TemplateState(predefined: PaperStyleCatalog.allBuiltInTemplates)) {
     loadCustomTemplates();
   }
 
@@ -56,6 +63,7 @@ class TemplateNotifier extends StateNotifier<TemplateState> {
       centeredHeader: base.centeredHeader,
       headerLayout: base.headerLayout,
       paperLayout: base.paperLayout,
+      paperSize: base.paperSize,
       customLayout: base.customLayout,
     );
     await _repository.saveTemplate(custom);

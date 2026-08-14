@@ -6,9 +6,11 @@ class PaperSectionCard extends StatelessWidget {
   final PaperSection section;
   final int sectionNumber;
   final VoidCallback onAddQuestion;
+  final VoidCallback onAddFromBank;
   final ValueChanged<Question> onEditQuestion;
   final ValueChanged<Question> onDuplicateQuestion;
   final ValueChanged<Question> onDeleteQuestion;
+  final ValueChanged<Question> onSaveQuestionToBank;
   final Key Function(Question question)? questionKeyFor;
   final VoidCallback onRename;
   final VoidCallback onEditInstruction;
@@ -20,9 +22,11 @@ class PaperSectionCard extends StatelessWidget {
     required this.section,
     required this.sectionNumber,
     required this.onAddQuestion,
+    required this.onAddFromBank,
     required this.onEditQuestion,
     required this.onDuplicateQuestion,
     required this.onDeleteQuestion,
+    required this.onSaveQuestionToBank,
     this.questionKeyFor,
     required this.onRename,
     required this.onEditInstruction,
@@ -138,7 +142,10 @@ class PaperSectionCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
             child: section.questions.isEmpty
-                ? _EmptySection(onAddQuestion: onAddQuestion)
+                ? _EmptySection(
+                    onAddQuestion: onAddQuestion,
+                    onAddFromBank: onAddFromBank,
+                  )
                 : Column(
                     children: [
                       for (final entry in section.questions.asMap().entries)
@@ -149,21 +156,85 @@ class PaperSectionCard extends StatelessWidget {
                           onEdit: () => onEditQuestion(entry.value),
                           onDuplicate: () => onDuplicateQuestion(entry.value),
                           onDelete: () => onDeleteQuestion(entry.value),
+                          onSaveToBank: () => onSaveQuestionToBank(entry.value),
                         ),
                     ],
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: OutlinedButton.icon(
-              onPressed: onAddQuestion,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Add question'),
+          if (section.questions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  if (constraints.maxWidth < 520) {
+                    return OutlinedButton.icon(
+                      onPressed: () => _showCompactAddMenu(context),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Add question'),
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: onAddQuestion,
+                          icon: const Icon(Icons.edit_note_rounded),
+                          label: const Text('New question'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: onAddFromBank,
+                          icon: const Icon(Icons.inventory_2_outlined),
+                          label: const Text('Question Bank'),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
         ],
       ),
     );
+  }
+
+  Future<void> _showCompactAddMenu(BuildContext context) async {
+    final action = await showModalBottomSheet<_AddQuestionAction>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_note_rounded),
+              title: const Text('New question'),
+              subtitle: const Text('Write a question with Math, Geometry or scan text.'),
+              onTap: () => Navigator.pop(context, _AddQuestionAction.newQuestion),
+            ),
+            ListTile(
+              leading: const Icon(Icons.inventory_2_outlined),
+              title: const Text('From Question Bank'),
+              subtitle: const Text('Choose one or several reusable questions.'),
+              onTap: () => Navigator.pop(context, _AddQuestionAction.bank),
+            ),
+          ],
+        ),
+      ),
+    );
+    switch (action) {
+      case _AddQuestionAction.newQuestion:
+        onAddQuestion();
+        break;
+      case _AddQuestionAction.bank:
+        onAddFromBank();
+        break;
+      case null:
+        break;
+    }
   }
 
   static String _marks(double marks) {
@@ -177,8 +248,12 @@ enum _SectionAction { rename, instruction, duplicate, delete }
 
 class _EmptySection extends StatelessWidget {
   final VoidCallback onAddQuestion;
+  final VoidCallback onAddFromBank;
 
-  const _EmptySection({required this.onAddQuestion});
+  const _EmptySection({
+    required this.onAddQuestion,
+    required this.onAddFromBank,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -194,25 +269,39 @@ class _EmptySection extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Start with the first question',
+            'How do you want to start?',
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
           Text(
-            'Type normally, or insert mathematics and geometry when you need them.',
+            'Write a fresh question or reuse questions you already trust.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: onAddQuestion,
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Write question'),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: onAddQuestion,
+                icon: const Icon(Icons.edit_note_rounded),
+                label: const Text('Write question'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onAddFromBank,
+                icon: const Icon(Icons.inventory_2_outlined),
+                label: const Text('Choose from bank'),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 }
+
+enum _AddQuestionAction { newQuestion, bank }

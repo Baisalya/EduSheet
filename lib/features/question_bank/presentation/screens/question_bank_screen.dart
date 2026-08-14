@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
 import '../../domain/models/question_bank_model.dart';
 import '../providers/question_bank_provider.dart';
 import 'add_edit_question_screen.dart';
-import '../widgets/random_generator_dialog.dart';
 
 class QuestionBankScreen extends ConsumerWidget {
   const QuestionBankScreen({super.key});
@@ -25,24 +26,6 @@ class QuestionBankScreen extends ConsumerWidget {
           'Question Bank',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.shuffle_rounded),
-            onPressed: () => _showRandomGenerator(context, ref),
-            tooltip: 'Generate Random Paper',
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert_rounded),
-            onSelected: (val) {
-              if (val == 'export') _exportData(context, ref);
-              if (val == 'import') _importData(context, ref);
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'export', child: Text('Export Data')),
-              const PopupMenuItem(value: 'import', child: Text('Import Data')),
-            ],
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -128,6 +111,14 @@ class QuestionBankScreen extends ConsumerWidget {
                   onChanged: notifier.setDifficulty,
                   labelBuilder: (d) => d.name.toUpperCase(),
                 ),
+                const SizedBox(width: 8),
+                _FilterDropdown<QuestionType>(
+                  value: state.selectedType,
+                  hint: 'Type',
+                  items: QuestionType.values,
+                  onChanged: notifier.setType,
+                  labelBuilder: (type) => type.label,
+                ),
               ],
             ),
           ),
@@ -180,34 +171,6 @@ class QuestionBankScreen extends ConsumerWidget {
         foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: const Icon(Icons.add),
-      ),
-    );
-  }
-
-  void _showRandomGenerator(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => const RandomGeneratorDialog(),
-    );
-  }
-
-  Future<void> _exportData(BuildContext context, WidgetRef ref) async {
-    final repo = ref.read(questionBankRepositoryProvider);
-    final json = await repo.exportToJson();
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Exported ${json.length} characters of data.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _importData(BuildContext context, WidgetRef ref) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Import functionality requires file picker integration.'),
-        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -266,16 +229,9 @@ class _QuestionBankCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Text(
-                      q.question.text,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        height: 1.4,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
+                    child: QuestionRichTextPreview(
+                      question: q.question,
+                      maxHeight: 130,
                     ),
                   ),
                   IconButton(
@@ -294,20 +250,45 @@ class _QuestionBankCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _InfoChip(
-                    label: q.subject,
-                    icon: Icons.subject_rounded,
-                    color: Colors.blue,
+                  Expanded(
+                    child: Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: [
+                        _InfoChip(
+                          label: q.subject,
+                          icon: Icons.subject_rounded,
+                          color: Colors.blue,
+                        ),
+                        if (q.chapter.trim().isNotEmpty)
+                          _InfoChip(
+                            label: q.chapter,
+                            icon: Icons.menu_book_outlined,
+                            color: Colors.indigo,
+                          ),
+                        _InfoChip(
+                          label: q.question.type.label,
+                          icon: Icons.category_outlined,
+                          color: Colors.teal,
+                        ),
+                        _InfoChip(
+                          label: q.difficulty.name.toUpperCase(),
+                          icon: Icons.trending_up_rounded,
+                          color: diffColor,
+                        ),
+                        _InfoChip(
+                          label: '${_marks(q.question.marks)} marks',
+                          icon: Icons.score_outlined,
+                          color: Colors.deepPurple,
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(width: 8),
-                  _InfoChip(
-                    label: q.difficulty.name.toUpperCase(),
-                    icon: Icons.trending_up_rounded,
-                    color: diffColor,
-                  ),
-                  const Spacer(),
                   IconButton(
+                    tooltip: 'Edit',
                     icon: const Icon(Icons.edit_outlined, size: 18),
                     onPressed: () => Navigator.push(
                       context,
@@ -321,6 +302,7 @@ class _QuestionBankCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   IconButton(
+                    tooltip: 'Delete',
                     icon: const Icon(
                       Icons.delete_outline_rounded,
                       size: 18,
@@ -337,6 +319,12 @@ class _QuestionBankCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  static String _marks(double value) {
+    return value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value.toStringAsFixed(1);
   }
 
   void _confirmDelete(BuildContext context) {

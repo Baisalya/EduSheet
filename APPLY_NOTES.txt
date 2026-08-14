@@ -1,10 +1,5 @@
-EduSheet Smart Geometry Studio refactor patch
+EduSheet Question Bank ↔ Paper Composer refactor
 
-1. Copy all files in this ZIP over the project root, preserving paths.
-2. Delete every path listed in DELETED_FILES.txt.
-3. Run:
-   flutter analyze
-   flutter test
-   flutter test integration_test/question_creation_journey_test.dart -d windows
-
-No pubspec or persisted geometry JSON schema change is included.
+Apply this ZIP over the latest Word-only Question Paper Export build.
+No database migration and no pubspec dependency change are required.
+Existing question_bank.json files remain compatible.

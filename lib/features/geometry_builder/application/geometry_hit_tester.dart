@@ -13,17 +13,24 @@ class GeometryHitTester {
     final labelId = _hitLabel(diagram, position);
     if (labelId != null) return GeometrySelection.label(labelId);
 
+    // A very small point core keeps the actual vertex easy to select while
+    // leaving the visible area around that vertex available to angle/right-
+    // angle marks. Dragging still uses the wider `_hitPoint` target below.
+    final pointCoreId = _hitPoint(diagram, position, radius: 8);
+    if (pointCoreId != null) return GeometrySelection.point(pointCoreId);
+
+    // Marks are visual objects and may overlap point-label touch rectangles
+    // (especially a right-angle square near labels such as A/B/C). Test them
+    // before point labels and the wider point target so teachers can tap the
+    // mark they can actually see.
+    final markId = _hitMark(diagram, position);
+    if (markId != null) return GeometrySelection.mark(markId);
+
     final pointLabelId = _hitPointLabel(diagram, position);
     if (pointLabelId != null) return GeometrySelection.point(pointLabelId);
 
     final pointId = _hitPoint(diagram, position);
     if (pointId != null) return GeometrySelection.point(pointId);
-
-    // Marks sit on top of sides visually. Give them hit-test priority so a
-    // teacher can tap an equal/parallel/radius mark and delete it without the
-    // underlying side stealing the selection.
-    final markId = _hitMark(diagram, position);
-    if (markId != null) return GeometrySelection.mark(markId);
 
     final side = _hitSide(diagram, position);
     if (side != null) return side;
@@ -43,9 +50,13 @@ class GeometryHitTester {
   String? hitPointLabel(GeometryDiagram diagram, Offset position) =>
       _hitPointLabel(diagram, position);
 
-  String? _hitPoint(GeometryDiagram diagram, Offset position) {
+  String? _hitPoint(
+    GeometryDiagram diagram,
+    Offset position, {
+    double radius = 14,
+  }) {
     for (final point in diagram.points.reversed) {
-      if ((point.position - position).distance <= 14) return point.id;
+      if ((point.position - position).distance <= radius) return point.id;
     }
     return null;
   }

@@ -4,6 +4,8 @@ import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
+import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/export_file_service.dart';
@@ -134,7 +136,7 @@ class WordExportService {
     if (paper.includeOmr) {
       buffer.write(
         _paragraph(
-          'OMR sheet is included in PDF export only.',
+          'OMR sheet is not embedded in this Word document. Use the OMR Generator when you need a separate OMR sheet.',
           italic: true,
           fontSize: template.questionFontSize,
           spacingBefore: 240,
@@ -154,7 +156,7 @@ class WordExportService {
     PaperTemplate template,
     List<_ImagePart> images,
   ) {
-    final layout = template.effectiveLayout;
+    final layout = PaperHeaderLayoutFactory.resolveForPaper(template, paper);
     final buffer = StringBuffer();
     var imageIndex = 0;
 
@@ -209,7 +211,7 @@ class WordExportService {
         case ElementType.maxMarks:
           buffer.write(
             _paragraph(
-              'Max Marks: ${paper.totalMarks.toStringAsFixed(0)}',
+              'Maximum Marks: ${PaperMarksResolver.format(PaperMarksResolver.effectiveMaximumMarks(paper))}',
               alignment: alignment,
               bold: true,
               fontSize: fontSize,
@@ -263,28 +265,63 @@ class WordExportService {
     double fontSize,
     String alignment,
   ) {
-    final labels = List<String>.from(
-      element.properties['fieldLabels'] ?? ['Subject', 'Date'],
-    );
-    if (labels.isEmpty) return '';
+    final requestedLabels = (element.properties['fieldLabels'] as List?)
+            ?.map((value) => value.toString().trim())
+            .where((value) => value.isNotEmpty)
+            .toList(growable: false) ??
+        const <String>[];
 
-    final cells = labels.map((label) {
-      final field = paper.headerFields.firstWhere(
-        (item) => item.label.toLowerCase() == label.toLowerCase(),
-        orElse: () =>
-            PaperHeaderField(id: '', label: label, isPlaceholder: true),
+    final fields = requestedLabels.isEmpty
+        ? paper.headerFields
+        : requestedLabels.map((label) {
+            for (final field in paper.headerFields) {
+              if (field.label.toLowerCase() == label.toLowerCase()) {
+                return field;
+              }
+            }
+            return PaperHeaderField(
+              id: '',
+              label: label,
+              isPlaceholder: true,
+            );
+          }).toList(growable: false);
+    if (fields.isEmpty) return '';
+
+    final rows = StringBuffer();
+    for (var index = 0; index < fields.length; index += 2) {
+      final rowFields = fields.sublist(
+        index,
+        (index + 2).clamp(0, fields.length).toInt(),
       );
-      final content = field.isPlaceholder ? '________________' : field.value;
-      return _tableCell(
-        _paragraphRuns([
-          _Run('${field.label}: ', bold: true, fontSize: fontSize * 0.85),
-          _Run(content, fontSize: fontSize * 0.85),
-        ], alignment: alignment),
-      );
-    }).join();
+      final cells = <String>[];
+      for (var cellIndex = 0; cellIndex < 2; cellIndex++) {
+        if (cellIndex >= rowFields.length) {
+          cells.add(_tableCell(_paragraph('')));
+          continue;
+        }
+        final field = rowFields[cellIndex];
+        final value = field.value.trim();
+        final content = field.isPlaceholder || value.isEmpty
+            ? '________________'
+            : value;
+        cells.add(
+          _tableCell(
+            _paragraphRuns([
+              _Run(
+                '${field.label}: ',
+                bold: true,
+                fontSize: fontSize * 0.85,
+              ),
+              _Run(content, fontSize: fontSize * 0.85),
+            ], alignment: alignment),
+          ),
+        );
+      }
+      rows.write('<w:tr>${cells.join()}</w:tr>');
+    }
 
     return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>'
-        '<w:tr>$cells</w:tr></w:tbl>';
+        '${rows.toString()}</w:tbl>';
   }
 
   static String _sectionXml(
@@ -700,6 +737,7 @@ class _Run {
     this.underline = false,
     this.fontSize = 12,
   });
+
 }
 
 class _ImagePart {

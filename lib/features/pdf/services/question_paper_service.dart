@@ -6,6 +6,8 @@ import 'package:printing/printing.dart';
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
+import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
@@ -55,10 +57,6 @@ class QuestionPaperService {
     );
   }
 
-  static HeaderBuilder _getHeaderBuilder(HeaderLayout layout) {
-    return CustomHeaderBuilder();
-  }
-
   static PdfPageFormat _getPageFormat(PaperSize size) {
     switch (size) {
       case PaperSize.a4:
@@ -101,7 +99,7 @@ class QuestionPaperService {
 
     // Pre-load custom template images in parallel
     final Map<String, pw.ImageProvider> customImages = {};
-    final layout = template.customLayout ?? template.effectiveLayout;
+    final layout = PaperHeaderLayoutFactory.resolve(template);
     final logoElements = layout.elements
         .where((el) => el.type == ElementType.logo && el.content.isNotEmpty)
         .toList();
@@ -122,7 +120,7 @@ class QuestionPaperService {
       }
     }
 
-    final headerBuilder = _getHeaderBuilder(template.headerLayout);
+    final headerBuilder = CustomHeaderBuilder();
     var pageFormat = switch (config.pageSize) {
       ExportPageSize.useTemplate => _getPageFormat(template.paperSize),
       ExportPageSize.a4 => PdfPageFormat.a4,
@@ -533,7 +531,9 @@ class QuestionPaperService {
             pw.Text('SET ${config.setLabel.trim().toUpperCase()}'),
           ],
           pw.SizedBox(height: 36),
-          pw.Text('Maximum marks: ${paper.maximumMarks ?? paper.totalMarks}'),
+          pw.Text(
+            'Maximum marks: ${PaperMarksResolver.format(PaperMarksResolver.effectiveMaximumMarks(paper))}',
+          ),
         ],
       ),
     );

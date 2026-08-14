@@ -353,8 +353,12 @@ class GeometryPainter extends CustomPainter {
           final a1 = math.atan2(points[1].dy - vertex.dy, points[1].dx - vertex.dx);
           final a2 = math.atan2(points[2].dy - vertex.dy, points[2].dx - vertex.dx);
           var sweep = a2 - a1;
-          while (sweep <= -math.pi) sweep += math.pi * 2;
-          while (sweep > math.pi) sweep -= math.pi * 2;
+          while (sweep <= -math.pi) {
+            sweep += math.pi * 2;
+          }
+          while (sweep > math.pi) {
+            sweep -= math.pi * 2;
+          }
           canvas.drawArc(
             Rect.fromCircle(center: vertex, radius: 26),
             a1,

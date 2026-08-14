@@ -1,6 +1,3 @@
-import 'dart:ui';
-
-
 import 'package:edusheet/features/geometry_builder/application/geometry_editor_session.dart';
 import 'package:edusheet/features/geometry_builder/application/geometry_recipe.dart';
 import 'package:edusheet/features/geometry_builder/application/geometry_selection.dart';
@@ -146,7 +143,7 @@ void main() {
     // Points intentionally have first priority when the exact vertex itself is
     // tapped. A small offset inside the visible corner selects the mark.
     final nearby = session.selectAt(mark.position + const Offset(10, -10));
-    expect(selected.kind, anyOf(GeometrySelectionKind.point, GeometrySelectionKind.mark));
+    expect(selected.kind, GeometrySelectionKind.point);
     expect(nearby.kind, GeometrySelectionKind.mark);
     expect(nearby.markId, mark.id);
   });
