@@ -1,0 +1,30 @@
+EduSheet Scientific Calculator Architectural Refactor
+Generated: 2026-08-14
+
+Changed/new files: 20
+Deleted files: 0
+
+CHANGED / NEW
+docs/SCIENTIFIC_CALCULATOR_ARCHITECTURE_REFACTOR_2026-08-14.md
+lib/features/calculator/data/repositories/math_engine.dart
+lib/features/calculator/domain/models/calculation_history_entry.dart
+lib/features/calculator/domain/models/calculation_result.dart
+lib/features/calculator/domain/models/calculator_mode.dart
+lib/features/calculator/domain/services/calculator_expression_formatter.dart
+lib/features/calculator/domain/services/calculator_input_editor.dart
+lib/features/calculator/domain/services/math_engine.dart
+lib/features/calculator/presentation/providers/calculator_provider.dart
+lib/features/calculator/presentation/screens/calculator_screen.dart
+lib/features/calculator/presentation/widgets/calculator_button.dart
+lib/features/calculator/presentation/widgets/calculator_display.dart
+lib/features/calculator/presentation/widgets/calculator_history_drawer.dart
+lib/features/calculator/presentation/widgets/formula_catalog_sheet.dart
+lib/features/calculator/presentation/widgets/scientific_calculator.dart
+test/features/calculator/calculator_controller_test.dart
+test/features/calculator/calculator_expression_formatter_test.dart
+test/features/calculator/calculator_input_editor_test.dart
+test/features/calculator/calculator_widget_test.dart
+test/features/calculator/math_engine_test.dart
+
+DELETED
+None
