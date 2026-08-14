@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/geometry_diagram.dart';
@@ -13,12 +14,18 @@ class GeometryPainter extends CustomPainter {
   final bool showPointHandles;
   final String? selectedLabelId;
   final String? selectedPointId;
+  final String? selectedShapeId;
+  final List<String> selectedSidePointIds;
+  final String? selectedMarkId;
 
   GeometryPainter({
     required this.diagram,
     this.showPointHandles = true,
     this.selectedLabelId,
     this.selectedPointId,
+    this.selectedShapeId,
+    this.selectedSidePointIds = const [],
+    this.selectedMarkId,
   });
 
   @override
@@ -39,10 +46,34 @@ class GeometryPainter extends CustomPainter {
 
     final points = diagram.pointMap;
     for (final shape in diagram.shapes) {
-      _drawShape(canvas, shape, points);
+      _drawShape(
+        canvas,
+        shape,
+        points,
+        selected: showPointHandles && shape.id == selectedShapeId,
+      );
+    }
+    if (showPointHandles && selectedSidePointIds.length == 2) {
+      final a = points[selectedSidePointIds[0]]?.position;
+      final b = points[selectedSidePointIds[1]]?.position;
+      if (a != null && b != null) {
+        canvas.drawLine(
+          a,
+          b,
+          Paint()
+            ..color = const Color(0xFF1976D2).withValues(alpha: 0.7)
+            ..strokeWidth = 5
+            ..strokeCap = StrokeCap.round,
+        );
+      }
     }
     for (final mark in diagram.marks) {
-      _drawMark(canvas, mark, points);
+      _drawMark(
+        canvas,
+        mark,
+        points,
+        selected: showPointHandles && mark.id == selectedMarkId,
+      );
     }
     for (final point in diagram.points) {
       _drawPoint(
@@ -82,8 +113,9 @@ class GeometryPainter extends CustomPainter {
   void _drawShape(
     Canvas canvas,
     GeometryShape shape,
-    Map<String, GeometryPoint> pointMap,
-  ) {
+    Map<String, GeometryPoint> pointMap, {
+    required bool selected,
+  }) {
     final points = shape.pointIds
         .map((id) => pointMap[id]?.position)
         .whereType<Offset>()
@@ -91,8 +123,8 @@ class GeometryPainter extends CustomPainter {
     if (points.isEmpty) return;
 
     final paint = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 2.2
+      ..color = selected ? const Color(0xFF1976D2) : Colors.black
+      ..strokeWidth = selected ? 3.2 : 2.2
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
@@ -277,43 +309,94 @@ class GeometryPainter extends CustomPainter {
   void _drawMark(
     Canvas canvas,
     GeometryMark mark,
-    Map<String, GeometryPoint> pointMap,
-  ) {
+    Map<String, GeometryPoint> pointMap, {
+    required bool selected,
+  }) {
     final points = mark.pointIds
         .map((id) => pointMap[id]?.position)
         .whereType<Offset>()
         .toList();
     final paint = Paint()
-      ..color = Colors.black
-      ..strokeWidth = 1.8
+      ..color = selected ? const Color(0xFF1976D2) : Colors.black
+      ..strokeWidth = selected ? 2.6 : 1.8
       ..style = PaintingStyle.stroke;
 
     switch (mark.type) {
       case GeometryMarkType.rightAngle:
-        final origin = points.isNotEmpty ? points.first : mark.position;
-        final path = Path()
-          ..moveTo(origin.dx + 18, origin.dy)
-          ..lineTo(origin.dx + 18, origin.dy - 18)
-          ..lineTo(origin.dx, origin.dy - 18);
-        canvas.drawPath(path, paint);
+        if (points.length >= 3) {
+          final vertex = points[0];
+          final u = _unit(points[1] - vertex);
+          final v = _unit(points[2] - vertex);
+          if (u != Offset.zero && v != Offset.zero) {
+            const size = 17.0;
+            final p1 = vertex + u * size;
+            final corner = p1 + v * size;
+            final p2 = vertex + v * size;
+            final path = Path()
+              ..moveTo(p1.dx, p1.dy)
+              ..lineTo(corner.dx, corner.dy)
+              ..lineTo(p2.dx, p2.dy);
+            canvas.drawPath(path, paint);
+          }
+        } else {
+          final origin = points.isNotEmpty ? points.first : mark.position;
+          final path = Path()
+            ..moveTo(origin.dx + 18, origin.dy)
+            ..lineTo(origin.dx + 18, origin.dy - 18)
+            ..lineTo(origin.dx, origin.dy - 18);
+          canvas.drawPath(path, paint);
+        }
       case GeometryMarkType.angleArc:
       case GeometryMarkType.curvedArc:
-        final origin = points.isNotEmpty ? points.first : mark.position;
-        canvas.drawArc(
-          Rect.fromCircle(center: origin, radius: 26),
-          -math.pi / 2,
-          math.pi / 2,
-          false,
-          paint,
-        );
+        if (points.length >= 3) {
+          final vertex = points[0];
+          final a1 = math.atan2(points[1].dy - vertex.dy, points[1].dx - vertex.dx);
+          final a2 = math.atan2(points[2].dy - vertex.dy, points[2].dx - vertex.dx);
+          var sweep = a2 - a1;
+          while (sweep <= -math.pi) sweep += math.pi * 2;
+          while (sweep > math.pi) sweep -= math.pi * 2;
+          canvas.drawArc(
+            Rect.fromCircle(center: vertex, radius: 26),
+            a1,
+            sweep,
+            false,
+            paint,
+          );
+        } else {
+          final origin = points.isNotEmpty ? points.first : mark.position;
+          canvas.drawArc(
+            Rect.fromCircle(center: origin, radius: 26),
+            -math.pi / 2,
+            math.pi / 2,
+            false,
+            paint,
+          );
+        }
       case GeometryMarkType.equalSideTick:
       case GeometryMarkType.parallelLine:
-        final origin = mark.position;
-        canvas.drawLine(
-          origin + const Offset(-5, -10),
-          origin + const Offset(5, 10),
-          paint,
-        );
+        if (points.length >= 2) {
+          final a = points[0];
+          final b = points[1];
+          final midpoint = (a + b) / 2;
+          final direction = _unit(b - a);
+          final normal = Offset(-direction.dy, direction.dx);
+          final tangent = direction;
+          if (mark.type == GeometryMarkType.equalSideTick) {
+            canvas.drawLine(midpoint - normal * 8, midpoint + normal * 8, paint);
+          } else {
+            for (final shift in const [-5.0, 5.0]) {
+              final center = midpoint + tangent * shift;
+              canvas.drawLine(center - normal * 7, center + normal * 7, paint);
+            }
+          }
+        } else {
+          final origin = mark.position;
+          canvas.drawLine(
+            origin + const Offset(-5, -10),
+            origin + const Offset(5, 10),
+            paint,
+          );
+        }
       case GeometryMarkType.dottedConstructionLine:
       case GeometryMarkType.dashedHeightLine:
         if (points.length >= 2) {
@@ -321,13 +404,38 @@ class GeometryPainter extends CustomPainter {
         }
       case GeometryMarkType.radiusLine:
       case GeometryMarkType.diameterLine:
+        if (points.length >= 2) canvas.drawLine(points[0], points[1], paint);
       case GeometryMarkType.arrowHead:
-      case GeometryMarkType.doubleArrow:
         if (points.length >= 2) _drawArrow(canvas, points[0], points[1], paint);
+      case GeometryMarkType.doubleArrow:
+        if (points.length >= 2) {
+          _drawArrow(canvas, points[0], points[1], paint);
+          _drawArrow(canvas, points[1], points[0], paint);
+        }
       case GeometryMarkType.centerPoint:
         final origin = points.isNotEmpty ? points.first : mark.position;
         canvas.drawCircle(origin, 3, paint..style = PaintingStyle.fill);
     }
+
+    if (selected) {
+      final anchor = points.isNotEmpty
+          ? points.reduce((a, b) => a + b) / points.length.toDouble()
+          : mark.position;
+      canvas.drawCircle(
+        anchor,
+        12,
+        Paint()
+          ..color = const Color(0xFF1976D2).withValues(alpha: 0.7)
+          ..strokeWidth = 1.4
+          ..style = PaintingStyle.stroke,
+      );
+    }
+  }
+
+  Offset _unit(Offset value) {
+    final length = value.distance;
+    if (length == 0) return Offset.zero;
+    return value / length;
   }
 
   void _drawDashedLine(Canvas canvas, Offset start, Offset end, Paint paint) {
@@ -479,6 +587,9 @@ class GeometryPainter extends CustomPainter {
     return oldDelegate.diagram != diagram ||
         oldDelegate.showPointHandles != showPointHandles ||
         oldDelegate.selectedLabelId != selectedLabelId ||
-        oldDelegate.selectedPointId != selectedPointId;
+        oldDelegate.selectedPointId != selectedPointId ||
+        oldDelegate.selectedShapeId != selectedShapeId ||
+        !listEquals(oldDelegate.selectedSidePointIds, selectedSidePointIds) ||
+        oldDelegate.selectedMarkId != selectedMarkId;
   }
 }

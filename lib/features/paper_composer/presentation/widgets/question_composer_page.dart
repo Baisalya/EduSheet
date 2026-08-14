@@ -5,7 +5,6 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
-import 'package:edusheet/features/geometry_builder/widgets/geometry_quick_picker_sheet.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builder.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart';
@@ -292,12 +291,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   Future<void> _insertGeometry() async {
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     FocusManager.instance.primaryFocus?.unfocus();
-    final shape = await GeometryQuickPickerSheet.show(context);
-    if (shape == null || !mounted) return;
-    final diagram = await GeometryBuilderScreen.show(
-      context,
-      initialShape: shape,
-    );
+    final diagram = await GeometryBuilderScreen.show(context);
     if (diagram == null || !mounted) return;
 
     GeometryDiagramRegistry.instance.save(diagram);

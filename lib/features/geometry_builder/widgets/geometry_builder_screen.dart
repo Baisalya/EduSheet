@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../controllers/geometry_controller.dart';
+import '../application/geometry_editor_session.dart';
+import '../application/geometry_recipe.dart';
+import '../application/geometry_selection.dart';
 import '../models/geometry_diagram.dart';
 import '../models/geometry_label.dart';
-import '../models/geometry_mark.dart';
 import '../models/geometry_point.dart';
 import '../models/geometry_shape.dart';
-import 'export_panel.dart';
+import 'geometry_add_sheet.dart';
 import 'geometry_canvas.dart';
-import 'geometry_toolbar.dart';
+import 'geometry_context_bar.dart';
+import 'geometry_input_dialogs.dart';
+import 'geometry_quick_start.dart';
+import 'geometry_selection_inspector.dart';
 import 'label_editor_sheet.dart';
-import 'shape_picker.dart';
 
 class GeometryBuilderScreen extends StatefulWidget {
   final GeometryDiagram? initialDiagram;
@@ -34,15 +37,15 @@ class GeometryBuilderScreen extends StatefulWidget {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
     final view = View.of(context);
     final fullHeight = view.physicalSize.height / view.devicePixelRatio;
-    final sheetHeight = fullHeight * 0.92;
+    final sheetHeight = fullHeight * 0.94;
 
     return showGeneralDialog<GeometryDiagram>(
       context: context,
       useRootNavigator: true,
-      barrierDismissible: true,
+      barrierDismissible: false,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 220),
+      transitionDuration: const Duration(milliseconds: 180),
       pageBuilder: (context, animation, secondaryAnimation) {
         return MediaQuery.removeViewInsets(
           context: context,
@@ -50,12 +53,15 @@ class GeometryBuilderScreen extends StatefulWidget {
           child: SafeArea(
             child: Align(
               alignment: Alignment.bottomCenter,
-              child: FractionallySizedBox(
-                widthFactor: 1,
-                child: GeometryBuilderScreen(
-                  maxHeight: sheetHeight,
-                  initialDiagram: initialDiagram,
-                  initialShape: initialShape,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1220),
+                child: FractionallySizedBox(
+                  widthFactor: 1,
+                  child: GeometryBuilderScreen(
+                    maxHeight: sheetHeight,
+                    initialDiagram: initialDiagram,
+                    initialShape: initialShape,
+                  ),
                 ),
               ),
             ),
@@ -72,7 +78,7 @@ class GeometryBuilderScreen extends StatefulWidget {
           opacity: curved,
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0, 0.08),
+              begin: const Offset(0, 0.04),
               end: Offset.zero,
             ).animate(curved),
             child: child,
@@ -87,155 +93,378 @@ class GeometryBuilderScreen extends StatefulWidget {
 }
 
 class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
-  late final GeometryController _controller;
+  late final GeometryEditorSession _session;
   final _repaintKey = GlobalKey();
+  final _canvasFocus = FocusNode(debugLabel: 'Geometry Studio canvas');
 
   @override
   void initState() {
     super.initState();
-    _controller = GeometryController(initialDiagram: widget.initialDiagram);
+    _session = GeometryEditorSession(initialDiagram: widget.initialDiagram);
     final initialShape = widget.initialShape;
     if (initialShape != null && widget.initialDiagram == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _controller.loadTemplate(initialShape);
-      });
-    } else if (widget.initialDiagram == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _controller.loadTemplate(GeometryShapeType.triangle);
+        if (!mounted) return;
+        _session.addShape(initialShape);
       });
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _canvasFocus.dispose();
+    _session.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final mediaHeight = MediaQuery.sizeOf(context).height;
-    final height = widget.maxHeight ?? mediaHeight * 0.9;
-    final compact = height < 560;
-
+    final height = widget.maxHeight ?? mediaHeight * 0.92;
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       child: SizedBox(
         height: height,
-        child: Scaffold(
-          resizeToAvoidBottomInset: true,
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            title: const Text('Geometry Studio'),
-            toolbarHeight: compact ? 48 : kToolbarHeight,
-            actions: [
-              IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close),
+        child: Shortcuts(
+          shortcuts: const {
+            SingleActivator(LogicalKeyboardKey.keyZ, control: true): _UndoIntent(),
+            SingleActivator(LogicalKeyboardKey.keyY, control: true): _RedoIntent(),
+            SingleActivator(LogicalKeyboardKey.delete): _DeleteIntent(),
+            SingleActivator(LogicalKeyboardKey.escape): _EscapeIntent(),
+            SingleActivator(LogicalKeyboardKey.keyD, control: true): _DuplicateIntent(),
+          },
+          child: Actions(
+            actions: {
+              _UndoIntent: CallbackAction<_UndoIntent>(
+                onInvoke: (_) {
+                  _session.undo();
+                  return null;
+                },
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilledButton.icon(
-                  onPressed: () =>
-                      Navigator.of(context).pop(_controller.diagram),
-                  icon: const Icon(Icons.check),
-                  label: const Text('Insert'),
+              _RedoIntent: CallbackAction<_RedoIntent>(
+                onInvoke: (_) {
+                  _session.redo();
+                  return null;
+                },
+              ),
+              _DeleteIntent: CallbackAction<_DeleteIntent>(
+                onInvoke: (_) {
+                  _showOutcome(_session.deleteSelected());
+                  return null;
+                },
+              ),
+              _EscapeIntent: CallbackAction<_EscapeIntent>(
+                onInvoke: (_) {
+                  if (_session.selection.kind != GeometrySelectionKind.none) {
+                    _session.clearSelection();
+                  } else {
+                    _requestClose();
+                  }
+                  return null;
+                },
+              ),
+              _DuplicateIntent: CallbackAction<_DuplicateIntent>(
+                onInvoke: (_) {
+                  _showOutcome(_session.duplicateSelectedShape());
+                  return null;
+                },
+              ),
+            },
+            child: Focus(
+              focusNode: _canvasFocus,
+              autofocus: true,
+              child: PopScope<GeometryDiagram>(
+                canPop: false,
+                onPopInvokedWithResult: (didPop, result) {
+                  if (!didPop) _requestClose();
+                },
+                child: Scaffold(
+                  resizeToAvoidBottomInset: false,
+                  appBar: _buildAppBar(),
+                  body: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final wide = constraints.maxWidth >= 900;
+                      if (wide) return _buildDesktop();
+                      return _buildCompact(constraints.maxHeight);
+                    },
+                  ),
                 ),
               ),
-            ],
-          ),
-          body: LayoutBuilder(
-            builder: (context, constraints) {
-              final canvasHeight = (constraints.maxHeight * 0.36).clamp(
-                compact ? 96.0 : 140.0,
-                compact ? 160.0 : 238.0,
-              );
-
-              return Column(
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(12, compact ? 6 : 8, 12, 0),
-                    child: SizedBox(
-                      height: canvasHeight,
-                      width: double.infinity,
-                      child: GeometryCanvas(
-                        controller: _controller,
-                        repaintKey: _repaintKey,
-                        onEditLabel: (label) => _showLabelEditor(
-                          label.type,
-                          initialLabel: label,
-                        ),
-                        onEditPointLabel: _showPointLabelEditor,
-                      ),
-                    ),
-                  ),
-                  _ModeBar(controller: _controller, compact: compact),
-                  _SelectedTextBar(
-                    controller: _controller,
-                    onEditLabel: (label) => _showLabelEditor(
-                      label.type,
-                      initialLabel: label,
-                    ),
-                    onEditPoint: _showPointLabelEditor,
-                  ),
-                  Expanded(
-                    child: _ModeBody(
-                      controller: _controller,
-                      repaintKey: _repaintKey,
-                    ),
-                  ),
-                  GeometryToolbar(
-                    controller: _controller,
-                    onAddSideLabel: () =>
-                        _showLabelEditor(GeometryLabelType.side),
-                    onAddAngleLabel: () =>
-                        _showLabelEditor(GeometryLabelType.angle),
-                    onAddTextLabel: () =>
-                        _showLabelEditor(GeometryLabelType.custom),
-                    onAddRightAngle: () =>
-                        _controller.addMark(GeometryMarkType.rightAngle),
-                    onAddHeightLine: () =>
-                        _controller.addMark(GeometryMarkType.dashedHeightLine),
-                  ),
-                ],
-              );
-            },
+            ),
           ),
         ),
       ),
     );
   }
 
-  void _showLabelEditor(
-    GeometryLabelType type, {
-    GeometryLabel? initialLabel,
+  PreferredSizeWidget _buildAppBar() {
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    return AppBar(
+      automaticallyImplyLeading: false,
+      titleSpacing: 12,
+      title: AnimatedBuilder(
+        animation: _session,
+        builder: (context, _) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Geometry Studio'),
+            Text(
+              _session.isEmpty
+                  ? 'Choose a figure and edit it directly'
+                  : _session.selectionLabel,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        if (!compact)
+          AnimatedBuilder(
+            animation: _session,
+            builder: (context, _) => IconButton(
+              tooltip: 'Undo (Ctrl+Z)',
+              onPressed: _session.canUndo ? _session.undo : null,
+              icon: const Icon(Icons.undo_rounded),
+            ),
+          ),
+        if (!compact)
+          AnimatedBuilder(
+            animation: _session,
+            builder: (context, _) => IconButton(
+              tooltip: 'Redo (Ctrl+Y)',
+              onPressed: _session.canRedo ? _session.redo : null,
+              icon: const Icon(Icons.redo_rounded),
+            ),
+          ),
+        PopupMenuButton<_GeometryMenuAction>(
+          tooltip: 'More geometry options',
+          onSelected: _handleMenu,
+          itemBuilder: (context) => [
+            if (compact)
+              PopupMenuItem(
+                value: _GeometryMenuAction.undo,
+                enabled: _session.canUndo,
+                child: const ListTile(
+                  dense: true,
+                  leading: Icon(Icons.undo_rounded),
+                  title: Text('Undo'),
+                ),
+              ),
+            if (compact)
+              PopupMenuItem(
+                value: _GeometryMenuAction.redo,
+                enabled: _session.canRedo,
+                child: const ListTile(
+                  dense: true,
+                  leading: Icon(Icons.redo_rounded),
+                  title: Text('Redo'),
+                ),
+              ),
+            const PopupMenuItem(
+              value: _GeometryMenuAction.grid,
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.grid_4x4_rounded),
+                title: Text('Toggle grid'),
+              ),
+            ),
+            const PopupMenuItem(
+              value: _GeometryMenuAction.snap,
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.grid_on_rounded),
+                title: Text('Toggle snap'),
+              ),
+            ),
+            const PopupMenuItem(
+              value: _GeometryMenuAction.clear,
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.delete_sweep_outlined),
+                title: Text('Clear diagram'),
+              ),
+            ),
+          ],
+        ),
+        IconButton(
+          tooltip: 'Close',
+          onPressed: _requestClose,
+          icon: const Icon(Icons.close_rounded),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: FilledButton.icon(
+            onPressed: _insert,
+            icon: const Icon(Icons.check_rounded),
+            label: const Text('Insert'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktop() {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        SizedBox(
+          width: 250,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLowest,
+              border: Border(
+                right: BorderSide(color: theme.dividerColor.withValues(alpha: 0.4)),
+              ),
+            ),
+            child: GeometryQuickStart(
+              onRecipe: _useRecipe,
+              onBrowseAll: _browseAll,
+            ),
+          ),
+        ),
+        Expanded(child: _canvasWorkspace(showQuickStart: false)),
+        SizedBox(
+          width: 260,
+          child: GeometrySelectionInspector(session: _session),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompact(double availableHeight) {
+    final veryShort = availableHeight < 430;
+    return _canvasWorkspace(
+      showQuickStart: !veryShort && _session.isEmpty,
+      compactQuickStart: true,
+    );
+  }
+
+  Widget _canvasWorkspace({
+    required bool showQuickStart,
+    bool compactQuickStart = false,
   }) {
+    return AnimatedBuilder(
+      animation: _session,
+      builder: (context, _) {
+        return Column(
+          children: [
+            if (showQuickStart && _session.isEmpty)
+              GeometryQuickStart(
+                compact: compactQuickStart,
+                onRecipe: _useRecipe,
+                onBrowseAll: _browseAll,
+              ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: 1.5,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        GeometryCanvas(
+                          session: _session,
+                          repaintKey: _repaintKey,
+                          onEditLabel: _showLabelEditor,
+                          onEditPointLabel: _showPointLabelEditor,
+                        ),
+                        if (_session.isEmpty && !showQuickStart)
+                          Center(
+                            child: Card(
+                              elevation: 0,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHigh
+                                  .withValues(alpha: 0.94),
+                              child: Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.category_outlined, size: 30),
+                                    const SizedBox(height: 7),
+                                    const Text(
+                                      'Start with a figure',
+                                      style: TextStyle(fontWeight: FontWeight.w800),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    FilledButton.tonalIcon(
+                                      onPressed: _browseAll,
+                                      icon: const Icon(Icons.add_rounded),
+                                      label: const Text('Choose figure'),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            GeometryContextBar(
+              session: _session,
+              onAdd: _browseAll,
+              onRenamePoint: _renameSelectedPoint,
+              onEditLabel: _editSelectedLabel,
+              onSideMeasurement: _measureSelectedSide,
+              onAngleMeasurement: _measureSelectedAngle,
+              onCustomText: _addCustomText,
+              onCoordinatePoint: _addCoordinatePoint,
+              onOutcome: _showOutcome,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _browseAll() async {
+    final recipe = await GeometryAddSheet.show(context);
+    if (recipe == null || !mounted) return;
+    _useRecipe(recipe);
+  }
+
+  void _useRecipe(GeometryRecipe recipe) {
+    _session.useRecipe(recipe);
+    _canvasFocus.requestFocus();
+  }
+
+  void _renameSelectedPoint() {
+    final point = _session.selection.point(_session.diagram);
+    if (point == null) return;
+    _showPointLabelEditor(point);
+  }
+
+  void _editSelectedLabel() {
+    final label = _session.selection.label(_session.diagram);
+    if (label == null) return;
+    _showLabelEditor(label);
+  }
+
+  void _showLabelEditor(GeometryLabel label) {
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       useSafeArea: true,
       isScrollControlled: true,
       builder: (context) => LabelEditorSheet(
-        type: type,
-        initialLabel: initialLabel,
+        type: label.type,
+        initialLabel: label,
         onSubmitted: (text, fontSize, rotation, isBold) {
-          if (initialLabel == null) {
-            _controller.addLabel(
-              type,
-              text,
-              fontSize: fontSize,
-              rotation: rotation,
-              isBold: isBold,
-            );
-          } else {
-            _controller.updateLabel(
-              initialLabel.id,
-              text: text,
-              fontSize: fontSize,
-              rotation: rotation,
-              isBold: isBold,
-            );
-          }
+          _session.document.updateLabel(
+            label.id,
+            text: text,
+            fontSize: fontSize,
+            rotation: rotation,
+            isBold: isBold,
+          );
+          _session.setSelection(GeometrySelection.label(label.id));
         },
       ),
     );
@@ -250,412 +479,153 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
       builder: (context) => PointLabelEditorSheet(
         point: point,
         onSubmitted: (text, fontSize, rotation, isBold) {
-          _controller.updatePointLabel(
+          _session.document.updatePointLabel(
             point.id,
             text: text,
             fontSize: fontSize,
             rotation: rotation,
             isBold: isBold,
           );
+          _session.setSelection(GeometrySelection.point(point.id));
         },
       ),
     );
   }
-}
 
-class _SelectedTextBar extends StatelessWidget {
-  final GeometryController controller;
-  final ValueChanged<GeometryLabel> onEditLabel;
-  final ValueChanged<GeometryPoint> onEditPoint;
 
-  const _SelectedTextBar({
-    required this.controller,
-    required this.onEditLabel,
-    required this.onEditPoint,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        final label = controller.selectedLabel;
-        final point = controller.selectedPoint;
-        if (label == null && point == null) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.touch_app_outlined,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    'Tap A, B, C or any text to select it. Drag to move; double-tap to edit.',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        final theme = Theme.of(context);
-        final isPoint = point != null;
-        final text = point?.label ?? label!.text;
-        return Container(
-          height: 50,
-          margin: const EdgeInsets.fromLTRB(10, 0, 10, 5),
-          padding: const EdgeInsets.symmetric(horizontal: 5),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextButton.icon(
-                  onPressed: () {
-                    if (point != null) {
-                      onEditPoint(point);
-                    } else if (label != null) {
-                      onEditLabel(label);
-                    }
-                  },
-                  icon: Icon(
-                    isPoint ? Icons.scatter_plot_outlined : Icons.edit_rounded,
-                    size: 18,
-                  ),
-                  label: Text(
-                    isPoint ? 'Point $text' : text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              _LabelAction(
-                tooltip: 'Smaller text',
-                icon: Icons.text_decrease_rounded,
-                onPressed: () => isPoint
-                    ? controller.resizeSelectedPointLabel(-1)
-                    : controller.resizeSelectedLabel(-1),
-              ),
-              _LabelAction(
-                tooltip: 'Larger text',
-                icon: Icons.text_increase_rounded,
-                onPressed: () => isPoint
-                    ? controller.resizeSelectedPointLabel(1)
-                    : controller.resizeSelectedLabel(1),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'Move text',
-                icon: const Icon(Icons.open_with_rounded, size: 20),
-                onSelected: (value) {
-                  final delta = switch (value) {
-                    'up' => const Offset(0, -4),
-                    'down' => const Offset(0, 4),
-                    'left' => const Offset(-4, 0),
-                    'right' => const Offset(4, 0),
-                    _ => Offset.zero,
-                  };
-                  if (delta != Offset.zero) {
-                    if (isPoint) {
-                      controller.nudgeSelectedPointLabel(delta);
-                    } else {
-                      controller.nudgeSelectedLabel(delta);
-                    }
-                  } else if (value == 'delete' && !isPoint) {
-                    controller.removeSelectedLabel();
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'up', child: Text('Move up')),
-                  const PopupMenuItem(value: 'down', child: Text('Move down')),
-                  const PopupMenuItem(value: 'left', child: Text('Move left')),
-                  const PopupMenuItem(value: 'right', child: Text('Move right')),
-                  if (!isPoint) const PopupMenuDivider(),
-                  if (!isPoint)
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Delete text'),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _LabelAction extends StatelessWidget {
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  const _LabelAction({
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20),
-    );
-  }
-}
-
-class _ModeBar extends StatelessWidget {
-  final GeometryController controller;
-  final bool compact;
-
-  const _ModeBar({required this.controller, required this.compact});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        return SizedBox(
-          height: compact ? 42 : 48,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: compact ? 5 : 8,
-            ),
-            children: [
-              _ModeChip(
-                'Shapes',
-                Icons.category_outlined,
-                GeometryBuilderMode.shapes,
-                controller,
-              ),
-              _ModeChip(
-                'Draw',
-                Icons.edit_outlined,
-                GeometryBuilderMode.draw,
-                controller,
-              ),
-              _ModeChip(
-                'Labels',
-                Icons.label_outline,
-                GeometryBuilderMode.labels,
-                controller,
-              ),
-              _ModeChip(
-                'Marks',
-                Icons.gesture,
-                GeometryBuilderMode.marks,
-                controller,
-              ),
-              _ModeChip(
-                'Export',
-                Icons.ios_share,
-                GeometryBuilderMode.export,
-                controller,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _ModeChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final GeometryBuilderMode mode;
-  final GeometryController controller;
-
-  const _ModeChip(this.label, this.icon, this.mode, this.controller);
-
-  @override
-  Widget build(BuildContext context) {
-    final selected = controller.mode == mode;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        selected: selected,
-        avatar: Icon(icon, size: 16),
-        label: Text(label),
-        onSelected: (_) => controller.mode = mode,
+  Future<void> _addCoordinatePoint() async {
+    final input = await GeometryInputDialogs.coordinatePoint(context);
+    if (input == null || !mounted) return;
+    _showOutcome(
+      _session.addCoordinatePoint(
+        x: input.x,
+        y: input.y,
+        label: input.label,
       ),
     );
   }
-}
 
-class _ModeBody extends StatelessWidget {
-  final GeometryController controller;
-  final GlobalKey repaintKey;
-
-  const _ModeBody({required this.controller, required this.repaintKey});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        return switch (controller.mode) {
-          GeometryBuilderMode.shapes => ShapePicker(
-            onSelected: (shape) => controller.loadTemplate(shape),
-          ),
-          GeometryBuilderMode.draw => _DrawHelp(controller: controller),
-          GeometryBuilderMode.labels => _LabelButtons(controller: controller),
-          GeometryBuilderMode.marks => _MarkButtons(controller: controller),
-          GeometryBuilderMode.export => ExportPanel(
-            controller: controller,
-            repaintKey: repaintKey,
-          ),
-        };
-      },
+  Future<void> _addCustomText() async {
+    final text = await GeometryInputDialogs.text(
+      context,
+      title: 'Add text to diagram',
+      label: 'Text',
+      hint: 'Example: Given, P, 5 cm, or a short note',
     );
+    if (text == null || !mounted) return;
+    _session.addCustomLabel(text);
+  }
+
+  Future<void> _measureSelectedSide() async {
+    final text = await GeometryInputDialogs.text(
+      context,
+      title: 'Label this side',
+      label: 'Measurement or name',
+      hint: 'Example: 5 cm or AB = 5 cm',
+    );
+    if (text == null || !mounted) return;
+    _showOutcome(_session.addSideMeasurement(text));
+  }
+
+  Future<void> _measureSelectedAngle() async {
+    final pointLabel = _session.selection.point(_session.diagram)?.label.trim();
+    final text = await GeometryInputDialogs.text(
+      context,
+      title: pointLabel != null && pointLabel.isNotEmpty
+          ? 'Label angle $pointLabel'
+          : 'Label this angle',
+      label: 'Angle',
+      hint: 'Example: 60° or ∠A = 60°',
+    );
+    if (text == null || !mounted) return;
+    _showOutcome(_session.addAngleMeasurement(text));
+  }
+
+  void _showOutcome(GeometryEditOutcome outcome) {
+    final message = outcome.message;
+    if (!mounted || message == null || message.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _handleMenu(_GeometryMenuAction action) {
+    switch (action) {
+      case _GeometryMenuAction.undo:
+        _session.undo();
+      case _GeometryMenuAction.redo:
+        _session.redo();
+      case _GeometryMenuAction.grid:
+        _session.toggleGrid();
+      case _GeometryMenuAction.snap:
+        _session.toggleSnap();
+      case _GeometryMenuAction.clear:
+        _clearDiagram();
+    }
+  }
+
+  Future<void> _clearDiagram() async {
+    if (_session.isEmpty) return;
+    final confirmed = await GeometryInputDialogs.confirm(
+      context,
+      title: 'Clear this diagram?',
+      message: 'You can still use Undo immediately afterwards.',
+      confirmLabel: 'Clear',
+    );
+    if (!mounted || !confirmed) return;
+    _session.document.clear();
+    _session.clearSelection();
+  }
+
+  Future<void> _requestClose() async {
+    if (!_session.isDirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final discard = await GeometryInputDialogs.confirm(
+      context,
+      title: 'Discard geometry changes?',
+      message: 'Your changes have not been inserted into the question yet.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+      tonalConfirm: true,
+    );
+    if (!mounted || !discard) return;
+    Navigator.of(context).pop();
+  }
+
+  void _insert() {
+    if (_session.isEmpty) {
+      _showOutcome(
+        const GeometryEditOutcome.failure('Choose or draw a figure before inserting.'),
+      );
+      return;
+    }
+    Navigator.of(context).pop(_session.diagram);
   }
 }
 
-class _DrawHelp extends StatelessWidget {
-  final GeometryController controller;
+enum _GeometryMenuAction { undo, redo, grid, snap, clear }
 
-  const _DrawHelp({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text(
-          'Tap the canvas to add points. Two points make a line, three make a triangle, and more points make a polygon.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 12),
-        FilledButton.tonalIcon(
-          onPressed: controller.clear,
-          icon: const Icon(Icons.add),
-          label: const Text('Start new custom polygon'),
-        ),
-      ],
-    );
-  }
+class _UndoIntent extends Intent {
+  const _UndoIntent();
 }
 
-class _LabelButtons extends StatelessWidget {
-  final GeometryController controller;
-
-  const _LabelButtons({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    final labels = <(GeometryLabelType, String, IconData)>[
-      (GeometryLabelType.side, 'Side label', Icons.straighten),
-      (GeometryLabelType.angle, 'Angle label', Icons.architecture),
-      (GeometryLabelType.height, 'Height label', Icons.height),
-      (GeometryLabelType.width, 'Width label', Icons.width_full),
-      (GeometryLabelType.radius, 'Radius label', Icons.radio_button_unchecked),
-      (GeometryLabelType.diameter, 'Diameter label', Icons.horizontal_rule),
-      (GeometryLabelType.area, 'Area label', Icons.square_foot),
-      (GeometryLabelType.perimeter, 'Perimeter label', Icons.crop_free),
-      (GeometryLabelType.custom, 'Custom text', Icons.text_fields),
-    ];
-
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        for (final item in labels)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: FilledButton.tonalIcon(
-              onPressed: () => _openLabelSheet(context, item.$1),
-              icon: Icon(item.$3),
-              label: Text(item.$2),
-            ),
-          ),
-      ],
-    );
-  }
-
-  void _openLabelSheet(BuildContext context, GeometryLabelType type) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => LabelEditorSheet(
-        type: type,
-        onSubmitted: (text, fontSize, rotation, isBold) => controller.addLabel(
-          type,
-          text,
-          fontSize: fontSize,
-          rotation: rotation,
-          isBold: isBold,
-        ),
-      ),
-    );
-  }
+class _RedoIntent extends Intent {
+  const _RedoIntent();
 }
 
-class _MarkButtons extends StatelessWidget {
-  final GeometryController controller;
+class _DeleteIntent extends Intent {
+  const _DeleteIntent();
+}
 
-  const _MarkButtons({required this.controller});
+class _EscapeIntent extends Intent {
+  const _EscapeIntent();
+}
 
-  @override
-  Widget build(BuildContext context) {
-    final marks = <(GeometryMarkType, String, IconData)>[
-      (GeometryMarkType.angleArc, 'Angle arc', Icons.architecture),
-      (GeometryMarkType.rightAngle, 'Right angle mark', Icons.crop_square),
-      (GeometryMarkType.equalSideTick, 'Equal side tick', Icons.done),
-      (GeometryMarkType.parallelLine, 'Parallel mark', Icons.drag_handle),
-      (
-        GeometryMarkType.dottedConstructionLine,
-        'Dotted construction line',
-        Icons.more_horiz,
-      ),
-      (
-        GeometryMarkType.dashedHeightLine,
-        'Dashed height line',
-        Icons.more_vert,
-      ),
-      (
-        GeometryMarkType.radiusLine,
-        'Radius line',
-        Icons.radio_button_unchecked,
-      ),
-      (GeometryMarkType.diameterLine, 'Diameter line', Icons.horizontal_rule),
-      (GeometryMarkType.arrowHead, 'Arrow head', Icons.arrow_forward),
-      (GeometryMarkType.doubleArrow, 'Double arrow', Icons.compare_arrows),
-      (GeometryMarkType.curvedArc, 'Curved arc', Icons.rotate_right),
-      (GeometryMarkType.centerPoint, 'Center point', Icons.center_focus_strong),
-    ];
-
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 3.2,
-      ),
-      itemCount: marks.length,
-      itemBuilder: (context, index) {
-        final mark = marks[index];
-        return FilledButton.tonalIcon(
-          onPressed: () => controller.addMark(mark.$1),
-          icon: Icon(mark.$3),
-          label: Text(mark.$2, overflow: TextOverflow.ellipsis),
-        );
-      },
-    );
-  }
+class _DuplicateIntent extends Intent {
+  const _DuplicateIntent();
 }

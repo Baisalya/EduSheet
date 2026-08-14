@@ -4,17 +4,19 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../application/geometry_recipe_factory.dart';
 import '../models/geometry_diagram.dart';
 import '../models/geometry_label.dart';
-import '../models/geometry_mark.dart';
 import '../models/geometry_point.dart';
 import '../models/geometry_shape.dart';
 
-enum GeometryBuilderMode { shapes, draw, labels, marks, export }
-
+/// Owns only the persisted geometry document and its undo/redo history.
+///
+/// Teacher-facing intent, selection semantics and smart commands live in
+/// the editor-session layer. This controller deliberately owns only document
+/// mutation/history while the Studio uses higher-level teacher commands.
 class GeometryController extends ChangeNotifier {
   GeometryDiagram _diagram;
-  GeometryBuilderMode _mode = GeometryBuilderMode.shapes;
   final List<GeometryDiagram> _undoStack = [];
   final List<GeometryDiagram> _redoStack = [];
   String? _selectedLabelId;
@@ -26,11 +28,11 @@ class GeometryController extends ChangeNotifier {
           GeometryDiagram(id: const Uuid().v4(), name: 'Geometry Diagram');
 
   GeometryDiagram get diagram => _diagram;
-  GeometryBuilderMode get mode => _mode;
   bool get canUndo => _undoStack.isNotEmpty;
   bool get canRedo => _redoStack.isNotEmpty;
   String? get selectedLabelId => _selectedLabelId;
   String? get selectedPointId => _selectedPointId;
+
   GeometryLabel? get selectedLabel {
     for (final label in _diagram.labels) {
       if (label.id == _selectedLabelId) return label;
@@ -45,24 +47,46 @@ class GeometryController extends ChangeNotifier {
     return null;
   }
 
-  set mode(GeometryBuilderMode value) {
-    _mode = value;
+
+  /// Applies one document-level edit as one undo transaction.
+  void updateDiagram(
+    GeometryDiagram Function(GeometryDiagram current) transform, {
+    bool clearSelection = false,
+  }) {
+    _commit();
+    _diagram = transform(_diagram);
+    if (clearSelection) {
+      _selectedLabelId = null;
+      _selectedPointId = null;
+    }
+    notifyListeners();
+  }
+
+  void replaceDiagram(GeometryDiagram diagram, {bool clearSelection = true}) {
+    _commit();
+    _diagram = diagram;
+    if (clearSelection) {
+      _selectedLabelId = null;
+      _selectedPointId = null;
+    }
     notifyListeners();
   }
 
   void loadTemplate(GeometryShapeType type) {
-    _commit();
-    final generated = _template(type);
-    _diagram = _diagram.copyWith(
-      name: _shapeTitle(type),
-      points: generated.points,
-      shapes: generated.shapes,
-      labels: generated.labels,
-      marks: generated.marks,
+    final current = _diagram;
+    final generated = const GeometryRecipeFactory().buildShape(
+      type,
+      diagramId: current.id,
+      canvasSize: current.canvasSize,
     );
-    _selectedLabelId = null;
-    _selectedPointId = null;
-    notifyListeners();
+    replaceDiagram(
+      generated.copyWith(
+        showGrid: current.showGrid,
+        snapToGrid: current.snapToGrid,
+        examMode: current.examMode,
+        transparentBackground: current.transparentBackground,
+      ),
+    );
   }
 
   void addPoint(Offset position) {
@@ -108,9 +132,9 @@ class GeometryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void beginDrag() {
-    _commit();
-  }
+  /// Call once at drag start. Subsequent move calls intentionally do not add
+  /// history entries, so one drag becomes one undo step.
+  void beginDrag() => _commit();
 
   void addLabel(
     GeometryLabelType type,
@@ -125,19 +149,20 @@ class GeometryController extends ChangeNotifier {
     final safePosition = _clampToCanvas(
       position ?? Offset(_diagram.canvasSize.width / 2 - 35, 32),
     );
-    final labels = [
-      ..._diagram.labels,
-      GeometryLabel(
-        id: id,
-        type: type,
-        text: text,
-        position: safePosition,
-        fontSize: fontSize.clamp(8.0, 42.0).toDouble(),
-        rotation: rotation,
-        isBold: isBold,
-      ),
-    ];
-    _diagram = _diagram.copyWith(labels: labels);
+    _diagram = _diagram.copyWith(
+      labels: [
+        ..._diagram.labels,
+        GeometryLabel(
+          id: id,
+          type: type,
+          text: text,
+          position: safePosition,
+          fontSize: fontSize.clamp(8.0, 42.0).toDouble(),
+          rotation: rotation,
+          isBold: isBold,
+        ),
+      ],
+    );
     _selectedLabelId = id;
     _selectedPointId = null;
     notifyListeners();
@@ -275,28 +300,14 @@ class GeometryController extends ChangeNotifier {
   void removeSelectedLabel() {
     final id = _selectedLabelId;
     if (id == null) return;
-    _commit();
-    _diagram = _diagram.copyWith(
-      labels: _diagram.labels.where((label) => label.id != id).toList(),
+    updateDiagram(
+      (diagram) => diagram.copyWith(
+        labels: diagram.labels.where((label) => label.id != id).toList(),
+      ),
+      clearSelection: true,
     );
-    _selectedLabelId = null;
-    notifyListeners();
   }
 
-
-  void addMark(GeometryMarkType type) {
-    _commit();
-    final mark = GeometryMark(
-      id: const Uuid().v4(),
-      type: type,
-      pointIds: _diagram.points.take(3).map((point) => point.id).toList(),
-      position: _diagram.points.isNotEmpty
-          ? _diagram.points.first.position
-          : const Offset(170, 120),
-    );
-    _diagram = _diagram.copyWith(marks: [..._diagram.marks, mark]);
-    notifyListeners();
-  }
 
   void duplicate() {
     _commit();
@@ -349,11 +360,10 @@ class GeometryController extends ChangeNotifier {
   }
 
   void clear() {
-    _commit();
-    _diagram = _diagram.copyWith(points: [], shapes: [], labels: [], marks: []);
-    _selectedLabelId = null;
-    _selectedPointId = null;
-    notifyListeners();
+    updateDiagram(
+      (diagram) => diagram.copyWith(points: [], shapes: [], labels: [], marks: []),
+      clearSelection: true,
+    );
   }
 
   void undo() {
@@ -375,23 +385,19 @@ class GeometryController extends ChangeNotifier {
   }
 
   void toggleGrid() {
-    _commit();
-    _diagram = _diagram.copyWith(showGrid: !_diagram.showGrid);
-    notifyListeners();
+    updateDiagram((diagram) => diagram.copyWith(showGrid: !diagram.showGrid));
   }
 
   void toggleSnap() {
-    _commit();
-    _diagram = _diagram.copyWith(snapToGrid: !_diagram.snapToGrid);
-    notifyListeners();
+    updateDiagram((diagram) => diagram.copyWith(snapToGrid: !diagram.snapToGrid));
   }
 
   void toggleTransparentBackground() {
-    _commit();
-    _diagram = _diagram.copyWith(
-      transparentBackground: !_diagram.transparentBackground,
+    updateDiagram(
+      (diagram) => diagram.copyWith(
+        transparentBackground: !diagram.transparentBackground,
+      ),
     );
-    notifyListeners();
   }
 
   void _commit() {
@@ -418,181 +424,9 @@ class GeometryController extends ChangeNotifier {
     );
   }
 
-  GeometryDiagram _template(GeometryShapeType type) {
-    final points = _templatePoints(type);
-    final shape = GeometryShape(
-      id: const Uuid().v4(),
-      type: type,
-      pointIds: points.map((point) => point.id).toList(),
-      radius: type == GeometryShapeType.sphere ? 62 : 56,
-    );
-    final marks = type == GeometryShapeType.rightTriangle
-        ? [
-            GeometryMark(
-              id: const Uuid().v4(),
-              type: GeometryMarkType.rightAngle,
-              pointIds: points.take(3).map((point) => point.id).toList(),
-              position: points.first.position,
-            ),
-          ]
-        : <GeometryMark>[];
-    return _diagram.copyWith(
-      points: points,
-      shapes: [shape],
-      labels: _autoLabels(type, points),
-      marks: marks,
-    );
-  }
-
-  List<GeometryPoint> _templatePoints(GeometryShapeType type) {
-    final coords = switch (type) {
-      GeometryShapeType.line ||
-      GeometryShapeType.arrow ||
-      GeometryShapeType.numberLine => const [Offset(80, 120), Offset(280, 120)],
-      GeometryShapeType.triangle => const [
-        Offset(180, 48),
-        Offset(72, 196),
-        Offset(292, 196),
-      ],
-      GeometryShapeType.rightTriangle => const [
-        Offset(84, 196),
-        Offset(84, 68),
-        Offset(280, 196),
-      ],
-      GeometryShapeType.square => const [
-        Offset(104, 64),
-        Offset(256, 64),
-        Offset(256, 216),
-        Offset(104, 216),
-      ],
-      GeometryShapeType.rectangle ||
-      GeometryShapeType.cuboid ||
-      GeometryShapeType.cylinder => const [
-        Offset(76, 76),
-        Offset(284, 76),
-        Offset(284, 196),
-        Offset(76, 196),
-      ],
-      GeometryShapeType.circle ||
-      GeometryShapeType.semicircle ||
-      GeometryShapeType.cone ||
-      GeometryShapeType.sphere => const [Offset(180, 128), Offset(236, 128)],
-      GeometryShapeType.parallelogram => const [
-        Offset(116, 76),
-        Offset(288, 76),
-        Offset(244, 196),
-        Offset(72, 196),
-      ],
-      GeometryShapeType.trapezium => const [
-        Offset(132, 76),
-        Offset(228, 76),
-        Offset(292, 196),
-        Offset(68, 196),
-      ],
-      GeometryShapeType.rhombus => const [
-        Offset(180, 48),
-        Offset(292, 132),
-        Offset(180, 216),
-        Offset(68, 132),
-      ],
-      GeometryShapeType.pentagon => _regularPolygon(5),
-      GeometryShapeType.hexagon => _regularPolygon(6),
-      GeometryShapeType.coordinateAxes => const [
-        Offset(180, 32),
-        Offset(180, 220),
-        Offset(42, 126),
-        Offset(318, 126),
-      ],
-      GeometryShapeType.cube => const [
-        Offset(88, 92),
-        Offset(220, 92),
-        Offset(220, 216),
-        Offset(88, 216),
-        Offset(140, 48),
-        Offset(272, 48),
-        Offset(272, 172),
-        Offset(140, 172),
-      ],
-      GeometryShapeType.polygon => _regularPolygon(5),
-    };
-
-    return [
-      for (var i = 0; i < coords.length; i++)
-        GeometryPoint(
-          id: const Uuid().v4(),
-          label: _labelForIndex(i),
-          position: coords[i],
-        ),
-    ];
-  }
-
-  List<GeometryLabel> _autoLabels(
-    GeometryShapeType type,
-    List<GeometryPoint> points,
-  ) {
-    if (points.isEmpty) return const [];
-    final labels = <GeometryLabel>[];
-    if (points.length >= 2) {
-      labels.add(
-        GeometryLabel(
-          id: const Uuid().v4(),
-          type: GeometryLabelType.side,
-          text: '${points[0].label}${points[1].label} = 5 cm',
-          position:
-              (points[0].position + points[1].position) / 2 +
-              const Offset(0, -18),
-        ),
-      );
-    }
-    if (type == GeometryShapeType.circle || type == GeometryShapeType.sphere) {
-      labels.add(
-        GeometryLabel(
-          id: const Uuid().v4(),
-          type: GeometryLabelType.radius,
-          text: 'r = 4 cm',
-          position: points.first.position + const Offset(20, -52),
-        ),
-      );
-    }
-    if (type == GeometryShapeType.triangle ||
-        type == GeometryShapeType.rightTriangle) {
-      labels.add(
-        GeometryLabel(
-          id: const Uuid().v4(),
-          type: GeometryLabelType.angle,
-          text: '∠A = 60°',
-          position: points.first.position + const Offset(8, -8),
-        ),
-      );
-    }
-    return labels;
-  }
-
-  List<Offset> _regularPolygon(int sides) {
-    const center = Offset(180, 132);
-    const radius = 86.0;
-    return [
-      for (var i = 0; i < sides; i++)
-        Offset(
-          center.dx +
-              math.cos(-math.pi / 2 + (math.pi * 2 * i / sides)) * radius,
-          center.dy +
-              math.sin(-math.pi / 2 + (math.pi * 2 * i / sides)) * radius,
-        ),
-    ];
-  }
-
   String _labelForIndex(int index) {
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     if (index < letters.length) return letters[index];
     return 'P${index + 1}';
-  }
-
-  String _shapeTitle(GeometryShapeType type) {
-    final words = type.name.replaceAllMapped(
-      RegExp(r'([A-Z])'),
-      (match) => ' ${match.group(1)}',
-    );
-    return '${words[0].toUpperCase()}${words.substring(1)}';
   }
 }

@@ -1,1 +1,23 @@
-test/features/paper_composer/question_rich_text_codec_test.dart
+Files to add/replace (project-relative):
+
+docs/GEOMETRY_STUDIO_ARCH_REFACTOR_2026-08-14.md
+lib/features/geometry_builder/application/geometry_editor_commands.dart
+lib/features/geometry_builder/application/geometry_editor_session.dart
+lib/features/geometry_builder/application/geometry_hit_tester.dart
+lib/features/geometry_builder/application/geometry_recipe.dart
+lib/features/geometry_builder/application/geometry_recipe_factory.dart
+lib/features/geometry_builder/application/geometry_selection.dart
+lib/features/geometry_builder/controllers/geometry_controller.dart
+lib/features/geometry_builder/painters/geometry_painter.dart
+lib/features/geometry_builder/widgets/geometry_add_sheet.dart
+lib/features/geometry_builder/widgets/geometry_builder_screen.dart
+lib/features/geometry_builder/widgets/geometry_canvas.dart
+lib/features/geometry_builder/widgets/geometry_context_bar.dart
+lib/features/geometry_builder/widgets/geometry_input_dialogs.dart
+lib/features/geometry_builder/widgets/geometry_quick_start.dart
+lib/features/geometry_builder/widgets/geometry_selection_inspector.dart
+lib/features/geometry_builder/widgets/label_editor_sheet.dart
+lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+test/features/geometry_builder/geometry_editor_session_test.dart
+test/features/geometry_builder/geometry_recipe_factory_test.dart
+test/features/geometry_builder/geometry_studio_widget_test.dart

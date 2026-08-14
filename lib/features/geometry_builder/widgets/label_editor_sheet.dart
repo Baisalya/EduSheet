@@ -214,19 +214,8 @@ class _LabelEditorSheetState extends State<LabelEditorSheet> {
     Navigator.of(context).pop();
   }
 
-  String _defaultText(GeometryLabelType type) {
-    return switch (type) {
-      GeometryLabelType.side => 'AB = 5 cm',
-      GeometryLabelType.angle => '∠A = 60°',
-      GeometryLabelType.height => 'h = 8 cm',
-      GeometryLabelType.width => 'w = 12 cm',
-      GeometryLabelType.radius => 'r = 4 cm',
-      GeometryLabelType.diameter => 'd = 8 cm',
-      GeometryLabelType.area => 'Area = 24 cm²',
-      GeometryLabelType.perimeter => 'Perimeter = 20 cm',
-      GeometryLabelType.custom => 'Label',
-    };
-  }
+  String _defaultText(GeometryLabelType type) => '';
+
 }
 
 
