@@ -9,7 +9,7 @@ class CalculatorButton extends StatelessWidget {
   final String? alphaLabel;
   final VoidCallback onTap;
   final Color bgColor;
-  final Color textColor;
+  final Color? textColor;
   final CalculatorButtonShape shape;
   final IconData? icon;
   final bool isActive;
@@ -24,7 +24,7 @@ class CalculatorButton extends StatelessWidget {
     this.alphaLabel,
     required this.onTap,
     this.bgColor = const Color(0xFFF5F7FA),
-    this.textColor = const Color(0xFF111827),
+    this.textColor,
     this.shape = CalculatorButtonShape.rect,
     this.icon,
     this.isActive = false,
@@ -37,7 +37,9 @@ class CalculatorButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final radius = shape == CalculatorButtonShape.round ? 22.0 : 8.0;
-    final foreground = isActive ? Colors.white : textColor;
+    final foreground = isActive
+        ? Colors.white
+        : (textColor ?? theme.colorScheme.onSurface);
     final background = isActive ? const Color(0xFF2563EB) : bgColor;
 
     return Padding(

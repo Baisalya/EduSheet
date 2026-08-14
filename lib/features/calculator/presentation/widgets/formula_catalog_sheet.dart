@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../data/repositories/formula_data.dart';
 import '../../domain/models/formula_model.dart';
 import '../providers/calculator_provider.dart';
 
 class FormulaCatalogSheet extends StatefulWidget {
-  const FormulaCatalogSheet({super.key});
+  final bool dialogMode;
+
+  const FormulaCatalogSheet({
+    super.key,
+    this.dialogMode = false,
+  });
 
   @override
   State<FormulaCatalogSheet> createState() => _FormulaCatalogSheetState();
@@ -17,144 +23,148 @@ class _FormulaCatalogSheetState extends State<FormulaCatalogSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredFormulas = FormulaData.formulas.where((f) {
+    final theme = Theme.of(context);
+    final query = searchQuery.trim().toLowerCase();
+    final filteredFormulas = FormulaData.formulas.where((formula) {
       final matchesSearch =
-          f.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          f.category.toLowerCase().contains(searchQuery.toLowerCase());
-      final matchesSubject = f.subject == selectedSubject;
-      return matchesSearch && matchesSubject;
+          query.isEmpty ||
+          formula.name.toLowerCase().contains(query) ||
+          formula.category.toLowerCase().contains(query) ||
+          formula.expression.toLowerCase().contains(query);
+      return matchesSearch && formula.subject == selectedSubject;
     }).toList();
 
     return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
+      height: widget.dialogMode
+          ? double.infinity
+          : MediaQuery.sizeOf(context).height * 0.72,
       decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: theme.colorScheme.surface,
+        borderRadius: widget.dialogMode
+            ? BorderRadius.circular(20)
+            : const BorderRadius.vertical(top: Radius.circular(20)),
+        border: widget.dialogMode
+            ? Border.all(color: theme.colorScheme.outlineVariant)
+            : null,
       ),
       child: Column(
         children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[600],
-              borderRadius: BorderRadius.circular(2),
+          if (!widget.dialogMode) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurfaceVariant.withAlpha(80),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
+          ],
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
             child: Row(
               children: [
-                const Text(
+                Icon(Icons.science_rounded, color: theme.colorScheme.primary),
+                const SizedBox(width: 10),
+                Text(
                   'Science Formulas',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  tooltip: 'Close',
+                  icon: const Icon(Icons.close_rounded),
                   onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Search formulas...',
-                prefixIcon: const Icon(Icons.search),
+                hintText: 'Search formulas',
+                prefixIcon: const Icon(Icons.search_rounded),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                isDense: true,
               ),
               onChanged: (value) => setState(() => searchQuery = value),
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _SubjectTab(
-                label: 'Physics',
-                isSelected: selectedSubject == ScienceSubject.physics,
-                onTap: () =>
-                    setState(() => selectedSubject = ScienceSubject.physics),
-              ),
-              const SizedBox(width: 12),
-              _SubjectTab(
-                label: 'Chemistry',
-                isSelected: selectedSubject == ScienceSubject.chemistry,
-                onTap: () =>
-                    setState(() => selectedSubject = ScienceSubject.chemistry),
-              ),
-            ],
-          ),
-          const Divider(height: 24),
-          Expanded(
-            child: ListView.builder(
-              itemCount: filteredFormulas.length,
-              itemBuilder: (context, index) {
-                final formula = filteredFormulas[index];
-                return Consumer(
-                  builder: (context, ref, _) {
-                    return ListTile(
-                      title: Text(
-                        formula.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(formula.expression),
-                      trailing: const Icon(
-                        Icons.add_circle_outline,
-                        color: Colors.teal,
-                      ),
-                      onTap: () {
-                        ref
-                            .read(calculatorProvider.notifier)
-                            .insertFormula(formula.expression);
-                        Navigator.pop(context);
-                      },
-                    );
-                  },
-                );
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SegmentedButton<ScienceSubject>(
+              segments: const [
+                ButtonSegment(
+                  value: ScienceSubject.physics,
+                  label: Text('Physics'),
+                  icon: Icon(Icons.bolt_rounded),
+                ),
+                ButtonSegment(
+                  value: ScienceSubject.chemistry,
+                  label: Text('Chemistry'),
+                  icon: Icon(Icons.science_outlined),
+                ),
+              ],
+              selected: {selectedSubject},
+              showSelectedIcon: false,
+              onSelectionChanged: (selection) {
+                setState(() => selectedSubject = selection.first);
               },
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SubjectTab extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _SubjectTab({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.teal : Colors.grey[800],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.grey[400],
-            fontWeight: FontWeight.bold,
+          const SizedBox(height: 12),
+          const Divider(height: 1),
+          Expanded(
+            child: filteredFormulas.isEmpty
+                ? Center(
+                    child: Text(
+                      'No matching formulas',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: filteredFormulas.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 6),
+                    itemBuilder: (context, index) {
+                      final formula = filteredFormulas[index];
+                      return Consumer(
+                        builder: (context, ref, _) {
+                          return ListTile(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            tileColor: theme.colorScheme.surfaceContainerLow,
+                            title: Text(
+                              formula.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(formula.expression),
+                            trailing: const Icon(Icons.add_circle_outline),
+                            onTap: () {
+                              ref
+                                  .read(calculatorProvider.notifier)
+                                  .insertFormula(formula.expression);
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
           ),
-        ),
+        ],
       ),
     );
   }
