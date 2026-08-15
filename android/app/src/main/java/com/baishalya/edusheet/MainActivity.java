@@ -31,6 +31,8 @@ import io.flutter.plugin.common.MethodChannel;
 public class MainActivity extends FlutterActivity {
     private static final String DOCUMENT_CHANNEL = "edusheet/document_intents";
     private static final String PDF_RENDERER_CHANNEL = "edusheet/pdf_renderer";
+    private static final long MAX_INCOMING_DOCUMENT_BYTES = 1024L * 1024L * 1024L;
+    private static final long INCOMING_CACHE_RETENTION_MS = 72L * 60L * 60L * 1000L;
     private MethodChannel documentChannel;
 
     @Override
@@ -123,9 +125,20 @@ public class MainActivity extends FlutterActivity {
         Uri uri = incomingDocumentUri(intent);
         if (uri == null) return null;
 
+        ContentResolver resolver = getContentResolver();
+        String mimeType = resolver.getType(uri);
+        String displayName = getDisplayName(resolver, uri);
+        long declaredSize = getDeclaredSize(resolver, uri);
+        if (declaredSize > MAX_INCOMING_DOCUMENT_BYTES) {
+            throw new IOException("This document is too large to import safely.");
+        }
+
         String path;
         if ("file".equalsIgnoreCase(uri.getScheme())) {
             path = uri.getPath();
+            if ((displayName == null || displayName.trim().isEmpty()) && path != null) {
+                displayName = new File(path).getName();
+            }
         } else if ("content".equalsIgnoreCase(uri.getScheme())) {
             path = copyContentUriToCache(uri.toString());
         } else {
@@ -136,11 +149,20 @@ public class MainActivity extends FlutterActivity {
             throw new IOException("Unable to resolve the selected document.");
         }
 
+        File localFile = new File(path);
+        long actualSize = localFile.exists() ? localFile.length() : declaredSize;
         Map<String, Object> document = new HashMap<>();
         document.put("path", path);
         document.put("uri", uri.toString());
-        String mimeType = getContentResolver().getType(uri);
+        document.put("activationId", String.valueOf(intent.getAction()) + ":" + uri);
+        document.put("source", Intent.ACTION_SEND.equals(intent.getAction())
+                ? "androidShareIntent"
+                : "androidViewIntent");
         if (mimeType != null) document.put("mimeType", mimeType);
+        if (displayName != null && !displayName.trim().isEmpty()) {
+            document.put("name", displayName);
+        }
+        if (actualSize >= 0) document.put("size", actualSize);
         return document;
     }
 
@@ -162,6 +184,10 @@ public class MainActivity extends FlutterActivity {
         Uri uri = Uri.parse(uriString);
         ContentResolver resolver = getContentResolver();
         String displayName = getDisplayName(resolver, uri);
+        long declaredSize = getDeclaredSize(resolver, uri);
+        if (declaredSize > MAX_INCOMING_DOCUMENT_BYTES) {
+            throw new IOException("This document is too large to import safely.");
+        }
 
         if (displayName == null || displayName.trim().isEmpty()) {
             displayName = "shared_document" + getExtensionForUri(resolver, uri);
@@ -173,22 +199,62 @@ public class MainActivity extends FlutterActivity {
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
             throw new IOException("Unable to create document cache.");
         }
+        cleanupIncomingCache(cacheDir);
 
         File destination = uniqueFile(cacheDir, sanitizeFileName(displayName));
+        long totalBytes = 0;
+        boolean completed = false;
         try (InputStream inputStream = resolver.openInputStream(uri);
              FileOutputStream outputStream = new FileOutputStream(destination)) {
             if (inputStream == null) {
                 throw new IOException("Unable to open incoming document.");
             }
 
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[64 * 1024];
             int bytesRead;
             while ((bytesRead = inputStream.read(buffer)) != -1) {
+                totalBytes += bytesRead;
+                if (totalBytes > MAX_INCOMING_DOCUMENT_BYTES) {
+                    throw new IOException("This document is too large to import safely.");
+                }
                 outputStream.write(buffer, 0, bytesRead);
+            }
+            outputStream.flush();
+            completed = true;
+        } finally {
+            if (!completed && destination.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                destination.delete();
             }
         }
 
         return destination.getAbsolutePath();
+    }
+
+    private long getDeclaredSize(ContentResolver resolver, Uri uri) {
+        try (Cursor cursor = resolver.query(uri,
+                new String[]{OpenableColumns.SIZE}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                    return cursor.getLong(sizeIndex);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return -1;
+    }
+
+    private void cleanupIncomingCache(File cacheDir) {
+        File[] files = cacheDir.listFiles();
+        if (files == null) return;
+        long cutoff = System.currentTimeMillis() - INCOMING_CACHE_RETENTION_MS;
+        for (File file : files) {
+            if (file.isFile() && file.lastModified() < cutoff) {
+                //noinspection ResultOfMethodCallIgnored
+                file.delete();
+            }
+        }
     }
 
     private String getDisplayName(ContentResolver resolver, Uri uri) {

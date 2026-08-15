@@ -1,8 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../application/document_open_coordinator.dart';
 import '../../data/repositories/document_repository.dart';
 import '../../domain/models/document_model.dart';
 
 final documentRepositoryProvider = Provider((ref) => DocumentRepository());
+
+final documentOpenCoordinatorProvider = Provider(
+  (ref) => DocumentOpenCoordinator(ref.watch(documentRepositoryProvider)),
+);
 
 class DocumentState {
   final List<DocumentFile> allDocuments;

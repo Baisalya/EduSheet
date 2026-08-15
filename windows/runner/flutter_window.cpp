@@ -1,8 +1,17 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_method_codec.h>
+
+#include <memory>
 #include <optional>
+#include <string>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+constexpr ULONG_PTR kEduSheetDocumentCopyDataId = 0x4553444F;  // "ESDO"
+constexpr char kDocumentChannelName[] = "edusheet/document_intents";
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,9 +34,20 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+
+  document_channel_ = std::make_unique<
+      flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), kDocumentChannelName,
+      &flutter::StandardMethodCodec::GetInstance());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
+    dart_ready_ = true;
+    for (const auto& path : pending_document_paths_) {
+      DispatchDocumentToDart(path);
+    }
+    pending_document_paths_.clear();
     this->Show();
   });
 
@@ -40,6 +60,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  document_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -47,10 +68,57 @@ void FlutterWindow::OnDestroy() {
   Win32Window::OnDestroy();
 }
 
+void FlutterWindow::DispatchDocumentToDart(const std::string& path) {
+  if (!document_channel_ || path.empty()) {
+    return;
+  }
+
+  flutter::EncodableMap document;
+  document[flutter::EncodableValue("path")] = flutter::EncodableValue(path);
+  document[flutter::EncodableValue("source")] =
+      flutter::EncodableValue("windowsCommandLine");
+  document[flutter::EncodableValue("activationId")] =
+      flutter::EncodableValue(
+          "windows:" + std::to_string(::GetTickCount64()) + ":" + path);
+
+  document_channel_->InvokeMethod(
+      "openDocument",
+      std::make_unique<flutter::EncodableValue>(document));
+}
+
 LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == WM_COPYDATA) {
+    const auto* copy_data = reinterpret_cast<const COPYDATASTRUCT*>(lparam);
+    if (copy_data != nullptr &&
+        copy_data->dwData == kEduSheetDocumentCopyDataId &&
+        copy_data->lpData != nullptr && copy_data->cbData > 1) {
+      const auto* bytes = static_cast<const char*>(copy_data->lpData);
+      std::string path(bytes, bytes + copy_data->cbData);
+      if (!path.empty() && path.back() == '\0') {
+        path.pop_back();
+      }
+
+      if (!path.empty()) {
+        if (document_channel_ && dart_ready_) {
+          DispatchDocumentToDart(path);
+        } else {
+          pending_document_paths_.push_back(path);
+        }
+
+        if (::IsIconic(hwnd)) {
+          ::ShowWindow(hwnd, SW_RESTORE);
+        } else {
+          ::ShowWindow(hwnd, SW_SHOW);
+        }
+        ::SetForegroundWindow(hwnd);
+        return TRUE;
+      }
+    }
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
@@ -63,7 +131,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
 
   switch (message) {
     case WM_FONTCHANGE:
-      flutter_controller_->engine()->ReloadSystemFonts();
+      if (flutter_controller_) {
+        flutter_controller_->engine()->ReloadSystemFonts();
+      }
       break;
   }
 

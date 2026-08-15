@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -9,20 +11,22 @@ import 'features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 import 'shared/presentation/providers/theme_provider.dart';
 import 'shared/localization/edusheet_localizations.dart';
 import 'features/pdf/services/question_paper_service.dart';
-import 'features/document_reader/domain/models/document_model.dart';
+import 'features/document_reader/domain/models/document_open_request.dart';
 import 'features/document_reader/presentation/providers/document_provider.dart';
 import 'features/document_reader/presentation/screens/file_preview_screen.dart';
 
-void main() {
+void main(List<String> args) {
   WidgetsFlutterBinding.ensureInitialized();
   // Preload PDF fonts in background to avoid delay when opening PDF for the first time
   QuestionPaperService.preloadTheme();
 
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(ProviderScope(child: MyApp(startupArguments: args)));
 }
 
 class MyApp extends ConsumerStatefulWidget {
-  const MyApp({super.key});
+  final List<String> startupArguments;
+
+  const MyApp({super.key, this.startupArguments = const []});
 
   @override
   ConsumerState<MyApp> createState() => _MyAppState();
@@ -34,24 +38,24 @@ class _MyAppState extends ConsumerState<MyApp> {
   );
 
   final _navigatorKey = GlobalKey<NavigatorState>();
-  String? _lastOpenedPath;
-  DateTime? _lastOpenedAt;
 
   @override
   void initState() {
     super.initState();
-    _initDocumentIntents();
+    _initDocumentActivation();
   }
 
-  void _initDocumentIntents() {
-    _documentChannel.setMethodCallHandler(_handleDocumentIntentCall);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _openInitialDocument());
+  void _initDocumentActivation() {
+    if (Platform.isAndroid || Platform.isWindows) {
+      _documentChannel.setMethodCallHandler(_handleDocumentIntentCall);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openStartupDocument());
   }
 
   Future<dynamic> _handleDocumentIntentCall(MethodCall call) async {
     switch (call.method) {
       case 'openDocument':
-        await _handleIncomingDocument(call.arguments);
+        await _handlePlatformDocument(call.arguments);
         return null;
       case 'openDocumentError':
         _showIncomingFileError(_errorMessageFromArguments(call.arguments));
@@ -61,78 +65,70 @@ class _MyAppState extends ConsumerState<MyApp> {
     }
   }
 
-  Future<void> _openInitialDocument() async {
-    try {
-      final document = await _documentChannel
-          .invokeMapMethod<String, Object?>('getInitialDocument');
-      if (document != null) {
-        await _handleIncomingDocument(document);
-      }
-    } on PlatformException catch (error) {
-      _showIncomingFileError(error.message ?? 'Unable to open this document.');
-    }
-  }
-
-  Future<void> _handleIncomingDocument(Object? arguments) async {
-    final path = _pathFromArguments(arguments);
-    if (path == null || path.isEmpty) {
-      _showIncomingFileError('Unable to find the selected document.');
+  Future<void> _openStartupDocument() async {
+    final commandLineRequest =
+        DocumentOpenRequest.fromCommandLine(widget.startupArguments);
+    if (commandLineRequest != null) {
+      await _openRequest(commandLineRequest);
       return;
     }
 
+    if (!Platform.isAndroid) return;
     try {
-      final repo = ref.read(documentRepositoryProvider);
-      final doc = await repo.getDocumentFromFilePath(path);
+      final document = await _documentChannel
+          .invokeMapMethod<String, Object?>('getInitialDocument');
+      if (document != null) await _handlePlatformDocument(document);
+    } on PlatformException catch (error) {
+      _showIncomingFileError(error.message ?? 'Unable to open this document.');
+    } on MissingPluginException {
+      // Android document activation is optional when running in tests.
+    }
+  }
 
-      if (doc != null) {
-        _openDocument(doc);
-      } else {
-        _showIncomingFileError('This file type is not supported yet.');
+  Future<void> _handlePlatformDocument(Object? arguments) async {
+    if (arguments is! Map) {
+      _showIncomingFileError('Unable to resolve the selected document.');
+      return;
+    }
+    final request = DocumentOpenRequest.fromPlatformMap(arguments);
+    await _openRequest(request);
+  }
+
+  Future<void> _openRequest(DocumentOpenRequest request) async {
+    try {
+      final result = await ref
+          .read(documentOpenCoordinatorProvider)
+          .resolve(request);
+      if (!mounted || result.duplicate) return;
+
+      final session = result.session;
+      if (session == null) {
+        _showIncomingFileError(
+          result.errorMessage ?? 'Unable to open this document.',
+        );
+        return;
       }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) =>
+                FilePreviewScreen(document: session.document),
+          ),
+        );
+      });
     } catch (_) {
       _showIncomingFileError('Unable to open this document.');
     }
   }
 
-  String? _pathFromArguments(Object? arguments) {
-    if (arguments is Map) {
-      final path = arguments['path'];
-      return path is String ? path : null;
-    }
-
-    return null;
-  }
-
   String _errorMessageFromArguments(Object? arguments) {
     if (arguments is Map) {
       final message = arguments['message'];
-      if (message is String && message.trim().isNotEmpty) {
-        return message;
-      }
+      if (message is String && message.trim().isNotEmpty) return message;
     }
-
     return 'Unable to open this document.';
-  }
-
-  void _openDocument(DocumentFile doc) {
-    final openedAt = DateTime.now();
-    if (_lastOpenedPath == doc.path &&
-        _lastOpenedAt != null &&
-        openedAt.difference(_lastOpenedAt!).inSeconds < 2) {
-      return;
-    }
-
-    _lastOpenedPath = doc.path;
-    _lastOpenedAt = openedAt;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _navigatorKey.currentState?.push(
-        MaterialPageRoute(
-          builder: (context) => FilePreviewScreen(document: doc),
-        ),
-      );
-    });
   }
 
   void _showIncomingFileError(String message) {
@@ -140,10 +136,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       if (!mounted) return;
       final context = _navigatorKey.currentContext;
       if (context == null) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     });
   }
 

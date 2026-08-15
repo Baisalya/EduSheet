@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../domain/models/document_model.dart';
+import '../../domain/models/document_open_request.dart';
 import '../providers/document_provider.dart';
 import 'file_preview_screen.dart';
 
@@ -84,21 +85,29 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
     final path = result?.files.single.path;
     if (path == null || !mounted) return;
 
-    final repo = ref.read(documentRepositoryProvider);
-    final document = await repo.getDocumentFromFilePath(path);
-    if (!mounted) return;
+    await _openRequest(DocumentOpenRequest.fromFilePicker(path));
+  }
 
-    if (document == null) {
+  Future<void> _openRequest(DocumentOpenRequest request) async {
+    final result = await ref.read(documentOpenCoordinatorProvider).resolve(request);
+    if (!mounted || result.duplicate) return;
+
+    final session = result.session;
+    if (session == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This file type is not supported yet.')),
+        SnackBar(
+          content: Text(
+            result.errorMessage ?? 'Unable to open this document.',
+          ),
+        ),
       );
       return;
     }
 
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => FilePreviewScreen(document: document),
+        builder: (context) => FilePreviewScreen(document: session.document),
       ),
     );
   }
@@ -325,7 +334,10 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
       itemCount: state.filteredDocuments.length,
       itemBuilder: (context, index) {
         final doc = state.filteredDocuments[index];
-        return _DocumentCard(doc: doc);
+        return _DocumentCard(
+          doc: doc,
+          onTap: () => _openRequest(DocumentOpenRequest.fromReader(doc.path)),
+        );
       },
     );
   }
@@ -405,8 +417,9 @@ class _FilterChip extends StatelessWidget {
 
 class _DocumentCard extends StatelessWidget {
   final DocumentFile doc;
+  final VoidCallback onTap;
 
-  const _DocumentCard({required this.doc});
+  const _DocumentCard({required this.doc, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -429,14 +442,7 @@ class _DocumentCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => FilePreviewScreen(document: doc),
-            ),
-          );
-        },
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
