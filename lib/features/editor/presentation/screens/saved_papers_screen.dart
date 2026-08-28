@@ -76,7 +76,9 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
                 prefixIcon: const Icon(Icons.search),
                 isDense: true,
                 filled: true,
-                fillColor: isDark ? Colors.white.withAlpha(13) : Colors.grey.withAlpha(13),
+                fillColor: isDark
+                    ? Colors.white.withAlpha(13)
+                    : Colors.grey.withAlpha(13),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
@@ -102,13 +104,21 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
                     filtered.sort((a, b) => a.createdAt.compareTo(b.createdAt));
                     break;
                   case PaperSort.titleAZ:
-                    filtered.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+                    filtered.sort(
+                      (a, b) => a.title.toLowerCase().compareTo(
+                        b.title.toLowerCase(),
+                      ),
+                    );
                     break;
                   case PaperSort.marksHigh:
-                    filtered.sort((a, b) => b.totalMarks.compareTo(a.totalMarks));
+                    filtered.sort(
+                      (a, b) => b.totalMarks.compareTo(a.totalMarks),
+                    );
                     break;
                   case PaperSort.marksLow:
-                    filtered.sort((a, b) => a.totalMarks.compareTo(b.totalMarks));
+                    filtered.sort(
+                      (a, b) => a.totalMarks.compareTo(b.totalMarks),
+                    );
                     break;
                 }
 
@@ -118,14 +128,21 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          _searchQuery.isEmpty ? Icons.description_outlined : Icons.search_off,
+                          _searchQuery.isEmpty
+                              ? Icons.description_outlined
+                              : Icons.search_off,
                           size: 64,
                           color: Colors.grey[300],
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          _searchQuery.isEmpty ? 'No saved papers yet.' : 'No papers match your search.',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                          _searchQuery.isEmpty
+                              ? 'No saved papers yet.'
+                              : 'No papers match your search.',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 16,
+                          ),
                         ),
                       ],
                     ),
@@ -158,7 +175,9 @@ class _SavedPaperCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final dateStr = DateFormat('MMM dd, yyyy • hh:mm a').format(paper.createdAt);
+    final dateStr = DateFormat(
+      'MMM dd, yyyy • hh:mm a',
+    ).format(paper.createdAt);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -382,7 +401,6 @@ class _SavedPaperCard extends ConsumerWidget {
       );
     }
   }
-
 }
 
 class _ActionButton extends StatelessWidget {

@@ -24,8 +24,7 @@ class SpreadsheetDocumentViewer extends StatefulWidget {
       _SpreadsheetDocumentViewerState();
 }
 
-class _SpreadsheetDocumentViewerState
-    extends State<SpreadsheetDocumentViewer> {
+class _SpreadsheetDocumentViewerState extends State<SpreadsheetDocumentViewer> {
   late final SpreadsheetParserService _parserService;
   late Future<SpreadsheetWorkbook> _future;
   int _selectedSheet = 0;
@@ -83,15 +82,14 @@ class _SpreadsheetDocumentViewerState
           return const _SpreadsheetLoadingState();
         }
         if (snapshot.hasError) {
-          return _SpreadsheetErrorState(
-            error: snapshot.error,
-            onRetry: _retry,
-          );
+          return _SpreadsheetErrorState(error: snapshot.error, onRetry: _retry);
         }
 
         final workbook = snapshot.data!;
         if (workbook.sheets.isEmpty || workbook.isEmpty) {
-          return const Center(child: Text('No readable spreadsheet cells found.'));
+          return const Center(
+            child: Text('No readable spreadsheet cells found.'),
+          );
         }
         if (_selectedSheet >= workbook.sheets.length) _selectedSheet = 0;
         final sheet = workbook.sheets[_selectedSheet];
@@ -104,14 +102,17 @@ class _SpreadsheetDocumentViewerState
               zoom: _zoom,
               onSelected: (index) => setState(() => _selectedSheet = index),
               onZoomOut: _zoom > 0.7
-                  ? () => setState(() => _zoom = math.max(0.7, _zoom - 0.1).toDouble())
+                  ? () => setState(
+                      () => _zoom = math.max(0.7, _zoom - 0.1).toDouble(),
+                    )
                   : null,
               onZoomIn: _zoom < 1.8
-                  ? () => setState(() => _zoom = math.min(1.8, _zoom + 0.1).toDouble())
+                  ? () => setState(
+                      () => _zoom = math.min(1.8, _zoom + 0.1).toDouble(),
+                    )
                   : null,
             ),
-            if (workbook.truncated)
-              const _SpreadsheetLimitBanner(),
+            if (workbook.truncated) const _SpreadsheetLimitBanner(),
             Expanded(
               child: _VirtualSpreadsheetGrid(
                 key: ValueKey('${widget.document.path}-${sheet.name}'),
@@ -411,7 +412,9 @@ class _SpreadsheetHeaderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final background = isDark ? const Color(0xFF243025) : const Color(0xFFEAF7ED);
+    final background = isDark
+        ? const Color(0xFF243025)
+        : const Color(0xFFEAF7ED);
     final grid = isDark ? Colors.white12 : Colors.black12;
     final textColor = isDark ? Colors.white : Colors.black87;
     final fill = Paint()..color = background;
@@ -484,7 +487,9 @@ class _SpreadsheetRowPainter extends CustomPainter {
     final background = isDark
         ? (alternating ? const Color(0xFF191D22) : const Color(0xFF15181D))
         : (alternating ? const Color(0xFFF9FBFC) : Colors.white);
-    final headerBackground = isDark ? const Color(0xFF20252B) : const Color(0xFFF0F3F6);
+    final headerBackground = isDark
+        ? const Color(0xFF20252B)
+        : const Color(0xFFF0F3F6);
     final grid = isDark ? Colors.white10 : Colors.black12;
     final textColor = isDark ? Colors.white70 : Colors.black87;
     final fill = Paint()..color = background;
@@ -553,7 +558,9 @@ class _SpreadsheetRowPainter extends CustomPainter {
   int columnCount,
 ) {
   final relativeStart = math.max(0.0, offset - rowHeaderWidth).toDouble();
-  final relativeEnd = math.max(0.0, offset + viewportWidth - rowHeaderWidth).toDouble();
+  final relativeEnd = math
+      .max(0.0, offset + viewportWidth - rowHeaderWidth)
+      .toDouble();
   final start = (relativeStart / columnWidth)
       .floor()
       .clamp(0, columnCount - 1)
@@ -669,17 +676,21 @@ class _SpreadsheetErrorState extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                cloudUnavailable ? Icons.cloud_off_outlined : Icons.error_outline,
+                cloudUnavailable
+                    ? Icons.cloud_off_outlined
+                    : Icons.error_outline,
                 size: 54,
-                color: cloudUnavailable ? Colors.orangeAccent : Colors.redAccent,
+                color: cloudUnavailable
+                    ? Colors.orangeAccent
+                    : Colors.redAccent,
               ),
               const SizedBox(height: 12),
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
               Text(message, textAlign: TextAlign.center),

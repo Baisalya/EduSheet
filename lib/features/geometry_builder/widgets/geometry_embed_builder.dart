@@ -125,7 +125,9 @@ class _InteractiveGeometryWrapperState
 
   int get _embedOffset {
     final node = widget.embedContext.node;
-    return widget.embedContext.controller.document.queryChild(node.offset).offset;
+    return widget.embedContext.controller.document
+        .queryChild(node.offset)
+        .offset;
   }
 
   String _payload() => jsonEncode({
@@ -200,10 +202,11 @@ class _InteractiveGeometryWrapperState
                   onHorizontalDragUpdate: widget.interactive && _isSelected
                       ? (details) {
                           setState(() {
-                            _currentAlignmentX = (_currentAlignmentX +
-                                    (details.delta.dx / availableWidth) * 2)
-                                .clamp(-1.0, 1.0)
-                                .toDouble();
+                            _currentAlignmentX =
+                                (_currentAlignmentX +
+                                        (details.delta.dx / availableWidth) * 2)
+                                    .clamp(-1.0, 1.0)
+                                    .toDouble();
                           });
                         }
                       : null,
@@ -253,14 +256,15 @@ class _InteractiveGeometryWrapperState
                             onStart: () => setState(() => _isResizing = true),
                             onUpdate: (details) {
                               setState(() {
-                                _currentHeight = (_currentHeight +
-                                        details.delta.dy)
-                                    .clamp(90.0, 520.0)
-                                    .toDouble();
-                                _currentWidthFactor = (_currentWidthFactor +
-                                        details.delta.dx / availableWidth)
-                                    .clamp(0.35, 1.0)
-                                    .toDouble();
+                                _currentHeight =
+                                    (_currentHeight + details.delta.dy)
+                                        .clamp(90.0, 520.0)
+                                        .toDouble();
+                                _currentWidthFactor =
+                                    (_currentWidthFactor +
+                                            details.delta.dx / availableWidth)
+                                        .clamp(0.35, 1.0)
+                                        .toDouble();
                               });
                             },
                             onEnd: () {
@@ -306,9 +310,7 @@ class _InteractiveGeometryWrapperState
             onPressed: _editDiagram,
             icon: const Icon(Icons.edit_rounded, size: 17),
             label: const Text('Edit'),
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-            ),
+            style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
           ),
           _ToolbarIcon(
             tooltip: 'Align left',

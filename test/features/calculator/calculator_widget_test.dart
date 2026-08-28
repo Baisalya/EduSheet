@@ -24,7 +24,6 @@ void main() {
     return container;
   }
 
-
   testWidgets('renders without overflow at compact Android width', (
     tester,
   ) async {
@@ -59,23 +58,24 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('physical keyboard and numpad actions use calculator controller', (
-    tester,
-  ) async {
-    final container = await pumpCalculator(tester, const Size(900, 700));
-    addTearDown(container.dispose);
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'physical keyboard and numpad actions use calculator controller',
+    (tester) async {
+      final container = await pumpCalculator(tester, const Size(900, 700));
+      addTearDown(container.dispose);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
-    await tester.sendKeyEvent(LogicalKeyboardKey.numpadAdd);
-    await tester.sendKeyEvent(LogicalKeyboardKey.digit3);
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
+      await tester.sendKeyEvent(LogicalKeyboardKey.numpadAdd);
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
 
-    final state = container.read(calculatorProvider);
-    expect(state.equation, '2+3');
-    expect(state.result, '5');
-  });
+      final state = container.read(calculatorProvider);
+      expect(state.equation, '2+3');
+      expect(state.result, '5');
+    },
+  );
 
   testWidgets('shows a faded live preview before equals without committing', (
     tester,
@@ -112,9 +112,6 @@ void main() {
     // AnimatedSwitcher intentionally keeps the outgoing preview widget mounted
     // during its fade-out. Settle that transition before asserting removal.
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey('calculator-live-preview')),
-      findsNothing,
-    );
+    expect(find.byKey(const ValueKey('calculator-live-preview')), findsNothing);
   });
 }

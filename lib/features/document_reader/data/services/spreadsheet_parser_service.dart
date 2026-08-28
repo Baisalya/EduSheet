@@ -46,7 +46,8 @@ class SpreadsheetParserService {
             }
             rows.add(
               SpreadsheetRow(
-                rowIndex: (rawRow['rowIndex'] as num?)?.toInt() ?? rows.length + 1,
+                rowIndex:
+                    (rawRow['rowIndex'] as num?)?.toInt() ?? rows.length + 1,
                 cells: cells,
               ),
             );
@@ -200,7 +201,8 @@ Map<String, Object?> _parseXlsx(Uint8List bytes) {
         break;
       }
 
-      final rowNumber = int.tryParse(row.getAttribute('r') ?? '') ?? rows.length + 1;
+      final rowNumber =
+          int.tryParse(row.getAttribute('r') ?? '') ?? rows.length + 1;
       final cells = <int, String>{};
       for (final cell in row.childElements.where(
         (element) => element.name.local == 'c',

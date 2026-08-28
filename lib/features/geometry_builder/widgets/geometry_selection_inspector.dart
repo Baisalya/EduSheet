@@ -18,7 +18,9 @@ class GeometrySelectionInspector extends StatelessWidget {
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerLow,
             border: Border(
-              left: BorderSide(color: theme.dividerColor.withValues(alpha: 0.45)),
+              left: BorderSide(
+                color: theme.dividerColor.withValues(alpha: 0.45),
+              ),
             ),
           ),
           child: ListView(
@@ -62,17 +64,23 @@ class GeometrySelectionInspector extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Show grid'),
-                value: session.diagram.showGrid,
-                onChanged: (_) => session.toggleGrid(),
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Show grid'),
+                  value: session.diagram.showGrid,
+                  onChanged: (_) => session.toggleGrid(),
+                ),
               ),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Snap points to grid'),
-                value: session.diagram.snapToGrid,
-                onChanged: (_) => session.toggleSnap(),
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Snap points to grid'),
+                  value: session.diagram.snapToGrid,
+                  onChanged: (_) => session.toggleSnap(),
+                ),
               ),
               const Divider(height: 28),
               Text(
@@ -82,9 +90,19 @@ class GeometrySelectionInspector extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              const _Tip(icon: Icons.touch_app_rounded, text: 'Tap a side or point to get relevant tools.'),
-              const _Tip(icon: Icons.open_with_rounded, text: 'Drag points and labels directly on the canvas.'),
-              const _Tip(icon: Icons.keyboard_rounded, text: 'Windows: Delete, Ctrl+Z, Ctrl+Y and Esc work on the canvas.'),
+              const _Tip(
+                icon: Icons.touch_app_rounded,
+                text: 'Tap a side or point to get relevant tools.',
+              ),
+              const _Tip(
+                icon: Icons.open_with_rounded,
+                text: 'Drag points and labels directly on the canvas.',
+              ),
+              const _Tip(
+                icon: Icons.keyboard_rounded,
+                text:
+                    'Windows: Delete, Ctrl+Z, Ctrl+Y and Esc work on the canvas.',
+              ),
             ],
           ),
         );
@@ -94,12 +112,16 @@ class GeometrySelectionInspector extends StatelessWidget {
 
   String _hint(GeometrySelectionKind kind) {
     return switch (kind) {
-      GeometrySelectionKind.none => 'Tap an object to reveal only the tools that make sense for it.',
-      GeometrySelectionKind.point => 'Rename the point, label its angle, mark 90°, or add a triangle height.',
+      GeometrySelectionKind.none =>
+        'Tap an object to reveal only the tools that make sense for it.',
+      GeometrySelectionKind.point =>
+        'Rename the point, label its angle, mark 90°, or add a triangle height.',
       GeometrySelectionKind.label => 'Edit the text, drag it, or remove it.',
       GeometrySelectionKind.shape => 'Duplicate or remove the complete figure.',
-      GeometrySelectionKind.side => 'Add a measurement, equal-side mark or parallel mark.',
-      GeometrySelectionKind.mark => 'This construction mark can be removed independently.',
+      GeometrySelectionKind.side =>
+        'Add a measurement, equal-side mark or parallel mark.',
+      GeometrySelectionKind.mark =>
+        'This construction mark can be removed independently.',
     };
   }
 }
@@ -119,7 +141,9 @@ class _Tip extends StatelessWidget {
         children: [
           Icon(icon, size: 18),
           const SizedBox(width: 8),
-          Expanded(child: Text(text, style: Theme.of(context).textTheme.bodySmall)),
+          Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodySmall),
+          ),
         ],
       ),
     );

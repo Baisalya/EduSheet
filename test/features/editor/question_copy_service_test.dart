@@ -43,9 +43,7 @@ void main() {
     final richText = jsonEncode([
       {'insert': 'Find '},
       {
-        'insert': {
-          MathExpression.quillEmbedKey: expression.toQuillEmbedData(),
-        },
+        'insert': {MathExpression.quillEmbedKey: expression.toQuillEmbedData()},
       },
       {'insert': ' using '},
       {
@@ -81,10 +79,9 @@ void main() {
       },
     );
 
-    final copied = QuestionCopyService(idFactory: idFactory).copyQuestion(
-      source,
-      copiedAt: DateTime.utc(2026, 8, 14),
-    );
+    final copied = QuestionCopyService(
+      idFactory: idFactory,
+    ).copyQuestion(source, copiedAt: DateTime.utc(2026, 8, 14));
 
     expect(copied.id, isNot(source.id));
     final sourceOptionIds = source.options.map((item) => item.id).toSet();
@@ -111,15 +108,15 @@ void main() {
         .map((item) => (item as Map<String, dynamic>)['insert'])
         .whereType<Map>()
         .firstWhere((item) => item.containsKey('geometry'));
-    final geometryPayload = jsonDecode(geometryInsert['geometry'] as String)
-        as Map<String, dynamic>;
+    final geometryPayload =
+        jsonDecode(geometryInsert['geometry'] as String)
+            as Map<String, dynamic>;
     final copiedDiagram = GeometryDiagram.fromJson(
       Map<String, dynamic>.from(geometryPayload['diagram'] as Map),
     );
     expect(copiedDiagram.id, isNot(diagram.id));
     expect(geometryPayload['id'], copiedDiagram.id);
-    expect(copiedDiagram.points.map((item) => item.id),
-        isNot(contains('p-a')));
+    expect(copiedDiagram.points.map((item) => item.id), isNot(contains('p-a')));
     expect(
       copiedDiagram.shapes.single.pointIds,
       copiedDiagram.points.map((point) => point.id).toList(),

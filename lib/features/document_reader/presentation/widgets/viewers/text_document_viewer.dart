@@ -36,10 +36,11 @@ class _TextDocumentViewerState extends State<TextDocumentViewer> {
   Future<_TextPreviewData> _loadText() async {
     final lines = <String>[];
     var truncated = false;
-    await for (final line in File(widget.document.path)
-        .openRead()
-        .transform(const Utf8Decoder(allowMalformed: true))
-        .transform(const LineSplitter())) {
+    await for (final line
+        in File(widget.document.path)
+            .openRead()
+            .transform(const Utf8Decoder(allowMalformed: true))
+            .transform(const LineSplitter())) {
       if (lines.length >= _maxLines) {
         truncated = true;
         break;

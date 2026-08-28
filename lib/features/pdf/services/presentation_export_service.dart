@@ -131,21 +131,22 @@ class PresentationExportService {
   }
 
   static List<String> _questionDetailLines(Question question) {
-    final formulas = MathExpression.unplacedInRichText(
-      question.text,
-      question.mathExpressions,
-    )
-        .map(
-          (expression) => expression.plainText.trim().isEmpty
-              ? expression.latex
-              : expression.plainText,
-        )
-        .toList();
+    final formulas =
+        MathExpression.unplacedInRichText(
+              question.text,
+              question.mathExpressions,
+            )
+            .map(
+              (expression) => expression.plainText.trim().isEmpty
+                  ? expression.latex
+                  : expression.plainText,
+            )
+            .toList();
     if (question.type.usesOptions) {
       return [
         ...formulas,
         ...question.options.asMap().entries.map((entry) {
-        return '${String.fromCharCode(65 + entry.key)}) ${entry.value.text}';
+          return '${String.fromCharCode(65 + entry.key)}) ${entry.value.text}';
         }),
       ];
     }

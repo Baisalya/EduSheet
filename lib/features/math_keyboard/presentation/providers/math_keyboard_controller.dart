@@ -342,5 +342,4 @@ class MathKeyboardController extends _$MathKeyboardController {
       state.activeController,
     )?.deleteBackward();
   }
-
 }

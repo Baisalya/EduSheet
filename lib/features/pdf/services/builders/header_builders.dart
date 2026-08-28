@@ -28,29 +28,32 @@ class CustomHeaderBuilder {
         final scale = contentWidth / CustomLayout.designWidth;
 
         var logoIndex = 0;
-        final elements = layout.elements.map((element) {
-          pw.ImageProvider? logoImage;
-          if (element.type == ElementType.logo) {
-            final currentIndex = logoIndex++;
-            if (currentIndex < logos.length && logos[currentIndex] != null) {
-              logoImage = logos[currentIndex];
-            } else if (element.content.isNotEmpty) {
-              logoImage = customImages?[element.content];
-            }
-          }
+        final elements = layout.elements
+            .map((element) {
+              pw.ImageProvider? logoImage;
+              if (element.type == ElementType.logo) {
+                final currentIndex = logoIndex++;
+                if (currentIndex < logos.length &&
+                    logos[currentIndex] != null) {
+                  logoImage = logos[currentIndex];
+                } else if (element.content.isNotEmpty) {
+                  logoImage = customImages?[element.content];
+                }
+              }
 
-          return pw.Positioned(
-            left: element.x * scale,
-            top: element.y * scale,
-            child: _buildElement(
-              element,
-              paper,
-              logoImage,
-              template,
-              scale,
-            ),
-          );
-        }).toList(growable: false);
+              return pw.Positioned(
+                left: element.x * scale,
+                top: element.y * scale,
+                child: _buildElement(
+                  element,
+                  paper,
+                  logoImage,
+                  template,
+                  scale,
+                ),
+              );
+            })
+            .toList(growable: false);
 
         return pw.Container(
           height: layout.canvasHeight * scale,
@@ -85,13 +88,7 @@ class CustomHeaderBuilder {
 
     switch (element.type) {
       case ElementType.schoolName:
-        return _textBox(
-          element,
-          scale,
-          alignment,
-          paper.schoolName,
-          style,
-        );
+        return _textBox(element, scale, alignment, paper.schoolName, style);
       case ElementType.paperTitle:
         return _textBox(element, scale, alignment, paper.title, style);
       case ElementType.logo:
@@ -113,7 +110,8 @@ class CustomHeaderBuilder {
         return _buildHeaderFields(element, paper, style, scale);
       case ElementType.staticText:
         final content =
-            paper.customHeaderValues[element.paperBindingKey] ?? element.content;
+            paper.customHeaderValues[element.paperBindingKey] ??
+            element.content;
         if (content.trim().isEmpty) return pw.SizedBox();
         final bordered = element.properties['border'] == true;
         return pw.Container(
@@ -127,14 +125,17 @@ class CustomHeaderBuilder {
           decoration: bordered
               ? pw.BoxDecoration(
                   border: pw.Border.all(
-                    color: _pdfColor(element.properties['borderColor']) ??
+                    color:
+                        _pdfColor(element.properties['borderColor']) ??
                         PdfColors.black,
-                    width: _number(element.properties['borderWidth'], 1) * scale,
+                    width:
+                        _number(element.properties['borderWidth'], 1) * scale,
                   ),
                   borderRadius: element.properties['borderRadius'] == null
                       ? null
                       : pw.BorderRadius.circular(
-                          _number(element.properties['borderRadius'], 0) * scale,
+                          _number(element.properties['borderRadius'], 0) *
+                              scale,
                         ),
                 )
               : null,
@@ -145,7 +146,8 @@ class CustomHeaderBuilder {
         return pw.Container(
           width: (element.width ?? 100) * scale,
           height: _number(element.properties['thickness'], 1) * scale,
-          color: _pdfColor(element.properties['color']) ?? template.primaryColor,
+          color:
+              _pdfColor(element.properties['color']) ?? template.primaryColor,
         );
       case ElementType.rectangular:
         return pw.Container(
@@ -154,7 +156,8 @@ class CustomHeaderBuilder {
           alignment: alignment,
           decoration: pw.BoxDecoration(
             border: pw.Border.all(
-              color: _pdfColor(element.properties['borderColor']) ??
+              color:
+                  _pdfColor(element.properties['borderColor']) ??
                   PdfColors.black,
               width: _number(element.properties['borderWidth'], 1) * scale,
             ),
@@ -178,7 +181,8 @@ class CustomHeaderBuilder {
     pw.TextStyle style,
     double scale,
   ) {
-    final requestedLabels = (element.properties['fieldLabels'] as List?)
+    final requestedLabels =
+        (element.properties['fieldLabels'] as List?)
             ?.map((value) => value.toString().trim())
             .where((value) => value.isNotEmpty)
             .toList(growable: false) ??
@@ -186,24 +190,24 @@ class CustomHeaderBuilder {
 
     final fields = requestedLabels.isEmpty
         ? paper.headerFields
-        : requestedLabels.map((label) {
-            for (final field in paper.headerFields) {
-              if (field.label.trim().toLowerCase() == label.toLowerCase()) {
-                return field;
-              }
-            }
-            return PaperHeaderField(
-              id: '',
-              label: label,
-              isPlaceholder: true,
-            );
-          }).toList(growable: false);
+        : requestedLabels
+              .map((label) {
+                for (final field in paper.headerFields) {
+                  if (field.label.trim().toLowerCase() == label.toLowerCase()) {
+                    return field;
+                  }
+                }
+                return PaperHeaderField(
+                  id: '',
+                  label: label,
+                  isPlaceholder: true,
+                );
+              })
+              .toList(growable: false);
 
     if (fields.isEmpty) return pw.SizedBox();
 
-    final fieldStyle = style.copyWith(
-      fontSize: (style.fontSize ?? 12) * 0.88,
-    );
+    final fieldStyle = style.copyWith(fontSize: (style.fontSize ?? 12) * 0.88);
     final rows = <pw.Widget>[];
     for (var index = 0; index < fields.length; index += 2) {
       final rowFields = fields.sublist(

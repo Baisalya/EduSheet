@@ -1,0 +1,26 @@
+EduSheet Smart Responsive App-Wide Fix 2
+========================================
+Baseline: EduSheet_Smart_Responsive_AppWide_Fix_Full.zip
+
+Purpose
+- Fix Question Bank picker vertical RenderFlex overflow on short/narrow windows.
+- Remove test leakage caused by debugDefaultTargetPlatformOverride.
+- Make adaptive modal width use the same desktop/mobile minimum-width contract as AdaptiveAppViewport.
+- Clear the five flutter analyze infos shown in the supplied log.
+
+Changed files
+- lib/features/question_bank/presentation/widgets/question_bank_picker_sheet.dart
+- lib/shared/presentation/widgets/adaptive_app_viewport.dart
+- lib/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart
+- lib/features/editor/services/paper_validator.dart
+- lib/features/geometry_builder/application/geometry_hit_tester.dart
+- lib/features/geometry_builder/widgets/label_editor_sheet.dart
+- test/features/question_bank/presentation/question_bank_picker_responsive_test.dart
+- test/shared/presentation/adaptive_app_viewport_test.dart
+- test/shared/presentation/adaptive_modal_bottom_sheet_test.dart
+
+Key architecture change
+Question Bank header/search/filters/results/empty state now live in one CustomScrollView with a fixed adaptive footer. This means short free-form Windows heights scroll instead of forcing non-flex children to overflow. Lists remain lazily built with SliverList.
+
+Test isolation change
+Responsive tests no longer mutate debugDefaultTargetPlatformOverride. Platform is injected through ThemeData(platform: ...), so Flutter foundation invariants remain untouched across tests.

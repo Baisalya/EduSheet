@@ -5,22 +5,28 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const validator = PaperValidator();
 
-  test('calculates optional attempt rules and accepts matching maximum marks', () {
-    final paper = _paper(
-      maximumMarks: 5,
-      requiredCount: 2,
-      questions: [
-        Question(id: 'q1', text: 'One', marks: 2),
-        Question(id: 'q2', text: 'Two', marks: 3),
-        Question(id: 'q3', text: 'Three', marks: 1),
-      ],
-    );
+  test(
+    'calculates optional attempt rules and accepts matching maximum marks',
+    () {
+      final paper = _paper(
+        maximumMarks: 5,
+        requiredCount: 2,
+        questions: [
+          Question(id: 'q1', text: 'One', marks: 2),
+          Question(id: 'q2', text: 'Two', marks: 3),
+          Question(id: 'q3', text: 'Three', marks: 1),
+        ],
+      );
 
-    final result = validator.validate(paper);
+      final result = validator.validate(paper);
 
-    expect(result.calculatedMarks, 5);
-    expect(result.issues.where((issue) => issue.code == 'marks.mismatch'), isEmpty);
-  });
+      expect(result.calculatedMarks, 5);
+      expect(
+        result.issues.where((issue) => issue.code == 'marks.mismatch'),
+        isEmpty,
+      );
+    },
+  );
 
   test('reports mark mismatch, missing marks and invalid attempt rule', () {
     final paper = _paper(
@@ -63,23 +69,26 @@ void main() {
     expect(codes, contains('numbering.duplicate'));
   });
 
-  test('reports unresolved template variables and incomplete internal choice', () {
-    final paper = _paper(
-      questions: [
-        Question(
-          id: 'choice',
-          text: 'Answer {{topic}}',
-          type: QuestionType.internalChoice,
-          internalChoices: [Question(id: 'a', text: 'Only one alternative')],
-        ),
-      ],
-    );
+  test(
+    'reports unresolved template variables and incomplete internal choice',
+    () {
+      final paper = _paper(
+        questions: [
+          Question(
+            id: 'choice',
+            text: 'Answer {{topic}}',
+            type: QuestionType.internalChoice,
+            internalChoices: [Question(id: 'a', text: 'Only one alternative')],
+          ),
+        ],
+      );
 
-    final codes = validator.validate(paper).issues.map((issue) => issue.code);
+      final codes = validator.validate(paper).issues.map((issue) => issue.code);
 
-    expect(codes, contains('template.unresolved'));
-    expect(codes, contains('question.internal_choice_incomplete'));
-  });
+      expect(codes, contains('template.unresolved'));
+      expect(codes, contains('question.internal_choice_incomplete'));
+    },
+  );
 }
 
 Paper _paper({

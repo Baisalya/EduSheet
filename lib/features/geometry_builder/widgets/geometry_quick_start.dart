@@ -50,7 +50,9 @@ class GeometryQuickStart extends StatelessWidget {
       children: [
         Text(
           'Quick start',
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -68,10 +70,19 @@ class GeometryQuickStart extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               child: ListTile(
                 dense: true,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 leading: const Icon(Icons.auto_awesome_rounded, size: 20),
-                title: Text(recipe.label, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(recipe.description, maxLines: 2, overflow: TextOverflow.ellipsis),
+                title: Text(
+                  recipe.label,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  recipe.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 onTap: () => onRecipe(recipe),
               ),
             ),

@@ -8,10 +8,7 @@ import '../providers/calculator_provider.dart';
 class FormulaCatalogSheet extends StatefulWidget {
   final bool dialogMode;
 
-  const FormulaCatalogSheet({
-    super.key,
-    this.dialogMode = false,
-  });
+  const FormulaCatalogSheet({super.key, this.dialogMode = false});
 
   @override
   State<FormulaCatalogSheet> createState() => _FormulaCatalogSheetState();

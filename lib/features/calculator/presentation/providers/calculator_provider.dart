@@ -232,7 +232,9 @@ class CalculatorController extends StateNotifier<CalculatorState> {
   void previousHistory() {
     if (state.history.isEmpty) return;
 
-    final draft = state.historyIndex == -1 ? state.equation : state.historyDraft;
+    final draft = state.historyIndex == -1
+        ? state.equation
+        : state.historyDraft;
     final newIndex = state.historyIndex == -1
         ? state.history.length - 1
         : (state.historyIndex - 1 < 0 ? 0 : state.historyIndex - 1);
@@ -375,10 +377,7 @@ class CalculatorController extends StateNotifier<CalculatorState> {
     super.dispose();
   }
 
-  bool _sameCalculation(
-    CalculationHistoryEntry a,
-    CalculationHistoryEntry b,
-  ) {
+  bool _sameCalculation(CalculationHistoryEntry a, CalculationHistoryEntry b) {
     return a.expression == b.expression &&
         a.result == b.result &&
         a.angleUnit == b.angleUnit;

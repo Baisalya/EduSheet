@@ -59,14 +59,10 @@ void main() {
     },
   );
 
-
   test('question paper export policy exposes PDF and Word', () {
     expect(
       QuestionPaperExportPolicy.supportedFormats,
-      equals({
-        QuestionPaperExportFormat.pdf,
-        QuestionPaperExportFormat.word,
-      }),
+      equals({QuestionPaperExportFormat.pdf, QuestionPaperExportFormat.word}),
     );
     expect(
       QuestionPaperExportPolicy.supports(QuestionPaperExportFormat.pdf),

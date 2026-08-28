@@ -247,9 +247,7 @@ class QuestionCopyService {
     nextPayload['id'] = cloned.id;
     nextPayload['diagram'] = cloned.toJson();
 
-    insert['geometry'] = returnAsString
-        ? jsonEncode(nextPayload)
-        : nextPayload;
+    insert['geometry'] = returnAsString ? jsonEncode(nextPayload) : nextPayload;
   }
 
   GeometryDiagram _copyGeometryDiagram(GeometryDiagram source) {
@@ -278,9 +276,7 @@ class QuestionCopyService {
             (shape) => GeometryShape(
               id: _nextId(),
               type: shape.type,
-              pointIds: shape.pointIds
-                  .map((id) => pointIds[id] ?? id)
-                  .toList(),
+              pointIds: shape.pointIds.map((id) => pointIds[id] ?? id).toList(),
               radius: shape.radius,
             ),
           )
@@ -303,9 +299,7 @@ class QuestionCopyService {
             (mark) => GeometryMark(
               id: _nextId(),
               type: mark.type,
-              pointIds: mark.pointIds
-                  .map((id) => pointIds[id] ?? id)
-                  .toList(),
+              pointIds: mark.pointIds.map((id) => pointIds[id] ?? id).toList(),
               position: mark.position,
             ),
           )

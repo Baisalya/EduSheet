@@ -85,8 +85,16 @@ class GeometryContextBar extends StatelessWidget {
         ];
       case GeometrySelectionKind.point:
         return [
-          _ContextAction(Icons.drive_file_rename_outline_rounded, 'Rename', onRenamePoint),
-          _ContextAction(Icons.architecture_rounded, 'Angle', onAngleMeasurement),
+          _ContextAction(
+            Icons.drive_file_rename_outline_rounded,
+            'Rename',
+            onRenamePoint,
+          ),
+          _ContextAction(
+            Icons.architecture_rounded,
+            'Angle',
+            onAngleMeasurement,
+          ),
           _ContextAction(
             Icons.square_foot_rounded,
             '90°',
@@ -109,7 +117,11 @@ class GeometryContextBar extends StatelessWidget {
         ];
       case GeometrySelectionKind.side:
         return [
-          _ContextAction(Icons.straighten_rounded, 'Measure', onSideMeasurement),
+          _ContextAction(
+            Icons.straighten_rounded,
+            'Measure',
+            onSideMeasurement,
+          ),
           _ContextAction(
             Icons.done_all_rounded,
             'Equal',

@@ -28,11 +28,8 @@ class GeometryRecipe {
     this.searchTerms = const [],
   });
 
-  String get searchableText => [
-    label,
-    description,
-    ...searchTerms,
-  ].join(' ').toLowerCase();
+  String get searchableText =>
+      [label, description, ...searchTerms].join(' ').toLowerCase();
 }
 
 class GeometryRecipeCatalog {

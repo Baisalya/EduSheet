@@ -16,7 +16,8 @@ class QuestionRichTextPreview extends StatefulWidget {
   });
 
   @override
-  State<QuestionRichTextPreview> createState() => _QuestionRichTextPreviewState();
+  State<QuestionRichTextPreview> createState() =>
+      _QuestionRichTextPreviewState();
 }
 
 class _QuestionRichTextPreviewState extends State<QuestionRichTextPreview> {

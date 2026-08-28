@@ -1,3 +1,4 @@
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
 class QuestionBankSaveMetadata {
@@ -32,7 +33,7 @@ class SaveToQuestionBankSheet extends StatefulWidget {
     String chapter = '',
     String grade = '',
   }) {
-    return showModalBottomSheet<QuestionBankSaveMetadata>(
+    return showAdaptiveModalBottomSheet<QuestionBankSaveMetadata>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,

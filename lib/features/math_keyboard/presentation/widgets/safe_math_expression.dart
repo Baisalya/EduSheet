@@ -11,7 +11,11 @@ class SafeMathExpression extends StatelessWidget {
   final MathExpression expression;
   final TextStyle? textStyle;
 
-  const SafeMathExpression({super.key, required this.expression, this.textStyle});
+  const SafeMathExpression({
+    super.key,
+    required this.expression,
+    this.textStyle,
+  });
 
   @override
   Widget build(BuildContext context) {

@@ -49,7 +49,8 @@ class PaperHeaderLayoutFactory {
     if (fieldsBlock == null) return base;
     final block = fieldsBlock;
 
-    final requestedLabels = (block.properties['fieldLabels'] as List?)
+    final requestedLabels =
+        (block.properties['fieldLabels'] as List?)
             ?.where((value) => value.toString().trim().isNotEmpty)
             .length ??
         0;
@@ -62,17 +63,19 @@ class PaperHeaderLayoutFactory {
 
     final extraHeight = extraRows * 18.0;
     final threshold = block.y + 20;
-    final elements = base.elements.map((element) {
-      if (element.id == block.id) {
-        return element.copyWith(
-          height: (element.height ?? 30) + extraHeight,
-        );
-      }
-      if (element.y > threshold) {
-        return element.copyWith(y: element.y + extraHeight);
-      }
-      return element;
-    }).toList(growable: false);
+    final elements = base.elements
+        .map((element) {
+          if (element.id == block.id) {
+            return element.copyWith(
+              height: (element.height ?? 30) + extraHeight,
+            );
+          }
+          if (element.y > threshold) {
+            return element.copyWith(y: element.y + extraHeight);
+          }
+          return element;
+        })
+        .toList(growable: false);
     return CustomLayout(
       elements: elements,
       canvasHeight: base.canvasHeight + extraHeight,

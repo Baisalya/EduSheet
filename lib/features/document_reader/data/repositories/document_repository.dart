@@ -8,7 +8,8 @@ import '../../domain/models/document_model.dart';
 import '../../domain/models/document_open_request.dart';
 
 class DocumentRepository {
-  static const Set<String> supportedExtensions = DocumentFile.supportedExtensions;
+  static const Set<String> supportedExtensions =
+      DocumentFile.supportedExtensions;
   static const int _desktopScanDepth = 2;
   static const int _appScanDepth = 3;
   static const int _maxDiscoveredDocuments = 1200;
@@ -99,7 +100,10 @@ class DocumentRepository {
   Future<List<_ScanRoot>> _scanRoots() async {
     final roots = <String, _ScanRoot>{};
 
-    Future<void> addDirectory(Future<Directory?> directoryFuture, int depth) async {
+    Future<void> addDirectory(
+      Future<Directory?> directoryFuture,
+      int depth,
+    ) async {
       try {
         final directory = await directoryFuture;
         if (directory != null) {

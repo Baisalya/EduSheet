@@ -28,9 +28,8 @@ class LocalQuestionBankRepository implements QuestionBankRepository {
     return AtomicJsonFileStore.versionedItems(decoded)
         .whereType<Map>()
         .map(
-          (item) => QuestionBankQuestion.fromJson(
-            Map<String, dynamic>.from(item),
-          ),
+          (item) =>
+              QuestionBankQuestion.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList();
   }
@@ -84,9 +83,8 @@ class LocalQuestionBankRepository implements QuestionBankRepository {
     final questions = AtomicJsonFileStore.versionedItems(decoded)
         .whereType<Map>()
         .map(
-          (item) => QuestionBankQuestion.fromJson(
-            Map<String, dynamic>.from(item),
-          ),
+          (item) =>
+              QuestionBankQuestion.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList();
     await _mutations.run(() => _saveQuestions(questions));

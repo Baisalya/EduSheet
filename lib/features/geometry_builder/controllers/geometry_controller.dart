@@ -47,7 +47,6 @@ class GeometryController extends ChangeNotifier {
     return null;
   }
 
-
   /// Applies one document-level edit as one undo transaction.
   void updateDiagram(
     GeometryDiagram Function(GeometryDiagram current) transform, {
@@ -308,7 +307,6 @@ class GeometryController extends ChangeNotifier {
     );
   }
 
-
   void duplicate() {
     _commit();
     final duplicatedPoints = <GeometryPoint>[];
@@ -361,7 +359,8 @@ class GeometryController extends ChangeNotifier {
 
   void clear() {
     updateDiagram(
-      (diagram) => diagram.copyWith(points: [], shapes: [], labels: [], marks: []),
+      (diagram) =>
+          diagram.copyWith(points: [], shapes: [], labels: [], marks: []),
       clearSelection: true,
     );
   }
@@ -389,7 +388,9 @@ class GeometryController extends ChangeNotifier {
   }
 
   void toggleSnap() {
-    updateDiagram((diagram) => diagram.copyWith(snapToGrid: !diagram.snapToGrid));
+    updateDiagram(
+      (diagram) => diagram.copyWith(snapToGrid: !diagram.snapToGrid),
+    );
   }
 
   void toggleTransparentBackground() {

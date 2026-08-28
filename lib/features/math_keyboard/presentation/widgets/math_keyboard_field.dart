@@ -13,7 +13,8 @@ class MathKeyboardField extends ConsumerStatefulWidget {
     bool isMathActive,
   )
   builder;
-  final Object controller; // TextEditingController, QuillController, or MathFieldEditingController
+  final Object
+  controller; // TextEditingController, QuillController, or MathFieldEditingController
   final FocusNode? focusNode;
 
   const MathKeyboardField({

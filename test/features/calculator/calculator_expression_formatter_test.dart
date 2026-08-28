@@ -6,14 +6,8 @@ void main() {
 
   group('CalculatorExpressionFormatter', () {
     test('formats inverse trig before base trig names', () {
-      expect(
-        formatter.toLatex('arcsin(1)'),
-        r'\sin^{-1}\left(1\right)',
-      );
-      expect(
-        formatter.toLatex('arccos(0)'),
-        r'\cos^{-1}\left(0\right)',
-      );
+      expect(formatter.toLatex('arcsin(1)'), r'\sin^{-1}\left(1\right)');
+      expect(formatter.toLatex('arccos(0)'), r'\cos^{-1}\left(0\right)');
     });
 
     test('produces balanced latex for roots', () {

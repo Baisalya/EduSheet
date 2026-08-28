@@ -26,20 +26,20 @@ void main() {
     await store.writeJson({'value': 2});
 
     expect(await store.readJson(orElse: null), {'value': 2});
-    expect(
-      jsonDecode(await store.backupFile.readAsString()),
-      {'value': 1},
-    );
+    expect(jsonDecode(await store.backupFile.readAsString()), {'value': 1});
   });
 
-  test('recovers from a corrupt primary without returning empty data', () async {
-    final store = AtomicJsonFileStore(file);
-    await store.writeJson({'value': 'recover me'});
-    await store.writeJson({'value': 'current'});
-    await file.writeAsString('{corrupt', flush: true);
+  test(
+    'recovers from a corrupt primary without returning empty data',
+    () async {
+      final store = AtomicJsonFileStore(file);
+      await store.writeJson({'value': 'recover me'});
+      await store.writeJson({'value': 'current'});
+      await file.writeAsString('{corrupt', flush: true);
 
-    expect(await store.readJson(orElse: null), {'value': 'recover me'});
-  });
+      expect(await store.readJson(orElse: null), {'value': 'recover me'});
+    },
+  );
 
   test('surfaces a typed error when primary and backup are corrupt', () async {
     final store = AtomicJsonFileStore(file);
@@ -70,7 +70,8 @@ void main() {
     expect((await repository.getAllPapers()).single.title, 'Legacy paper');
     await repository.savePaper(paper.copyWith(title: 'Migrated paper'));
 
-    final stored = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+    final stored =
+        jsonDecode(await file.readAsString()) as Map<String, dynamic>;
     expect(stored['schemaVersion'], 2);
     expect((stored['items'] as List).single['title'], 'Migrated paper');
   });

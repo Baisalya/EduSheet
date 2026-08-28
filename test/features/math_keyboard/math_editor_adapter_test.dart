@@ -23,7 +23,10 @@ void main() {
 
     test('replaces selected text', () {
       final controller = TextEditingController(text: 'abc');
-      controller.selection = const TextSelection(baseOffset: 1, extentOffset: 2);
+      controller.selection = const TextSelection(
+        baseOffset: 1,
+        extentOffset: 2,
+      );
       final adapter = TextFieldMathEditorAdapter(controller);
 
       adapter.insert(r'\pi', context);
@@ -34,7 +37,10 @@ void main() {
 
     test('delete backward handles a selection safely', () {
       final controller = TextEditingController(text: 'abcd');
-      controller.selection = const TextSelection(baseOffset: 3, extentOffset: 1);
+      controller.selection = const TextSelection(
+        baseOffset: 3,
+        extentOffset: 1,
+      );
       final adapter = TextFieldMathEditorAdapter(controller);
 
       adapter.deleteBackward();

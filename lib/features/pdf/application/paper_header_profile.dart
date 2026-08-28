@@ -20,13 +20,15 @@ class PaperHeaderProfile {
 
   static PaperHeaderProfile forTemplate(PaperTemplate template) {
     final preset = PaperStyleCatalog.presetForId(template.id);
-    final category = preset?.category ?? switch (template.type) {
-      TemplateType.school => PaperStyleCategory.school,
-      TemplateType.board => PaperStyleCategory.board,
-      TemplateType.college => PaperStyleCategory.college,
-      TemplateType.coaching => PaperStyleCategory.coaching,
-      TemplateType.kids => PaperStyleCategory.primary,
-    };
+    final category =
+        preset?.category ??
+        switch (template.type) {
+          TemplateType.school => PaperStyleCategory.school,
+          TemplateType.board => PaperStyleCategory.board,
+          TemplateType.college => PaperStyleCategory.college,
+          TemplateType.coaching => PaperStyleCategory.coaching,
+          TemplateType.kids => PaperStyleCategory.primary,
+        };
     switch (category) {
       case PaperStyleCategory.board:
         return const PaperHeaderProfile(

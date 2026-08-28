@@ -6,38 +6,36 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('math key has a readable label, touch target and keyboard action', (
-    tester,
-  ) async {
-    var insertions = 0;
-    final semantics = tester.ensureSemantics();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: MathKey(
-              label: 'plus',
-              tex: '+',
-              onTap: () => insertions++,
+  testWidgets(
+    'math key has a readable label, touch target and keyboard action',
+    (tester) async {
+      var insertions = 0;
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: MathKey(
+                label: 'plus',
+                tex: '+',
+                onTap: () => insertions++,
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    final size = tester.getSize(find.byType(MathKey));
-    expect(size.width, greaterThanOrEqualTo(48));
-    expect(size.height, greaterThanOrEqualTo(48));
-    expect(
-      tester.getSemantics(find.byType(MathKey)).label,
-      'Insert plus',
-    );
+      final size = tester.getSize(find.byType(MathKey));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(tester.getSemantics(find.byType(MathKey)).label, 'Insert plus');
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    expect(insertions, 1);
-    semantics.dispose();
-  });
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      expect(insertions, 1);
+      semantics.dispose();
+    },
+  );
 
   testWidgets('malformed formula announces fallback instead of TeX internals', (
     tester,

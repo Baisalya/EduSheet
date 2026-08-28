@@ -18,7 +18,9 @@ class FilePreviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF101214) : const Color(0xFFF5F7FA),
+      backgroundColor: isDark
+          ? const Color(0xFF101214)
+          : const Color(0xFFF5F7FA),
       appBar: AppBar(
         foregroundColor: isDark ? Colors.white : Colors.black87,
         titleSpacing: 4,
@@ -29,7 +31,10 @@ class FilePreviewScreen extends StatelessWidget {
               document.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                fontSize: 15.5,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             Text(
               '${document.displayExtension} • ${document.sizeString}',
@@ -122,7 +127,9 @@ class _DocumentCapabilityStrip extends StatelessWidget {
         color: isDark ? const Color(0xFF171A1F) : Colors.white,
         border: Border(
           bottom: BorderSide(
-            color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.06),
+            color: isDark
+                ? Colors.white10
+                : Colors.black.withValues(alpha: 0.06),
           ),
         ),
       ),
@@ -147,7 +154,10 @@ class _DocumentCapabilityStrip extends StatelessWidget {
                   capability.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 if (!compact)
                   Text(

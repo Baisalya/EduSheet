@@ -62,9 +62,7 @@ void main() {
         'edusheet-open-test',
       );
       addTearDown(() => directory.delete(recursive: true));
-      final file = File(
-        '${directory.path}${Platform.pathSeparator}sample.txt',
-      );
+      final file = File('${directory.path}${Platform.pathSeparator}sample.txt');
       await file.writeAsString('hello');
 
       final coordinator = DocumentOpenCoordinator(DocumentRepository());
@@ -92,32 +90,35 @@ void main() {
     },
   );
 
-  test('repository uses the original display extension for cached files', () async {
-    final directory = await Directory.systemTemp.createTemp(
-      'edusheet-cache-test',
-    );
-    addTearDown(() => directory.delete(recursive: true));
-    final file = File(
-      '${directory.path}${Platform.pathSeparator}incoming_cache',
-    );
-    await file.writeAsString('placeholder');
+  test(
+    'repository uses the original display extension for cached files',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'edusheet-cache-test',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File(
+        '${directory.path}${Platform.pathSeparator}incoming_cache',
+      );
+      await file.writeAsString('placeholder');
 
-    final document = await DocumentRepository().getDocumentFromRequest(
-      DocumentOpenRequest(
-        source: DocumentOpenSource.androidViewIntent,
-        localPath: file.path,
-        displayName: 'Lesson Slides.pptx',
-        mimeType:
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        originalUri: 'content://provider/slides',
-      ),
-    );
+      final document = await DocumentRepository().getDocumentFromRequest(
+        DocumentOpenRequest(
+          source: DocumentOpenSource.androidViewIntent,
+          localPath: file.path,
+          displayName: 'Lesson Slides.pptx',
+          mimeType:
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          originalUri: 'content://provider/slides',
+        ),
+      );
 
-    expect(document, isNotNull);
-    expect(document!.extension, '.pptx');
-    expect(document.name, 'Lesson Slides.pptx');
-    expect(document.originalUri, 'content://provider/slides');
-  });
+      expect(document, isNotNull);
+      expect(document!.extension, '.pptx');
+      expect(document.name, 'Lesson Slides.pptx');
+      expect(document.originalUri, 'content://provider/slides');
+    },
+  );
 
   test('desktop command-line request keeps paths with spaces intact', () {
     final request = DocumentOpenRequest.fromCommandLine([

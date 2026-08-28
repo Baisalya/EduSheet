@@ -12,29 +12,53 @@ class PremiumBadgeButton extends ConsumerWidget {
     final isPremium = ref.watch(
       premiumProvider.select((state) => state.isPremium),
     );
+    final compact = MediaQuery.sizeOf(context).width < 380;
+    final foreground = isPremium
+        ? const Color(0xFFD49B00)
+        : Theme.of(context).colorScheme.primary;
+
+    void openPremium() {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const PremiumScreen()));
+    }
 
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: TextButton.icon(
-        onPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute<void>(builder: (_) => const PremiumScreen())),
-        style: TextButton.styleFrom(
-          foregroundColor: isPremium
-              ? const Color(0xFFD49B00)
-              : Theme.of(context).colorScheme.primary,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          visualDensity: VisualDensity.compact,
-        ),
-        icon: Icon(
-          isPremium ? Icons.workspace_premium_rounded : Icons.diamond_outlined,
-          size: 19,
-        ),
-        label: Text(
-          isPremium ? 'PRO' : 'Premium',
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
-        ),
-      ),
+      padding: EdgeInsets.only(right: compact ? 2 : 8),
+      child: compact
+          ? IconButton(
+              tooltip: isPremium ? 'Premium active' : 'Premium',
+              onPressed: openPremium,
+              visualDensity: VisualDensity.compact,
+              color: foreground,
+              icon: Icon(
+                isPremium
+                    ? Icons.workspace_premium_rounded
+                    : Icons.diamond_outlined,
+                size: 20,
+              ),
+            )
+          : TextButton.icon(
+              onPressed: openPremium,
+              style: TextButton.styleFrom(
+                foregroundColor: foreground,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: Icon(
+                isPremium
+                    ? Icons.workspace_premium_rounded
+                    : Icons.diamond_outlined,
+                size: 19,
+              ),
+              label: Text(
+                isPremium ? 'PRO' : 'Premium',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
+            ),
     );
   }
 }

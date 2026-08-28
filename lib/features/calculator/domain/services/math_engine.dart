@@ -38,11 +38,7 @@ class MathEngine {
   }) {
     if (!_isPreviewReady(expression)) return null;
 
-    final result = evaluateDetailed(
-      expression,
-      angleUnit: angleUnit,
-      ans: ans,
-    );
+    final result = evaluateDetailed(expression, angleUnit: angleUnit, ans: ans);
     return result.isSuccess ? result : null;
   }
 
@@ -121,8 +117,9 @@ class MathEngine {
       return false;
     }
 
-    if (RegExp(r'(?:^|[^A-Za-z])(?:sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|sqrt|cbrt|log|ln|nrt)\($')
-        .hasMatch(input)) {
+    if (RegExp(
+      r'(?:^|[^A-Za-z])(?:sin|cos|tan|arcsin|arccos|arctan|sinh|cosh|tanh|sqrt|cbrt|log|ln|nrt)\($',
+    ).hasMatch(input)) {
       return false;
     }
 
@@ -195,41 +192,36 @@ class MathEngine {
   String _rewriteCombinatorics(String expression) {
     var rewritten = expression;
 
-    rewritten = rewritten.replaceAllMapped(
-      RegExp(r'(^|[^\w.])(\d+)C(\d+)'),
-      (match) {
-        final n = int.parse(match.group(2)!);
-        final r = int.parse(match.group(3)!);
-        return '${match.group(1)}${_nCr(n, r)}';
-      },
-    );
+    rewritten = rewritten.replaceAllMapped(RegExp(r'(^|[^\w.])(\d+)C(\d+)'), (
+      match,
+    ) {
+      final n = int.parse(match.group(2)!);
+      final r = int.parse(match.group(3)!);
+      return '${match.group(1)}${_nCr(n, r)}';
+    });
 
-    rewritten = rewritten.replaceAllMapped(
-      RegExp(r'(^|[^\w.])(\d+)P(\d+)'),
-      (match) {
-        final n = int.parse(match.group(2)!);
-        final r = int.parse(match.group(3)!);
-        return '${match.group(1)}${_nPr(n, r)}';
-      },
-    );
+    rewritten = rewritten.replaceAllMapped(RegExp(r'(^|[^\w.])(\d+)P(\d+)'), (
+      match,
+    ) {
+      final n = int.parse(match.group(2)!);
+      final r = int.parse(match.group(3)!);
+      return '${match.group(1)}${_nPr(n, r)}';
+    });
 
     return rewritten;
   }
 
   String _rewriteLiteralFactorials(String expression) {
-    return expression.replaceAllMapped(
-      RegExp(r'(^|[^\w.])(\d+)!'),
-      (match) {
-        final n = int.parse(match.group(2)!);
-        if (n > 170) {
-          throw const _CalculationException(
-            CalculationErrorCode.overflow,
-            'Factorial results above 170! exceed the calculator numeric range.',
-          );
-        }
-        return '${match.group(1)}${_factorial(n)}';
-      },
-    );
+    return expression.replaceAllMapped(RegExp(r'(^|[^\w.])(\d+)!'), (match) {
+      final n = int.parse(match.group(2)!);
+      if (n > 170) {
+        throw const _CalculationException(
+          CalculationErrorCode.overflow,
+          'Factorial results above 170! exceed the calculator numeric range.',
+        );
+      }
+      return '${match.group(1)}${_factorial(n)}';
+    });
   }
 
   String _insertImplicitMultiplication(String expression) {
@@ -270,9 +262,7 @@ class MathEngine {
   }
 
   String _rewriteLogarithms(String expression) {
-    return _rewriteFunctionCalls(expression, {
-      'log': (x) => 'log(10,$x)',
-    });
+    return _rewriteFunctionCalls(expression, {'log': (x) => 'log(10,$x)'});
   }
 
   String _applyAngleUnit(String expression, AngleUnit angleUnit) {

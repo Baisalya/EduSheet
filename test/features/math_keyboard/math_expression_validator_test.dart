@@ -114,10 +114,7 @@ void main() {
           MathSymbolCatalog.canonicalSymbols.length,
           lessThan(MathSymbolCatalog.symbols.length),
         );
-        expect(
-          MathSymbolCatalog.forCategory(MathCategory.physics),
-          isNotEmpty,
-        );
+        expect(MathSymbolCatalog.forCategory(MathCategory.physics), isNotEmpty);
       },
     );
 

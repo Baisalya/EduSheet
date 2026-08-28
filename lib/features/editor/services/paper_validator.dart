@@ -96,7 +96,9 @@ class PaperValidator {
       }
 
       for (final question in section.questions) {
-        if (!questionIds.add(question.id)) duplicateQuestionIds.add(question.id);
+        if (!questionIds.add(question.id)) {
+          duplicateQuestionIds.add(question.id);
+        }
         if (question.plainTextAccessibility.trim().isEmpty &&
             question.mathExpressions.isEmpty) {
           issues.add(

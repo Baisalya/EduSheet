@@ -1,5 +1,6 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/paper_composer/domain/question_details_draft.dart';
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
 class QuestionMoreDetailsSheet extends StatefulWidget {
@@ -11,7 +12,7 @@ class QuestionMoreDetailsSheet extends StatefulWidget {
     BuildContext context, {
     required QuestionDetailsDraft initial,
   }) {
-    return showModalBottomSheet<QuestionDetailsDraft>(
+    return showAdaptiveModalBottomSheet<QuestionDetailsDraft>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
@@ -301,7 +302,9 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
                       ),
                       second: TextField(
                         controller: _grade,
-                        decoration: const InputDecoration(labelText: 'Class / grade'),
+                        decoration: const InputDecoration(
+                          labelText: 'Class / grade',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -424,9 +427,9 @@ class _DetailsHeading extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           title,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
       ],
     );
@@ -444,9 +447,7 @@ class _ResponsivePair extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 560) {
-          return Column(
-            children: [first, const SizedBox(height: 12), second],
-          );
+          return Column(children: [first, const SizedBox(height: 12), second]);
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,

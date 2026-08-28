@@ -40,7 +40,8 @@ class MathPlainTextSerializer {
     }
 
     if (output == null) {
-      final symbol = MathSymbolCatalog.findByTex(source) ??
+      final symbol =
+          MathSymbolCatalog.findByTex(source) ??
           MathSymbol(
             id: 'adhoc:$source',
             label: source,
@@ -260,7 +261,8 @@ class MathPlainTextSerializer {
     r'S_n = \frac{n}{2}[2a+(n-1)d]': 'Sₙ = n⁄2[2a+(n-1)d]',
     r'a_n = ar^{n-1}': 'aₙ = arⁿ⁻¹',
     r'\bar{x} = \frac{\sum x}{n}': 'x̄ = ∑x⁄n',
-    r'P(E)=\frac{\text{Favourable outcomes}}{\text{Total outcomes}}': 'P(E)= favourable outcomes⁄total outcomes',
+    r'P(E)=\frac{\text{Favourable outcomes}}{\text{Total outcomes}}':
+        'P(E)= favourable outcomes⁄total outcomes',
     r'A=\pi r^2': 'A = πr²',
     r'V=\frac{4}{3}\pi r^3': 'V = ⁴⁄₃πr³',
     r'\text{Solve: }': 'Solve: ',

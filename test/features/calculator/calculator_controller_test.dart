@@ -36,21 +36,24 @@ void main() {
       expect(controller.state.isShift, isFalse);
     });
 
-    test('operator after equals continues from Ans while number starts fresh', () {
-      controller.addToken('2');
-      controller.addToken('+');
-      controller.addToken('3');
-      controller.calculate();
-      controller.addToken('×');
+    test(
+      'operator after equals continues from Ans while number starts fresh',
+      () {
+        controller.addToken('2');
+        controller.addToken('+');
+        controller.addToken('3');
+        controller.calculate();
+        controller.addToken('×');
 
-      expect(controller.state.equation, 'Ans×');
+        expect(controller.state.equation, 'Ans×');
 
-      controller.clear();
-      controller.addToken('4');
-      controller.calculate();
-      controller.addToken('7');
-      expect(controller.state.equation, '7');
-    });
+        controller.clear();
+        controller.addToken('4');
+        controller.calculate();
+        controller.addToken('7');
+        expect(controller.state.equation, '7');
+      },
+    );
 
     test('history navigation preserves the draft expression', () {
       controller.addToken('1');

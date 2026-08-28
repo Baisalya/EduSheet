@@ -282,9 +282,9 @@ class PaperStyleCatalog {
       List.unmodifiable(presets.map((preset) => preset.template));
 
   static List<PaperTemplate> get allBuiltInTemplates => List.unmodifiable([
-        ...presets.map((preset) => preset.template),
-        ...legacyPresets.map((preset) => preset.template),
-      ]);
+    ...presets.map((preset) => preset.template),
+    ...legacyPresets.map((preset) => preset.template),
+  ]);
 
   static PaperStylePreset? presetForId(String id) {
     for (final preset in [...presets, ...legacyPresets]) {

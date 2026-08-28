@@ -1,3 +1,4 @@
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
 import '../application/geometry_recipe.dart';
@@ -7,7 +8,7 @@ class GeometryAddSheet extends StatefulWidget {
   const GeometryAddSheet({super.key});
 
   static Future<GeometryRecipe?> show(BuildContext context) {
-    return showModalBottomSheet<GeometryRecipe>(
+    return showAdaptiveModalBottomSheet<GeometryRecipe>(
       context: context,
       useRootNavigator: true,
       useSafeArea: true,
@@ -156,13 +157,18 @@ class _GeometryAddSheetState extends State<GeometryAddSheet> {
     var recipes = GeometryRecipeCatalog.search(_query);
     final category = _category;
     if (category != null) {
-      final allowedIds = GeometryRecipeCatalog.inCategory(category)
-          .map((recipe) => recipe.id)
-          .toSet();
-      recipes = recipes.where((recipe) => allowedIds.contains(recipe.id)).toList();
+      final allowedIds = GeometryRecipeCatalog.inCategory(
+        category,
+      ).map((recipe) => recipe.id).toSet();
+      recipes = recipes
+          .where((recipe) => allowedIds.contains(recipe.id))
+          .toList();
     }
     final seen = <String>{};
-    return [for (final recipe in recipes) if (seen.add(recipe.id)) recipe];
+    return [
+      for (final recipe in recipes)
+        if (seen.add(recipe.id)) recipe,
+    ];
   }
 
   String _categoryLabel(GeometryRecipeCategory category) {
@@ -223,7 +229,11 @@ class _RecipeCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(_iconFor(recipe), color: theme.colorScheme.primary, size: 22),
+              Icon(
+                _iconFor(recipe),
+                color: theme.colorScheme.primary,
+                size: 22,
+              ),
               const Spacer(),
               Text(
                 recipe.label,
@@ -262,8 +272,8 @@ class _RecipeCard extends StatelessWidget {
     return switch (recipe.baseShape) {
       GeometryShapeType.line => Icons.horizontal_rule_rounded,
       GeometryShapeType.arrow => Icons.arrow_forward_rounded,
-      GeometryShapeType.triangle || GeometryShapeType.rightTriangle =>
-        Icons.change_history_rounded,
+      GeometryShapeType.triangle ||
+      GeometryShapeType.rightTriangle => Icons.change_history_rounded,
       GeometryShapeType.square => Icons.crop_square,
       GeometryShapeType.rectangle ||
       GeometryShapeType.parallelogram ||
@@ -277,7 +287,8 @@ class _RecipeCard extends StatelessWidget {
       GeometryShapeType.sphere => Icons.circle_outlined,
       GeometryShapeType.coordinateAxes => Icons.add_rounded,
       GeometryShapeType.numberLine => Icons.linear_scale_rounded,
-      GeometryShapeType.cube || GeometryShapeType.cuboid => Icons.view_in_ar_rounded,
+      GeometryShapeType.cube ||
+      GeometryShapeType.cuboid => Icons.view_in_ar_rounded,
       GeometryShapeType.cylinder => Icons.view_column_outlined,
       GeometryShapeType.cone => Icons.change_history_rounded,
       null => Icons.auto_awesome_rounded,

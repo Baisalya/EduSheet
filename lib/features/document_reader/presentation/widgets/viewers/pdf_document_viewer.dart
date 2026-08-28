@@ -71,7 +71,9 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
                         setState(() {
                           _error = null;
                           _pageCount = details.document.pages.count;
-                          _page = _page.clamp(1, _pageCount == 0 ? 1 : _pageCount).toInt();
+                          _page = _page
+                              .clamp(1, _pageCount == 0 ? 1 : _pageCount)
+                              .toInt();
                         });
                       },
                       onDocumentLoadFailed: (details) {
@@ -144,8 +146,7 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
                   : null,
               icon: const Icon(Icons.keyboard_arrow_down),
             ),
-            if (!veryCompact)
-              const VerticalDivider(indent: 10, endIndent: 10),
+            if (!veryCompact) const VerticalDivider(indent: 10, endIndent: 10),
             if (!veryCompact)
               IconButton(
                 tooltip: 'Zoom out',
@@ -269,7 +270,9 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
             ),
             IconButton(
               tooltip: 'Next match',
-              onPressed: result?.hasResult == true ? result!.nextInstance : null,
+              onPressed: result?.hasResult == true
+                  ? result!.nextInstance
+                  : null,
               icon: const Icon(Icons.keyboard_arrow_down),
             ),
           ],
@@ -345,9 +348,8 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(
-              int.tryParse(controller.text),
-            ),
+            onPressed: () =>
+                Navigator.of(context).pop(int.tryParse(controller.text)),
             child: const Text('Go'),
           ),
         ],
@@ -370,7 +372,8 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
     }
     if (_showSearch) return KeyEventResult.ignored;
 
-    if (key == LogicalKeyboardKey.pageDown || key == LogicalKeyboardKey.arrowDown) {
+    if (key == LogicalKeyboardKey.pageDown ||
+        key == LogicalKeyboardKey.arrowDown) {
       _controller.nextPage();
       return KeyEventResult.handled;
     }

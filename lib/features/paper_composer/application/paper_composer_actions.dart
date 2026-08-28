@@ -21,7 +21,8 @@ class PaperComposerActions {
 
   void deleteSection(String sectionId) => _editor.deleteSection(sectionId);
 
-  void duplicateSection(String sectionId) => _editor.duplicateSection(sectionId);
+  void duplicateSection(String sectionId) =>
+      _editor.duplicateSection(sectionId);
 
   void duplicateQuestion(String sectionId, String questionId) {
     _editor.duplicateQuestion(sectionId, questionId);
@@ -30,7 +31,6 @@ class PaperComposerActions {
   void addQuestionsFromBank(String sectionId, List<Question> questions) {
     _editor.addQuestionsFromBank(sectionId, questions);
   }
-
 
   void addSectionWithQuestionsFromBank(List<Question> questions) {
     _editor.addSectionWithQuestionsFromBank(questions);
@@ -47,14 +47,18 @@ class PaperComposerActions {
     required String plainTextAccessibility,
     int? insertAt,
   }) {
-    final section = paper.sections.where((item) => item.id == sectionId).firstOrNull;
+    final section = paper.sections
+        .where((item) => item.id == sectionId)
+        .firstOrNull;
     if (section == null) return false;
 
     final question = draft.toQuestion(
       plainTextAccessibility: plainTextAccessibility,
     );
     final questions = [...section.questions];
-    final existingIndex = questions.indexWhere((item) => item.id == question.id);
+    final existingIndex = questions.indexWhere(
+      (item) => item.id == question.id,
+    );
 
     if (existingIndex >= 0) {
       questions[existingIndex] = question;

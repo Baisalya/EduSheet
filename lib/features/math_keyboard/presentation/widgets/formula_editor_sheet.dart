@@ -1,3 +1,4 @@
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,7 +32,7 @@ class FormulaEditorSheet extends ConsumerStatefulWidget {
     MathExpression? initial,
     bool autoOpenMathKeyboard = true,
   }) {
-    return showModalBottomSheet<MathExpression>(
+    return showAdaptiveModalBottomSheet<MathExpression>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
@@ -97,9 +98,9 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
   @override
   void dispose() {
     try {
-      ref.read(mathKeyboardControllerProvider.notifier).unregisterController(
-            _visualController,
-          );
+      ref
+          .read(mathKeyboardControllerProvider.notifier)
+          .unregisterController(_visualController);
     } catch (_) {
       // Provider scope can already be tearing down in widget tests.
     }
@@ -114,7 +115,8 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
-    final mathKeyboardVisible = keyboardState.isVisible &&
+    final mathKeyboardVisible =
+        keyboardState.isVisible &&
         keyboardState.type == KeyboardType.math &&
         keyboardState.activeController == _visualController;
     final mathKeyboardInset = mathKeyboardVisible ? keyboardState.height : 0.0;
@@ -185,8 +187,8 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
                               mathKeyboardVisible
                                   ? 'Math keyboard open'
                                   : _visualReady
-                                      ? 'Open math keyboard'
-                                      : 'Try visual editor',
+                                  ? 'Open math keyboard'
+                                  : 'Try visual editor',
                             ),
                           ),
                           TextButton.icon(
@@ -255,10 +257,9 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
     final title = _editingExisting ? 'Edit math formula' : 'Add math formula';
     final titleWidget = Text(
       title,
-      style: Theme.of(context)
-          .textTheme
-          .titleLarge
-          ?.copyWith(fontWeight: FontWeight.w800),
+      style: Theme.of(
+        context,
+      ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
     );
     final displaySelector = SegmentedButton<MathExpressionDisplay>(
       showSelectedIcon: false,
@@ -287,10 +288,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
             children: [
               titleWidget,
               const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: displaySelector,
-              ),
+              Align(alignment: Alignment.centerLeft, child: displaySelector),
             ],
           );
         }
@@ -310,9 +308,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -326,7 +322,8 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
             decoration: const InputDecoration(
               labelText: 'Formula',
               hintText: 'Tap here and build the formula',
-              helperText: 'Use the math keyboard below; the formula renders as you type.',
+              helperText:
+                  'Use the math keyboard below; the formula renders as you type.',
               border: OutlineInputBorder(),
             ),
             onChanged: _onVisualChanged,
@@ -354,9 +351,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: SafeMathExpression(expression: expression),
     );
@@ -426,8 +421,9 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
                   onPressed: () {
                     setState(() {
                       _descriptionWasEdited = false;
-                      _fallbackController.text =
-                          _accessibleText.describe(_latex);
+                      _fallbackController.text = _accessibleText.describe(
+                        _latex,
+                      );
                     });
                   },
                   child: const Text('Use automatic description'),
@@ -606,10 +602,7 @@ class _InlineNotice extends StatelessWidget {
           Icon(icon, size: 18, color: foreground),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: foreground),
-            ),
+            child: Text(text, style: TextStyle(color: foreground)),
           ),
         ],
       ),

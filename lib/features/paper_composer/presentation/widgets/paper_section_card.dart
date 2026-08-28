@@ -1,5 +1,6 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_card.dart';
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
 class PaperSectionCard extends StatelessWidget {
@@ -150,7 +151,9 @@ class PaperSectionCard extends StatelessWidget {
                     children: [
                       for (final entry in section.questions.asMap().entries)
                         QuestionCard(
-                          key: questionKeyFor?.call(entry.value) ?? ValueKey(entry.value.id),
+                          key:
+                              questionKeyFor?.call(entry.value) ??
+                              ValueKey(entry.value.id),
                           question: entry.value,
                           number: entry.key + 1,
                           onEdit: () => onEditQuestion(entry.value),
@@ -201,7 +204,7 @@ class PaperSectionCard extends StatelessWidget {
   }
 
   Future<void> _showCompactAddMenu(BuildContext context) async {
-    final action = await showModalBottomSheet<_AddQuestionAction>(
+    final action = await showAdaptiveModalBottomSheet<_AddQuestionAction>(
       context: context,
       useSafeArea: true,
       builder: (context) => Padding(
@@ -212,8 +215,11 @@ class PaperSectionCard extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.edit_note_rounded),
               title: const Text('New question'),
-              subtitle: const Text('Write a question with Math, Geometry or scan text.'),
-              onTap: () => Navigator.pop(context, _AddQuestionAction.newQuestion),
+              subtitle: const Text(
+                'Write a question with Math, Geometry or scan text.',
+              ),
+              onTap: () =>
+                  Navigator.pop(context, _AddQuestionAction.newQuestion),
             ),
             ListTile(
               leading: const Icon(Icons.inventory_2_outlined),

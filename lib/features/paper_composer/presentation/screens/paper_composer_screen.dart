@@ -18,6 +18,7 @@ import 'package:edusheet/features/question_bank/presentation/widgets/question_ba
 import 'package:edusheet/features/question_bank/presentation/widgets/save_to_question_bank_sheet.dart';
 import 'package:edusheet/shared/services/review_service.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,7 +27,8 @@ class PaperComposerScreen extends ConsumerStatefulWidget {
   const PaperComposerScreen({super.key});
 
   @override
-  ConsumerState<PaperComposerScreen> createState() => _PaperComposerScreenState();
+  ConsumerState<PaperComposerScreen> createState() =>
+      _PaperComposerScreenState();
 }
 
 class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
@@ -135,7 +137,9 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   }
 
   Future<void> _addFromQuestionBank(PaperSection section) async {
-    final selected = await _pickQuestionsFromBank(ref.read(editorStateProvider));
+    final selected = await _pickQuestionsFromBank(
+      ref.read(editorStateProvider),
+    );
     if (selected == null || selected.isEmpty || !mounted) return;
     _insertBankQuestions(section, selected);
   }
@@ -383,7 +387,9 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
 
     if (!_documentScroll.hasClients) return;
     final paper = ref.read(editorStateProvider);
-    final index = paper.sections.indexWhere((section) => section.id == sectionId);
+    final index = paper.sections.indexWhere(
+      (section) => section.id == sectionId,
+    );
     if (index < 0 || paper.sections.isEmpty) return;
     final fraction = paper.sections.length <= 1
         ? 0.0
@@ -399,7 +405,10 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     _scrollToSection(sectionId);
     Future<void>.delayed(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      final questionContext = _keyForQuestion(sectionId, questionId).currentContext;
+      final questionContext = _keyForQuestion(
+        sectionId,
+        questionId,
+      ).currentContext;
       if (questionContext == null || !questionContext.mounted) return;
       Scrollable.ensureVisible(
         questionContext,
@@ -435,9 +444,9 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
       await ReviewService.instance.recordSuccessfulExport();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to export PDF: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to export PDF: $error')));
     }
   }
 
@@ -467,7 +476,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   }
 
   Future<void> _showCompactOutline(Paper paper) async {
-    await showModalBottomSheet<void>(
+    await showAdaptiveModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
@@ -507,7 +516,8 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     );
     final questionIds = <String>{
       for (final section in paper.sections)
-        for (final question in section.questions) '${section.id}::${question.id}',
+        for (final question in section.questions)
+          '${section.id}::${question.id}',
     };
     _questionKeys.removeWhere((id, key) => !questionIds.contains(id));
 
@@ -555,7 +565,8 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                       width: 280,
                       child: PaperInspectorPanel(
                         paper: paper,
-                        onEditDetails: () => PaperDetailsSheet.show(context, paper),
+                        onEditDetails: () =>
+                            PaperDetailsSheet.show(context, paper),
                         onChooseStyle: () => PaperStyleSheet.show(
                           context,
                           selectedTemplateId: paper.templateId,
@@ -760,10 +771,8 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                       sectionNumber: index + 1,
                       onAddQuestion: () => _openQuestion(section.id),
                       onAddFromBank: () => _addFromQuestionBank(section),
-                      onEditQuestion: (question) => _openQuestion(
-                        section.id,
-                        question: question,
-                      ),
+                      onEditQuestion: (question) =>
+                          _openQuestion(section.id, question: question),
                       onDuplicateQuestion: (question) =>
                           _actions.duplicateQuestion(section.id, question.id),
                       onDeleteQuestion: (question) =>

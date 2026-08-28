@@ -5,10 +5,19 @@ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_editor_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-enum _StyleFilter { recommended, school, board, college, coaching, primary, custom }
+enum _StyleFilter {
+  recommended,
+  school,
+  board,
+  college,
+  coaching,
+  primary,
+  custom,
+}
 
 class PaperStyleSheet extends ConsumerStatefulWidget {
   final String selectedTemplateId;
@@ -19,7 +28,7 @@ class PaperStyleSheet extends ConsumerStatefulWidget {
     BuildContext context, {
     required String selectedTemplateId,
   }) async {
-    await showModalBottomSheet<void>(
+    await showAdaptiveModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
@@ -42,7 +51,10 @@ class _PaperStyleSheetState extends ConsumerState<PaperStyleSheet> {
     final state = ref.watch(templateProvider);
     final all = state.all;
     final selectable = state.selectable;
-    final selected = PaperTemplateResolver.resolve(widget.selectedTemplateId, all);
+    final selected = PaperTemplateResolver.resolve(
+      widget.selectedTemplateId,
+      all,
+    );
     final visible = selectable.where(_matchesFilter).toList(growable: false);
     final theme = Theme.of(context);
 
@@ -138,10 +150,14 @@ class _PaperStyleSheetState extends ConsumerState<PaperStyleSheet> {
                     return _PaperStyleCard(
                       template: template,
                       selected: isSelected,
-                      description: preset?.description ?? 'Your saved custom paper style.',
+                      description:
+                          preset?.description ??
+                          'Your saved custom paper style.',
                       bestFor: preset?.bestFor ?? 'Custom printing preferences',
                       onTap: () {
-                        ref.read(editorStateProvider.notifier).updateTemplate(template.id);
+                        ref
+                            .read(editorStateProvider.notifier)
+                            .updateTemplate(template.id);
                         Navigator.pop(context);
                       },
                     );

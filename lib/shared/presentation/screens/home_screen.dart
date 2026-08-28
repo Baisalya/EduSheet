@@ -163,15 +163,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             final columns = width >= 1100
                 ? 4
                 : width >= 760
-                    ? 3
-                    : 2;
-            final padding = width < 380 ? 14.0 : 24.0;
-            final spacing = width < 380 ? 14.0 : 20.0;
-            final aspectRatio = width < 380
+                ? 3
+                : width < 280
+                ? 1
+                : 2;
+            final padding = width < 280
+                ? 8.0
+                : width < 380
+                ? 14.0
+                : 24.0;
+            final spacing = width < 280
+                ? 10.0
+                : width < 380
+                ? 14.0
+                : 20.0;
+            final aspectRatio = width < 280
+                ? 0.9
+                : width < 380
                 ? 0.82
                 : width >= 760
-                    ? 0.96
-                    : 0.9;
+                ? 0.96
+                : 0.9;
 
             return SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -370,28 +382,40 @@ class _HomeCardState extends State<_HomeCard> {
                         children: [
                           // TOP ROW
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: widget.color.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(100),
-                                ),
-                                child: Text(
-                                  'FEATURE',
-                                  style: TextStyle(
-                                    color: widget.color,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1,
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: widget.color.withValues(
+                                          alpha: 0.15,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          100,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'FEATURE',
+                                        style: TextStyle(
+                                          color: widget.color,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 1,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-
+                              const SizedBox(width: 4),
                               Icon(
                                 Icons.arrow_outward_rounded,
                                 size: 18,

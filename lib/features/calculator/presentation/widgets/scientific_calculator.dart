@@ -117,7 +117,8 @@ class _ScientificCalculatorState extends ConsumerState<ScientificCalculator> {
       controller.calculate();
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.delete) {
+    if (key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.delete) {
       controller.delete();
       return KeyEventResult.handled;
     }
@@ -192,6 +193,7 @@ class _ScientificCalculatorState extends ConsumerState<ScientificCalculator> {
 
     return KeyEventResult.ignored;
   }
+
   String? _digitForKey(LogicalKeyboardKey key) {
     if (key == LogicalKeyboardKey.digit0 || key == LogicalKeyboardKey.numpad0) {
       return '0';
@@ -225,7 +227,6 @@ class _ScientificCalculatorState extends ConsumerState<ScientificCalculator> {
     }
     return null;
   }
-
 }
 
 class _KeypadArea extends StatelessWidget {
@@ -250,10 +251,7 @@ class _KeypadArea extends StatelessWidget {
             child: _ScientificKeypad(state: state, controller: controller),
           ),
           const SizedBox(width: 8),
-          Expanded(
-            flex: 4,
-            child: _MainKeypad(controller: controller),
-          ),
+          Expanded(flex: 4, child: _MainKeypad(controller: controller)),
         ],
       );
     }
@@ -534,29 +532,64 @@ class _MainKeypad extends StatelessWidget {
           _button('7', colors.number, () => controller.addToken('7')),
           _button('8', colors.number, () => controller.addToken('8')),
           _button('9', colors.number, () => controller.addToken('9')),
-          _button('DEL', colors.danger, controller.delete, foreground: Colors.white),
-          _button('AC', colors.danger, controller.clear, foreground: Colors.white),
+          _button(
+            'DEL',
+            colors.danger,
+            controller.delete,
+            foreground: Colors.white,
+          ),
+          _button(
+            'AC',
+            colors.danger,
+            controller.clear,
+            foreground: Colors.white,
+          ),
         ]),
         _row([
           _button('4', colors.number, () => controller.addToken('4')),
           _button('5', colors.number, () => controller.addToken('5')),
           _button('6', colors.number, () => controller.addToken('6')),
-          _button('×', colors.operator, () => controller.addToken('×'), foreground: Colors.white),
-          _button('÷', colors.operator, () => controller.addToken('÷'), foreground: Colors.white),
+          _button(
+            '×',
+            colors.operator,
+            () => controller.addToken('×'),
+            foreground: Colors.white,
+          ),
+          _button(
+            '÷',
+            colors.operator,
+            () => controller.addToken('÷'),
+            foreground: Colors.white,
+          ),
         ]),
         _row([
           _button('1', colors.number, () => controller.addToken('1')),
           _button('2', colors.number, () => controller.addToken('2')),
           _button('3', colors.number, () => controller.addToken('3')),
-          _button('+', colors.operator, () => controller.addToken('+'), foreground: Colors.white),
-          _button('-', colors.operator, () => controller.addToken('-'), foreground: Colors.white),
+          _button(
+            '+',
+            colors.operator,
+            () => controller.addToken('+'),
+            foreground: Colors.white,
+          ),
+          _button(
+            '-',
+            colors.operator,
+            () => controller.addToken('-'),
+            foreground: Colors.white,
+          ),
         ]),
         _row([
           _button('0', colors.number, () => controller.addToken('0')),
           _button('.', colors.number, () => controller.addToken('.')),
           _button('EXP', colors.neutral, () => controller.addToken('EXP')),
           _button('±', colors.neutral, controller.toggleSign),
-          _button('=', colors.equals, controller.calculate, foreground: Colors.white),
+          _button(
+            '=',
+            colors.equals,
+            controller.calculate,
+            foreground: Colors.white,
+          ),
         ]),
       ],
     );

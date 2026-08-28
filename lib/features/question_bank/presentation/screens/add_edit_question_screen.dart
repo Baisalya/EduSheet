@@ -31,10 +31,7 @@ class AddEditQuestionScreen extends ConsumerWidget {
   ) async {
     final service = ref.read(questionBankApplicationServiceProvider);
     final notifier = ref.read(questionBankProvider.notifier);
-    final entry = service.normalizeEditedMaster(
-      edited,
-      existing: question,
-    );
+    final entry = service.normalizeEditedMaster(edited, existing: question);
 
     if (question == null) {
       final duplicate = service.findLikelyDuplicate(

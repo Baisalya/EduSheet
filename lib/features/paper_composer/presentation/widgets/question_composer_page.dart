@@ -333,9 +333,9 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   Future<void> _scanQuestionText() async {
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     FocusManager.instance.primaryFocus?.unfocus();
-    final scanned = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (context) => const OCRScreen()),
-    );
+    final scanned = await Navigator.of(
+      context,
+    ).push<String>(MaterialPageRoute(builder: (context) => const OCRScreen()));
     if (scanned == null || scanned.trim().isEmpty || !mounted) return;
     final selection = _safeSelectionRange();
     final text = scanned.trim();
@@ -404,20 +404,27 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
 
   List<QuestionOption> _materializedOptions() {
     return _draft.options.map((option) {
-      return option.copyWith(text: _optionControllers[option.id]?.text ?? option.text);
+      return option.copyWith(
+        text: _optionControllers[option.id]?.text ?? option.text,
+      );
     }).toList();
   }
 
   bool _validate() {
     final accessibility = _codec.accessibleText(_bodyController.document);
-    final hasContent = accessibility.isNotEmpty || _unplacedMathExpressions.isNotEmpty;
+    final hasContent =
+        accessibility.isNotEmpty || _unplacedMathExpressions.isNotEmpty;
     final marks = double.tryParse(_marksController.text.trim());
     final options = _materializedOptions();
-    final nonEmptyOptions = options.where((item) => item.text.trim().isNotEmpty).length;
+    final nonEmptyOptions = options
+        .where((item) => item.text.trim().isNotEmpty)
+        .length;
     final validMarks = marks != null && marks.isFinite && marks > 0;
 
     setState(() {
-      _bodyError = hasContent ? null : 'Write the question or add a formula/diagram';
+      _bodyError = hasContent
+          ? null
+          : 'Write the question or add a formula/diagram';
       _marksError = validMarks ? null : 'Enter marks above 0';
       _optionsError = _draft.type.usesOptions && nonEmptyOptions < 2
           ? 'Add at least two answer options'
@@ -434,7 +441,9 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
 
     final encoded = _codec.encode(_bodyController.document);
     final bodyAccessibility = _codec.accessibleText(_bodyController.document);
-    final embeddedMath = _codec.embeddedMathExpressions(_bodyController.document);
+    final embeddedMath = _codec.embeddedMathExpressions(
+      _bodyController.document,
+    );
     final embeddedIds = embeddedMath.map((expression) => expression.id).toSet();
     final unplacedMath = _unplacedMathExpressions
         .where((expression) => !embeddedIds.contains(expression.id))
@@ -449,15 +458,17 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     ].where((item) => item.trim().isNotEmpty).join(' ');
     final options = _draft.type.usesOptions
         ? _materializedOptions()
-            .where((item) => item.text.trim().isNotEmpty)
-            .map((item) => item.copyWith(text: item.text.trim()))
-            .toList()
+              .where((item) => item.text.trim().isNotEmpty)
+              .map((item) => item.copyWith(text: item.text.trim()))
+              .toList()
         : <QuestionOption>[];
     final draft = _draft.copyWith(
       text: encoded,
       options: options,
       mathExpressions: savedMathExpressions,
-      marks: double.parse(_marksController.text.trim()).clamp(0.5, 100).toDouble(),
+      marks: double.parse(
+        _marksController.text.trim(),
+      ).clamp(0.5, 100).toDouble(),
     );
 
     final materialized = draft.toQuestion(
@@ -492,12 +503,13 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
       );
       return;
     }
-    ref.read(questionEditorDefaultsProvider.notifier).state =
-        QuestionEditorDefaults(
-          type: draft.type,
-          marks: draft.marks,
-          isOptional: draft.isOptional,
-        );
+    ref
+        .read(questionEditorDefaultsProvider.notifier)
+        .state = QuestionEditorDefaults(
+      type: draft.type,
+      marks: draft.marks,
+      isOptional: draft.isOptional,
+    );
 
     if (!addAnother || widget.question != null) {
       if (mounted) Navigator.pop(context, true);
@@ -575,8 +587,8 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
             Text(
               '${_draft.type.label} · ${_formatMarks(_draft.marks)} marks',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -634,8 +646,9 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                         ],
                         const SizedBox(height: 16),
                         SwitchListTile.adaptive(
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 4),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                          ),
                           title: const Text('Optional / OR choice'),
                           subtitle: const Text(
                             'This question does not count toward compulsory marks.',
@@ -696,7 +709,12 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
               )
             : Row(
                 children: [
-                  Expanded(child: QuestionTypeControl(type: _draft.type, onTap: _chooseType)),
+                  Expanded(
+                    child: QuestionTypeControl(
+                      type: _draft.type,
+                      onTap: _chooseType,
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   SizedBox(
                     width: 280,
@@ -743,15 +761,18 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                 ),
                 IconButton(
                   visualDensity: VisualDensity.compact,
-                  tooltip: _showFormatting ? 'Hide formatting' : 'Text formatting',
-                  onPressed: () => setState(() => _showFormatting = !_showFormatting),
+                  tooltip: _showFormatting
+                      ? 'Hide formatting'
+                      : 'Text formatting',
+                  onPressed: () =>
+                      setState(() => _showFormatting = !_showFormatting),
                   icon: Icon(
                     _showFormatting
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.format_bold_rounded,
                   ),
                 ),
-                ],
+              ],
             ),
           ),
           if (_showFormatting) ...[
@@ -796,13 +817,12 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
               focusNode: _bodyFocus,
               scrollController: _bodyScroll,
               config: QuillEditorConfig(
-                placeholder: 'Type the question exactly as students should read it…',
+                placeholder:
+                    'Type the question exactly as students should read it…',
                 padding: const EdgeInsets.all(14),
                 embedBuilders: [
                   GeometryEmbedBuilder(),
-                  MathExpressionEmbedBuilder(
-                    onEdit: _editEmbeddedFormula,
-                  ),
+                  MathExpressionEmbedBuilder(onEdit: _editEmbeddedFormula),
                 ],
               ),
             ),
@@ -870,7 +890,9 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     final formulas = _unplacedMathExpressions;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.secondaryContainer.withValues(alpha: 0.35),
+        color: Theme.of(
+          context,
+        ).colorScheme.secondaryContainer.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Padding(
@@ -880,9 +902,9 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
           children: [
             Text(
               'Math from an older question',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
             Text(
@@ -929,9 +951,9 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
           children: [
             Text(
               'Answer options',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
             const Spacer(),
             TextButton.icon(
@@ -946,8 +968,8 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
               ? 'Tap the check circles to mark every correct answer.'
               : 'Tap one circle to mark the correct answer.',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 8),
         for (final entry in _draft.options.asMap().entries)

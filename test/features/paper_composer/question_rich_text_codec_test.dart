@@ -80,10 +80,9 @@ void main() {
       mathExpressions: const [inline, legacy],
     );
 
-    expect(
-      codec.unplacedMathExpressions(question).map((item) => item.id),
-      ['legacy'],
-    );
+    expect(codec.unplacedMathExpressions(question).map((item) => item.id), [
+      'legacy',
+    ]);
   });
 
   test('accessibility text represents geometry embeds', () {

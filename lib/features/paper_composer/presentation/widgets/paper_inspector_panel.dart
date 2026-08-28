@@ -36,7 +36,8 @@ class PaperInspectorPanel extends ConsumerWidget {
       paper.templateId,
       ref.watch(templateProvider).all,
     );
-    final headerComplete = paper.schoolName.trim().isNotEmpty &&
+    final headerComplete =
+        paper.schoolName.trim().isNotEmpty &&
         paper.title.trim().isNotEmpty &&
         paper.title.trim() != 'New Paper' &&
         _fieldValue(paper, 'Subject').isNotEmpty &&
@@ -68,7 +69,9 @@ class PaperInspectorPanel extends ConsumerWidget {
           const SizedBox(height: 12),
           _StatusLine(
             ok: headerComplete,
-            text: headerComplete ? 'Header details ready' : 'Paper setup needs details',
+            text: headerComplete
+                ? 'Header details ready'
+                : 'Paper setup needs details',
           ),
           _StatusLine(
             ok: !marks.hasMismatch,
@@ -85,7 +88,10 @@ class PaperInspectorPanel extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(template.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(
+                  template.name,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
                 const SizedBox(height: 3),
                 Text(
                   '${template.paperSize.name.toUpperCase()} · ${template.paperLayout == PaperLayout.standard ? 'Single column' : 'Two columns'}',
@@ -187,7 +193,9 @@ class _StatusLine extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            ok ? Icons.check_circle_outline_rounded : Icons.info_outline_rounded,
+            ok
+                ? Icons.check_circle_outline_rounded
+                : Icons.info_outline_rounded,
             size: 17,
             color: ok ? theme.colorScheme.primary : theme.colorScheme.error,
           ),

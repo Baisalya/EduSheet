@@ -1,3 +1,4 @@
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
 import '../models/geometry_shape.dart';
@@ -7,7 +8,7 @@ class GeometryQuickPickerSheet extends StatefulWidget {
   const GeometryQuickPickerSheet({super.key});
 
   static Future<GeometryShapeType?> show(BuildContext context) {
-    return showModalBottomSheet<GeometryShapeType>(
+    return showAdaptiveModalBottomSheet<GeometryShapeType>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,

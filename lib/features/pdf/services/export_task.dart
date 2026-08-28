@@ -67,7 +67,8 @@ class ExportFailureClassifier {
         'There is not enough free storage to finish this export.',
       ExportFailureKind.unsupportedContent =>
         'Some content could not be rendered. Your paper is still saved.',
-      ExportFailureKind.cancelled => 'Export cancelled. Your paper is still saved.',
+      ExportFailureKind.cancelled =>
+        'Export cancelled. Your paper is still saved.',
       ExportFailureKind.unknown =>
         'The export could not be completed. Your paper is still saved.',
     };

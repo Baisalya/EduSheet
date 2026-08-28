@@ -18,10 +18,7 @@ void main() {
         editor.resolveModeToken('sqrt(', isShift: true, isHyp: false),
         'cbrt(',
       );
-      expect(
-        editor.resolveModeToken('C', isShift: true, isHyp: false),
-        'P',
-      );
+      expect(editor.resolveModeToken('C', isShift: true, isHyp: false), 'P');
     });
 
     test('deletes complete calculator tokens', () {
@@ -37,11 +34,14 @@ void main() {
       expect(editor.append('1.2+', '.', justEvaluated: false), '1.2+0.');
     });
 
-    test('normalizes adjacent binary operators but permits negative operands', () {
-      expect(editor.append('2+', '×', justEvaluated: false), '2×');
-      expect(editor.append('2×', '-', justEvaluated: false), '2×-');
-      expect(editor.append('2^', '-', justEvaluated: false), '2^-');
-    });
+    test(
+      'normalizes adjacent binary operators but permits negative operands',
+      () {
+        expect(editor.append('2+', '×', justEvaluated: false), '2×');
+        expect(editor.append('2×', '-', justEvaluated: false), '2×-');
+        expect(editor.append('2^', '-', justEvaluated: false), '2^-');
+      },
+    );
 
     test('continues from Ans after a completed calculation', () {
       expect(editor.append('2+3', '+', justEvaluated: true), 'Ans+');

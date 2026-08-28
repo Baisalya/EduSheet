@@ -100,7 +100,8 @@ class _PresentationDocumentViewerState
                         : null,
                     onZoomOut: _zoom > 0.65
                         ? () => setState(
-                            () => _zoom = math.max(0.65, _zoom - 0.1).toDouble(),
+                            () =>
+                                _zoom = math.max(0.65, _zoom - 0.1).toDouble(),
                           )
                         : null,
                     onZoomIn: _zoom < 2.4
@@ -110,7 +111,9 @@ class _PresentationDocumentViewerState
                         : null,
                     onPresent: () => _openPresentationMode(presentation),
                   ),
-                  if (presentation.slides.any((slide) => slide.hasNativeAnimations))
+                  if (presentation.slides.any(
+                    (slide) => slide.hasNativeAnimations,
+                  ))
                     const _NativeAnimationNotice(),
                   Expanded(
                     child: Row(
@@ -274,8 +277,7 @@ class _PresentationToolbar extends StatelessWidget {
                   onPressed: onNext,
                   icon: const Icon(Icons.chevron_right),
                 ),
-                if (!compact)
-                  const VerticalDivider(indent: 10, endIndent: 10),
+                if (!compact) const VerticalDivider(indent: 10, endIndent: 10),
                 if (!compact)
                   IconButton(
                     tooltip: 'Zoom out',
@@ -346,8 +348,12 @@ class _PresentationStage extends StatelessWidget {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final maxWidth = math.max(280.0, constraints.maxWidth - 32).toDouble();
-          final maxHeight = math.max(200.0, constraints.maxHeight - 32).toDouble();
+          final maxWidth = math
+              .max(280.0, constraints.maxWidth - 32)
+              .toDouble();
+          final maxHeight = math
+              .max(200.0, constraints.maxHeight - 32)
+              .toDouble();
           final ratio = presentation.aspectRatio;
           var width = math.min(maxWidth, maxHeight * ratio).toDouble() * zoom;
           var height = width / ratio;
@@ -369,7 +375,11 @@ class _PresentationStage extends StatelessWidget {
                     switchInCurve: Curves.easeOutCubic,
                     switchOutCurve: Curves.easeInCubic,
                     transitionBuilder: (child, animation) =>
-                        _buildSlideTransition(slide.transition, child, animation),
+                        _buildSlideTransition(
+                          slide.transition,
+                          child,
+                          animation,
+                        ),
                     child: _PptxSlideCanvas(
                       key: ValueKey('slide-${slide.number}'),
                       slide: slide,
@@ -558,7 +568,8 @@ class _PresentationElementView extends StatelessWidget {
     }
 
     final scale = slideWidth / 960;
-    final fontSize = (element.fontSizePoints ?? (element.bold ? 26 : 18)) * scale;
+    final fontSize =
+        (element.fontSizePoints ?? (element.bold ? 26 : 18)) * scale;
     final color = element.textColor == null
         ? Colors.black87
         : Color(element.textColor!);
@@ -668,111 +679,114 @@ class _PresentationModePageState extends State<_PresentationModePage> {
   Widget build(BuildContext context) {
     final slide = widget.presentation.slides[_index];
     return Scaffold(
-        backgroundColor: Colors.black,
-        body: Focus(
-          autofocus: true,
-          focusNode: _focusNode,
-          onKeyEvent: _handleKey,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => _showControls = !_showControls),
-            onHorizontalDragEnd: (details) {
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity < -250) _next();
-              if (velocity > 250) _previous();
-            },
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final ratio = widget.presentation.aspectRatio;
-                      final width = math.min(
-                        constraints.maxWidth,
-                        constraints.maxHeight * ratio,
-                      ).toDouble();
-                      final height = width / ratio;
-                      return Center(
-                        child: AnimatedSwitcher(
-                          duration: slide.transition.duration,
-                          transitionBuilder: (child, animation) =>
-                              _buildSlideTransition(
-                                slide.transition,
-                                child,
-                                animation,
-                              ),
-                          child: _PptxSlideCanvas(
-                            key: ValueKey('present-${slide.number}'),
-                            slide: slide,
-                            width: width,
-                            height: height,
-                          ),
+      backgroundColor: Colors.black,
+      body: Focus(
+        autofocus: true,
+        focusNode: _focusNode,
+        onKeyEvent: _handleKey,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _showControls = !_showControls),
+          onHorizontalDragEnd: (details) {
+            final velocity = details.primaryVelocity ?? 0;
+            if (velocity < -250) _next();
+            if (velocity > 250) _previous();
+          },
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final ratio = widget.presentation.aspectRatio;
+                    final width = math
+                        .min(
+                          constraints.maxWidth,
+                          constraints.maxHeight * ratio,
+                        )
+                        .toDouble();
+                    final height = width / ratio;
+                    return Center(
+                      child: AnimatedSwitcher(
+                        duration: slide.transition.duration,
+                        transitionBuilder: (child, animation) =>
+                            _buildSlideTransition(
+                              slide.transition,
+                              child,
+                              animation,
+                            ),
+                        child: _PptxSlideCanvas(
+                          key: ValueKey('present-${slide.number}'),
+                          slide: slide,
+                          width: width,
+                          height: height,
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 ),
-                if (_showControls)
-                  Positioned(
-                    left: 12,
-                    right: 12,
-                    top: 12,
-                    child: SafeArea(
-                      child: Row(
-                        children: [
-                          IconButton.filledTonal(
-                            tooltip: 'Exit presentation',
-                            onPressed: () => Navigator.of(context).pop(_index),
-                            icon: const Icon(Icons.close),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              widget.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
+              ),
+              if (_showControls)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  top: 12,
+                  child: SafeArea(
+                    child: Row(
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: 'Exit presentation',
+                          onPressed: () => Navigator.of(context).pop(_index),
+                          icon: const Icon(Icons.close),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          Text(
-                            '${_index + 1} / ${widget.presentation.slides.length}',
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                        ],
-                      ),
+                        ),
+                        Text(
+                          '${_index + 1} / ${widget.presentation.slides.length}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ],
                     ),
                   ),
-                if (_showControls)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 16,
-                    child: SafeArea(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          IconButton.filledTonal(
-                            onPressed: _index > 0 ? _previous : null,
-                            icon: const Icon(Icons.chevron_left),
-                          ),
-                          const SizedBox(width: 18),
-                          IconButton.filledTonal(
-                            onPressed: _index < widget.presentation.slides.length - 1
-                                ? _next
-                                : null,
-                            icon: const Icon(Icons.chevron_right),
-                          ),
-                        ],
-                      ),
+                ),
+              if (_showControls)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 16,
+                  child: SafeArea(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton.filledTonal(
+                          onPressed: _index > 0 ? _previous : null,
+                          icon: const Icon(Icons.chevron_left),
+                        ),
+                        const SizedBox(width: 18),
+                        IconButton.filledTonal(
+                          onPressed:
+                              _index < widget.presentation.slides.length - 1
+                              ? _next
+                              : null,
+                          icon: const Icon(Icons.chevron_right),
+                        ),
+                      ],
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ),
+      ),
     );
   }
 
@@ -879,17 +893,21 @@ class _PresentationErrorState extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                isCloudUnavailable ? Icons.cloud_off_outlined : Icons.error_outline,
+                isCloudUnavailable
+                    ? Icons.cloud_off_outlined
+                    : Icons.error_outline,
                 size: 54,
-                color: isCloudUnavailable ? Colors.orangeAccent : Colors.redAccent,
+                color: isCloudUnavailable
+                    ? Colors.orangeAccent
+                    : Colors.redAccent,
               ),
               const SizedBox(height: 12),
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
               Text(
@@ -905,8 +923,8 @@ class _PresentationErrorState extends StatelessWidget {
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 const Text(

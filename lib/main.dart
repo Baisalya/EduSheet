@@ -10,6 +10,7 @@ import 'shared/presentation/screens/home_screen.dart';
 import 'features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 import 'shared/presentation/providers/theme_provider.dart';
 import 'shared/presentation/widgets/app_update_gate.dart';
+import 'shared/presentation/widgets/adaptive_app_viewport.dart';
 import 'shared/localization/edusheet_localizations.dart';
 import 'features/pdf/services/question_paper_service.dart';
 import 'features/document_reader/domain/models/document_open_request.dart';
@@ -67,8 +68,9 @@ class _MyAppState extends ConsumerState<MyApp> {
   }
 
   Future<void> _openStartupDocument() async {
-    final commandLineRequest =
-        DocumentOpenRequest.fromCommandLine(widget.startupArguments);
+    final commandLineRequest = DocumentOpenRequest.fromCommandLine(
+      widget.startupArguments,
+    );
     if (commandLineRequest != null) {
       await _openRequest(commandLineRequest);
       return;
@@ -76,8 +78,9 @@ class _MyAppState extends ConsumerState<MyApp> {
 
     if (!Platform.isAndroid) return;
     try {
-      final document = await _documentChannel
-          .invokeMapMethod<String, Object?>('getInitialDocument');
+      final document = await _documentChannel.invokeMapMethod<String, Object?>(
+        'getInitialDocument',
+      );
       if (document != null) await _handlePlatformDocument(document);
     } on PlatformException catch (error) {
       _showIncomingFileError(error.message ?? 'Unable to open this document.');
@@ -114,8 +117,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         if (!mounted) return;
         _navigatorKey.currentState?.push(
           MaterialPageRoute(
-            builder: (context) =>
-                FilePreviewScreen(document: session.document),
+            builder: (context) => FilePreviewScreen(document: session.document),
           ),
         );
       });
@@ -137,7 +139,9 @@ class _MyAppState extends ConsumerState<MyApp> {
       if (!mounted) return;
       final context = _navigatorKey.currentContext;
       if (context == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     });
   }
 
@@ -229,7 +233,8 @@ class _MyAppState extends ConsumerState<MyApp> {
         FlutterQuillLocalizations.delegate,
       ],
       supportedLocales: const [Locale('en', 'US'), Locale('hi', 'IN')],
-      builder: (context, child) => MathKeyboardWrapper(child: child!),
+      builder: (context, child) =>
+          AdaptiveAppViewport(child: MathKeyboardWrapper(child: child!)),
       home: const AppUpdateGate(child: HomeScreen()),
     );
   }

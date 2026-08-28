@@ -81,30 +81,37 @@ void main() {
       expect(updated.attachments.single.id, original.attachments.single.id);
       expect(updated.tableData?.caption, original.tableData?.caption);
       expect(updated.subQuestions.single.id, original.subQuestions.single.id);
-      expect(updated.internalChoices.map((item) => item.id),
-          original.internalChoices.map((item) => item.id));
+      expect(
+        updated.internalChoices.map((item) => item.id),
+        original.internalChoices.map((item) => item.id),
+      );
       expect(updated.metadata['custom'], 'preserve-me');
       expect(updated.version, 8);
     });
 
-    test('changing to option type creates options without changing storage enum', () {
-      final draft = QuestionDraft.create().copyWith(type: QuestionType.mcq);
+    test(
+      'changing to option type creates options without changing storage enum',
+      () {
+        final draft = QuestionDraft.create().copyWith(type: QuestionType.mcq);
 
-      expect(draft.type, QuestionType.mcq);
-      expect(draft.options, hasLength(4));
-      expect(draft.options.map((item) => item.id).toSet(), hasLength(4));
-    });
+        expect(draft.type, QuestionType.mcq);
+        expect(draft.options, hasLength(4));
+        expect(draft.options.map((item) => item.id).toSet(), hasLength(4));
+      },
+    );
 
     test('changing away from option type clears transient answer options', () {
-      final draft = QuestionDraft.create(type: QuestionType.mcq)
-          .copyWith(type: QuestionType.shortAnswer);
+      final draft = QuestionDraft.create(
+        type: QuestionType.mcq,
+      ).copyWith(type: QuestionType.shortAnswer);
 
       expect(draft.options, isEmpty);
     });
 
     test('true/false transitions use semantically correct option sets', () {
-      final trueFalse = QuestionDraft.create(type: QuestionType.mcq)
-          .copyWith(type: QuestionType.trueFalse);
+      final trueFalse = QuestionDraft.create(
+        type: QuestionType.mcq,
+      ).copyWith(type: QuestionType.trueFalse);
 
       expect(trueFalse.options.map((item) => item.text), ['True', 'False']);
 
@@ -114,4 +121,3 @@ void main() {
     });
   });
 }
-

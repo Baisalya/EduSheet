@@ -17,8 +17,16 @@ void main() {
 
         final restored = GeometryDiagram.fromJson(diagram.toJson());
         expect(restored.shapes, hasLength(1), reason: '${type.name} restore');
-        expect(restored.shapes.single.type, type, reason: '${type.name} restore');
-        expect(restored.points.length, diagram.points.length, reason: type.name);
+        expect(
+          restored.shapes.single.type,
+          type,
+          reason: '${type.name} restore',
+        );
+        expect(
+          restored.points.length,
+          diagram.points.length,
+          reason: type.name,
+        );
       } finally {
         controller.dispose();
       }

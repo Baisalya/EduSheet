@@ -68,42 +68,45 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('teacher can create a section and reach focused question editor', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(430, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'teacher can create a section and reach focused question editor',
+    (tester) async {
+      tester.view.physicalSize = const Size(430, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ProviderScope(child: _CreatePaperTestApp()));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        const ProviderScope(child: _CreatePaperTestApp()),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Write first question'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Write first question'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('New question'), findsOneWidget);
-    expect(find.text('Math'), findsOneWidget);
-    expect(find.text('Formula block'), findsNothing);
-    expect(find.text('Geometry'), findsOneWidget);
-    expect(find.text('Answer & more details'), findsOneWidget);
-    expect(find.text('Save & next'), findsOneWidget);
+      expect(find.text('New question'), findsOneWidget);
+      expect(find.text('Math'), findsOneWidget);
+      expect(find.text('Formula block'), findsNothing);
+      expect(find.text('Geometry'), findsOneWidget);
+      expect(find.text('Answer & more details'), findsOneWidget);
+      expect(find.text('Save & next'), findsOneWidget);
 
-    await tester.tap(find.text('Math'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
+      await tester.tap(find.text('Math'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
 
-    expect(find.text('Add math formula'), findsOneWidget);
-    expect(find.text('Formula'), findsOneWidget);
-    expect(find.text('Add formula'), findsOneWidget);
-    expect(find.text('Advanced'), findsOneWidget);
-    expect(find.text('Readable description *'), findsNothing);
-    // Create Paper must enter a structured MathField session. The old
-    // behavior registered the Quill question body directly and converted
-    // fraction/root/function keys into plain Unicode approximations.
-    expect(find.byType(MathField), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.text('Add math formula'), findsOneWidget);
+      expect(find.text('Formula'), findsOneWidget);
+      expect(find.text('Add formula'), findsOneWidget);
+      expect(find.text('Advanced'), findsOneWidget);
+      expect(find.text('Readable description *'), findsNothing);
+      // Create Paper must enter a structured MathField session. The old
+      // behavior registered the Quill question body directly and converted
+      // fraction/root/function keys into plain Unicode approximations.
+      expect(find.byType(MathField), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _CreatePaperTestApp extends StatelessWidget {

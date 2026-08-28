@@ -129,7 +129,8 @@ class QuestionPaperService {
     if (config.orientation == ExportOrientation.landscape) {
       pageFormat = pageFormat.landscape;
     }
-    final horizontalMargin = config.marginPoints +
+    final horizontalMargin =
+        config.marginPoints +
         (config.booklet.enabled ? config.booklet.gutterPoints / 2 : 0);
 
     pdf.addPage(
@@ -400,7 +401,10 @@ class QuestionPaperService {
               ),
             ],
           ),
-          for (final expression in MathExpression.unplacedInRichText(q.text, q.mathExpressions))
+          for (final expression in MathExpression.unplacedInRichText(
+            q.text,
+            q.mathExpressions,
+          ))
             pw.Padding(
               padding: const pw.EdgeInsets.only(left: 34, top: 5, bottom: 3),
               child: pw.Text(
@@ -427,16 +431,12 @@ class QuestionPaperService {
                       children: [
                         pw.Text(
                           '$optIdx) ',
-                          style: pw.TextStyle(
-                            fontSize: fontSize,
-                          ),
+                          style: pw.TextStyle(fontSize: fontSize),
                         ),
                         pw.Expanded(
                           child: pw.Text(
                             optEntry.value.text,
-                            style: pw.TextStyle(
-                              fontSize: fontSize,
-                            ),
+                            style: pw.TextStyle(fontSize: fontSize),
                           ),
                         ),
                       ],

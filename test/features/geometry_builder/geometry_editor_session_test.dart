@@ -40,32 +40,37 @@ void main() {
     expect(mark.pointIds.toSet(), shape.pointIds.toSet());
   });
 
-  test('height projects the selected triangle vertex onto the opposite side', () {
-    final session = GeometryEditorSession();
-    addTearDown(session.dispose);
-    session.useRecipe(GeometryRecipeCatalog.triangle);
-    final shape = session.diagram.shapes.single;
-    final vertex = session.diagram.pointMap[shape.pointIds[0]]!;
-    final a = session.diagram.pointMap[shape.pointIds[1]]!;
-    final b = session.diagram.pointMap[shape.pointIds[2]]!;
+  test(
+    'height projects the selected triangle vertex onto the opposite side',
+    () {
+      final session = GeometryEditorSession();
+      addTearDown(session.dispose);
+      session.useRecipe(GeometryRecipeCatalog.triangle);
+      final shape = session.diagram.shapes.single;
+      final vertex = session.diagram.pointMap[shape.pointIds[0]]!;
+      final a = session.diagram.pointMap[shape.pointIds[1]]!;
+      final b = session.diagram.pointMap[shape.pointIds[2]]!;
 
-    session.setSelection(GeometrySelection.point(vertex.id));
-    final outcome = session.addHeightFromSelectedVertex();
+      session.setSelection(GeometrySelection.point(vertex.id));
+      final outcome = session.addHeightFromSelectedVertex();
 
-    expect(outcome.success, isTrue);
-    final height = session.diagram.marks.firstWhere(
-      (mark) => mark.type == GeometryMarkType.dashedHeightLine,
-    );
-    final foot = session.diagram.pointMap[height.pointIds[1]]!;
-    final ab = b.position - a.position;
-    final af = foot.position - a.position;
-    final cross = ab.dx * af.dy - ab.dy * af.dx;
-    expect(cross.abs(), lessThan(0.001));
-    expect(
-      session.diagram.marks.any((mark) => mark.type == GeometryMarkType.rightAngle),
-      isTrue,
-    );
-  });
+      expect(outcome.success, isTrue);
+      final height = session.diagram.marks.firstWhere(
+        (mark) => mark.type == GeometryMarkType.dashedHeightLine,
+      );
+      final foot = session.diagram.pointMap[height.pointIds[1]]!;
+      final ab = b.position - a.position;
+      final af = foot.position - a.position;
+      final cross = ab.dx * af.dy - ab.dy * af.dx;
+      expect(cross.abs(), lessThan(0.001));
+      expect(
+        session.diagram.marks.any(
+          (mark) => mark.type == GeometryMarkType.rightAngle,
+        ),
+        isTrue,
+      );
+    },
+  );
 
   test('shape-owned point cannot be deleted independently', () {
     final session = GeometryEditorSession();
@@ -97,7 +102,9 @@ void main() {
     expect(point.position.dy, closeTo(66, 0.001));
     expect(
       session.diagram.marks.any(
-        (mark) => mark.type == GeometryMarkType.centerPoint && mark.pointIds.contains(point.id),
+        (mark) =>
+            mark.type == GeometryMarkType.centerPoint &&
+            mark.pointIds.contains(point.id),
       ),
       isTrue,
     );
@@ -129,7 +136,6 @@ void main() {
     expect(selected.markId, mark.id);
   });
 
-
   test('right-angle mark is hit-tested at the visible vertex anchor', () {
     final session = GeometryEditorSession();
     addTearDown(session.dispose);
@@ -147,5 +153,4 @@ void main() {
     expect(nearby.kind, GeometrySelectionKind.mark);
     expect(nearby.markId, mark.id);
   });
-
 }

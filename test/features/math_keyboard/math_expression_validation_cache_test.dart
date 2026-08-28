@@ -10,8 +10,16 @@ void main() {
       latex: r'x^2',
       plainText: 'x squared',
     );
-    const second = MathExpression(id: '2', latex: r'y^2', plainText: 'y squared');
-    const third = MathExpression(id: '3', latex: r'z^2', plainText: 'z squared');
+    const second = MathExpression(
+      id: '2',
+      latex: r'y^2',
+      plainText: 'y squared',
+    );
+    const third = MathExpression(
+      id: '3',
+      latex: r'z^2',
+      plainText: 'z squared',
+    );
 
     final firstResult = cache.validate(first);
     expect(identical(cache.validate(first), firstResult), isTrue);

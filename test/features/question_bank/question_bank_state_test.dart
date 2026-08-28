@@ -62,9 +62,9 @@ void main() {
       selectedType: QuestionType.mcq,
     );
 
-    expect(
-      state.filteredQuestions.map((entry) => entry.question.id),
-      ['fav', 'recent'],
-    );
+    expect(state.filteredQuestions.map((entry) => entry.question.id), [
+      'fav',
+      'recent',
+    ]);
   });
 }

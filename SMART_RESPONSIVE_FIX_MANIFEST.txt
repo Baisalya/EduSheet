@@ -1,0 +1,25 @@
+EduSheet Smart Responsive / Free-form Hardening
+
+Changed/new files:
+- docs/RESPONSIVE_LAYOUT_CONTRACT.md
+- lib/features/geometry_builder/widgets/geometry_builder_screen.dart
+- lib/features/geometry_builder/widgets/geometry_quick_picker_sheet.dart
+- lib/features/geometry_builder/widgets/geometry_add_sheet.dart
+- lib/features/calculator/presentation/screens/calculator_screen.dart
+- lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+- lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart
+- lib/features/question_bank/presentation/widgets/save_to_question_bank_sheet.dart
+- lib/features/question_bank/presentation/widgets/question_bank_picker_sheet.dart
+- lib/features/paper_composer/presentation/widgets/question_more_details_sheet.dart
+- lib/features/paper_composer/presentation/widgets/paper_section_card.dart
+- lib/features/paper_composer/presentation/widgets/paper_style_editor_sheet.dart
+- lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+- lib/features/paper_composer/presentation/widgets/question_type_picker.dart
+- lib/features/paper_composer/presentation/widgets/paper_style_sheet.dart
+- lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+- lib/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart
+- lib/shared/presentation/widgets/adaptive_app_viewport.dart
+- test/features/question_bank/presentation/question_bank_picker_responsive_test.dart
+- test/shared/presentation/adaptive_app_viewport_test.dart
+- test/shared/presentation/adaptive_modal_usage_test.dart
+- test/shared/presentation/adaptive_modal_bottom_sheet_test.dart

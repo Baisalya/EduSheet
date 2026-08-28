@@ -72,7 +72,8 @@ class TemplateElement {
     final typeIndex = (json['type'] as num?)?.toInt();
     return TemplateElement(
       id: json['id']?.toString() ?? '',
-      type: typeIndex != null &&
+      type:
+          typeIndex != null &&
               typeIndex >= 0 &&
               typeIndex < ElementType.values.length
           ? ElementType.values[typeIndex]
@@ -109,9 +110,7 @@ class CustomLayout {
       elements: (json['elements'] as List? ?? const [])
           .whereType<Map>()
           .map(
-            (item) => TemplateElement.fromJson(
-              Map<String, dynamic>.from(item),
-            ),
+            (item) => TemplateElement.fromJson(Map<String, dynamic>.from(item)),
           )
           .toList(),
       canvasHeight: (json['canvasHeight'] as num?)?.toDouble() ?? 200,

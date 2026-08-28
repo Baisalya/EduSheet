@@ -8,10 +8,7 @@ import '../providers/calculator_provider.dart';
 class CalculatorHistoryDrawer extends ConsumerWidget {
   final bool dialogMode;
 
-  const CalculatorHistoryDrawer({
-    super.key,
-    this.dialogMode = false,
-  });
+  const CalculatorHistoryDrawer({super.key, this.dialogMode = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -47,10 +44,7 @@ class CalculatorHistoryDrawer extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.history_rounded,
-                    color: theme.colorScheme.primary,
-                  ),
+                  Icon(Icons.history_rounded, color: theme.colorScheme.primary),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(

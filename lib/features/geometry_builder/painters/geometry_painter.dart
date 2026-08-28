@@ -350,8 +350,14 @@ class GeometryPainter extends CustomPainter {
       case GeometryMarkType.curvedArc:
         if (points.length >= 3) {
           final vertex = points[0];
-          final a1 = math.atan2(points[1].dy - vertex.dy, points[1].dx - vertex.dx);
-          final a2 = math.atan2(points[2].dy - vertex.dy, points[2].dx - vertex.dx);
+          final a1 = math.atan2(
+            points[1].dy - vertex.dy,
+            points[1].dx - vertex.dx,
+          );
+          final a2 = math.atan2(
+            points[2].dy - vertex.dy,
+            points[2].dx - vertex.dx,
+          );
           var sweep = a2 - a1;
           while (sweep <= -math.pi) {
             sweep += math.pi * 2;
@@ -386,7 +392,11 @@ class GeometryPainter extends CustomPainter {
           final normal = Offset(-direction.dy, direction.dx);
           final tangent = direction;
           if (mark.type == GeometryMarkType.equalSideTick) {
-            canvas.drawLine(midpoint - normal * 8, midpoint + normal * 8, paint);
+            canvas.drawLine(
+              midpoint - normal * 8,
+              midpoint + normal * 8,
+              paint,
+            );
           } else {
             for (final shift in const [-5.0, 5.0]) {
               final center = midpoint + tangent * shift;

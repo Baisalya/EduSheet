@@ -44,7 +44,9 @@ class _MathKeyboardOverlay extends ConsumerWidget {
     final screenHeight = MediaQuery.sizeOf(context).height;
     final adaptiveMax = math.max(240.0, math.min(500.0, screenHeight * 0.62));
     final adaptiveMin = math.min(280.0, adaptiveMax);
-    final effectiveHeight = state.height.clamp(adaptiveMin, adaptiveMax).toDouble();
+    final effectiveHeight = state.height
+        .clamp(adaptiveMin, adaptiveMax)
+        .toDouble();
 
     return Positioned(
       left: 0,

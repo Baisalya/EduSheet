@@ -24,7 +24,8 @@ class PresentationDocument {
     required this.slides,
   });
 
-  double get aspectRatio => slideHeight == 0 ? 16 / 9 : slideWidth / slideHeight;
+  double get aspectRatio =>
+      slideHeight == 0 ? 16 / 9 : slideWidth / slideHeight;
 }
 
 class PresentationSlide {

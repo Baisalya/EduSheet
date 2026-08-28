@@ -57,8 +57,9 @@ class SectionWordParser {
     for (var index = 0; index < chunks.length; index++) {
       final parsed = _parseRichChunk(
         chunks[index],
-        sourceQuestion:
-            index < sourceQuestions.length ? sourceQuestions[index] : null,
+        sourceQuestion: index < sourceQuestions.length
+            ? sourceQuestions[index]
+            : null,
         defaultType: defaultType,
         defaultMarks: defaultMarks,
         defaultOptional: defaultOptional,
@@ -101,8 +102,9 @@ class SectionWordParser {
     for (var index = 0; index < chunks.length; index++) {
       final parsed = _parsePlainChunk(
         chunks[index],
-        sourceQuestion:
-            index < sourceQuestions.length ? sourceQuestions[index] : null,
+        sourceQuestion: index < sourceQuestions.length
+            ? sourceQuestions[index]
+            : null,
         defaultType: defaultType,
         defaultMarks: defaultMarks,
         defaultOptional: defaultOptional,
@@ -231,7 +233,10 @@ class SectionWordParser {
       return null;
     }
 
-    final options = _buildOptions(optionTexts, sourceQuestion?.options ?? const []);
+    final options = _buildOptions(
+      optionTexts,
+      sourceQuestion?.options ?? const [],
+    );
     final detectedType = options.length >= 2
         ? QuestionType.mcq
         : sourceQuestion?.type ?? defaultType;
@@ -243,7 +248,8 @@ class SectionWordParser {
       options: detectedType == QuestionType.mcq ? options : const [],
       type: detectedType,
       marks: sourceQuestion?.marks ?? defaultMarks,
-      alignment: sourceQuestion?.alignment ?? _alignmentFromLines(questionLines),
+      alignment:
+          sourceQuestion?.alignment ?? _alignmentFromLines(questionLines),
       isOptional: sourceQuestion?.isOptional ?? defaultOptional,
     );
   }
@@ -377,7 +383,10 @@ class SectionWordParser {
     final questionText = questionLines.join('\n').trim();
     if (questionText.isEmpty) return null;
 
-    final options = _buildOptions(optionTexts, sourceQuestion?.options ?? const []);
+    final options = _buildOptions(
+      optionTexts,
+      sourceQuestion?.options ?? const [],
+    );
     final detectedType = options.length >= 2
         ? QuestionType.mcq
         : sourceQuestion?.type ?? defaultType;
@@ -406,10 +415,7 @@ class _RichLine {
   final List<Map<String, dynamic>> operations;
   final Map<String, dynamic>? newlineAttributes;
 
-  const _RichLine({
-    required this.operations,
-    required this.newlineAttributes,
-  });
+  const _RichLine({required this.operations, required this.newlineAttributes});
 
   String get plainText {
     final buffer = StringBuffer();
@@ -424,7 +430,8 @@ class _RichLine {
     return buffer.toString();
   }
 
-  bool get hasEmbed => operations.any((operation) => operation['insert'] is! String);
+  bool get hasEmbed =>
+      operations.any((operation) => operation['insert'] is! String);
 
   bool get isMeaningful => plainText.trim().isNotEmpty || hasEmbed;
 }

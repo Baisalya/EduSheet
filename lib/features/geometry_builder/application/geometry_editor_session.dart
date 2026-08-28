@@ -184,10 +184,14 @@ class GeometryEditorSession extends ChangeNotifier {
     final offsetAmount = 12.0 + ((diagram.shapes.length % 3) * 10.0);
     final offset = Offset(offsetAmount, offsetAmount);
     final shiftedPoints = addition.points
-        .map((point) => point.copyWith(position: _clamp(point.position + offset)))
+        .map(
+          (point) => point.copyWith(position: _clamp(point.position + offset)),
+        )
         .toList();
     final shiftedLabels = addition.labels
-        .map((label) => label.copyWith(position: _clamp(label.position + offset)))
+        .map(
+          (label) => label.copyWith(position: _clamp(label.position + offset)),
+        )
         .toList();
     final shiftedMarks = addition.marks
         .map((mark) => mark.copyWith(position: _clamp(mark.position + offset)))
@@ -281,7 +285,9 @@ class GeometryEditorSession extends ChangeNotifier {
         return 'Nothing selected';
       case GeometrySelectionKind.point:
         final point = selection.point(diagram);
-        return point == null || point.label.isEmpty ? 'Point' : 'Point ${point.label}';
+        return point == null || point.label.isEmpty
+            ? 'Point'
+            : 'Point ${point.label}';
       case GeometrySelectionKind.label:
         return 'Text label';
       case GeometrySelectionKind.shape:

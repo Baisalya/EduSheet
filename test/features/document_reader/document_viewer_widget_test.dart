@@ -13,11 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  Future<void> pumpAt(
-    WidgetTester tester,
-    Size size,
-    Widget child,
-  ) async {
+  Future<void> pumpAt(WidgetTester tester, Size size, Widget child) async {
     await tester.binding.setSurfaceSize(size);
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: child)));
     await tester.pumpAndSettle();
@@ -67,73 +63,85 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('PPTX cloud placeholder error is recoverable and retry is sync-safe', (
-    tester,
-  ) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final document = _document('cloud_lesson.pptx', '.pptx');
-    final parser = _CloudUnavailablePresentationParser();
+  testWidgets(
+    'PPTX cloud placeholder error is recoverable and retry is sync-safe',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final document = _document('cloud_lesson.pptx', '.pptx');
+      final parser = _CloudUnavailablePresentationParser();
 
-    await pumpAt(
-      tester,
-      const Size(360, 720),
-      PresentationDocumentViewer(document: document, parserService: parser),
-    );
-
-    expect(find.text('OneDrive file is not available offline'), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
-    expect(parser.attempts, 1);
-    expect(tester.takeException(), isNull);
-
-    await tester.tap(find.text('Retry'));
-    await tester.pumpAndSettle();
-
-    expect(parser.attempts, 2);
-    expect(find.text('OneDrive file is not available offline'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('spreadsheet cloud placeholder retry does not return a Future from setState', (
-    tester,
-  ) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final document = _document('cloud_marks.xlsx', '.xlsx');
-    final parser = _CloudUnavailableSpreadsheetParser();
-
-    await pumpAt(
-      tester,
-      const Size(360, 720),
-      SpreadsheetDocumentViewer(document: document, parserService: parser),
-    );
-
-    expect(find.text('Cloud spreadsheet is not available offline'), findsOneWidget);
-    expect(parser.attempts, 1);
-    expect(tester.takeException(), isNull);
-
-    await tester.tap(find.text('Retry'));
-    await tester.pumpAndSettle();
-
-    expect(parser.attempts, 2);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('spreadsheet grid remains renderable on phone and Windows widths', (
-    tester,
-  ) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final document = _document('marks.xlsx', '.xlsx');
-    final parser = _FakeSpreadsheetParser();
-
-    for (final size in const [Size(320, 720), Size(1280, 800)]) {
       await pumpAt(
         tester,
-        size,
+        const Size(360, 720),
+        PresentationDocumentViewer(document: document, parserService: parser),
+      );
+
+      expect(
+        find.text('OneDrive file is not available offline'),
+        findsOneWidget,
+      );
+      expect(find.text('Retry'), findsOneWidget);
+      expect(parser.attempts, 1);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+
+      expect(parser.attempts, 2);
+      expect(
+        find.text('OneDrive file is not available offline'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'spreadsheet cloud placeholder retry does not return a Future from setState',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final document = _document('cloud_marks.xlsx', '.xlsx');
+      final parser = _CloudUnavailableSpreadsheetParser();
+
+      await pumpAt(
+        tester,
+        const Size(360, 720),
         SpreadsheetDocumentViewer(document: document, parserService: parser),
       );
-      expect(find.textContaining('populated rows'), findsOneWidget);
+
+      expect(
+        find.text('Cloud spreadsheet is not available offline'),
+        findsOneWidget,
+      );
+      expect(parser.attempts, 1);
       expect(tester.takeException(), isNull);
-    }
-  });
+
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+
+      expect(parser.attempts, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'spreadsheet grid remains renderable on phone and Windows widths',
+    (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final document = _document('marks.xlsx', '.xlsx');
+      final parser = _FakeSpreadsheetParser();
+
+      for (final size in const [Size(320, 720), Size(1280, 800)]) {
+        await pumpAt(
+          tester,
+          size,
+          SpreadsheetDocumentViewer(document: document, parserService: parser),
+        );
+        expect(find.textContaining('populated rows'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
 }
 
 DocumentFile _document(String name, String extension) {

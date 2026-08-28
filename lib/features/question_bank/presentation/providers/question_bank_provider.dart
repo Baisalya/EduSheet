@@ -117,26 +117,29 @@ class QuestionBankState {
   }
 
   List<String> get subjects {
-    final values = questions
-        .map((question) => question.subject.trim())
-        .where((value) => value.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final values =
+        questions
+            .map((question) => question.subject.trim())
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     return values;
   }
 
   List<String> get chapters {
-    final values = questions
-        .where(
-          (question) =>
-              selectedSubject == null || question.subject == selectedSubject,
-        )
-        .map((question) => question.chapter.trim())
-        .where((value) => value.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final values =
+        questions
+            .where(
+              (question) =>
+                  selectedSubject == null ||
+                  question.subject == selectedSubject,
+            )
+            .map((question) => question.chapter.trim())
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     return values;
   }
 }
@@ -181,10 +184,7 @@ class QuestionBankNotifier extends StateNotifier<QuestionBankState> {
   }
 
   void setSubject(String? subject) {
-    state = state.copyWith(
-      selectedSubject: subject,
-      selectedChapter: null,
-    );
+    state = state.copyWith(selectedSubject: subject, selectedChapter: null);
   }
 
   void setChapter(String? chapter) {

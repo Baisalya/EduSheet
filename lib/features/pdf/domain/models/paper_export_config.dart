@@ -35,8 +35,7 @@ class BookletSettings {
     if (gutterPoints < 0 || gutterPoints > 144) {
       errors.add('Booklet gutter must be between 0 and 144 points.');
     }
-    if (signatureSize != 0 &&
-        (signatureSize < 4 || signatureSize % 4 != 0)) {
+    if (signatureSize != 0 && (signatureSize < 4 || signatureSize % 4 != 0)) {
       errors.add('Signature size must be zero or a positive multiple of four.');
     }
     return errors;
@@ -91,8 +90,7 @@ class PaperExportConfig {
 
   double get fontScale => outputMode == PaperOutputMode.largePrint ? 1.35 : 1;
 
-  double get spacingScale =>
-      outputMode == PaperOutputMode.compact ? 0.65 : 1;
+  double get spacingScale => outputMode == PaperOutputMode.compact ? 0.65 : 1;
 
   List<String> validate() {
     final errors = <String>[];

@@ -115,9 +115,18 @@ class GeometrySelection {
       case GeometryShapeType.cube:
         if (count < 8) return const [];
         return const [
-          (0, 1), (1, 2), (2, 3), (3, 0),
-          (4, 5), (5, 6), (6, 7), (7, 4),
-          (0, 4), (1, 5), (2, 6), (3, 7),
+          (0, 1),
+          (1, 2),
+          (2, 3),
+          (3, 0),
+          (4, 5),
+          (5, 6),
+          (6, 7),
+          (7, 4),
+          (0, 4),
+          (1, 5),
+          (2, 6),
+          (3, 7),
         ];
       case GeometryShapeType.cuboid:
       case GeometryShapeType.cylinder:

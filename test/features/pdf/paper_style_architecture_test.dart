@@ -25,65 +25,83 @@ void main() {
   });
 
   test('teacher-facing preset names do not claim institutional branding', () {
-    const prohibited = ['cbse', 'icse', 'dps', 'ssvm', 'allen', 'aakash', 'xavier'];
+    const prohibited = [
+      'cbse',
+      'icse',
+      'dps',
+      'ssvm',
+      'allen',
+      'aakash',
+      'xavier',
+    ];
     for (final template in PaperStyleCatalog.visibleTemplates) {
       final name = template.name.toLowerCase();
       for (final term in prohibited) {
-        expect(name, isNot(contains(term)), reason: '${template.id} exposed $term');
+        expect(
+          name,
+          isNot(contains(term)),
+          reason: '${template.id} exposed $term',
+        );
       }
     }
   });
 
-  test('legacy template IDs remain resolvable but hidden from main chooser', () {
-    const legacyIds = {
-      'school_ssvm_style',
-      'school_dps_style',
-      'school_xavier_style',
-      'coaching_allen',
-      'coaching_akash',
-      'kids_cartoon',
-    };
-    final all = PaperStyleCatalog.allBuiltInTemplates;
+  test(
+    'legacy template IDs remain resolvable but hidden from main chooser',
+    () {
+      const legacyIds = {
+        'school_ssvm_style',
+        'school_dps_style',
+        'school_xavier_style',
+        'coaching_allen',
+        'coaching_akash',
+        'kids_cartoon',
+      };
+      final all = PaperStyleCatalog.allBuiltInTemplates;
 
-    for (final id in legacyIds) {
-      final resolved = PaperTemplateResolver.resolve(id, all);
-      expect(resolved.id, id);
-      expect(PaperStyleCatalog.isVisibleBuiltIn(id), isFalse);
-    }
-  });
+      for (final id in legacyIds) {
+        final resolved = PaperTemplateResolver.resolve(id, all);
+        expect(resolved.id, id);
+        expect(PaperStyleCatalog.isVisibleBuiltIn(id), isFalse);
+      }
+    },
+  );
 
-  test('all persisted header-layout values resolve without branded static copy', () {
-    for (final layout in HeaderLayout.values) {
-      final custom = CustomLayout(
-        elements: [
-          TemplateElement(
-            id: 'custom-title',
-            type: ElementType.paperTitle,
-            x: 0,
-            y: 0,
-          ),
-        ],
-        canvasHeight: 50,
-      );
-      final template = PaperTemplate(
-        id: 'layout-${layout.name}',
-        name: layout.name,
-        type: TemplateType.school,
-        headerLayout: layout,
-        customLayout: layout == HeaderLayout.custom ? custom : null,
-      );
-      final resolved = PaperHeaderLayoutFactory.resolve(template);
+  test(
+    'all persisted header-layout values resolve without branded static copy',
+    () {
+      for (final layout in HeaderLayout.values) {
+        final custom = CustomLayout(
+          elements: [
+            TemplateElement(
+              id: 'custom-title',
+              type: ElementType.paperTitle,
+              x: 0,
+              y: 0,
+            ),
+          ],
+          canvasHeight: 50,
+        );
+        final template = PaperTemplate(
+          id: 'layout-${layout.name}',
+          name: layout.name,
+          type: TemplateType.school,
+          headerLayout: layout,
+          customLayout: layout == HeaderLayout.custom ? custom : null,
+        );
+        final resolved = PaperHeaderLayoutFactory.resolve(template);
 
-      expect(resolved.elements, isNotEmpty);
-      expect(resolved.canvasHeight, greaterThan(0));
-      final staticText = resolved.elements
-          .where((element) => element.type == ElementType.staticText)
-          .map((element) => element.content.toLowerCase())
-          .join(' ');
-      expect(staticText, isNot(contains('dps')));
-      expect(staticText, isNot(contains('ssvm')));
-    }
-  });
+        expect(resolved.elements, isNotEmpty);
+        expect(resolved.canvasHeight, greaterThan(0));
+        final staticText = resolved.elements
+            .where((element) => element.type == ElementType.staticText)
+            .map((element) => element.content.toLowerCase())
+            .join(' ');
+        expect(staticText, isNot(contains('dps')));
+        expect(staticText, isNot(contains('ssvm')));
+      }
+    },
+  );
 
   test('built-in header expands for additional teacher metadata', () {
     final template = PaperStyleCatalog.presets.first.template;
@@ -141,14 +159,25 @@ void main() {
     );
     final over = under.copyWith(maximumMarks: 40);
 
-    expect(PaperMarksResolver.summarize(under).balance, PaperMarksBalance.underAssigned);
-    expect(PaperMarksResolver.summarize(under).teacherMessage, contains('10 marks'));
-    expect(PaperMarksResolver.summarize(over).balance, PaperMarksBalance.overAssigned);
+    expect(
+      PaperMarksResolver.summarize(under).balance,
+      PaperMarksBalance.underAssigned,
+    );
+    expect(
+      PaperMarksResolver.summarize(under).teacherMessage,
+      contains('10 marks'),
+    );
+    expect(
+      PaperMarksResolver.summarize(over).balance,
+      PaperMarksBalance.overAssigned,
+    );
     expect(PaperMarksResolver.summarize(over).teacherMessage, contains('10'));
   });
 
   test('custom clone preserves page size', () async {
-    final directory = await Directory.systemTemp.createTemp('edusheet_style_clone_');
+    final directory = await Directory.systemTemp.createTemp(
+      'edusheet_style_clone_',
+    );
     addTearDown(() async => directory.delete(recursive: true));
     final file = File('${directory.path}/templates.json');
     final repository = TemplateRepository(fileResolver: () async => file);

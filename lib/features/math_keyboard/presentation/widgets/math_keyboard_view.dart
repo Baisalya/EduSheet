@@ -1,3 +1,4 @@
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -64,9 +65,6 @@ class MathKeyboardView extends ConsumerWidget {
     );
   }
 
-
-
-
   Widget _buildHeader(
     BuildContext context,
     MathKeyboardStateData state,
@@ -113,7 +111,10 @@ class MathKeyboardView extends ConsumerWidget {
               onVerticalDragUpdate: (details) =>
                   controller.setHeight(state.height - details.delta.dy),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 7,
+                  vertical: 10,
+                ),
                 child: Icon(
                   Icons.drag_indicator_rounded,
                   size: 19,
@@ -145,11 +146,8 @@ class MathKeyboardView extends ConsumerWidget {
                         : 'MORE',
                     selected: moreSelected,
                     showLabel: !compact,
-                    onTap: () => _showCategoryPicker(
-                      context,
-                      state,
-                      controller,
-                    ),
+                    onTap: () =>
+                        _showCategoryPicker(context, state, controller),
                   );
                 }
 
@@ -175,10 +173,7 @@ class MathKeyboardView extends ConsumerWidget {
     MathKeyboardController controller,
   ) {
     const groups = <String, List<MathCategory>>{
-      'MY KEYS': <MathCategory>[
-        MathCategory.recent,
-        MathCategory.favorites,
-      ],
+      'MY KEYS': <MathCategory>[MathCategory.recent, MathCategory.favorites],
       'MATHEMATICS': <MathCategory>[
         MathCategory.trig,
         MathCategory.geometry,
@@ -186,10 +181,7 @@ class MathKeyboardView extends ConsumerWidget {
         MathCategory.matrices,
         MathCategory.sets,
       ],
-      'SCIENCE': <MathCategory>[
-        MathCategory.physics,
-        MathCategory.chemistry,
-      ],
+      'SCIENCE': <MathCategory>[MathCategory.physics, MathCategory.chemistry],
       'SYMBOLS': <MathCategory>[
         MathCategory.greek,
         MathCategory.operators,
@@ -203,7 +195,7 @@ class MathKeyboardView extends ConsumerWidget {
       ],
     };
 
-    showModalBottomSheet<void>(
+    showAdaptiveModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       useSafeArea: true,
@@ -215,9 +207,9 @@ class MathKeyboardView extends ConsumerWidget {
           children: [
             Text(
               'More math & science keys',
-              style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              style: Theme.of(
+                sheetContext,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
             for (final group in groups.entries) ...[
@@ -303,13 +295,11 @@ class MathKeyboardView extends ConsumerWidget {
     };
   }
 
-
-
   void _showSymbolSearch(
     BuildContext context,
     MathKeyboardController controller,
   ) {
-    showModalBottomSheet<void>(
+    showAdaptiveModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       useSafeArea: true,
@@ -341,7 +331,9 @@ class MathKeyboardView extends ConsumerWidget {
       height: compact ? 44 : 48,
       padding: const EdgeInsets.symmetric(vertical: 5),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.24),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.24,
+        ),
         border: Border(
           bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.08)),
         ),
@@ -529,7 +521,9 @@ class MathKeyboardView extends ConsumerWidget {
                         maxLines: 2,
                         textAlign: TextAlign.center,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall?.copyWith(fontSize: 10),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          fontSize: 10,
+                        ),
                       ),
                     ],
                   ),
@@ -623,50 +617,42 @@ class MathKeyboardView extends ConsumerWidget {
       {
         'label': 'Strike',
         'icon': Icons.format_strikethrough,
-        'onTap': () => _toggleQuillAttribute(
-          activeEditor,
-          quill.Attribute.strikeThrough,
-        ),
+        'onTap': () =>
+            _toggleQuillAttribute(activeEditor, quill.Attribute.strikeThrough),
       },
       {
         'label': 'Bullet',
         'icon': Icons.format_list_bulleted,
-        'onTap': () =>
-            _toggleQuillAttribute(activeEditor, quill.Attribute.ul),
+        'onTap': () => _toggleQuillAttribute(activeEditor, quill.Attribute.ul),
       },
       {
         'label': 'Number',
         'icon': Icons.format_list_numbered,
-        'onTap': () =>
-            _toggleQuillAttribute(activeEditor, quill.Attribute.ol),
+        'onTap': () => _toggleQuillAttribute(activeEditor, quill.Attribute.ol),
       },
       {
         'label': 'Left',
         'icon': Icons.format_align_left,
-        'onTap': () => activeEditor.formatSelection(
-          quill.Attribute.leftAlignment,
-        ),
+        'onTap': () =>
+            activeEditor.formatSelection(quill.Attribute.leftAlignment),
       },
       {
         'label': 'Center',
         'icon': Icons.format_align_center,
-        'onTap': () => activeEditor.formatSelection(
-          quill.Attribute.centerAlignment,
-        ),
+        'onTap': () =>
+            activeEditor.formatSelection(quill.Attribute.centerAlignment),
       },
       {
         'label': 'Right',
         'icon': Icons.format_align_right,
-        'onTap': () => activeEditor.formatSelection(
-          quill.Attribute.rightAlignment,
-        ),
+        'onTap': () =>
+            activeEditor.formatSelection(quill.Attribute.rightAlignment),
       },
       {
         'label': 'Justify',
         'icon': Icons.format_align_justify,
-        'onTap': () => activeEditor.formatSelection(
-          quill.Attribute.justifyAlignment,
-        ),
+        'onTap': () =>
+            activeEditor.formatSelection(quill.Attribute.justifyAlignment),
       },
     ];
 
@@ -734,7 +720,7 @@ class MathKeyboardView extends ConsumerWidget {
       Icons.chat_bubble_outline,
     ];
 
-    showModalBottomSheet(
+    showAdaptiveModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       useRootNavigator:
@@ -872,7 +858,7 @@ class MathKeyboardView extends ConsumerWidget {
   ) {
     final favorites = ref.read(favoriteSymbolsProvider);
     final isFavorite = favorites.any((item) => item.id == symbol.id);
-    showModalBottomSheet<void>(
+    showAdaptiveModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       useSafeArea: true,

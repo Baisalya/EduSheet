@@ -46,19 +46,13 @@ void main() {
       expect(paper.id, 'paper-legacy');
       expect(paper.sections.single.questions, hasLength(3));
       expect(paper.sections.single.questions[0].type, QuestionType.mcq);
-      expect(
-        paper.sections.single.questions[1].type,
-        QuestionType.descriptive,
-      );
+      expect(paper.sections.single.questions[1].type, QuestionType.descriptive);
       expect(
         paper.sections.single.questions[2].type,
         QuestionType.fillInTheBlanks,
       );
       expect(paper.sections.single.questions[1].marks, 5.5);
-      expect(
-        paper.sections.single.questions[1].alignment,
-        TextAlign.center,
-      );
+      expect(paper.sections.single.questions[1].alignment, TextAlign.center);
     });
 
     test('round trip keeps immutable IDs, options and numbering settings', () {

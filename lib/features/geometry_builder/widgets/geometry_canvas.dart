@@ -36,8 +36,12 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
         final selection = widget.session.selection;
         return LayoutBuilder(
           builder: (context, constraints) {
-            final width = constraints.maxWidth <= 0 ? 1.0 : constraints.maxWidth;
-            final height = constraints.maxHeight <= 0 ? 1.0 : constraints.maxHeight;
+            final width = constraints.maxWidth <= 0
+                ? 1.0
+                : constraints.maxWidth;
+            final height = constraints.maxHeight <= 0
+                ? 1.0
+                : constraints.maxHeight;
             final scaleX = diagram.canvasSize.width / width;
             final scaleY = diagram.canvasSize.height / height;
 
@@ -49,7 +53,9 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
             }
 
             void editAt(Offset localPosition) {
-              final selected = widget.session.selectAt(toDiagram(localPosition));
+              final selected = widget.session.selectAt(
+                toDiagram(localPosition),
+              );
               if (selected.kind == GeometrySelectionKind.label) {
                 final label = selected.label(diagram);
                 if (label != null) widget.onEditLabel?.call(label);
@@ -60,8 +66,11 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
                 if (point != null) widget.onEditPointLabel?.call(point);
                 return;
               }
-              if (selected.kind == GeometrySelectionKind.side && selected.shapeId != null) {
-                widget.session.setSelection(GeometrySelection.shape(selected.shapeId!));
+              if (selected.kind == GeometrySelectionKind.side &&
+                  selected.shapeId != null) {
+                widget.session.setSelection(
+                  GeometrySelection.shape(selected.shapeId!),
+                );
               }
             }
 
@@ -86,7 +95,9 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
                       widget.session.dragTo(toDiagram(details.localPosition));
                     }
                   : null,
-              onPanEnd: widget.interactive ? (_) => widget.session.endDrag() : null,
+              onPanEnd: widget.interactive
+                  ? (_) => widget.session.endDrag()
+                  : null,
               onPanCancel: widget.interactive ? widget.session.endDrag : null,
               child: RepaintBoundary(
                 key: widget.repaintKey,
@@ -96,7 +107,9 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
                         ? Colors.white.withValues(alpha: 0.01)
                         : Colors.white,
                     border: Border.all(
-                      color: Theme.of(context).dividerColor.withValues(alpha: 0.25),
+                      color: Theme.of(
+                        context,
+                      ).dividerColor.withValues(alpha: 0.25),
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -105,7 +118,8 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
                       diagram: diagram,
                       selectedLabelId: selection.labelId,
                       selectedPointId: selection.pointId,
-                      selectedShapeId: selection.kind == GeometrySelectionKind.shape
+                      selectedShapeId:
+                          selection.kind == GeometrySelectionKind.shape
                           ? selection.shapeId
                           : null,
                       selectedSidePointIds: selection.sidePointIds(diagram),

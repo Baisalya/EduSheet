@@ -2,6 +2,7 @@ import 'package:edusheet/features/editor/presentation/providers/editor_provider.
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -14,7 +15,7 @@ class PaperStyleEditorSheet extends ConsumerStatefulWidget {
   const PaperStyleEditorSheet({super.key, required this.base});
 
   static Future<String?> show(BuildContext context, PaperTemplate base) {
-    return showModalBottomSheet<String>(
+    return showAdaptiveModalBottomSheet<String>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
@@ -47,7 +48,8 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
     super.initState();
     _name = TextEditingController(text: '${widget.base.name} Custom');
     _paperSize = widget.base.paperSize;
-    _headerLayout = widget.base.headerLayout == HeaderLayout.custom &&
+    _headerLayout =
+        widget.base.headerLayout == HeaderLayout.custom &&
             widget.base.customLayout == null
         ? HeaderLayout.centered
         : widget.base.headerLayout;
@@ -66,16 +68,16 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
   }
 
   PaperTemplate get _previewTemplate => widget.base.copyWith(
-        id: 'preview-style',
-        name: _name.text.trim().isEmpty ? 'Custom style' : _name.text.trim(),
-        paperSize: _paperSize,
-        headerLayout: _headerLayout,
-        paperLayout: _paperLayout,
-        hasBorder: _hasBorder,
-        centeredHeader: _centeredHeader,
-        headerFontSize: _headerFontSize,
-        questionFontSize: _questionFontSize,
-      );
+    id: 'preview-style',
+    name: _name.text.trim().isEmpty ? 'Custom style' : _name.text.trim(),
+    paperSize: _paperSize,
+    headerLayout: _headerLayout,
+    paperLayout: _paperLayout,
+    hasBorder: _hasBorder,
+    centeredHeader: _centeredHeader,
+    headerFontSize: _headerFontSize,
+    questionFontSize: _questionFontSize,
+  );
 
   Future<void> _save() async {
     if (_saving) return;
@@ -88,10 +90,7 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
     }
 
     setState(() => _saving = true);
-    final style = _previewTemplate.copyWith(
-      id: const Uuid().v4(),
-      name: name,
-    );
+    final style = _previewTemplate.copyWith(id: const Uuid().v4(), name: name);
 
     try {
       await ref.read(templateProvider.notifier).saveTemplate(style);
@@ -154,11 +153,7 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
                   padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      controls,
-                      const SizedBox(height: 20),
-                      preview,
-                    ],
+                    children: [controls, const SizedBox(height: 20), preview],
                   ),
                 );
               }
@@ -177,7 +172,10 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
                     flex: 4,
                     child: Padding(
                       padding: const EdgeInsets.all(24),
-                      child: Align(alignment: Alignment.topCenter, child: preview),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: preview,
+                      ),
                     ),
                   ),
                 ],
@@ -213,7 +211,12 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
               ),
             ),
             const SizedBox(height: 18),
-            Text('Essentials', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              'Essentials',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: 10),
             _ResponsivePair(
               first: DropdownButtonFormField<PaperSize>(
@@ -221,7 +224,10 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
                 decoration: const InputDecoration(labelText: 'Page'),
                 items: [
                   for (final size in PaperSize.values)
-                    DropdownMenuItem(value: size, child: Text(size.name.toUpperCase())),
+                    DropdownMenuItem(
+                      value: size,
+                      child: Text(size.name.toUpperCase()),
+                    ),
                 ],
                 onChanged: (value) {
                   if (value != null) setState(() => _paperSize = value);
@@ -232,7 +238,10 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
                 decoration: const InputDecoration(labelText: 'Questions'),
                 items: [
                   for (final layout in PaperLayout.values)
-                    DropdownMenuItem(value: layout, child: Text(_paperLayoutLabel(layout))),
+                    DropdownMenuItem(
+                      value: layout,
+                      child: Text(_paperLayoutLabel(layout)),
+                    ),
                 ],
                 onChanged: (value) {
                   if (value != null) setState(() => _paperLayout = value);
@@ -244,11 +253,15 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
               initialValue: _headerLayout,
               decoration: const InputDecoration(
                 labelText: 'Header',
-                helperText: 'Choose the overall arrangement, not individual coordinates.',
+                helperText:
+                    'Choose the overall arrangement, not individual coordinates.',
               ),
               items: [
                 for (final layout in allowedHeaders)
-                  DropdownMenuItem(value: layout, child: Text(_headerLayoutLabel(layout))),
+                  DropdownMenuItem(
+                    value: layout,
+                    child: Text(_headerLayoutLabel(layout)),
+                  ),
               ],
               onChanged: (value) {
                 if (value != null) setState(() => _headerLayout = value);
@@ -259,8 +272,14 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
             const SizedBox(height: 8),
             SegmentedButton<_TextDensity>(
               segments: const [
-                ButtonSegment(value: _TextDensity.compact, label: Text('Compact')),
-                ButtonSegment(value: _TextDensity.normal, label: Text('Normal')),
+                ButtonSegment(
+                  value: _TextDensity.compact,
+                  label: Text('Compact'),
+                ),
+                ButtonSegment(
+                  value: _TextDensity.normal,
+                  label: Text('Normal'),
+                ),
                 ButtonSegment(value: _TextDensity.large, label: Text('Large')),
               ],
               selected: {_density},
@@ -281,7 +300,9 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('Paper border'),
-              subtitle: const Text('Useful for formal or worksheet-style papers.'),
+              subtitle: const Text(
+                'Useful for formal or worksheet-style papers.',
+              ),
               value: _hasBorder,
               onChanged: (value) => setState(() => _hasBorder = value),
             ),
@@ -348,11 +369,18 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
         children: [
           Row(
             children: [
-              Text('Live preview', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              Text(
+                'Live preview',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               const Spacer(),
               Text(
                 '${_paperSize.name.toUpperCase()} · ${_paperLayoutLabel(_paperLayout)}',
-                style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),

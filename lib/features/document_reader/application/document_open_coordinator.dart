@@ -39,7 +39,8 @@ class DocumentOpenCoordinator {
     }
 
     final now = DateTime.now();
-    final shouldDedupe = request.activationId != null ||
+    final shouldDedupe =
+        request.activationId != null ||
         request.source == DocumentOpenSource.androidViewIntent ||
         request.source == DocumentOpenSource.androidShareIntent;
     if (shouldDedupe &&

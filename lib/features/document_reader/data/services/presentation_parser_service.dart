@@ -50,7 +50,8 @@ class PresentationParserService {
                     : null,
                 fillColor: (rawElement['fillColor'] as num?)?.toInt(),
                 textColor: (rawElement['textColor'] as num?)?.toInt(),
-                fontSizePoints: (rawElement['fontSizePoints'] as num?)?.toDouble(),
+                fontSizePoints: (rawElement['fontSizePoints'] as num?)
+                    ?.toDouble(),
                 bold: rawElement['bold'] == true,
                 alignment: rawElement['alignment']?.toString(),
               ),
@@ -115,8 +116,10 @@ Map<String, Object?> _parsePresentationPayload(Uint8List bytes) {
   var slideHeight = 6858000.0;
   if (presentationXml != null) {
     final slideSize = _firstDescendant(presentationXml, 'sldSz');
-    slideWidth = double.tryParse(slideSize?.getAttribute('cx') ?? '') ?? slideWidth;
-    slideHeight = double.tryParse(slideSize?.getAttribute('cy') ?? '') ?? slideHeight;
+    slideWidth =
+        double.tryParse(slideSize?.getAttribute('cx') ?? '') ?? slideWidth;
+    slideHeight =
+        double.tryParse(slideSize?.getAttribute('cy') ?? '') ?? slideHeight;
   }
 
   final slidePaths = _orderedSlidePaths(files, presentationXml);
@@ -163,10 +166,9 @@ Map<String, Object?> _parsePresentationPayload(Uint8List bytes) {
       'number': index + 1,
       'elements': elements,
       'backgroundColor': _slideBackgroundColor(parsed),
-      'hasNativeAnimations':
-          parsed.descendants.whereType<xml.XmlElement>().any(
-            (element) => element.name.local == 'timing',
-          ),
+      'hasNativeAnimations': parsed.descendants.whereType<xml.XmlElement>().any(
+        (element) => element.name.local == 'timing',
+      ),
       'transition': _transitionPayload(parsed),
     });
   }
@@ -185,7 +187,9 @@ List<String> _orderedSlidePaths(
   final presentationRels = files['ppt/_rels/presentation.xml.rels'];
   if (presentationXml != null && presentationRels != null) {
     final targets = <String, String>{};
-    final relXml = xml.XmlDocument.parse(utf8.decode(_entryBytes(presentationRels)));
+    final relXml = xml.XmlDocument.parse(
+      utf8.decode(_entryBytes(presentationRels)),
+    );
     for (final rel in relXml.descendants.whereType<xml.XmlElement>()) {
       if (rel.name.local != 'Relationship') continue;
       final id = rel.getAttribute('Id');
@@ -196,9 +200,10 @@ List<String> _orderedSlidePaths(
     }
 
     final ordered = <String>[];
-    for (final slideId in presentationXml.descendants.whereType<xml.XmlElement>().where(
-      (element) => element.name.local == 'sldId',
-    )) {
+    for (final slideId
+        in presentationXml.descendants.whereType<xml.XmlElement>().where(
+          (element) => element.name.local == 'sldId',
+        )) {
       String? relId;
       for (final attribute in slideId.attributes) {
         if (attribute.name.local == 'id' && attribute.name.prefix == 'r') {
@@ -257,7 +262,8 @@ Map<String, Object?>? _shapePayload(
       : _colorFromContainer(shapeProperties, 'solidFill');
   if (text.isEmpty && shapeFill == null) return null;
 
-  final styleElement = _firstDescendant(shape, 'rPr') ?? _firstDescendant(shape, 'defRPr');
+  final styleElement =
+      _firstDescendant(shape, 'rPr') ?? _firstDescendant(shape, 'defRPr');
   final rawSize = double.tryParse(styleElement?.getAttribute('sz') ?? '');
   final rawBold = styleElement?.getAttribute('b');
   final paragraphProperties = _firstDescendant(shape, 'pPr');
@@ -328,8 +334,12 @@ Map<String, Object?> _boundsPayload(
   final y = double.tryParse(off?.getAttribute('y') ?? '');
   final width = double.tryParse(ext?.getAttribute('cx') ?? '');
   final height = double.tryParse(ext?.getAttribute('cy') ?? '');
-  if (x == null || y == null || width == null || height == null ||
-      slideWidth <= 0 || slideHeight <= 0) {
+  if (x == null ||
+      y == null ||
+      width == null ||
+      height == null ||
+      slideWidth <= 0 ||
+      slideHeight <= 0) {
     return const <String, Object?>{'hasBounds': false};
   }
 
@@ -405,11 +415,14 @@ Map<String, Object?> _transitionPayload(xml.XmlDocument document) {
 
 int? _slideBackgroundColor(xml.XmlDocument document) {
   final background = _firstElementNamed(document.descendants, 'bg');
-  return background == null ? null : _colorFromContainer(background, 'solidFill');
+  return background == null
+      ? null
+      : _colorFromContainer(background, 'solidFill');
 }
 
 int? _textColor(xml.XmlElement shape) {
-  final rPr = _firstDescendant(shape, 'rPr') ?? _firstDescendant(shape, 'defRPr');
+  final rPr =
+      _firstDescendant(shape, 'rPr') ?? _firstDescendant(shape, 'defRPr');
   return rPr == null ? null : _colorFromContainer(rPr, 'solidFill');
 }
 
@@ -421,7 +434,6 @@ int? _colorFromContainer(xml.XmlElement container, String fillName) {
   if (value == null || value.length != 6) return null;
   return int.tryParse('FF$value', radix: 16);
 }
-
 
 xml.XmlElement? _firstElementNamed(
   Iterable<xml.XmlNode> nodes,

@@ -191,10 +191,12 @@ class EditorState extends _$EditorState {
     double? maximumMarks,
     bool clearMaximumMarks = false,
   }) {
-    final normalizedFields = headerFields.map((field) {
-      if (field.id.trim().isNotEmpty) return field;
-      return field.copyWith(id: const Uuid().v4());
-    }).toList(growable: false);
+    final normalizedFields = headerFields
+        .map((field) {
+          if (field.id.trim().isNotEmpty) return field;
+          return field.copyWith(id: const Uuid().v4());
+        })
+        .toList(growable: false);
 
     state = state.copyWith(
       title: title,
@@ -460,7 +462,9 @@ class EditorState extends _$EditorState {
   }
 
   void duplicateSection(String sectionId) {
-    final sourceIndex = state.sections.indexWhere((item) => item.id == sectionId);
+    final sourceIndex = state.sections.indexWhere(
+      (item) => item.id == sectionId,
+    );
     if (sourceIndex == -1) return;
     final source = state.sections[sourceIndex];
     final duplicate = PaperSection(
@@ -584,20 +588,18 @@ class EditorState extends _$EditorState {
     final question = sourceQuestions.removeAt(questionIndex);
 
     if (fromIndex == destinationIndex) {
-      final insertion = (toIndex ?? sourceQuestions.length).clamp(
-        0,
-        sourceQuestions.length,
-      ).toInt();
+      final insertion = (toIndex ?? sourceQuestions.length)
+          .clamp(0, sourceQuestions.length)
+          .toInt();
       sourceQuestions.insert(insertion, question);
       sections[fromIndex] = sections[fromIndex].copyWith(
         questions: sourceQuestions,
       );
     } else {
       final destinationQuestions = [...sections[destinationIndex].questions];
-      final insertion = (toIndex ?? destinationQuestions.length).clamp(
-        0,
-        destinationQuestions.length,
-      ).toInt();
+      final insertion = (toIndex ?? destinationQuestions.length)
+          .clamp(0, destinationQuestions.length)
+          .toInt();
       destinationQuestions.insert(insertion, question);
       sections[fromIndex] = sections[fromIndex].copyWith(
         questions: sourceQuestions,

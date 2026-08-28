@@ -610,8 +610,7 @@ class QuestionTable {
           .map((row) => row.map((cell) => cell.toString()).toList())
           .toList(),
       caption: json['caption']?.toString() ?? '',
-      accessibilitySummary:
-          json['accessibilitySummary']?.toString() ?? '',
+      accessibilitySummary: json['accessibilitySummary']?.toString() ?? '',
     );
   }
 }
@@ -829,8 +828,7 @@ class Question {
       text: json['text']?.toString() ?? '',
       richTextFormat:
           json['richTextFormat']?.toString() ?? 'quill-delta-json-v1',
-      plainTextAccessibility:
-          json['plainTextAccessibility']?.toString(),
+      plainTextAccessibility: json['plainTextAccessibility']?.toString(),
       imageUrl: json['imageUrl']?.toString(),
       options:
           (json['options'] as List?)
@@ -841,12 +839,15 @@ class Question {
       type: _questionTypeFromJson(json),
       marks: (json['marks'] as num?)?.toDouble() ?? 1.0,
       negativeMarks: (json['negativeMarks'] as num?)?.toDouble() ?? 0,
-      alignment: _enumByIndex(TextAlign.values, json['alignment'], TextAlign.left),
+      alignment: _enumByIndex(
+        TextAlign.values,
+        json['alignment'],
+        TextAlign.left,
+      ),
       isOptional: json['isOptional'] ?? false,
       correctAnswer: json['correctAnswer']?.toString() ?? '',
       explanation: json['explanation']?.toString() ?? '',
-      estimatedAnswerMinutes:
-          (json['estimatedAnswerMinutes'] as num?)?.toInt(),
+      estimatedAnswerMinutes: (json['estimatedAnswerMinutes'] as num?)?.toInt(),
       difficulty: _enumByName(
         QuestionDifficulty.values,
         json['difficulty'],
@@ -866,11 +867,11 @@ class Question {
       language: json['language']?.toString() ?? 'en',
       instructions: json['instructions']?.toString() ?? '',
       sourceReference: json['sourceReference']?.toString() ?? '',
-      mathExpressions: _modelList(json['mathExpressions'], MathExpression.fromJson),
-      attachments: _modelList(
-        json['attachments'],
-        QuestionAttachment.fromJson,
+      mathExpressions: _modelList(
+        json['mathExpressions'],
+        MathExpression.fromJson,
       ),
+      attachments: _modelList(json['attachments'], QuestionAttachment.fromJson),
       tableData: json['tableData'] is Map
           ? QuestionTable.fromJson(
               Map<String, dynamic>.from(json['tableData'] as Map),
@@ -921,10 +922,7 @@ T _enumByName<T extends Enum>(List<T> values, dynamic raw, T fallback) {
   return fallback;
 }
 
-List<T> _modelList<T>(
-  dynamic raw,
-  T Function(Map<String, dynamic>) fromJson,
-) {
+List<T> _modelList<T>(dynamic raw, T Function(Map<String, dynamic>) fromJson) {
   return (raw as List? ?? const [])
       .whereType<Map>()
       .map((item) => fromJson(Map<String, dynamic>.from(item)))
@@ -972,8 +970,7 @@ String _plainTextFromRich(String text) {
   } catch (_) {
     // Legacy plain text is a valid fallback; never reject it as malformed rich text.
   }
-  return trimmed.replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(
-    RegExp(r'\s+'),
-    ' ',
-  );
+  return trimmed
+      .replaceAll(RegExp(r'<[^>]+>'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ');
 }

@@ -5,6 +5,7 @@ import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -14,7 +15,7 @@ class PaperDetailsSheet extends ConsumerStatefulWidget {
   const PaperDetailsSheet({super.key, required this.paper});
 
   static Future<void> show(BuildContext context, Paper paper) async {
-    await showModalBottomSheet<void>(
+    await showAdaptiveModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
@@ -57,7 +58,9 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
   @override
   void initState() {
     super.initState();
-    _title = TextEditingController(text: widget.paper.title == 'New Paper' ? '' : widget.paper.title);
+    _title = TextEditingController(
+      text: widget.paper.title == 'New Paper' ? '' : widget.paper.title,
+    );
     _school = TextEditingController(text: widget.paper.schoolName);
     _instruction = TextEditingController(text: widget.paper.instruction);
     _maximumMarks = TextEditingController(
@@ -74,7 +77,10 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
     _showRollNo = _hasHeader('Roll No');
     _logoPath = widget.paper.logos.isEmpty ? '' : widget.paper.logos.first;
     _customFields = widget.paper.headerFields
-        .where((field) => !_standardLabels.contains(field.label.trim().toLowerCase()))
+        .where(
+          (field) =>
+              !_standardLabels.contains(field.label.trim().toLowerCase()),
+        )
         .map(_CustomFieldDraft.fromField)
         .toList(growable: true);
   }
@@ -117,15 +123,15 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
     }
     if (duplicateLabels.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Additional field names must be unique.'),
-        ),
+        const SnackBar(content: Text('Additional field names must be unique.')),
       );
       return;
     }
 
     setState(() => _maximumMarksError = null);
-    ref.read(editorStateProvider.notifier).applyPaperSetup(
+    ref
+        .read(editorStateProvider.notifier)
+        .applyPaperSetup(
           title: _title.text.trim().isEmpty ? 'New Paper' : _title.text.trim(),
           schoolName: _school.text.trim(),
           instruction: _instruction.text.trim(),
@@ -242,8 +248,12 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
   void _appendInstruction(String instruction) {
     final current = _instruction.text.trim();
     if (current.toLowerCase().contains(instruction.toLowerCase())) return;
-    _instruction.text = current.isEmpty ? instruction : '$current\n$instruction';
-    _instruction.selection = TextSelection.collapsed(offset: _instruction.text.length);
+    _instruction.text = current.isEmpty
+        ? instruction
+        : '$current\n$instruction';
+    _instruction.selection = TextSelection.collapsed(
+      offset: _instruction.text.length,
+    );
   }
 
   @override
@@ -267,11 +277,15 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                   children: [
                     Text(
                       'Paper setup',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     Text(
                       'Enter the information teachers and students need. Appearance is configured separately.',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -299,7 +313,12 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('Essentials', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                    Text(
+                      'Essentials',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const SizedBox(height: 10),
                     TextField(
                       controller: _school,
@@ -331,7 +350,9 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                       second: TextField(
                         controller: _className,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(labelText: 'Class / grade'),
+                        decoration: const InputDecoration(
+                          labelText: 'Class / grade',
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -346,7 +367,9 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                       ),
                       second: TextField(
                         controller: _maximumMarks,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           labelText: 'Maximum marks',
@@ -364,19 +387,24 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                     _LogoControl(
                       path: _logoPath,
                       onPick: _pickLogo,
-                      onClear: _logoPath.isEmpty ? null : () => setState(() => _logoPath = ''),
+                      onClear: _logoPath.isEmpty
+                          ? null
+                          : () => setState(() => _logoPath = ''),
                     ),
                     const SizedBox(height: 10),
                     ExpansionTile(
                       tilePadding: EdgeInsets.zero,
                       title: const Text('More details'),
-                      subtitle: const Text('Date, student lines and additional paper fields'),
+                      subtitle: const Text(
+                        'Date, student lines and additional paper fields',
+                      ),
                       children: [
                         SwitchListTile.adaptive(
                           contentPadding: EdgeInsets.zero,
                           title: const Text('Show date'),
                           value: _showDate,
-                          onChanged: (value) => setState(() => _showDate = value),
+                          onChanged: (value) =>
+                              setState(() => _showDate = value),
                         ),
                         if (_showDate)
                           Padding(
@@ -393,23 +421,34 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                           contentPadding: EdgeInsets.zero,
                           title: const Text('Student name line'),
                           value: _showStudentName,
-                          onChanged: (value) => setState(() => _showStudentName = value),
+                          onChanged: (value) =>
+                              setState(() => _showStudentName = value),
                         ),
                         SwitchListTile.adaptive(
                           contentPadding: EdgeInsets.zero,
                           title: const Text('Roll number line'),
                           value: _showRollNo,
-                          onChanged: (value) => setState(() => _showRollNo = value),
+                          onChanged: (value) =>
+                              setState(() => _showRollNo = value),
                         ),
                         const SizedBox(height: 8),
                         Row(
                           children: [
                             Expanded(
-                              child: Text('Additional fields', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                              child: Text(
+                                'Additional fields',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
                             TextButton.icon(
                               onPressed: () {
-                                setState(() => _customFields.add(_CustomFieldDraft.newField()));
+                                setState(
+                                  () => _customFields.add(
+                                    _CustomFieldDraft.newField(),
+                                  ),
+                                );
                               },
                               icon: const Icon(Icons.add_rounded),
                               label: const Text('Add field'),
@@ -431,16 +470,22 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                             spacing: 7,
                             runSpacing: 7,
                             children: [
-                              for (final suggestion in headerProfile.optionalFields)
+                              for (final suggestion
+                                  in headerProfile.optionalFields)
                                 ActionChip(
                                   label: Text('+ ${suggestion.label}'),
-                                  onPressed: () => _addSuggestedField(suggestion),
+                                  onPressed: () =>
+                                      _addSuggestedField(suggestion),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 10),
                         ],
-                        for (var index = 0; index < _customFields.length; index++)
+                        for (
+                          var index = 0;
+                          index < _customFields.length;
+                          index++
+                        )
                           _CustomFieldEditor(
                             key: ValueKey(_customFields[index].key),
                             draft: _customFields[index],
@@ -455,7 +500,12 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text('General instructions', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                    Text(
+                      'General instructions',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 7,
@@ -505,8 +555,8 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
     final draft = raw.isEmpty
         ? widget.paper.copyWith(clearMaximumMarks: true)
         : parsed != null && parsed.isFinite && parsed > 0
-            ? widget.paper.copyWith(maximumMarks: parsed)
-            : widget.paper;
+        ? widget.paper.copyWith(maximumMarks: parsed)
+        : widget.paper;
     return PaperMarksResolver.summarize(draft);
   }
 
@@ -565,7 +615,11 @@ class _MarksStatus extends StatelessWidget {
     if (message == null) {
       return Row(
         children: [
-          Icon(Icons.check_circle_outline_rounded, size: 18, color: theme.colorScheme.primary),
+          Icon(
+            Icons.check_circle_outline_rounded,
+            size: 18,
+            color: theme.colorScheme.primary,
+          ),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
@@ -604,7 +658,11 @@ class _LogoControl extends StatelessWidget {
   final VoidCallback onPick;
   final VoidCallback? onClear;
 
-  const _LogoControl({required this.path, required this.onPick, required this.onClear});
+  const _LogoControl({
+    required this.path,
+    required this.onPick,
+    required this.onClear,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -613,15 +671,25 @@ class _LogoControl extends StatelessWidget {
       leading: const CircleAvatar(child: Icon(Icons.image_outlined)),
       title: Text(path.isEmpty ? 'School logo' : 'Logo selected'),
       subtitle: Text(
-        path.isEmpty ? 'Optional. PNG or JPG.' : path.split(RegExp(r'[\\/]')).last,
+        path.isEmpty
+            ? 'Optional. PNG or JPG.'
+            : path.split(RegExp(r'[\\/]')).last,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       trailing: Wrap(
         spacing: 4,
         children: [
-          TextButton(onPressed: onPick, child: Text(path.isEmpty ? 'Add' : 'Change')),
-          if (onClear != null) IconButton(tooltip: 'Remove logo', onPressed: onClear, icon: const Icon(Icons.delete_outline_rounded)),
+          TextButton(
+            onPressed: onPick,
+            child: Text(path.isEmpty ? 'Add' : 'Change'),
+          ),
+          if (onClear != null)
+            IconButton(
+              tooltip: 'Remove logo',
+              onPressed: onClear,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
         ],
       ),
     );
@@ -664,10 +732,7 @@ class _CustomFieldDraft {
     );
   }
 
-  factory _CustomFieldDraft.suggested(
-    String label, {
-    bool blankLine = false,
-  }) {
+  factory _CustomFieldDraft.suggested(String label, {bool blankLine = false}) {
     final key = '${DateTime.now().microsecondsSinceEpoch}-$label';
     return _CustomFieldDraft(
       key: key,
@@ -711,7 +776,10 @@ class _CustomFieldEditor extends StatelessWidget {
                   child: TextField(
                     controller: draft.label,
                     onChanged: (_) => onChanged(),
-                    decoration: const InputDecoration(labelText: 'Field name', hintText: 'Paper Code'),
+                    decoration: const InputDecoration(
+                      labelText: 'Field name',
+                      hintText: 'Paper Code',
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -719,10 +787,17 @@ class _CustomFieldEditor extends StatelessWidget {
                   child: TextField(
                     controller: draft.value,
                     onChanged: (_) => onChanged(),
-                    decoration: const InputDecoration(labelText: 'Value', hintText: 'Optional'),
+                    decoration: const InputDecoration(
+                      labelText: 'Value',
+                      hintText: 'Optional',
+                    ),
                   ),
                 ),
-                IconButton(tooltip: 'Delete field', onPressed: onDelete, icon: const Icon(Icons.delete_outline_rounded)),
+                IconButton(
+                  tooltip: 'Delete field',
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
               ],
             ),
             CheckboxListTile(

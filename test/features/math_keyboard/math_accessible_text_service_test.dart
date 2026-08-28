@@ -11,13 +11,16 @@ void main() {
     );
   });
 
-  test('describes common nested visual formula without requiring teacher text', () {
-    final description = service.describe(r'hey \sqrt{1223^{1}}');
+  test(
+    'describes common nested visual formula without requiring teacher text',
+    () {
+      final description = service.describe(r'hey \sqrt{1223^{1}}');
 
-    expect(description, contains('square root of'));
-    expect(description, contains('to the power 1'));
-    expect(description, isNot(contains(r'\sqrt')));
-  });
+      expect(description, contains('square root of'));
+      expect(description, contains('to the power 1'));
+      expect(description, isNot(contains(r'\sqrt')));
+    },
+  );
 
   test('empty formula produces empty fallback', () {
     expect(service.describe('   '), isEmpty);

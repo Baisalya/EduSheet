@@ -212,10 +212,7 @@ class _MetaChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 13),
-            const SizedBox(width: 4),
-          ],
+          if (icon != null) ...[Icon(icon, size: 13), const SizedBox(width: 4)],
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(

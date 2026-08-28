@@ -61,8 +61,8 @@ class PaperMarksResolver {
     final balance = delta.abs() < 0.0001
         ? PaperMarksBalance.balanced
         : delta > 0
-            ? PaperMarksBalance.underAssigned
-            : PaperMarksBalance.overAssigned;
+        ? PaperMarksBalance.underAssigned
+        : PaperMarksBalance.overAssigned;
     return PaperMarksSummary(
       assignedMarks: assigned,
       effectiveMaximumMarks: declared,

@@ -68,7 +68,10 @@ class AttachmentLifecycleService {
         referenced.add(path.normalize(attachment.path));
       }
     }
-    for (final child in [...question.subQuestions, ...question.internalChoices]) {
+    for (final child in [
+      ...question.subQuestions,
+      ...question.internalChoices,
+    ]) {
       _collectQuestion(child, referenced);
     }
   }

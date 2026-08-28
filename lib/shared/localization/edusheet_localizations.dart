@@ -116,9 +116,8 @@ class _EduSheetLocalizationsDelegate
   const _EduSheetLocalizationsDelegate();
 
   @override
-  bool isSupported(Locale locale) => const {'en', 'hi'}.contains(
-    locale.languageCode,
-  );
+  bool isSupported(Locale locale) =>
+      const {'en', 'hi'}.contains(locale.languageCode);
 
   @override
   Future<EduSheetLocalizations> load(Locale locale) {

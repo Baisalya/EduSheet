@@ -1,3 +1,4 @@
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -127,11 +128,14 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
         height: height,
         child: Shortcuts(
           shortcuts: const {
-            SingleActivator(LogicalKeyboardKey.keyZ, control: true): _UndoIntent(),
-            SingleActivator(LogicalKeyboardKey.keyY, control: true): _RedoIntent(),
+            SingleActivator(LogicalKeyboardKey.keyZ, control: true):
+                _UndoIntent(),
+            SingleActivator(LogicalKeyboardKey.keyY, control: true):
+                _RedoIntent(),
             SingleActivator(LogicalKeyboardKey.delete): _DeleteIntent(),
             SingleActivator(LogicalKeyboardKey.escape): _EscapeIntent(),
-            SingleActivator(LogicalKeyboardKey.keyD, control: true): _DuplicateIntent(),
+            SingleActivator(LogicalKeyboardKey.keyD, control: true):
+                _DuplicateIntent(),
           },
           child: Actions(
             actions: {
@@ -315,7 +319,9 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerLowest,
               border: Border(
-                right: BorderSide(color: theme.dividerColor.withValues(alpha: 0.4)),
+                right: BorderSide(
+                  color: theme.dividerColor.withValues(alpha: 0.4),
+                ),
               ),
             ),
             child: GeometryQuickStart(
@@ -384,11 +390,16 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.category_outlined, size: 30),
+                                    const Icon(
+                                      Icons.category_outlined,
+                                      size: 30,
+                                    ),
                                     const SizedBox(height: 7),
                                     const Text(
                                       'Start with a figure',
-                                      style: TextStyle(fontWeight: FontWeight.w800),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                     const SizedBox(height: 8),
                                     FilledButton.tonalIcon(
@@ -448,7 +459,7 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
   }
 
   void _showLabelEditor(GeometryLabel label) {
-    showModalBottomSheet<void>(
+    showAdaptiveModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       useSafeArea: true,
@@ -471,7 +482,7 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
   }
 
   void _showPointLabelEditor(GeometryPoint point) {
-    showModalBottomSheet<void>(
+    showAdaptiveModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
       useSafeArea: true,
@@ -492,16 +503,11 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
     );
   }
 
-
   Future<void> _addCoordinatePoint() async {
     final input = await GeometryInputDialogs.coordinatePoint(context);
     if (input == null || !mounted) return;
     _showOutcome(
-      _session.addCoordinatePoint(
-        x: input.x,
-        y: input.y,
-        label: input.label,
-      ),
+      _session.addCoordinatePoint(x: input.x, y: input.y, label: input.label),
     );
   }
 
@@ -545,10 +551,7 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
     final message = outcome.message;
     if (!mounted || message == null || message.isEmpty) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -600,7 +603,9 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
   void _insert() {
     if (_session.isEmpty) {
       _showOutcome(
-        const GeometryEditOutcome.failure('Choose or draw a figure before inserting.'),
+        const GeometryEditOutcome.failure(
+          'Choose or draw a figure before inserting.',
+        ),
       );
       return;
     }

@@ -22,7 +22,11 @@ class UnsupportedDocumentViewer extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.open_in_new, size: 64, color: Colors.blueGrey),
+                  const Icon(
+                    Icons.open_in_new,
+                    size: 64,
+                    color: Colors.blueGrey,
+                  ),
                   const SizedBox(height: 18),
                   Text(
                     capability.level == DocumentSupportLevel.externalOnly

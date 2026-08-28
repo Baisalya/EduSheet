@@ -94,10 +94,9 @@ class MathExpression {
     String text,
     List<MathExpression> expressions,
   ) {
-    final embeddedIds = embeddedInRichText(text)
-        .map((expression) => expression.id)
-        .where((id) => id.isNotEmpty)
-        .toSet();
+    final embeddedIds = embeddedInRichText(
+      text,
+    ).map((expression) => expression.id).where((id) => id.isNotEmpty).toSet();
     return expressions
         .where((expression) => !embeddedIds.contains(expression.id))
         .toList();

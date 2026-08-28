@@ -52,7 +52,8 @@ class DocumentFileReadException implements Exception {
         kind: DocumentFileReadFailure.accessDenied,
         path: path,
         osErrorCode: code,
-        message: 'EduSheet does not currently have permission to read this file.',
+        message:
+            'EduSheet does not currently have permission to read this file.',
       );
     }
 

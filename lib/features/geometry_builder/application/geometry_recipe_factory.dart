@@ -405,11 +405,7 @@ class GeometryRecipeFactory {
 
   List<GeometryPoint> _points(List<(String, Offset)> values) => [
     for (final value in values)
-      GeometryPoint(
-        id: const Uuid().v4(),
-        label: value.$1,
-        position: value.$2,
-      ),
+      GeometryPoint(id: const Uuid().v4(), label: value.$1, position: value.$2),
   ];
 
   GeometryShape _polygonShape(

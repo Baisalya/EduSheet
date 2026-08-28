@@ -147,7 +147,8 @@ class DocumentFile {
         return const DocumentViewerCapability(
           level: DocumentSupportLevel.unsupported,
           label: 'Unsupported format',
-          description: 'EduSheet does not currently recognize this file format.',
+          description:
+              'EduSheet does not currently recognize this file format.',
           canPreview: false,
         );
     }

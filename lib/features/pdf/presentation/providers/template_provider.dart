@@ -18,10 +18,11 @@ class TemplateState {
   List<PaperTemplate> get all => [...predefined, ...custom];
 
   List<PaperTemplate> get selectable => [
-        ...predefined.where((template) =>
-            PaperStyleCatalog.isVisibleBuiltIn(template.id)),
-        ...custom,
-      ];
+    ...predefined.where(
+      (template) => PaperStyleCatalog.isVisibleBuiltIn(template.id),
+    ),
+    ...custom,
+  ];
 
   TemplateState copyWith({
     List<PaperTemplate>? predefined,

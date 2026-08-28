@@ -134,10 +134,14 @@ class _LabelEditorSheetState extends State<LabelEditorSheet> {
                     children: [
                       Expanded(
                         child: FilterChip(
-                          avatar: const Icon(Icons.format_bold_rounded, size: 18),
+                          avatar: const Icon(
+                            Icons.format_bold_rounded,
+                            size: 18,
+                          ),
                           label: const Text('Bold'),
                           selected: _isBold,
-                          onSelected: (value) => setState(() => _isBold = value),
+                          onSelected: (value) =>
+                              setState(() => _isBold = value),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -151,12 +155,23 @@ class _LabelEditorSheetState extends State<LabelEditorSheet> {
                           ),
                           items: const [
                             DropdownMenuItem(value: 0, child: Text('0°')),
-                            DropdownMenuItem(value: -0.785398, child: Text('-45°')),
-                            DropdownMenuItem(value: 0.785398, child: Text('45°')),
-                            DropdownMenuItem(value: 1.570796, child: Text('90°')),
+                            DropdownMenuItem(
+                              value: -0.785398,
+                              child: Text('-45°'),
+                            ),
+                            DropdownMenuItem(
+                              value: 0.785398,
+                              child: Text('45°'),
+                            ),
+                            DropdownMenuItem(
+                              value: 1.570796,
+                              child: Text('90°'),
+                            ),
                           ],
                           onChanged: (value) {
-                            if (value != null) setState(() => _rotation = value);
+                            if (value != null) {
+                              setState(() => _rotation = value);
+                            }
                           },
                         ),
                       ),
@@ -197,7 +212,9 @@ class _LabelEditorSheetState extends State<LabelEditorSheet> {
                 onPressed: _submit,
                 icon: const Icon(Icons.check_rounded),
                 label: Text(
-                  widget.initialLabel == null ? 'Add to diagram' : 'Apply changes',
+                  widget.initialLabel == null
+                      ? 'Add to diagram'
+                      : 'Apply changes',
                 ),
               ),
             ),
@@ -215,9 +232,7 @@ class _LabelEditorSheetState extends State<LabelEditorSheet> {
   }
 
   String _defaultText(GeometryLabelType type) => '';
-
 }
-
 
 class PointLabelEditorSheet extends StatefulWidget {
   final GeometryPoint point;
@@ -339,10 +354,14 @@ class _PointLabelEditorSheetState extends State<PointLabelEditorSheet> {
                     children: [
                       Expanded(
                         child: FilterChip(
-                          avatar: const Icon(Icons.format_bold_rounded, size: 18),
+                          avatar: const Icon(
+                            Icons.format_bold_rounded,
+                            size: 18,
+                          ),
                           label: const Text('Bold'),
                           selected: _isBold,
-                          onSelected: (value) => setState(() => _isBold = value),
+                          onSelected: (value) =>
+                              setState(() => _isBold = value),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -356,12 +375,23 @@ class _PointLabelEditorSheetState extends State<PointLabelEditorSheet> {
                           ),
                           items: const [
                             DropdownMenuItem(value: 0, child: Text('0°')),
-                            DropdownMenuItem(value: -0.785398, child: Text('-45°')),
-                            DropdownMenuItem(value: 0.785398, child: Text('45°')),
-                            DropdownMenuItem(value: 1.570796, child: Text('90°')),
+                            DropdownMenuItem(
+                              value: -0.785398,
+                              child: Text('-45°'),
+                            ),
+                            DropdownMenuItem(
+                              value: 0.785398,
+                              child: Text('45°'),
+                            ),
+                            DropdownMenuItem(
+                              value: 1.570796,
+                              child: Text('90°'),
+                            ),
                           ],
                           onChanged: (value) {
-                            if (value != null) setState(() => _rotation = value);
+                            if (value != null) {
+                              setState(() => _rotation = value);
+                            }
                           },
                         ),
                       ),
@@ -386,7 +416,9 @@ class _PointLabelEditorSheetState extends State<PointLabelEditorSheet> {
                         style: TextStyle(
                           color: Colors.black,
                           fontSize: _fontSize,
-                          fontWeight: _isBold ? FontWeight.w700 : FontWeight.w400,
+                          fontWeight: _isBold
+                              ? FontWeight.w700
+                              : FontWeight.w400,
                         ),
                       ),
                     ),

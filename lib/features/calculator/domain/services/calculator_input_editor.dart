@@ -140,9 +140,7 @@ class CalculatorInputEditor {
     if (!'+-×÷*/'.contains(char)) return false;
     if (index == 0) return false;
     final previous = expression[index - 1];
-    return previous != '(' &&
-        previous != ',' &&
-        !'+-×÷*/'.contains(previous);
+    return previous != '(' && previous != ',' && !'+-×÷*/'.contains(previous);
   }
 
   bool _continuesPreviousAnswer(String token) {

@@ -102,7 +102,9 @@ class _OutlineSection extends StatelessWidget {
         childrenPadding: const EdgeInsets.only(left: 14, bottom: 6),
         leading: const Icon(Icons.folder_outlined, size: 20),
         title: Text(
-          section.title.trim().isEmpty ? 'Section $sectionNumber' : section.title,
+          section.title.trim().isEmpty
+              ? 'Section $sectionNumber'
+              : section.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
@@ -124,9 +126,9 @@ class _OutlineSection extends StatelessWidget {
                 width: 20,
                 child: Text(
                   '${entry.key + 1}.',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
               title: Text(

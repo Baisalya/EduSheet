@@ -113,16 +113,16 @@ class _MathSymbolSearchSheetState extends State<MathSymbolSearchSheet> {
                         final columns = constraints.maxWidth > 700
                             ? 5
                             : constraints.maxWidth > 460
-                                ? 4
-                                : 3;
+                            ? 4
+                            : 3;
                         return GridView.builder(
                           gridDelegate:
                               SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: columns,
-                            mainAxisSpacing: 8,
-                            crossAxisSpacing: 8,
-                            childAspectRatio: 1.45,
-                          ),
+                                crossAxisCount: columns,
+                                mainAxisSpacing: 8,
+                                crossAxisSpacing: 8,
+                                childAspectRatio: 1.45,
+                              ),
                           itemCount: symbols.length,
                           itemBuilder: (context, index) {
                             final symbol = symbols[index];
@@ -149,12 +149,13 @@ class _MathSymbolSearchSheetState extends State<MathSymbolSearchSheet> {
                                       const SizedBox(height: 4),
                                       Text(
                                         widget.categoryLabel(symbol.category),
-                                        style:
-                                            theme.textTheme.labelSmall?.copyWith(
-                                          fontSize: 9,
-                                          color: theme
-                                              .colorScheme.onSurfaceVariant,
-                                        ),
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              fontSize: 9,
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
                                       ),
                                     ],
                                   ),

@@ -55,8 +55,7 @@ class CalculatorDisplay extends StatelessWidget {
                   label: angleUnit == AngleUnit.degrees ? 'DEG' : 'RAD',
                   isActive: true,
                 ),
-                if (isShift)
-                  const _StatusChip(label: 'SHIFT', isActive: true),
+                if (isShift) const _StatusChip(label: 'SHIFT', isActive: true),
                 if (isHyp) const _StatusChip(label: 'HYP', isActive: true),
                 const Spacer(),
                 Text(

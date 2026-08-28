@@ -5,32 +5,35 @@ import 'package:edusheet/features/question_bank/domain/models/question_bank_mode
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('paper question becomes an independent reusable master with fallbacks', () {
-    var next = 0;
-    final service = QuestionBankApplicationService(
-      QuestionCopyService(idFactory: () => 'copy-${next++}'),
-    );
-    final paperQuestion = Question(
-      id: 'paper-question',
-      text: 'Solve x + 2 = 5',
-      plainTextAccessibility: 'Solve x + 2 = 5',
-      marks: 2,
-      difficulty: QuestionDifficulty.hard,
-    );
+  test(
+    'paper question becomes an independent reusable master with fallbacks',
+    () {
+      var next = 0;
+      final service = QuestionBankApplicationService(
+        QuestionCopyService(idFactory: () => 'copy-${next++}'),
+      );
+      final paperQuestion = Question(
+        id: 'paper-question',
+        text: 'Solve x + 2 = 5',
+        plainTextAccessibility: 'Solve x + 2 = 5',
+        marks: 2,
+        difficulty: QuestionDifficulty.hard,
+      );
 
-    final master = service.createMasterCopy(
-      paperQuestion,
-      fallbackSubject: 'Mathematics',
-      fallbackChapter: 'Linear equations',
-      fallbackGrade: 'Class 8',
-    );
+      final master = service.createMasterCopy(
+        paperQuestion,
+        fallbackSubject: 'Mathematics',
+        fallbackChapter: 'Linear equations',
+        fallbackGrade: 'Class 8',
+      );
 
-    expect(master.question.id, isNot(paperQuestion.id));
-    expect(master.subject, 'Mathematics');
-    expect(master.chapter, 'Linear equations');
-    expect(master.question.grade, 'Class 8');
-    expect(master.difficulty, Difficulty.hard);
-  });
+      expect(master.question.id, isNot(paperQuestion.id));
+      expect(master.subject, 'Mathematics');
+      expect(master.chapter, 'Linear equations');
+      expect(master.question.grade, 'Class 8');
+      expect(master.difficulty, Difficulty.hard);
+    },
+  );
 
   test('importing a master twice produces independent paper questions', () {
     var next = 0;

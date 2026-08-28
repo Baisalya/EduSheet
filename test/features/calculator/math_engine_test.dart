@@ -66,10 +66,7 @@ void main() {
         engine.evaluate('arcsin(sin(30))', angleUnit: AngleUnit.degrees),
         '30',
       );
-      expect(
-        engine.evaluate('2sin(30', angleUnit: AngleUnit.degrees),
-        '1',
-      );
+      expect(engine.evaluate('2sin(30', angleUnit: AngleUnit.degrees), '1');
     });
 
     test('calculates factorial and combinatorics without the old 20 cap', () {

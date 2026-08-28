@@ -85,9 +85,7 @@ void main() {
           ],
           accessibilitySummary: 'Values of x and y',
         ),
-        subQuestions: [
-          Question(id: 'part-a', text: 'Find the discriminant.'),
-        ],
+        subQuestions: [Question(id: 'part-a', text: 'Find the discriminant.')],
         internalChoices: [
           Question(id: 'choice-b', text: 'Or, factorise the expression.'),
         ],
@@ -103,7 +101,10 @@ void main() {
       expect(restored.negativeMarks, 0.25);
       expect(restored.difficulty, QuestionDifficulty.hard);
       expect(restored.cognitiveLevel, CognitiveLevel.apply);
-      expect(restored.attachments.single.alternativeText, 'A labelled parabola');
+      expect(
+        restored.attachments.single.alternativeText,
+        'A labelled parabola',
+      );
       expect(restored.tableData!.rows, hasLength(2));
       expect(restored.subQuestions.single.id, 'part-a');
       expect(restored.internalChoices.single.id, 'choice-b');

@@ -36,11 +36,7 @@ void main() {
     final editor = container.read(editorStateProvider.notifier);
     editor.loadPaper(_paper());
 
-    editor.moveQuestion(
-      fromSectionId: 'a',
-      toSectionId: 'b',
-      questionId: 'q1',
-    );
+    editor.moveQuestion(fromSectionId: 'a', toSectionId: 'b', questionId: 'q1');
 
     var paper = container.read(editorStateProvider);
     expect(paper.sections[0].questions, isEmpty);
@@ -85,11 +81,15 @@ void main() {
     editor.loadPaper(_paper());
 
     editor.addQuestion('a', 'Inserted first', insertAt: 0, marks: 3);
-    var questions = container.read(editorStateProvider).sections.first.questions;
-    expect(
-      questions.map((item) => item.text),
-      ['Inserted first', 'Question one'],
-    );
+    var questions = container
+        .read(editorStateProvider)
+        .sections
+        .first
+        .questions;
+    expect(questions.map((item) => item.text), [
+      'Inserted first',
+      'Question one',
+    ]);
 
     final insertedId = questions.first.id;
     editor.duplicateQuestion('a', insertedId);
@@ -128,36 +128,43 @@ void main() {
       4,
     );
   });
-  test('Question Bank batch import deep-copies once and undoes as one step', () {
-    final container = ProviderContainer(
-      overrides: [
-        paperRepositoryProvider.overrideWithValue(_MemoryPaperRepository()),
-      ],
-    );
-    addTearDown(container.dispose);
-    final editor = container.read(editorStateProvider.notifier);
-    editor.loadPaper(_paper());
+  test(
+    'Question Bank batch import deep-copies once and undoes as one step',
+    () {
+      final container = ProviderContainer(
+        overrides: [
+          paperRepositoryProvider.overrideWithValue(_MemoryPaperRepository()),
+        ],
+      );
+      addTearDown(container.dispose);
+      final editor = container.read(editorStateProvider.notifier);
+      editor.loadPaper(_paper());
 
-    final masterA = Question(
-      id: 'bank-a',
-      text: 'Reusable A',
-      options: [QuestionOption(id: 'option-a', text: 'A')],
-    );
-    final masterB = Question(id: 'bank-b', text: 'Reusable B', marks: 2);
+      final masterA = Question(
+        id: 'bank-a',
+        text: 'Reusable A',
+        options: [QuestionOption(id: 'option-a', text: 'A')],
+      );
+      final masterB = Question(id: 'bank-b', text: 'Reusable B', marks: 2);
 
-    editor.addQuestionsFromBank('a', [masterA, masterB]);
+      editor.addQuestionsFromBank('a', [masterA, masterB]);
 
-    var questions = container.read(editorStateProvider).sections.first.questions;
-    expect(questions, hasLength(3));
-    expect(questions[1].id, isNot(masterA.id));
-    expect(questions[2].id, isNot(masterB.id));
-    expect(questions[1].options.single.id, isNot('option-a'));
-    expect(editor.canUndo, isTrue);
+      var questions = container
+          .read(editorStateProvider)
+          .sections
+          .first
+          .questions;
+      expect(questions, hasLength(3));
+      expect(questions[1].id, isNot(masterA.id));
+      expect(questions[2].id, isNot(masterB.id));
+      expect(questions[1].options.single.id, isNot('option-a'));
+      expect(editor.canUndo, isTrue);
 
-    editor.undo();
-    questions = container.read(editorStateProvider).sections.first.questions;
-    expect(questions.map((question) => question.id), ['q1']);
-  });
+      editor.undo();
+      questions = container.read(editorStateProvider).sections.first.questions;
+      expect(questions.map((question) => question.id), ['q1']);
+    },
+  );
 
   test('Question Bank can create Section 1 and import as one undo step', () {
     final container = ProviderContainer(
@@ -206,11 +213,7 @@ void main() {
       instruction: 'Attempt all questions.',
       logos: const ['school-logo.png'],
       headerFields: [
-        PaperHeaderField(
-          id: '',
-          label: 'Subject',
-          value: 'Mathematics',
-        ),
+        PaperHeaderField(id: '', label: 'Subject', value: 'Mathematics'),
       ],
       maximumMarks: 50,
     );
@@ -228,7 +231,6 @@ void main() {
     expect(paper.schoolName, isNot('Green Valley School'));
     expect(paper.maximumMarks, isNull);
   });
-
 }
 
 Paper _paper() {

@@ -18,11 +18,7 @@ class MathAccessibleTextService {
     if (source.isEmpty) return '';
 
     final known = serializer
-        .serialize(
-          source,
-          powerMode: false,
-          subscriptMode: false,
-        )
+        .serialize(source, powerMode: false, subscriptMode: false)
         .text
         .trim();
     if (known.isNotEmpty && known != source) {

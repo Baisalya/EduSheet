@@ -145,10 +145,7 @@ class CalculatorExpressionFormatter {
           close + 1,
         );
       }
-      return _FormattedPower(
-        _formatSegment(input, start + 1, end),
-        end,
-      );
+      return _FormattedPower(_formatSegment(input, start + 1, end), end);
     }
 
     var index = start;
@@ -160,17 +157,14 @@ class CalculatorExpressionFormatter {
     }
 
     if (index == start ||
-        (index == start + 1 &&
-            (input[start] == '-' || input[start] == '+'))) {
-      final valueStart =
-          input[start] == '-' || input[start] == '+' ? start + 1 : start;
+        (index == start + 1 && (input[start] == '-' || input[start] == '+'))) {
+      final valueStart = input[start] == '-' || input[start] == '+'
+          ? start + 1
+          : start;
       index = valueStart + 1 > end ? end : valueStart + 1;
     }
 
-    return _FormattedPower(
-      _formatSegment(input, start, index),
-      index,
-    );
+    return _FormattedPower(_formatSegment(input, start, index), index);
   }
 
   int _findClosingParenthesis(String input, int openIndex, int end) {

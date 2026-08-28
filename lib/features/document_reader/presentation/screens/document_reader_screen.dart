@@ -89,16 +89,16 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
   }
 
   Future<void> _openRequest(DocumentOpenRequest request) async {
-    final result = await ref.read(documentOpenCoordinatorProvider).resolve(request);
+    final result = await ref
+        .read(documentOpenCoordinatorProvider)
+        .resolve(request);
     if (!mounted || result.duplicate) return;
 
     final session = result.session;
     if (session == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            result.errorMessage ?? 'Unable to open this document.',
-          ),
+          content: Text(result.errorMessage ?? 'Unable to open this document.'),
         ),
       );
       return;

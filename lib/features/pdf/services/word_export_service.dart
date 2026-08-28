@@ -265,7 +265,8 @@ class WordExportService {
     double fontSize,
     String alignment,
   ) {
-    final requestedLabels = (element.properties['fieldLabels'] as List?)
+    final requestedLabels =
+        (element.properties['fieldLabels'] as List?)
             ?.map((value) => value.toString().trim())
             .where((value) => value.isNotEmpty)
             .toList(growable: false) ??
@@ -273,18 +274,20 @@ class WordExportService {
 
     final fields = requestedLabels.isEmpty
         ? paper.headerFields
-        : requestedLabels.map((label) {
-            for (final field in paper.headerFields) {
-              if (field.label.toLowerCase() == label.toLowerCase()) {
-                return field;
-              }
-            }
-            return PaperHeaderField(
-              id: '',
-              label: label,
-              isPlaceholder: true,
-            );
-          }).toList(growable: false);
+        : requestedLabels
+              .map((label) {
+                for (final field in paper.headerFields) {
+                  if (field.label.toLowerCase() == label.toLowerCase()) {
+                    return field;
+                  }
+                }
+                return PaperHeaderField(
+                  id: '',
+                  label: label,
+                  isPlaceholder: true,
+                );
+              })
+              .toList(growable: false);
     if (fields.isEmpty) return '';
 
     final rows = StringBuffer();
@@ -307,11 +310,7 @@ class WordExportService {
         cells.add(
           _tableCell(
             _paragraphRuns([
-              _Run(
-                '${field.label}: ',
-                bold: true,
-                fontSize: fontSize * 0.85,
-              ),
+              _Run('${field.label}: ', bold: true, fontSize: fontSize * 0.85),
               _Run(content, fontSize: fontSize * 0.85),
             ], alignment: alignment),
           ),
@@ -737,7 +736,6 @@ class _Run {
     this.underline = false,
     this.fontSize = 12,
   });
-
 }
 
 class _ImagePart {

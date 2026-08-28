@@ -11,13 +11,14 @@ import 'safe_math_expression.dart';
 /// rich-text character while rendering a real textbook-style formula.
 class MathExpressionEmbed extends Embeddable {
   MathExpressionEmbed(MathExpression expression)
-      : super(MathExpression.quillEmbedKey, expression.toQuillEmbedData());
+    : super(MathExpression.quillEmbedKey, expression.toQuillEmbedData());
 }
 
-typedef MathExpressionEditCallback = Future<MathExpression?> Function(
-  BuildContext context,
-  MathExpression expression,
-);
+typedef MathExpressionEditCallback =
+    Future<MathExpression?> Function(
+      BuildContext context,
+      MathExpression expression,
+    );
 
 /// Renders an EduSheet formula embedded directly inside a Quill sentence.
 ///
@@ -45,16 +46,14 @@ class MathExpressionEmbedBuilder extends EmbedBuilder {
 
   @override
   WidgetSpan buildWidgetSpan(Widget widget) {
-    return WidgetSpan(
-      alignment: PlaceholderAlignment.middle,
-      child: widget,
-    );
+    return WidgetSpan(alignment: PlaceholderAlignment.middle, child: widget);
   }
 
   @override
   Widget build(BuildContext context, EmbedContext embedContext) {
-    final expression =
-        MathExpression.tryFromQuillEmbedData(embedContext.node.value.data);
+    final expression = MathExpression.tryFromQuillEmbedData(
+      embedContext.node.value.data,
+    );
     if (expression == null) {
       return Text(
         '[formula]',

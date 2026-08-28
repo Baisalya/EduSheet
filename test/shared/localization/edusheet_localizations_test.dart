@@ -9,10 +9,7 @@ void main() {
       const EduSheetLocalizations(Locale('hi')).saveAs,
       'इस रूप में सहेजें',
     );
-    expect(
-      const EduSheetLocalizations(Locale('fr')).saveFile,
-      'Save file',
-    );
+    expect(const EduSheetLocalizations(Locale('fr')).saveFile, 'Save file');
   });
 
   testWidgets('localization delegate supplies the active locale', (

@@ -1,3 +1,4 @@
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
 import '../widgets/calculator_history_drawer.dart';
@@ -51,7 +52,7 @@ class CalculatorScreen extends StatelessWidget {
       return;
     }
 
-    showModalBottomSheet<void>(
+    showAdaptiveModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -77,7 +78,7 @@ class CalculatorScreen extends StatelessWidget {
       return;
     }
 
-    showModalBottomSheet<void>(
+    showAdaptiveModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

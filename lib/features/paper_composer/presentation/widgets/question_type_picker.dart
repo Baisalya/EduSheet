@@ -1,5 +1,6 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
 class QuestionTypePicker {
@@ -36,7 +37,7 @@ class QuestionTypePicker {
     required QuestionType selected,
   }) {
     var query = '';
-    return showModalBottomSheet<QuestionType>(
+    return showAdaptiveModalBottomSheet<QuestionType>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
@@ -65,16 +66,15 @@ class QuestionTypePicker {
                     children: [
                       Text(
                         'Question type',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Focused types only. Existing advanced question structures remain compatible.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),

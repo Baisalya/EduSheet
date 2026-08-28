@@ -141,8 +141,8 @@ class _PreviewElement extends StatelessWidget {
 
     switch (element.type) {
       case ElementType.logo:
-        final hasActualLogo = paper == null ||
-            paper!.logos.any((path) => path.trim().isNotEmpty);
+        final hasActualLogo =
+            paper == null || paper!.logos.any((path) => path.trim().isNotEmpty);
         if (!hasActualLogo) {
           return SizedBox(width: width ?? 48, height: height ?? 48);
         }
@@ -154,7 +154,11 @@ class _PreviewElement extends StatelessWidget {
             border: Border.all(color: Colors.black26),
           ),
           alignment: Alignment.center,
-          child: const Icon(Icons.school_outlined, size: 24, color: Colors.black45),
+          child: const Icon(
+            Icons.school_outlined,
+            size: 24,
+            color: Colors.black45,
+          ),
         );
       case ElementType.schoolName:
         return _box(
@@ -209,7 +213,8 @@ class _PreviewElement extends StatelessWidget {
           ),
         );
       case ElementType.staticText:
-        final text = paper?.customHeaderValues[element.paperBindingKey] ??
+        final text =
+            paper?.customHeaderValues[element.paperBindingKey] ??
             element.content;
         return _box(
           width,
@@ -237,9 +242,7 @@ class _PreviewElement extends StatelessWidget {
           width: width,
           height: height,
           alignment: alignment,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.black54),
-          ),
+          decoration: BoxDecoration(border: Border.all(color: Colors.black54)),
           child: element.content.isEmpty
               ? null
               : Text(element.content, style: style, textAlign: textAlign),
@@ -268,7 +271,8 @@ class _PreviewElement extends StatelessWidget {
     if (paper == null || paper!.headerFields.isEmpty) {
       return 'Subject: __________   Class: ______   Time: ______';
     }
-    final requested = (element.properties['fieldLabels'] as List?)
+    final requested =
+        (element.properties['fieldLabels'] as List?)
             ?.map((value) => value.toString().trim().toLowerCase())
             .where((value) => value.isNotEmpty)
             .toSet() ??
@@ -276,12 +280,15 @@ class _PreviewElement extends StatelessWidget {
     final fields = requested.isEmpty
         ? paper!.headerFields
         : paper!.headerFields
-            .where((field) => requested.contains(field.label.toLowerCase()))
-            .toList(growable: false);
-    return fields.take(6).map((field) {
-      final value = field.value.trim();
-      return '${field.label}: ${field.isPlaceholder || value.isEmpty ? '________' : value}';
-    }).join('   ');
+              .where((field) => requested.contains(field.label.toLowerCase()))
+              .toList(growable: false);
+    return fields
+        .take(6)
+        .map((field) {
+          final value = field.value.trim();
+          return '${field.label}: ${field.isPlaceholder || value.isEmpty ? '________' : value}';
+        })
+        .join('   ');
   }
 
   static Widget _box(
@@ -294,9 +301,13 @@ class _PreviewElement extends StatelessWidget {
     return Container(
       width: width,
       height: height,
-      padding: border ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2) : null,
+      padding: border
+          ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
+          : null,
       alignment: alignment,
-      decoration: border ? BoxDecoration(border: Border.all(color: Colors.black54)) : null,
+      decoration: border
+          ? BoxDecoration(border: Border.all(color: Colors.black54))
+          : null,
       child: child,
     );
   }

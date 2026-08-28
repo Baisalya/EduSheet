@@ -42,7 +42,9 @@ class GeometryEditorCommands {
   ) {
     final side = _selectedSidePoints(selection);
     if (side == null) {
-      return const GeometryEditOutcome.failure('Tap the side you want to label.');
+      return const GeometryEditOutcome.failure(
+        'Tap the side you want to label.',
+      );
     }
     final value = text.trim();
     if (value.isEmpty) {
@@ -69,10 +71,7 @@ class GeometryEditorCommands {
     document.updateDiagram(
       (current) => current.copyWith(labels: [...current.labels, label]),
     );
-    return GeometryEditOutcome.success(
-      null,
-      GeometrySelection.label(label.id),
-    );
+    return GeometryEditOutcome.success(null, GeometrySelection.label(label.id));
   }
 
   GeometryEditOutcome addAngleMeasurement(
@@ -118,10 +117,7 @@ class GeometryEditorCommands {
         marks: [...current.marks, mark],
       ),
     );
-    return GeometryEditOutcome.success(
-      null,
-      GeometrySelection.label(label.id),
-    );
+    return GeometryEditOutcome.success(null, GeometrySelection.label(label.id));
   }
 
   GeometryEditOutcome markSelectedSideEqual(GeometrySelection selection) {
@@ -170,9 +166,7 @@ class GeometryEditorCommands {
     return const GeometryEditOutcome.success('Right-angle mark added.');
   }
 
-  GeometryEditOutcome addHeightFromSelectedVertex(
-    GeometrySelection selection,
-  ) {
+  GeometryEditOutcome addHeightFromSelectedVertex(GeometrySelection selection) {
     final point = selection.point(diagram);
     if (point == null) {
       return const GeometryEditOutcome.failure('Tap a triangle vertex first.');
@@ -198,7 +192,9 @@ class GeometryEditorCommands {
     final a = diagram.pointMap[otherIds[0]];
     final b = diagram.pointMap[otherIds[1]];
     if (a == null || b == null) {
-      return const GeometryEditOutcome.failure('Triangle points are incomplete.');
+      return const GeometryEditOutcome.failure(
+        'Triangle points are incomplete.',
+      );
     }
 
     final footPosition = _project(point.position, a.position, b.position);
@@ -265,7 +261,9 @@ class GeometryEditorCommands {
 
     final points = axes.pointIds.map((id) => diagram.pointMap[id]).toList();
     if (points.any((point) => point == null)) {
-      return const GeometryEditOutcome.failure('Coordinate axes are incomplete.');
+      return const GeometryEditOutcome.failure(
+        'Coordinate axes are incomplete.',
+      );
     }
     final top = points[0]!.position;
     final bottom = points[1]!.position;
@@ -430,7 +428,9 @@ class GeometryEditorCommands {
         final removablePoints = pointIds.difference(pointsUsedElsewhere);
         document.updateDiagram(
           (current) => current.copyWith(
-            shapes: current.shapes.where((item) => item.id != shape.id).toList(),
+            shapes: current.shapes
+                .where((item) => item.id != shape.id)
+                .toList(),
             points: current.points
                 .where((point) => !removablePoints.contains(point.id))
                 .toList(),
@@ -478,7 +478,8 @@ class GeometryEditorCommands {
         continue;
       }
       final index = ids.indexOf(vertex.id);
-      final previous = diagram.pointMap[ids[(index - 1 + ids.length) % ids.length]];
+      final previous =
+          diagram.pointMap[ids[(index - 1 + ids.length) % ids.length]];
       final next = diagram.pointMap[ids[(index + 1) % ids.length]];
       if (previous != null && next != null) return (vertex, previous, next);
     }

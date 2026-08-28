@@ -41,8 +41,8 @@ class QuestionTypeControl extends StatelessWidget {
                   Text(
                     'Question type',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -173,8 +173,9 @@ class QuestionOptionEditor extends StatelessWidget {
               builder: (context, focusNode, isMathActive) => TextField(
                 controller: controller,
                 focusNode: focusNode,
-                keyboardType:
-                    isMathActive ? TextInputType.none : TextInputType.text,
+                keyboardType: isMathActive
+                    ? TextInputType.none
+                    : TextInputType.text,
                 decoration: InputDecoration(
                   labelText: 'Option ${String.fromCharCode(65 + index)}',
                   isDense: true,
@@ -203,9 +204,9 @@ class ComposerErrorText extends StatelessWidget {
     return Text(
       message,
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.error,
-            fontWeight: FontWeight.w700,
-          ),
+        color: Theme.of(context).colorScheme.error,
+        fontWeight: FontWeight.w700,
+      ),
     );
   }
 }

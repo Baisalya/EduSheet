@@ -70,10 +70,9 @@ class QuestionRichTextCodec {
   }
 
   Set<String> embeddedMathExpressionIds(Document document) {
-    return embeddedMathExpressions(document)
-        .map((expression) => expression.id)
-        .where((id) => id.isNotEmpty)
-        .toSet();
+    return embeddedMathExpressions(
+      document,
+    ).map((expression) => expression.id).where((id) => id.isNotEmpty).toSet();
   }
 
   List<MathExpression> unplacedMathExpressions(Question question) {

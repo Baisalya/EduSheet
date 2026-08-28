@@ -102,10 +102,7 @@ class PaperPreviewPage extends ConsumerWidget {
                       ],
                       const Divider(height: 30),
                       for (final section in paper.sections)
-                        _PreviewSection(
-                          section: section,
-                          template: template,
-                        ),
+                        _PreviewSection(section: section, template: template),
                     ],
                   ),
                 ),
@@ -148,12 +145,10 @@ class _PreviewSection extends StatelessWidget {
         children: [
           if (section.showTitle || section.prefix.trim().isNotEmpty)
             Text(
-              '${section.prefix} ${section.showTitle ? section.title : ''}'.trim(),
+              '${section.prefix} ${section.showTitle ? section.title : ''}'
+                  .trim(),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
           if (section.instruction?.trim().isNotEmpty == true)
             Padding(
@@ -228,7 +223,9 @@ class _PreviewQuestion extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 QuestionRichTextPreview(question: question, maxHeight: 220),
-                for (final expression in _codec.unplacedMathExpressions(question))
+                for (final expression in _codec.unplacedMathExpressions(
+                  question,
+                ))
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: SafeMathExpression(expression: expression),

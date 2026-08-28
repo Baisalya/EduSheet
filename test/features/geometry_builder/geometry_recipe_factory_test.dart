@@ -1,4 +1,3 @@
-
 import 'package:edusheet/features/geometry_builder/application/geometry_recipe.dart';
 import 'package:edusheet/features/geometry_builder/application/geometry_recipe_factory.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
@@ -39,13 +38,19 @@ void main() {
   test('smart triangle recipes encode the mathematical meaning with marks', () {
     final isosceles = factory.build(GeometryRecipeCatalog.isoscelesTriangle);
     expect(
-      isosceles.marks.where((mark) => mark.type == GeometryMarkType.equalSideTick),
+      isosceles.marks.where(
+        (mark) => mark.type == GeometryMarkType.equalSideTick,
+      ),
       hasLength(2),
     );
 
-    final equilateral = factory.build(GeometryRecipeCatalog.equilateralTriangle);
+    final equilateral = factory.build(
+      GeometryRecipeCatalog.equilateralTriangle,
+    );
     expect(
-      equilateral.marks.where((mark) => mark.type == GeometryMarkType.equalSideTick),
+      equilateral.marks.where(
+        (mark) => mark.type == GeometryMarkType.equalSideTick,
+      ),
       hasLength(3),
     );
 
@@ -60,12 +65,17 @@ void main() {
   test('circle and line constructions use existing persisted primitives', () {
     final radius = factory.build(GeometryRecipeCatalog.circleRadius);
     expect(radius.shapes.single.type, GeometryShapeType.circle);
-    expect(radius.marks.any((mark) => mark.type == GeometryMarkType.radiusLine), isTrue);
+    expect(
+      radius.marks.any((mark) => mark.type == GeometryMarkType.radiusLine),
+      isTrue,
+    );
 
     final parallel = factory.build(GeometryRecipeCatalog.parallelLines);
     expect(parallel.shapes, hasLength(2));
     expect(
-      parallel.marks.where((mark) => mark.type == GeometryMarkType.parallelLine),
+      parallel.marks.where(
+        (mark) => mark.type == GeometryMarkType.parallelLine,
+      ),
       hasLength(2),
     );
 

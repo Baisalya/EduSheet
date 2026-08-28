@@ -146,7 +146,9 @@ class GeometryHitTester {
           final radius = points.length >= 2
               ? (points[1] - points[0]).distance
               : shape.radius;
-          if ((position - points.first).distance <= radius + 10) return shape.id;
+          if ((position - points.first).distance <= radius + 10) {
+            return shape.id;
+          }
         case GeometryShapeType.triangle:
         case GeometryShapeType.rightTriangle:
         case GeometryShapeType.square:
