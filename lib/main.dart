@@ -9,6 +9,7 @@ import 'core/constants/app_constants.dart';
 import 'shared/presentation/screens/home_screen.dart';
 import 'features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 import 'shared/presentation/providers/theme_provider.dart';
+import 'shared/presentation/widgets/app_update_gate.dart';
 import 'shared/localization/edusheet_localizations.dart';
 import 'features/pdf/services/question_paper_service.dart';
 import 'features/document_reader/domain/models/document_open_request.dart';
@@ -142,17 +143,18 @@ class _MyAppState extends ConsumerState<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    final themeMode = ref.watch(themeProvider);
+    final themeSettings = ref.watch(themeProvider);
+    final seedColor = themeSettings.accent.seedColor;
 
     return MaterialApp(
       navigatorKey: _navigatorKey,
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
-      themeMode: themeMode,
+      themeMode: themeSettings.mode,
       theme: ThemeData(
         // ...
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
+          seedColor: seedColor,
           brightness: Brightness.light,
         ),
         useMaterial3: true,
@@ -185,7 +187,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
+          seedColor: seedColor,
           brightness: Brightness.dark,
           surface: const Color(0xFF1A1C1E),
           surfaceContainer: const Color(0xFF202225),
@@ -228,7 +230,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       ],
       supportedLocales: const [Locale('en', 'US'), Locale('hi', 'IN')],
       builder: (context, child) => MathKeyboardWrapper(child: child!),
-      home: const HomeScreen(),
+      home: const AppUpdateGate(child: HomeScreen()),
     );
   }
 }

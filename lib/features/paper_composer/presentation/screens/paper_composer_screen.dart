@@ -16,6 +16,7 @@ import 'package:edusheet/features/question_bank/domain/models/question_bank_mode
 import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
 import 'package:edusheet/features/question_bank/presentation/widgets/question_bank_picker_sheet.dart';
 import 'package:edusheet/features/question_bank/presentation/widgets/save_to_question_bank_sheet.dart';
+import 'package:edusheet/shared/services/review_service.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -431,6 +432,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
           ),
         ),
       );
+      await ReviewService.instance.recordSuccessfulExport();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -455,6 +457,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
           ),
         ),
       );
+      await ReviewService.instance.recordSuccessfulExport();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -7,7 +7,7 @@ class PrivacyNotifier extends StateNotifier<AsyncValue<int>> {
   }
 
   static const int currentPolicyVersion =
-      3; // Increment this when policy changes
+      4; // Store purchases and update checks added in this policy version.
   static const String _storageKey = 'accepted_privacy_version';
 
   Future<void> _init() async {

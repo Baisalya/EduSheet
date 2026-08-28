@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required by store billing and release update checks. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="EduSheet"
         android:name="${applicationName}"

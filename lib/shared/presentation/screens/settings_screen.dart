@@ -2,22 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/config/app_config.dart';
+import '../../../features/premium/application/premium_controller.dart';
+import '../../../features/premium/presentation/screens/premium_screen.dart';
+import '../providers/app_info_provider.dart';
 import '../providers/theme_provider.dart';
 import '../widgets/privacy_policy_dialog.dart';
+import '../widgets/rating_card.dart';
 
 const String _developerName = 'Baishalya Roul';
 const String _portfolioUrl = 'https://baisalya.github.io/Baisalya-Roul/';
-const String _phonePeUpiId =
-    'upi://pay?pa=baishalya1999@oksbi&pn=survaycam&cu=INR';
-const bool _isUpiConfigured = _phonePeUpiId != 'baishalya1999@ybl';
+const String _phonePeUpiId = 'baishalya1999@oksbi';
+const bool _isUpiConfigured = _phonePeUpiId != 'YOUR_UPI_ID';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(themeProvider);
-    final isDark = themeMode == ThemeMode.dark;
+    final themeSettings = ref.watch(themeProvider);
+    final premium = ref.watch(premiumProvider);
+    final appInfo = ref.watch(appInfoProvider);
+    final isDark = themeSettings.mode == ThemeMode.dark;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -34,23 +40,63 @@ class SettingsScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+            _PremiumSettingsBanner(
+              isPremium: premium.isPremium,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const PremiumScreen()),
+              ),
+            ),
+            const SizedBox(height: 20),
             _SettingsSection(
-              title: 'General',
-              icon: Icons.settings_rounded,
-              color: Colors.blue,
-              child: ListTile(
-                title: const Text(
-                  'Dark Mode',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: const Text('Toggle day and night mode'),
-                trailing: Switch(
-                  value: isDark,
-                  onChanged: (val) {
-                    ref.read(themeProvider.notifier).toggleTheme();
-                  },
-                ),
-                contentPadding: EdgeInsets.zero,
+              title: 'Appearance',
+              icon: Icons.palette_rounded,
+              color: themeSettings.accent.seedColor,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ListTile(
+                    title: const Text(
+                      'Dark Mode',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text('Toggle day and night mode'),
+                    trailing: Switch(
+                      value: isDark,
+                      onChanged: (_) {
+                        ref.read(themeProvider.notifier).toggleTheme();
+                      },
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  const Divider(height: 20),
+                  const Text(
+                    'Workspace colour',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    premium.isPremium
+                        ? 'All premium styles are unlocked.'
+                        : 'Ocean is free. Premium unlocks three more styles.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 14),
+                  _AccentPicker(
+                    selected: themeSettings.accent,
+                    isPremium: premium.isPremium,
+                    onSelected: (accent) {
+                      if (accent.isPremium && !premium.isPremium) {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PremiumScreen(),
+                          ),
+                        );
+                        return;
+                      }
+                      ref.read(themeProvider.notifier).setAccent(accent);
+                    },
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 20),
@@ -60,13 +106,15 @@ class SettingsScreen extends ConsumerWidget {
               color: Colors.purple,
               child: Column(
                 children: [
+                  const RatingCard(),
+                  const SizedBox(height: 8),
                   _SettingsActionCard(
-                    title: 'Help Us',
-                    subtitle: 'Feedback and suggestions',
-                    icon: Icons.favorite_rounded,
+                    title: 'Email Support',
+                    subtitle: AppConfig.supportEmail,
+                    icon: Icons.support_agent_rounded,
                     color: Colors.pink,
                     onTap: () {
-                      _showHelpDialog(context);
+                      _openSupportEmail(context);
                     },
                   ),
                   const Divider(height: 1, indent: 48),
@@ -79,18 +127,51 @@ class SettingsScreen extends ConsumerWidget {
                       _showDeveloperDetails(context);
                     },
                   ),
-                  const Divider(height: 1, indent: 48),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            _SettingsSection(
+              title: 'Legal & updates',
+              icon: Icons.verified_user_rounded,
+              color: Colors.blueGrey,
+              child: Column(
+                children: [
                   _SettingsActionCard(
                     title: 'Privacy Policy',
-                    subtitle: 'Review our terms and data usage',
+                    subtitle: 'How EduSheet handles local and store data',
                     icon: Icons.privacy_tip_rounded,
                     color: Colors.blueGrey,
                     onTap: () {
-                      showDialog(
+                      showDialog<void>(
                         context: context,
                         builder: (context) => const PrivacyPolicyDialog(),
                       );
                     },
+                  ),
+                  const Divider(height: 1, indent: 48),
+                  _SettingsActionCard(
+                    title: 'Check for updates',
+                    subtitle: 'Open the official EduSheet download page',
+                    icon: Icons.system_update_rounded,
+                    color: Colors.green,
+                    onTap: () =>
+                        _launchExternal(context, AppConfig.productWebsiteUrl),
+                  ),
+                  const Divider(height: 1, indent: 48),
+                  _SettingsActionCard(
+                    title: 'Open-source licences',
+                    subtitle: 'Packages and licence notices',
+                    icon: Icons.description_outlined,
+                    color: Colors.indigo,
+                    onTap: () => showLicensePage(
+                      context: context,
+                      applicationName: 'EduSheet',
+                      applicationVersion: appInfo.maybeWhen(
+                        data: (info) => '${info.version} (${info.buildNumber})',
+                        orElse: () => null,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -133,7 +214,11 @@ class SettingsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 40),
             Text(
-              'EduSheet v1.0.0',
+              appInfo.maybeWhen(
+                data: (info) =>
+                    'EduSheet v${info.version} • build ${info.buildNumber}',
+                orElse: () => 'EduSheet',
+              ),
               style: TextStyle(
                 color: Colors.grey[500],
                 fontSize: 12,
@@ -146,26 +231,18 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showHelpDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text(
-          'Help Us',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: const Text(
-          'We are constantly working to improve EduSheet. If you have any suggestions, bug reports, or feedback, please reach out to us at support@edusheet.com',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+  Future<void> _openSupportEmail(BuildContext context) async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: AppConfig.supportEmail,
+      queryParameters: {'subject': 'EduSheet support'},
     );
+    if (await launchUrl(uri)) return;
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No email app is available right now.')),
+      );
+    }
   }
 
   void _showDeveloperDetails(BuildContext context) {
@@ -441,6 +518,180 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
+class _PremiumSettingsBanner extends StatelessWidget {
+  final bool isPremium;
+  final VoidCallback onTap;
+
+  const _PremiumSettingsBanner({required this.isPremium, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Ink(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF29204F), Color(0xFF7557D5)],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF7557D5).withValues(alpha: 0.24),
+                blurRadius: 20,
+                offset: const Offset(0, 9),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  isPremium
+                      ? Icons.verified_rounded
+                      : Icons.workspace_premium_rounded,
+                  color: const Color(0xFFFFD76A),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isPremium ? 'Premium active' : 'EduSheet Premium',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      isPremium
+                          ? 'Thank you for supporting EduSheet.'
+                          : 'One-time supporter upgrade • no subscription',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AccentPicker extends StatelessWidget {
+  final AppAccent selected;
+  final bool isPremium;
+  final ValueChanged<AppAccent> onSelected;
+
+  const _AccentPicker({
+    required this.selected,
+    required this.isPremium,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: AppAccent.values.map((accent) {
+        final selectedAccent = accent == selected;
+        final locked = accent.isPremium && !isPremium;
+        return Semantics(
+          button: true,
+          selected: selectedAccent,
+          label: '${accent.label}${locked ? ', Premium' : ''}',
+          child: InkWell(
+            onTap: () => onSelected(accent),
+            borderRadius: BorderRadius.circular(14),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 66,
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                color: accent.seedColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: selectedAccent
+                      ? accent.seedColor
+                      : accent.seedColor.withValues(alpha: 0.24),
+                  width: selectedAccent ? 2 : 1,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: accent.seedColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: selectedAccent
+                            ? const Icon(
+                                Icons.check_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              )
+                            : null,
+                      ),
+                      if (locked)
+                        const Positioned(
+                          right: -5,
+                          bottom: -4,
+                          child: CircleAvatar(
+                            radius: 8,
+                            backgroundColor: Color(0xFFFFC857),
+                            child: Icon(
+                              Icons.lock_rounded,
+                              size: 10,
+                              color: Color(0xFF4A3210),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    accent.label,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
 class _SettingsSection extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -487,12 +738,15 @@ class _SettingsSection extends StatelessWidget {
                   child: Icon(icon, color: color, size: 20),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                    letterSpacing: 0.5,
+                Expanded(
+                  child: Text(
+                    title,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
               ],
@@ -556,11 +810,15 @@ class _SettingsActionCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
+                      Flexible(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                       ),
                       if (isComingSoon) ...[

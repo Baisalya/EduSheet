@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lottie/lottie.dart';
@@ -9,6 +11,8 @@ import '../../../features/question_bank/presentation/screens/question_bank_scree
 import '../../../features/document_reader/presentation/screens/document_reader_screen.dart';
 import '../../../features/calculator/presentation/screens/calculator_screen.dart';
 import '../../../features/word_converter/presentation/screens/word_converter_screen.dart';
+import '../../../features/premium/presentation/widgets/premium_badge_button.dart';
+import '../../services/review_service.dart';
 import '../providers/privacy_provider.dart';
 import '../widgets/privacy_policy_dialog.dart';
 import 'settings_screen.dart';
@@ -27,6 +31,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(ReviewService.instance.registerLaunch());
       _checkPrivacyPolicy();
     });
   }
@@ -133,11 +138,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [SizedBox(width: 12), _AnimatedGradientTitle()],
+          children: [
+            Image.asset(
+              'assets/branding/edusheet_brand_mark.png',
+              key: const ValueKey('edusheet-brand-logo'),
+              width: 36,
+              height: 36,
+              filterQuality: FilterQuality.high,
+              semanticLabel: 'EduSheet brand logo',
+            ),
+            const SizedBox(width: 10),
+            const _AnimatedGradientTitle(),
+          ],
         ),
         foregroundColor: isDark ? Colors.white : Colors.black,
+        actions: const [PremiumBadgeButton()],
       ),
       body: SafeArea(
         child: LayoutBuilder(

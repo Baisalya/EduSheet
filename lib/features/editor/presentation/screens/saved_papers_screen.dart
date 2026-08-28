@@ -3,6 +3,7 @@ import 'package:edusheet/features/pdf/application/question_paper_export_service.
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:edusheet/shared/services/review_service.dart';
 import '../providers/editor_provider.dart';
 import 'create_paper_screen.dart';
 import 'package:intl/intl.dart';
@@ -340,6 +341,7 @@ class _SavedPaperCard extends ConsumerWidget {
           behavior: SnackBarBehavior.floating,
         ),
       );
+      await ReviewService.instance.recordSuccessfulExport();
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -369,6 +371,7 @@ class _SavedPaperCard extends ConsumerWidget {
           behavior: SnackBarBehavior.floating,
         ),
       );
+      await ReviewService.instance.recordSuccessfulExport();
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
