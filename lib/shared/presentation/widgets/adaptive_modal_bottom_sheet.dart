@@ -22,6 +22,7 @@ Future<T?> showAdaptiveModalBottomSheet<T>({
   bool isScrollControlled = false,
   bool? showDragHandle,
   Color? backgroundColor,
+  bool? requestFocus,
   double maximumSheetWidth = 640,
 }) {
   final viewportWidth = MediaQuery.sizeOf(context).width;
@@ -51,6 +52,7 @@ Future<T?> showAdaptiveModalBottomSheet<T>({
     isScrollControlled: isScrollControlled,
     showDragHandle: showDragHandle,
     backgroundColor: backgroundColor,
+    requestFocus: requestFocus,
     constraints: BoxConstraints(maxWidth: sheetWidth),
     builder: (sheetContext) =>
         SizedBox(width: sheetWidth, child: builder(sheetContext)),

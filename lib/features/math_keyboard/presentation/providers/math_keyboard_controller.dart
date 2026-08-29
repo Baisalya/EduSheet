@@ -108,7 +108,7 @@ class MathKeyboardStateData {
   }
 }
 
-@riverpod
+@Riverpod(keepAlive: true)
 class MathKeyboardController extends _$MathKeyboardController {
   static const String _recentStorageKey = 'math_keyboard_recent_symbols_v1';
   bool _disposed = false;
@@ -141,14 +141,36 @@ class MathKeyboardController extends _$MathKeyboardController {
     );
   }
 
-  void unregisterController(Object controller) {
-    if (state.activeController == controller) {
-      state = state.copyWith(
-        clearActiveController: true,
-        clearActiveFocusNode: true,
-        isVisible: false,
-      );
+  /// Atomically assigns ownership and opens the custom math keyboard.
+  ///
+  /// Keeping those changes in one state emission prevents desktop focus
+  /// transitions from observing a half-open session (visible keyboard with a
+  /// stale owner, or a new owner while the keyboard is still marked hidden).
+  void showMathKeyboardFor(Object controller, FocusNode focusNode) {
+    state = state.copyWith(
+      activeController: controller,
+      activeFocusNode: focusNode,
+      isVisible: true,
+      type: KeyboardType.math,
+    );
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+  }
+
+  void unregisterController(Object controller, {FocusNode? focusNode}) {
+    if (state.activeController != controller) return;
+
+    // A disposed/rebuilt MathKeyboardField can leave a post-frame cleanup
+    // callback behind. Do not let that stale callback close a newer session
+    // that happens to reuse the same editor controller with a new FocusNode.
+    if (focusNode != null && !identical(state.activeFocusNode, focusNode)) {
+      return;
     }
+
+    state = state.copyWith(
+      clearActiveController: true,
+      clearActiveFocusNode: true,
+      isVisible: false,
+    );
   }
 
   void showMathKeyboard() {
@@ -167,6 +189,18 @@ class MathKeyboardController extends _$MathKeyboardController {
 
   void hideKeyboard() {
     state = state.copyWith(isVisible: false, type: KeyboardType.system);
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+  }
+
+  /// Returns focus to the field that owns the current custom-keyboard session.
+  /// Useful after a keyboard-local category/search/action panel is dismissed.
+  void restoreActiveMathFocus() {
+    if (!state.isVisible || state.type != KeyboardType.math) return;
+
+    final node = state.activeFocusNode;
+    if (node != null && node.canRequestFocus && node.context != null) {
+      node.requestFocus();
+    }
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 

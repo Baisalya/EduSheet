@@ -12,6 +12,8 @@
 
 #include "win32_window.h"
 
+class MicrosoftStoreBridge;
+
 // A window that hosts the Flutter view and receives warm document activations
 // forwarded by a second EduSheet process.
 class FlutterWindow : public Win32Window {
@@ -39,6 +41,9 @@ class FlutterWindow : public Win32Window {
   // instance receives a document from Windows Explorer/Open With.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       document_channel_;
+
+  // Native Microsoft Store durable add-on integration for packaged builds.
+  std::unique_ptr<MicrosoftStoreBridge> microsoft_store_bridge_;
 
   // WM_COPYDATA can arrive while the first Flutter frame is still starting.
   // Queue those paths until the platform channel exists instead of dropping

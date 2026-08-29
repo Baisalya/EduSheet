@@ -19,7 +19,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('EduSheet Premium'), findsOneWidget);
+    expect(find.text('Free access release'), findsOneWidget);
     expect(find.text('Enjoying EduSheet?'), findsOneWidget);
     expect(find.text('Workspace colour'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -34,7 +34,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('LIFETIME PREMIUM'), findsOneWidget);
+    expect(find.text('FREE ACCESS'), findsOneWidget);
     expect(find.text('Premium colour styles'), findsOneWidget);
     expect(find.text('Core tools remain free'), findsOneWidget);
     expect(tester.takeException(), isNull);

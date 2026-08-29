@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/math_keyboard_controller.dart';
 import 'math_keyboard_view.dart';
+import 'math_keyboard_interaction_region.dart';
 import 'floating_element_manager.dart';
 
 class MathKeyboardWrapper extends ConsumerStatefulWidget {
@@ -59,11 +60,18 @@ class _MathKeyboardOverlay extends ConsumerWidget {
         child: Material(
           child: SizedBox(
             height: effectiveHeight,
-            child: HeroControllerScope.none(
-              child: Navigator(
-                key: navigatorKey,
-                onGenerateRoute: (settings) => MaterialPageRoute(
-                  builder: (context) => const MathKeyboardView(),
+            child: MathKeyboardInteractionRegion(
+              child: HeroControllerScope.none(
+                child: Navigator(
+                  key: navigatorKey,
+                  // The keyboard has its own route stack, but merely revealing
+                  // that stack must never steal focus from the active formula
+                  // field. Individual keyboard search inputs can still request
+                  // focus when the user explicitly taps them.
+                  requestFocus: false,
+                  onGenerateRoute: (settings) => MaterialPageRoute(
+                    builder: (context) => const MathKeyboardView(),
+                  ),
                 ),
               ),
             ),

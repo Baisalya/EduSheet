@@ -12,10 +12,7 @@ String _$mathKeyboardControllerHash() =>
 /// See also [MathKeyboardController].
 @ProviderFor(MathKeyboardController)
 final mathKeyboardControllerProvider =
-    AutoDisposeNotifierProvider<
-      MathKeyboardController,
-      MathKeyboardStateData
-    >.internal(
+    NotifierProvider<MathKeyboardController, MathKeyboardStateData>.internal(
       MathKeyboardController.new,
       name: r'mathKeyboardControllerProvider',
       debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -25,6 +22,6 @@ final mathKeyboardControllerProvider =
       allTransitiveDependencies: null,
     );
 
-typedef _$MathKeyboardController = AutoDisposeNotifier<MathKeyboardStateData>;
+typedef _$MathKeyboardController = Notifier<MathKeyboardStateData>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

@@ -270,17 +270,20 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
       }
 
       return IgnorePointer(
-        child: Math.tex(
-          displayTex,
-          mathStyle: MathStyle.display,
-          textStyle: style,
-          onErrorFallback: (err) {
-            return Text(
-              label ?? '?',
-              textAlign: TextAlign.center,
-              style: style,
-            );
-          },
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Math.tex(
+            displayTex,
+            mathStyle: MathStyle.display,
+            textStyle: style,
+            onErrorFallback: (err) {
+              return Text(
+                label ?? '?',
+                textAlign: TextAlign.center,
+                style: style,
+              );
+            },
+          ),
         ),
       );
     }

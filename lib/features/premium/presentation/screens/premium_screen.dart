@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/premium_controller.dart';
@@ -23,10 +24,15 @@ class PremiumScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _PremiumHero(isPremium: premium.isPremium),
+                  _PremiumHero(
+                    isPremium: premium.isPremium,
+                    isComplimentary: premium.isComplimentaryAccess,
+                  ),
                   const SizedBox(height: 24),
                   Text(
-                    premium.isPremium
+                    premium.isComplimentaryAccess
+                        ? 'Everything is unlocked for free'
+                        : premium.isPremium
                         ? 'Your premium workspace is active'
                         : 'Make the workspace yours',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -35,9 +41,11 @@ class PremiumScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    premium.isPremium
+                    premium.isComplimentaryAccess
+                        ? 'No subscription or purchase is active in this release. All workspace colour styles are available to every user.'
+                        : premium.isPremium
                         ? 'Thank you for supporting an offline-first tool built for teachers.'
-                        : 'A one-time supporter upgrade with premium workspace styles. All essential paper-creation tools stay free.',
+                        : 'An optional Store-managed plan for premium workspace styles. All essential paper-creation tools stay free.',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: colors.onSurfaceVariant,
                       height: 1.45,
@@ -58,9 +66,9 @@ class PremiumScreen extends ConsumerWidget {
                   ),
                   const _BenefitTile(
                     icon: Icons.all_inclusive_rounded,
-                    title: 'One-time unlock',
+                    title: 'Store-managed subscription',
                     description:
-                        'No recurring subscription. Restore on devices using the same store account.',
+                        'Prepared for a future optional plan and restore through the same store account. Checkout is currently disabled.',
                   ),
                   const _BenefitTile(
                     icon: Icons.lock_open_rounded,
@@ -74,7 +82,8 @@ class PremiumScreen extends ConsumerWidget {
                   ],
                   const SizedBox(height: 24),
                   _PurchaseButton(state: premium),
-                  if (premium.storeStatus != PremiumStoreStatus.unsupported &&
+                  if (!premium.isComplimentaryAccess &&
+                      premium.storeStatus != PremiumStoreStatus.unsupported &&
                       !premium.isPremium) ...[
                     const SizedBox(height: 8),
                     TextButton(
@@ -105,8 +114,14 @@ class PremiumScreen extends ConsumerWidget {
   }
 
   String _storeFootnote(PremiumState state) {
+    if (state.isComplimentaryAccess) {
+      return 'Free-access release: premium purchases and subscriptions are disabled on Microsoft Store, Google Play and other platforms.';
+    }
     if (state.storeStatus == PremiumStoreStatus.unsupported) {
-      return 'Store checkout is available in the Android, iPhone and Mac editions. Core tools remain available on this platform.';
+      return 'Store checkout is available in the Android, iPhone, Mac and Windows editions. Core tools remain available on this platform.';
+    }
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      return 'Payment is securely processed by Microsoft Store. An active subscription can be restored with the same Microsoft account.';
     }
     return 'Payment is securely processed by your app store. The displayed price and applicable taxes come from the store.';
   }
@@ -114,8 +129,9 @@ class PremiumScreen extends ConsumerWidget {
 
 class _PremiumHero extends StatelessWidget {
   final bool isPremium;
+  final bool isComplimentary;
 
-  const _PremiumHero({required this.isPremium});
+  const _PremiumHero({required this.isPremium, required this.isComplimentary});
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +163,9 @@ class _PremiumHero extends StatelessWidget {
               border: Border.all(color: Colors.white24),
             ),
             child: Icon(
-              isPremium ? Icons.verified_rounded : Icons.workspace_premium,
+              isPremium || isComplimentary
+                  ? Icons.verified_rounded
+                  : Icons.workspace_premium,
               size: 38,
               color: const Color(0xFFFFD76A),
             ),
@@ -158,7 +176,9 @@ class _PremiumHero extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isPremium ? 'PREMIUM ACTIVE' : 'LIFETIME PREMIUM',
+                  isComplimentary
+                      ? 'FREE ACCESS'
+                      : (isPremium ? 'PREMIUM ACTIVE' : 'PREMIUM PLAN'),
                   style: const TextStyle(
                     color: Color(0xFFFFD76A),
                     fontWeight: FontWeight.w900,
@@ -168,9 +188,11 @@ class _PremiumHero extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  isPremium
+                  isComplimentary
+                      ? 'No payment required.'
+                      : isPremium
                       ? 'You make EduSheet better.'
-                      : 'One purchase. No renewal.',
+                      : 'Optional. Store managed.',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 22,
@@ -258,18 +280,28 @@ class _PurchaseButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ready = state.storeStatus == PremiumStoreStatus.ready;
-    final label = switch ((state.isPremium, state.purchasePending, ready)) {
-      (true, _, _) => 'Premium is active',
-      (_, true, _) => 'Connecting to store…',
-      (_, _, true) => 'Unlock for ${state.product!.price}',
+    final label = switch ((
+      state.isComplimentaryAccess,
+      state.isPremium,
+      state.purchasePending,
+      ready,
+    )) {
+      (true, _, _, _) => 'Free access is active',
+      (_, true, _, _) => 'Premium is active',
+      (_, _, true, _) => 'Connecting to store…',
+      (_, _, _, true) => 'Subscribe for ${state.product!.price}',
       _ => 'Premium unavailable',
     };
 
     return SizedBox(
       height: 54,
       child: FilledButton.icon(
-        onPressed: ready && !state.purchasePending && !state.isPremium
-            ? () => ref.read(premiumProvider.notifier).buyLifetimePremium()
+        onPressed:
+            !state.isComplimentaryAccess &&
+                ready &&
+                !state.purchasePending &&
+                !state.isPremium
+            ? () => ref.read(premiumProvider.notifier).buyPremium()
             : null,
         style: FilledButton.styleFrom(
           backgroundColor: const Color(0xFF7557D5),
@@ -288,7 +320,9 @@ class _PurchaseButton extends ConsumerWidget {
                 ),
               )
             : Icon(
-                state.isPremium ? Icons.check_rounded : Icons.lock_open_rounded,
+                state.hasPremiumAccess
+                    ? Icons.check_rounded
+                    : Icons.lock_open_rounded,
               ),
         label: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
       ),

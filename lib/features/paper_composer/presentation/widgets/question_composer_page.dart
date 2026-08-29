@@ -303,13 +303,15 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   }
 
   Future<void> _insertGeometry() async {
+    // Preserve the exact caret/range before opening the full-screen geometry
+    // builder. Route/focus changes must not decide where the diagram lands.
+    final insertion = _safeSelectionRange();
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     FocusManager.instance.primaryFocus?.unfocus();
     final diagram = await GeometryBuilderScreen.show(context);
     if (diagram == null || !mounted) return;
 
     GeometryDiagramRegistry.instance.save(diagram);
-    final selection = _safeSelectionRange();
     final data = jsonEncode({
       'id': diagram.id,
       'height': 200.0,
@@ -317,31 +319,58 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
       'alignmentX': 0.0,
       'diagram': diagram.toJson(),
     });
+    _insertGeometryAt(data, insertion);
+    setState(() => _bodyError = null);
+    _restoreBodyFocus();
+  }
+
+  void _insertGeometryAt(String data, (int, int) selection) {
+    var start = selection.$1;
+    final length = selection.$2;
+
+    if (length > 0) {
+      _bodyController.replaceText(start, length, '', null);
+    }
+
+    // Geometry is a block embed. Keep it on its own line and always create a
+    // real paragraph after it so the user can continue typing immediately.
+    var text = _bodyController.document.toPlainText();
+    if (start > 0 && start <= text.length && text[start - 1] != '\n') {
+      _bodyController.replaceText(start, 0, '\n', null);
+      start += 1;
+    }
+
     _bodyController.replaceText(
-      selection.$1,
-      selection.$2,
+      start,
+      0,
       BlockEmbed.custom(CustomBlockEmbed('geometry', data)),
       null,
     );
+
+    text = _bodyController.document.toPlainText();
+    final after = start + 1;
+    if (after >= text.length || text[after] != '\n') {
+      _bodyController.replaceText(after, 0, '\n', null);
+    }
+
     _bodyController.updateSelection(
-      TextSelection.collapsed(offset: selection.$1 + 1),
+      TextSelection.collapsed(offset: start + 2),
       ChangeSource.local,
     );
-    setState(() => _bodyError = null);
   }
 
   Future<void> _scanQuestionText() async {
+    final insertion = _safeSelectionRange();
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     FocusManager.instance.primaryFocus?.unfocus();
     final scanned = await Navigator.of(
       context,
     ).push<String>(MaterialPageRoute(builder: (context) => const OCRScreen()));
     if (scanned == null || scanned.trim().isEmpty || !mounted) return;
-    final selection = _safeSelectionRange();
     final text = scanned.trim();
-    _bodyController.replaceText(selection.$1, selection.$2, text, null);
+    _bodyController.replaceText(insertion.$1, insertion.$2, text, null);
     _bodyController.updateSelection(
-      TextSelection.collapsed(offset: selection.$1 + text.length),
+      TextSelection.collapsed(offset: insertion.$1 + text.length),
       ChangeSource.local,
     );
     setState(() => _bodyError = null);
@@ -810,8 +839,8 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
             ),
           ],
           const Divider(height: 1),
-          SizedBox(
-            height: compact ? 220 : 260,
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: compact ? 220 : 260),
             child: QuillEditor(
               controller: _bodyController,
               focusNode: _bodyFocus,
@@ -820,6 +849,11 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                 placeholder:
                     'Type the question exactly as students should read it…',
                 padding: const EdgeInsets.all(14),
+                // The page already owns vertical scrolling. Let the editor grow
+                // with text/graphs instead of creating a second tiny scroll
+                // viewport inside the question card. This keeps the caret and
+                // the content being typed visually together after a diagram.
+                scrollable: false,
                 embedBuilders: [
                   GeometryEmbedBuilder(),
                   MathExpressionEmbedBuilder(onEdit: _editEmbeddedFormula),

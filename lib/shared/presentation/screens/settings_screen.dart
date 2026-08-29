@@ -11,7 +11,7 @@ import '../widgets/privacy_policy_dialog.dart';
 import '../widgets/rating_card.dart';
 
 const String _developerName = 'Baishalya Roul';
-const String _portfolioUrl = 'https://baisalya.github.io/Baisalya-Roul/';
+const String _portfolioUrl = 'https://baisalya.com/';
 const String _phonePeUpiId = 'baishalya1999@oksbi';
 const bool _isUpiConfigured = _phonePeUpiId != 'YOUR_UPI_ID';
 
@@ -41,7 +41,8 @@ class SettingsScreen extends ConsumerWidget {
         child: Column(
           children: [
             _PremiumSettingsBanner(
-              isPremium: premium.isPremium,
+              isPremium: premium.hasPremiumAccess,
+              isComplimentary: premium.isComplimentaryAccess,
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(builder: (_) => const PremiumScreen()),
               ),
@@ -75,17 +76,19 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    premium.isPremium
-                        ? 'All premium styles are unlocked.'
+                    premium.hasPremiumAccess
+                        ? premium.isComplimentaryAccess
+                              ? 'All workspace styles are free in this release.'
+                              : 'All premium styles are unlocked.'
                         : 'Ocean is free. Premium unlocks three more styles.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 14),
                   _AccentPicker(
                     selected: themeSettings.accent,
-                    isPremium: premium.isPremium,
+                    isPremium: premium.hasPremiumAccess,
                     onSelected: (accent) {
-                      if (accent.isPremium && !premium.isPremium) {
+                      if (accent.isPremium && !premium.hasPremiumAccess) {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
                             builder: (_) => const PremiumScreen(),
@@ -520,9 +523,14 @@ class SettingsScreen extends ConsumerWidget {
 
 class _PremiumSettingsBanner extends StatelessWidget {
   final bool isPremium;
+  final bool isComplimentary;
   final VoidCallback onTap;
 
-  const _PremiumSettingsBanner({required this.isPremium, required this.onTap});
+  const _PremiumSettingsBanner({
+    required this.isPremium,
+    required this.isComplimentary,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -568,7 +576,9 @@ class _PremiumSettingsBanner extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      isPremium ? 'Premium active' : 'EduSheet Premium',
+                      isComplimentary
+                          ? 'Free access release'
+                          : (isPremium ? 'Premium active' : 'EduSheet Premium'),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 17,
@@ -577,9 +587,11 @@ class _PremiumSettingsBanner extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      isPremium
+                      isComplimentary
+                          ? 'Subscriptions are off • all styles unlocked'
+                          : isPremium
                           ? 'Thank you for supporting EduSheet.'
-                          : 'One-time supporter upgrade • no subscription',
+                          : 'Optional Store subscription • currently inactive',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,

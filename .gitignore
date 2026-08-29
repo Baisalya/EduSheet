@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Locally generated Microsoft Store artifacts (rebuild from release scripts)
+/release/microsoft_store/packages/*.msix

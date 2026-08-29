@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.baishalya" "\0"
-            VALUE "FileDescription", "EduSheet" "\0"
+            VALUE "CompanyName", "Baishalya Roul" "\0"
+            VALUE "FileDescription", "EduSheet - Question Paper Maker" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "edusheet" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.baishalya. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Baishalya Roul. All rights reserved." "\0"
             VALUE "OriginalFilename", "edusheet.exe" "\0"
             VALUE "ProductName", "EduSheet" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

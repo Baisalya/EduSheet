@@ -5,6 +5,7 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:math_keyboard/math_keyboard.dart' as math_kb;
 import '../providers/math_keyboard_controller.dart';
+import 'math_keyboard_interaction_region.dart';
 
 class MathKeyboardField extends ConsumerStatefulWidget {
   final Widget Function(
@@ -17,11 +18,20 @@ class MathKeyboardField extends ConsumerStatefulWidget {
   controller; // TextEditingController, QuillController, or MathFieldEditingController
   final FocusNode? focusNode;
 
+  /// Keeps an already-visible custom math session alive across focus churn.
+  ///
+  /// Use this for composite editors such as `MathField` that can temporarily
+  /// move focus while changing their keyboard mode. The owning feature must
+  /// explicitly release the session when the user moves to a different, normal
+  /// text editor.
+  final bool retainMathSessionOnFocusLoss;
+
   const MathKeyboardField({
     super.key,
     required this.builder,
     required this.controller,
     this.focusNode,
+    this.retainMathSessionOnFocusLoss = false,
   });
 
   @override
@@ -50,10 +60,15 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
   void didUpdateWidget(covariant MathKeyboardField oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    final previousFocusNode = _focusNode;
     if (oldWidget.focusNode != widget.focusNode) {
-      _focusNode.removeListener(_onFocusChange);
+      previousFocusNode.removeListener(_onFocusChange);
+      _mathKeyboardController.unregisterController(
+        oldWidget.controller,
+        focusNode: previousFocusNode,
+      );
       if (_ownsFocusNode) {
-        _focusNode.dispose();
+        previousFocusNode.dispose();
       }
       _focusNode = widget.focusNode ?? FocusNode();
       _ownsFocusNode = widget.focusNode == null;
@@ -69,7 +84,10 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
 
     if (oldWidget.controller == widget.controller) return;
 
-    _mathKeyboardController.unregisterController(oldWidget.controller);
+    _mathKeyboardController.unregisterController(
+      oldWidget.controller,
+      focusNode: previousFocusNode,
+    );
 
     if (_focusNode.hasFocus) {
       _mathKeyboardController.registerController(widget.controller, _focusNode);
@@ -82,9 +100,13 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     _focusNode.removeListener(_onFocusChange);
 
     final controller = widget.controller;
+    final focusNode = _focusNode;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
-        _mathKeyboardController.unregisterController(controller);
+        _mathKeyboardController.unregisterController(
+          controller,
+          focusNode: focusNode,
+        );
       } catch (_) {
         // Provider scope may already be disposed during test/app teardown.
       }
@@ -116,12 +138,81 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
       // Defer by one frame so focus can transfer to another math field
       // without leaving a Timer alive during route/widget teardown.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_disposed || !mounted) return;
-        if (!_focusNode.hasFocus) {
-          _mathKeyboardController.unregisterController(widget.controller);
+        if (_disposed || !mounted || _focusNode.hasFocus) return;
+
+        final state = ref.read(mathKeyboardControllerProvider);
+        final ownsVisibleMathSession =
+            state.isVisible &&
+            state.type == KeyboardType.math &&
+            identical(state.activeController, widget.controller);
+        if (ownsVisibleMathSession && widget.retainMathSessionOnFocusLoss) {
+          return;
         }
+
+        final destinationContext = FocusManager.instance.primaryFocus?.context;
+        final movedInsideThisField = _containsFocusContext(destinationContext);
+        final movedIntoMathKeyboard = MathKeyboardInteractionRegion.contains(
+          destinationContext,
+        );
+        final movedToExternalEditable = _isEditableFocusOutsideMathKeyboard(
+          destinationContext,
+        );
+
+        // A visible custom-keyboard session is owned by the editor controller,
+        // not by one fragile desktop focus frame. MathField may hand focus
+        // between internal focus nodes/EditableText objects when `opensKeyboard`
+        // changes. That internal hand-off is still the same editor session and
+        // must not be mistaken for the user moving to another field.
+        //
+        // Release only when focus actually lands in a different editable
+        // control outside both this MathKeyboardField and the custom keyboard.
+        if (ownsVisibleMathSession &&
+            (destinationContext == null ||
+                movedInsideThisField ||
+                movedIntoMathKeyboard ||
+                !movedToExternalEditable)) {
+          return;
+        }
+
+        _mathKeyboardController.unregisterController(
+          widget.controller,
+          focusNode: _focusNode,
+        );
       });
     }
+  }
+
+  bool _containsFocusContext(BuildContext? destinationContext) {
+    if (destinationContext == null) return false;
+    if (identical(destinationContext, context)) return true;
+
+    var isInside = false;
+    destinationContext.visitAncestorElements((element) {
+      if (identical(element, context)) {
+        isInside = true;
+        return false;
+      }
+      return true;
+    });
+    return isInside;
+  }
+
+  bool _isEditableFocusOutsideMathKeyboard(BuildContext? context) {
+    if (context == null || MathKeyboardInteractionRegion.contains(context)) {
+      return false;
+    }
+
+    if (context.widget is EditableText) return true;
+
+    var foundEditable = false;
+    context.visitAncestorElements((element) {
+      if (element.widget is EditableText) {
+        foundEditable = true;
+        return false;
+      }
+      return true;
+    });
+    return foundEditable;
   }
 
   void _ensureVisibleAboveKeyboard() {
@@ -147,7 +238,9 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
   Widget build(BuildContext context) {
     final keyboardState = ref.watch(mathKeyboardControllerProvider);
     final isMathActive =
-        keyboardState.isVisible && keyboardState.type == KeyboardType.math;
+        keyboardState.isVisible &&
+        keyboardState.type == KeyboardType.math &&
+        identical(keyboardState.activeController, widget.controller);
     if (_isFocused && isMathActive) {
       final heightChanged = _lastMathKeyboardHeight != keyboardState.height;
       if (!_wasMathActive || heightChanged) {
@@ -206,7 +299,10 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
                             );
                           });
                         } else {
-                          _mathKeyboardController.showMathKeyboard();
+                          _mathKeyboardController.showMathKeyboardFor(
+                            widget.controller,
+                            _focusNode,
+                          );
                           // Explicitly hide system keyboard without losing focus
                           SystemChannels.textInput.invokeMethod(
                             'TextInput.hide',

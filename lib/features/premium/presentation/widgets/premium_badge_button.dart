@@ -9,11 +9,10 @@ class PremiumBadgeButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isPremium = ref.watch(
-      premiumProvider.select((state) => state.isPremium),
-    );
+    final premium = ref.watch(premiumProvider);
+    final hasAccess = premium.hasPremiumAccess;
     final compact = MediaQuery.sizeOf(context).width < 380;
-    final foreground = isPremium
+    final foreground = hasAccess
         ? const Color(0xFFD49B00)
         : Theme.of(context).colorScheme.primary;
 
@@ -27,12 +26,14 @@ class PremiumBadgeButton extends ConsumerWidget {
       padding: EdgeInsets.only(right: compact ? 2 : 8),
       child: compact
           ? IconButton(
-              tooltip: isPremium ? 'Premium active' : 'Premium',
+              tooltip: premium.isComplimentaryAccess
+                  ? 'Free access release'
+                  : (hasAccess ? 'Premium active' : 'Premium'),
               onPressed: openPremium,
               visualDensity: VisualDensity.compact,
               color: foreground,
               icon: Icon(
-                isPremium
+                hasAccess
                     ? Icons.workspace_premium_rounded
                     : Icons.diamond_outlined,
                 size: 20,
@@ -46,13 +47,15 @@ class PremiumBadgeButton extends ConsumerWidget {
                 visualDensity: VisualDensity.compact,
               ),
               icon: Icon(
-                isPremium
+                hasAccess
                     ? Icons.workspace_premium_rounded
                     : Icons.diamond_outlined,
                 size: 19,
               ),
               label: Text(
-                isPremium ? 'PRO' : 'Premium',
+                premium.isComplimentaryAccess
+                    ? 'FREE'
+                    : (hasAccess ? 'PRO' : 'Premium'),
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 12,

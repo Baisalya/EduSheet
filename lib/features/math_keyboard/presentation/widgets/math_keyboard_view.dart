@@ -1,4 +1,3 @@
-import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -12,6 +11,7 @@ import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyb
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_provider.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_key.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_action_bar.dart';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_modal_presenter.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart';
 
 class MathKeyboardView extends ConsumerWidget {
@@ -145,7 +145,11 @@ class MathKeyboardView extends ConsumerWidget {
                         ? _categoryLabel(state.currentCategory)
                         : 'MORE',
                     selected: moreSelected,
-                    showLabel: !compact,
+                    // Keep the category-picker entry discoverable even when
+                    // the keyboard is vertically compact. Hiding this label
+                    // based on height made a wide desktop keyboard show an
+                    // unexplained grid icon and broke the local-panel flow.
+                    showLabel: true,
                     onTap: () =>
                         _showCategoryPicker(context, state, controller),
                   );
@@ -167,11 +171,11 @@ class MathKeyboardView extends ConsumerWidget {
     );
   }
 
-  void _showCategoryPicker(
+  Future<void> _showCategoryPicker(
     BuildContext context,
     MathKeyboardStateData state,
     MathKeyboardController controller,
-  ) {
+  ) async {
     const groups = <String, List<MathCategory>>{
       'MY KEYS': <MathCategory>[MathCategory.recent, MathCategory.favorites],
       'MATHEMATICS': <MathCategory>[
@@ -195,10 +199,8 @@ class MathKeyboardView extends ConsumerWidget {
       ],
     };
 
-    showAdaptiveModalBottomSheet<void>(
+    await showMathKeyboardPanel<void>(
       context: context,
-      useRootNavigator: true,
-      useSafeArea: true,
       showDragHandle: true,
       builder: (sheetContext) => SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -245,6 +247,7 @@ class MathKeyboardView extends ConsumerWidget {
         ),
       ),
     );
+    controller.restoreActiveMathFocus();
   }
 
   String _categoryLabel(MathCategory category) {
@@ -295,14 +298,12 @@ class MathKeyboardView extends ConsumerWidget {
     };
   }
 
-  void _showSymbolSearch(
+  Future<void> _showSymbolSearch(
     BuildContext context,
     MathKeyboardController controller,
-  ) {
-    showAdaptiveModalBottomSheet<void>(
+  ) async {
+    await showMathKeyboardPanel<void>(
       context: context,
-      useRootNavigator: true,
-      useSafeArea: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) => FractionallySizedBox(
@@ -316,6 +317,7 @@ class MathKeyboardView extends ConsumerWidget {
         ),
       ),
     );
+    controller.restoreActiveMathFocus();
   }
 
   Widget _buildQuickBar(
@@ -696,10 +698,10 @@ class MathKeyboardView extends ConsumerWidget {
     );
   }
 
-  void _showShapePicker(
+  Future<void> _showShapePicker(
     BuildContext context,
     MathKeyboardController controller,
-  ) {
+  ) async {
     final theme = Theme.of(context);
     final shapes = [
       Icons.circle,
@@ -720,11 +722,9 @@ class MathKeyboardView extends ConsumerWidget {
       Icons.chat_bubble_outline,
     ];
 
-    showAdaptiveModalBottomSheet(
+    await showMathKeyboardPanel(
       context: context,
       backgroundColor: Colors.transparent,
-      useRootNavigator:
-          false, // Ensure it opens within the keyboard's Navigator
       builder: (context) => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -779,6 +779,7 @@ class MathKeyboardView extends ConsumerWidget {
         ),
       ),
     );
+    controller.restoreActiveMathFocus();
   }
 
   Widget _buildSymbolGrid(
@@ -850,18 +851,16 @@ class MathKeyboardView extends ConsumerWidget {
     );
   }
 
-  void _showSymbolActions(
+  Future<void> _showSymbolActions(
     BuildContext context,
     WidgetRef ref,
     MathKeyboardController controller,
     MathSymbol symbol,
-  ) {
+  ) async {
     final favorites = ref.read(favoriteSymbolsProvider);
     final isFavorite = favorites.any((item) => item.id == symbol.id);
-    showAdaptiveModalBottomSheet<void>(
+    await showMathKeyboardPanel<void>(
       context: context,
-      useRootNavigator: true,
-      useSafeArea: true,
       builder: (context) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
         child: Column(
@@ -902,6 +901,7 @@ class MathKeyboardView extends ConsumerWidget {
         ),
       ),
     );
+    controller.restoreActiveMathFocus();
   }
 
   List<MathSymbol> _recentSymbols(MathKeyboardStateData state) {

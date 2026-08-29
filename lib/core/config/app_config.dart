@@ -9,12 +9,23 @@ class AppConfig {
 
   static const String premiumProductId = String.fromEnvironment(
     'PREMIUM_PRODUCT_ID',
-    defaultValue: 'edusheet_premium_lifetime',
+    defaultValue: 'edusheet_premium_yearly',
   );
+
+  /// Partner Center product ID for the durable Windows premium add-on.
+  static const String microsoftPremiumProductId = String.fromEnvironment(
+    'MICROSOFT_PREMIUM_PRODUCT_ID',
+    defaultValue: 'edusheet_premium_yearly',
+  );
+
+  static String get premiumProductIdForCurrentPlatform =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows
+      ? microsoftPremiumProductId
+      : premiumProductId;
 
   static const bool premiumEnabled = bool.fromEnvironment(
     'PREMIUM_ENABLED',
-    defaultValue: true,
+    defaultValue: false,
   );
 
   /// Store update checks stay quiet in debug/tests and are enabled in release.
@@ -29,10 +40,10 @@ class AppConfig {
   /// Microsoft Store product id used by the permanent rating shortcut.
   static const String microsoftStoreId = String.fromEnvironment(
     'MICROSOFT_STORE_ID',
+    defaultValue: '9N0ZK8C31X94',
   );
 
-  static const String supportEmail = 'support@edusheet.com';
-  static const String productWebsiteUrl =
-      'https://baisalya.github.io/Baisalya-Roul/EduSheet/';
+  static const String supportEmail = 'baishalya1999@gmail.com';
+  static const String productWebsiteUrl = 'https://baisalya.com/EduSheet/';
   static const String privacyPolicyUrl = '${productWebsiteUrl}privacy.html';
 }

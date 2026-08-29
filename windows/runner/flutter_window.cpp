@@ -7,6 +7,7 @@
 #include <string>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "microsoft_store_bridge.h"
 
 namespace {
 constexpr ULONG_PTR kEduSheetDocumentCopyDataId = 0x4553444F;  // "ESDO"
@@ -35,6 +36,9 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
 
+  microsoft_store_bridge_ = std::make_unique<MicrosoftStoreBridge>(
+      flutter_controller_->engine()->messenger(), GetHandle());
+
   document_channel_ = std::make_unique<
       flutter::MethodChannel<flutter::EncodableValue>>(
       flutter_controller_->engine()->messenger(), kDocumentChannelName,
@@ -60,6 +64,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  microsoft_store_bridge_.reset();
   document_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;

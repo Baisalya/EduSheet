@@ -2,7 +2,7 @@ name: edusheet
 description: "Offline teacher-focused mathematics worksheet creator app."
 publish_to: 'none'
 
-version: 1.1.0+2
+version: 1.2.0+3
 
 environment:
   sdk: ^3.11.5
@@ -62,6 +62,7 @@ dev_dependencies:
 
   # APP ICON PACKAGE
   flutter_launcher_icons: ^0.14.3
+  msix: ^3.18.0
 
 dependency_overrides:
   xml: 6.5.0
@@ -91,3 +92,21 @@ flutter:
     - assets/Applogo.png
     - assets/branding/
     - assets/lottie/
+
+msix_config:
+  display_name: EduSheet
+  publisher_display_name: Baishalya
+  identity_name: Baishalya.EduSheet
+  publisher: CN=8A4649E8-2942-4B3D-9789-6B628C3C006F
+  # Microsoft Store requires the fourth (revision) segment to be zero.
+  # Map Flutter 1.2.0+3 to MSIX 1.2.3.0; see RELEASE_HELPER.md.
+  msix_version: 1.2.3.0
+  logo_path: assets/Applogo.png
+  architecture: x64
+  os_min_version: 10.0.17763.0
+  languages: en-us, hi-in
+  capabilities: internetClient
+  file_extension: .pdf, .doc, .docx, .rtf, .odt, .xls, .xlsx, .csv, .ods, .ppt, .pptx, .odp, .txt
+  output_path: release/microsoft_store/packages
+  output_name: EduSheet_1.2.3.0_x64_qa
+  install_certificate: false

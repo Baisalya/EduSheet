@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:math_keyboard/math_keyboard.dart';
+import 'package:math_expressions/math_expressions.dart' show Expression;
 import 'package:uuid/uuid.dart';
 
 import '../../../editor/domain/models/math_expression.dart';
@@ -66,6 +67,8 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
   bool _visualReady = true;
   bool _syncingVisual = false;
   bool _descriptionWasEdited = false;
+  bool _structuredMathSessionRequested = false;
+  bool _mathSessionRecoveryScheduled = false;
 
   bool get _editingExisting => widget.initial != null;
 
@@ -86,8 +89,10 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
 
     _visualReady = _loadVisualSource(_latex);
     _advancedExpanded = !_visualReady;
+    _structuredMathSessionRequested =
+        widget.autoOpenMathKeyboard && _visualReady;
 
-    if (widget.autoOpenMathKeyboard && _visualReady) {
+    if (_structuredMathSessionRequested) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _openStructuredMathKeyboard();
@@ -118,7 +123,8 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
     final mathKeyboardVisible =
         keyboardState.isVisible &&
         keyboardState.type == KeyboardType.math &&
-        keyboardState.activeController == _visualController;
+        identical(keyboardState.activeController, _visualController);
+    _scheduleStructuredMathSessionRecovery(keyboardState);
     final mathKeyboardInset = mathKeyboardVisible ? keyboardState.height : 0.0;
     final screen = MediaQuery.sizeOf(context);
 
@@ -227,6 +233,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
                 children: [
                   TextButton(
                     onPressed: () {
+                      _structuredMathSessionRequested = false;
                       ref
                           .read(mathKeyboardControllerProvider.notifier)
                           .hideKeyboard();
@@ -315,6 +322,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
         child: MathKeyboardField(
           controller: _visualController,
           focusNode: _visualFocusNode,
+          retainMathSessionOnFocusLoss: true,
           builder: (context, focusNode, isMathActive) => MathField(
             controller: _visualController,
             focusNode: focusNode,
@@ -387,6 +395,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
             const SizedBox(height: 10),
             TextField(
               controller: _sourceController,
+              onTap: _releaseStructuredMathKeyboardForExternalEditor,
               minLines: 2,
               maxLines: 5,
               decoration: const InputDecoration(
@@ -400,6 +409,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
             const SizedBox(height: 10),
             TextField(
               controller: _fallbackController,
+              onTap: _releaseStructuredMathKeyboardForExternalEditor,
               minLines: 2,
               maxLines: 4,
               decoration: const InputDecoration(
@@ -477,7 +487,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
     }
 
     try {
-      final expression = TeXParser(trimmed).parse();
+      final expression = _parseVisualExpression(trimmed);
       _syncingVisual = true;
       try {
         _visualController.updateValue(expression);
@@ -487,6 +497,23 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  Expression _parseVisualExpression(String source) {
+    try {
+      return TeXParser(source).parse();
+    } catch (_) {
+      // math_keyboard serializes variables as `{x}`, while older/imported
+      // EduSheet formulas can contain ordinary TeX variables such as `x+1`.
+      // Retry with only bare ASCII variable runs wrapped; commands (for
+      // example `\sqrt`) and already-braced variables remain untouched.
+      final normalized = source.replaceAllMapped(
+        RegExp(r'(?<![\\A-Za-z{])[A-Za-z]+(?![A-Za-z}])'),
+        (match) => '{${match.group(0)}}',
+      );
+      if (normalized == source) rethrow;
+      return TeXParser(normalized).parse();
     }
   }
 
@@ -530,13 +557,94 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
     );
   }
 
+  void _releaseStructuredMathKeyboardForExternalEditor() {
+    _structuredMathSessionRequested = false;
+    final keyboard = ref.read(mathKeyboardControllerProvider.notifier);
+    keyboard.unregisterController(
+      _visualController,
+      focusNode: _visualFocusNode,
+    );
+  }
+
   void _openStructuredMathKeyboard() {
     if (!_visualReady) return;
-    _visualFocusNode.requestFocus();
+
+    _structuredMathSessionRequested = true;
+    // Establish ownership before requesting focus. On Windows, requesting focus
+    // first can briefly attach the system IME before the custom keyboard state
+    // reaches MathField, which produces the native-keyboard flash/hand-off seen
+    // when reopening the formula editor.
     final keyboard = ref.read(mathKeyboardControllerProvider.notifier);
-    keyboard.registerController(_visualController, _visualFocusNode);
-    keyboard.showMathKeyboard();
+    keyboard.showMathKeyboardFor(_visualController, _visualFocusNode);
     SystemChannels.textInput.invokeMethod('TextInput.hide');
+
+    if (!_visualFocusNode.hasFocus) {
+      _visualFocusNode.requestFocus();
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final state = ref.read(mathKeyboardControllerProvider);
+      final stillOwnedByVisualEditor =
+          state.isVisible &&
+          state.type == KeyboardType.math &&
+          identical(state.activeController, _visualController);
+
+      // MathField can perform an internal focus hand-off while switching from
+      // its system-keyboard mode to the custom keyboard. Reassert this one
+      // requested session after that hand-off so the initial auto-open cannot
+      // collapse during the first frame on Windows.
+      if (!stillOwnedByVisualEditor) {
+        keyboard.showMathKeyboardFor(_visualController, _visualFocusNode);
+      }
+      if (!_visualFocusNode.hasFocus && _visualFocusNode.canRequestFocus) {
+        _visualFocusNode.requestFocus();
+      }
+      SystemChannels.textInput.invokeMethod('TextInput.hide');
+    });
+  }
+
+  void _scheduleStructuredMathSessionRecovery(
+    MathKeyboardStateData keyboardState,
+  ) {
+    if (!_structuredMathSessionRequested ||
+        !_visualReady ||
+        _mathSessionRecoveryScheduled) {
+      return;
+    }
+
+    // `showSystemKeyboard` / `hideKeyboard` deliberately switch the type back
+    // to system. Never fight an explicit user choice. Recovery is only for a
+    // math session that was unintentionally detached while it was still meant
+    // to be active (for example a transient MathField focus hand-off).
+    final needsRecovery =
+        keyboardState.type == KeyboardType.math &&
+        (!keyboardState.isVisible ||
+            !identical(keyboardState.activeController, _visualController));
+    if (!needsRecovery) return;
+
+    _mathSessionRecoveryScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _mathSessionRecoveryScheduled = false;
+      if (!mounted || !_structuredMathSessionRequested || !_visualReady) {
+        return;
+      }
+
+      final current = ref.read(mathKeyboardControllerProvider);
+      if (current.type != KeyboardType.math) return;
+      if (current.isVisible &&
+          identical(current.activeController, _visualController)) {
+        return;
+      }
+
+      final keyboard = ref.read(mathKeyboardControllerProvider.notifier);
+      keyboard.showMathKeyboardFor(_visualController, _visualFocusNode);
+      if (!_visualFocusNode.hasFocus && _visualFocusNode.canRequestFocus) {
+        _visualFocusNode.requestFocus();
+      }
+      SystemChannels.textInput.invokeMethod('TextInput.hide');
+    });
   }
 
   void _save() {
@@ -567,6 +675,7 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
       return;
     }
 
+    _structuredMathSessionRequested = false;
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     Navigator.pop(context, expression);
   }

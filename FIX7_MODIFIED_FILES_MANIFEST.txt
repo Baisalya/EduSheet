@@ -1,0 +1,6 @@
+Fix 7 modified/new files:
+
+lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+test/features/paper_composer/question_composer_typing_viewport_test.dart
+FIX7_QUESTION_TYPING_VIEWPORT_HARDENING.md
+FIX7_MODIFIED_FILES_MANIFEST.txt
