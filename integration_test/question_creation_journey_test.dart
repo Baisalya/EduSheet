@@ -83,40 +83,41 @@ void main() {
     );
   });
 
-  testWidgets('new composer draft preserves data and export planning contracts', (
-    _,
-  ) async {
-    final source = Question(
-      id: 'existing',
-      text: 'Original wording',
-      subject: 'Physics',
-      chapter: 'Motion',
-      correctAnswer: '9.8 m/s²',
-      metadata: const {'teacherNote': 'retain'},
-      version: 3,
-    );
-    final edited = QuestionDraft.fromQuestion(source)
-        .copyWith(text: 'Updated wording', marks: 4)
-        .toQuestion(plainTextAccessibility: 'Updated wording');
+  testWidgets(
+    'new composer draft preserves data and export planning contracts',
+    (_) async {
+      final source = Question(
+        id: 'existing',
+        text: 'Original wording',
+        subject: 'Physics',
+        chapter: 'Motion',
+        correctAnswer: '9.8 m/s²',
+        metadata: const {'teacherNote': 'retain'},
+        version: 3,
+      );
+      final edited = QuestionDraft.fromQuestion(source)
+          .copyWith(text: 'Updated wording', marks: 4)
+          .toQuestion(plainTextAccessibility: 'Updated wording');
 
-    expect(edited.correctAnswer, source.correctAnswer);
-    expect(edited.subject, source.subject);
-    expect(edited.chapter, source.chapter);
-    expect(edited.metadata['teacherNote'], 'retain');
-    expect(edited.version, 4);
+      expect(edited.correctAnswer, source.correctAnswer);
+      expect(edited.subject, source.subject);
+      expect(edited.chapter, source.chapter);
+      expect(edited.metadata['teacherNote'], 'retain');
+      expect(edited.version, 4);
 
-    const answerKey = PaperExportConfig(
-      outputMode: PaperOutputMode.answerKey,
-      pageSize: ExportPageSize.a4,
-    );
-    expect(answerKey.includesAnswers, isTrue);
-    expect(answerKey.validate(), isEmpty);
-    expect(
-      const BookletImpositionService()
-          .previewSequence(5)
-          .map((page) => page.logicalPage)
-          .toList(),
-      [null, 1, 2, null, null, 3, 4, 5],
-    );
-  });
+      const answerKey = PaperExportConfig(
+        outputMode: PaperOutputMode.answerKey,
+        pageSize: ExportPageSize.a4,
+      );
+      expect(answerKey.includesAnswers, isTrue);
+      expect(answerKey.validate(), isEmpty);
+      expect(
+        const BookletImpositionService()
+            .previewSequence(5)
+            .map((page) => page.logicalPage)
+            .toList(),
+        [null, 1, 2, null, null, 3, 4, 5],
+      );
+    },
+  );
 }

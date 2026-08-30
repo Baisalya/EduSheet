@@ -108,5 +108,6 @@ msix_config:
   capabilities: internetClient
   file_extension: .pdf, .doc, .docx, .rtf, .odt, .xls, .xlsx, .csv, .ods, .ppt, .pptx, .odp, .txt
   output_path: release/microsoft_store/packages
-  output_name: EduSheet_1.2.3.0_x64_qa
+  output_name: EduSheet_1.2.3.0_x64_store
   install_certificate: false
+  store: true
