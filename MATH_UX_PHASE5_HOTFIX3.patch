@@ -1,0 +1,218 @@
+--- a/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
++++ b/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+@@ -632,34 +632,54 @@
+       key: const ValueKey('math-structure-browser'),
+       padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+       children: [
+-        Row(
+-          children: [
+-            Expanded(
+-              child: Column(
+-                crossAxisAlignment: CrossAxisAlignment.start,
+-                children: [
+-                  Text(
+-                    'Build math faster',
+-                    style: theme.textTheme.titleSmall?.copyWith(
+-                      fontWeight: FontWeight.w900,
+-                    ),
++        LayoutBuilder(
++          builder: (context, constraints) {
++            final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
++            final stackActions =
++                constraints.maxWidth < 420 || textScale >= 1.5;
++            final intro = Column(
++              crossAxisAlignment: CrossAxisAlignment.start,
++              children: [
++                Text(
++                  'Build math faster',
++                  style: theme.textTheme.titleSmall?.copyWith(
++                    fontWeight: FontWeight.w900,
+                   ),
+-                  const SizedBox(height: 2),
+-                  Text(
+-                    'Choose the shape first, type in its box, then use “Next box”.',
+-                    style: theme.textTheme.bodySmall?.copyWith(
+-                      color: theme.colorScheme.onSurfaceVariant,
+-                    ),
++                ),
++                const SizedBox(height: 2),
++                Text(
++                  'Choose the shape first, type in its box, then use “Next box”.',
++                  style: theme.textTheme.bodySmall?.copyWith(
++                    color: theme.colorScheme.onSurfaceVariant,
+                   ),
+-                ],
+-              ),
+-            ),
+-            TextButton.icon(
++                ),
++              ],
++            );
++            final backButton = TextButton.icon(
+               onPressed: () => _showKeys(controller),
+               icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
+               label: const Text('Back to keys'),
+-            ),
+-          ],
++            );
++
++            if (stackActions) {
++              return Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  intro,
++                  const SizedBox(height: 4),
++                  Align(alignment: Alignment.centerLeft, child: backButton),
++                ],
++              );
++            }
++
++            return Row(
++              children: [
++                Expanded(child: intro),
++                const SizedBox(width: 8),
++                backButton,
++              ],
++            );
++          },
+         ),
+         const SizedBox(height: 10),
+         Text(
+@@ -673,7 +693,10 @@
+         const SizedBox(height: 7),
+         LayoutBuilder(
+           builder: (context, constraints) {
+-            final columns = constraints.maxWidth >= 760
++            final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
++            final columns = textScale >= 1.6 && constraints.maxWidth < 520
++                ? 1
++                : constraints.maxWidth >= 760
+                 ? 4
+                 : constraints.maxWidth >= 520
+                 ? 3
+@@ -703,26 +726,44 @@
+         ),
+         if (templates.isNotEmpty) ...[
+           const SizedBox(height: 14),
+-          Row(
+-            children: [
+-              Expanded(
+-                child: Text(
+-                  'READY FORMULAS',
+-                  style: theme.textTheme.labelSmall?.copyWith(
+-                    fontWeight: FontWeight.w900,
+-                    letterSpacing: 0.8,
+-                    color: theme.colorScheme.onSurfaceVariant,
+-                  ),
+-                ),
+-              ),
+-              TextButton(
++          LayoutBuilder(
++            builder: (context, constraints) {
++              final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
++              final stackActions =
++                  constraints.maxWidth < 360 || textScale >= 1.75;
++              final heading = Text(
++                'READY FORMULAS',
++                style: theme.textTheme.labelSmall?.copyWith(
++                  fontWeight: FontWeight.w900,
++                  letterSpacing: 0.8,
++                  color: theme.colorScheme.onSurfaceVariant,
++                ),
++              );
++              final seeAll = TextButton(
+                 onPressed: () {
+                   controller.setCategory(MathCategory.templates);
+                   _showKeys(controller);
+                 },
+                 child: const Text('See all'),
+-              ),
+-            ],
++              );
++
++              if (stackActions) {
++                return Column(
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: [
++                    heading,
++                    Align(alignment: Alignment.centerLeft, child: seeAll),
++                  ],
++                );
++              }
++
++              return Row(
++                children: [
++                  Expanded(child: heading),
++                  seeAll,
++                ],
++              );
++            },
+           ),
+           Text(
+             'Insert a standard formula, then move through it with the visible formula cursor.',
+@@ -733,7 +774,13 @@
+           const SizedBox(height: 7),
+           LayoutBuilder(
+             builder: (context, constraints) {
+-              final columns = constraints.maxWidth >= 760 ? 4 : 2;
++              final textScale =
++                  MediaQuery.textScalerOf(context).scale(14) / 14;
++              final columns = textScale >= 1.6 && constraints.maxWidth < 520
++                  ? 1
++                  : constraints.maxWidth >= 760
++                  ? 4
++                  : 2;
+               return GridView.builder(
+                 shrinkWrap: true,
+                 physics: const NeverScrollableScrollPhysics(),
+@@ -766,7 +813,7 @@
+   double _structureCardExtent(BuildContext context) {
+     final scaledLabelSize = MediaQuery.textScalerOf(context).scale(14);
+     final scale = (scaledLabelSize / 14).clamp(1.0, 2.0);
+-    if (scale >= 1.75) return 110;
++    if (scale >= 1.75) return 118;
+     if (scale >= 1.4) return 96;
+     if (scale >= 1.15) return 84;
+     return 74;
+--- a/docs/MATH_UX_PHASE5_HOTFIX3.md
++++ b/docs/MATH_UX_PHASE5_HOTFIX3.md
+@@ -0,0 +1,39 @@
++# Math UX Phase 5 Hotfix 3 — Extreme accessibility layout
++
++## Why this hotfix exists
++
++The Phase 5 extreme-layout gate exposed real production overflows at a 320×520 viewport with 2× text scaling:
++
++- the Build panel heading/action row overflowed horizontally;
++- two-column structure cards left only about 67 px for scaled title/hint text and overflowed vertically.
++
++The regression test was kept as a hard gate. This hotfix changes the production layout rather than suppressing the test.
++
++## Production changes
++
++- Build panel header stacks `Back to keys` below the guidance on narrow or large-text layouts.
++- Structure and ready-formula grids switch to one column when text scale is >= 1.6 and available width is < 520 px.
++- Ready Formula heading/action also stacks at extreme text scale/narrow width.
++- Extreme-scale structure-card extent increases slightly to 118 px for additional line-height safety.
++- Existing 2/3/4-column density remains for ordinary phone/tablet/Windows layouts.
++
++## Deliberately unchanged
++
++- MathExpression model and Quill embed format
++- Question Bank storage/repositories
++- Paper persistence
++- symbol catalogue IDs and TeX
++- keyboard session/focus architecture
++- dependencies and generated Riverpod files
++
++## Validation gate
++
++Run:
++
++```powershell
++flutter test test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
++flutter test
++flutter analyze --no-pub
++```
++
++The extreme-layout test must pass without RenderFlex overflow exceptions.

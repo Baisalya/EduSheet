@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -12,6 +14,18 @@ part 'math_keyboard_controller.g.dart';
 enum KeyboardType { system, math }
 
 enum FloatingElementType { shape, textBox }
+
+/// Keeps the custom keyboard and every editor that reserves room for it on the
+/// same window-dependent height. Using the raw requested height in one place
+/// and a clamped height in another makes a short desktop window jump when the
+/// native IME finishes hiding.
+double effectiveMathKeyboardHeight(Size viewport, double requestedHeight) {
+  final adaptiveMax = math.max(240.0, math.min(500.0, viewport.height * 0.62));
+  final adaptiveMin = math.min(280.0, adaptiveMax);
+  return requestedHeight.clamp(adaptiveMin, adaptiveMax).toDouble();
+}
+
+const mathKeyboardTransitionDuration = Duration(milliseconds: 260);
 
 class FloatingElement {
   final String id;
@@ -156,6 +170,33 @@ class MathKeyboardController extends _$MathKeyboardController {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
+  /// Transfers an already-visible math session to a rebuilt editor owner.
+  ///
+  /// This is intentionally a single state emission: replacing a FocusNode or
+  /// editor controller must not publish a transient hidden/system-keyboard
+  /// state between the old and new owner. Returns false when the supplied old
+  /// controller no longer owns a visible math session.
+  bool transferMathSessionOwner(
+    Object previousController,
+    Object controller,
+    FocusNode focusNode,
+  ) {
+    if (!state.isVisible ||
+        state.type != KeyboardType.math ||
+        !identical(state.activeController, previousController)) {
+      return false;
+    }
+
+    state = state.copyWith(
+      activeController: controller,
+      activeFocusNode: focusNode,
+      isVisible: true,
+      type: KeyboardType.math,
+    );
+    SystemChannels.textInput.invokeMethod('TextInput.hide');
+    return true;
+  }
+
   void unregisterController(Object controller, {FocusNode? focusNode}) {
     if (state.activeController != controller) return;
 
@@ -277,17 +318,22 @@ class MathKeyboardController extends _$MathKeyboardController {
 
   void moveCursorLeft() {
     MathEditorAdapterFactory.forController(state.activeController)?.moveLeft();
+    restoreActiveMathFocus();
   }
 
   void moveCursorRight() {
     MathEditorAdapterFactory.forController(state.activeController)?.moveRight();
+    restoreActiveMathFocus();
   }
 
   void nextField() {
     final adapter = MathEditorAdapterFactory.forController(
       state.activeController,
     );
-    if (adapter?.moveToNextSlot() ?? false) return;
+    if (adapter?.moveToNextSlot() ?? false) {
+      restoreActiveMathFocus();
+      return;
+    }
 
     final focusContext = state.activeFocusNode?.context;
     if (focusContext != null) {
@@ -331,16 +377,29 @@ class MathKeyboardController extends _$MathKeyboardController {
           _insertSource(symbol.modeBaseSource!);
         }
         togglePowerMode();
+        restoreActiveMathFocus();
         return;
       case MathInputBehavior.subscriptMode:
         if (!state.isSubscriptMode && symbol.modeBaseSource != null) {
           _insertSource(symbol.modeBaseSource!);
         }
         toggleSubscriptMode();
+        restoreActiveMathFocus();
         return;
       case MathInputBehavior.insert:
         _insertSource(symbol.tex);
     }
+  }
+
+  /// Inserts a catalogue structure immediately instead of activating a
+  /// one-key power/subscript mode.
+  ///
+  /// The teacher-facing Build panel promises a visible box as soon as a
+  /// structure is chosen. Normal keyboard keys still use [insertSymbol] so
+  /// their existing quick power/subscript mode behavior is unchanged.
+  void insertStructure(MathSymbol symbol) {
+    state = state.copyWith(isPowerMode: false, isSubscriptMode: false);
+    _insertSource(symbol.tex);
   }
 
   /// Compatibility/raw insertion path for actions that are not catalogue keys.
@@ -365,15 +424,18 @@ class MathKeyboardController extends _$MathKeyboardController {
         symbolSizeLevel: state.symbolSizeLevel,
       ),
     );
+    restoreActiveMathFocus();
   }
 
   void clearAll() {
     MathEditorAdapterFactory.forController(state.activeController)?.clear();
+    restoreActiveMathFocus();
   }
 
   void deleteBackward() {
     MathEditorAdapterFactory.forController(
       state.activeController,
     )?.deleteBackward();
+    restoreActiveMathFocus();
   }
 }

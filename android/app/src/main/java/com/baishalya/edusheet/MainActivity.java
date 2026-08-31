@@ -8,6 +8,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
+import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.webkit.MimeTypeMap;
@@ -173,11 +174,18 @@ public class MainActivity extends FlutterActivity {
         }
 
         if (Intent.ACTION_SEND.equals(action)) {
-            Object stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-            return stream instanceof Uri ? (Uri) stream : null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                return intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri.class);
+            }
+            return getLegacySharedStreamUri(intent);
         }
 
         return null;
+    }
+
+    @SuppressWarnings("deprecation")
+    private Uri getLegacySharedStreamUri(Intent intent) {
+        return intent.getParcelableExtra(Intent.EXTRA_STREAM);
     }
 
     private String copyContentUriToCache(String uriString) throws IOException {

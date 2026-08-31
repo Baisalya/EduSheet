@@ -588,10 +588,10 @@ class _PremiumSettingsBanner extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       isComplimentary
-                          ? 'Subscriptions are off • all styles unlocked'
+                          ? 'Subscription inactive • all styles unlocked'
                           : isPremium
                           ? 'Thank you for supporting EduSheet.'
-                          : 'Optional Store subscription • currently inactive',
+                          : 'Optional Store subscription • premium styles',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,

@@ -64,11 +64,12 @@ class PremiumScreen extends ConsumerWidget {
                     description:
                         'Keep a premium badge in your EduSheet workspace and settings.',
                   ),
-                  const _BenefitTile(
+                  _BenefitTile(
                     icon: Icons.all_inclusive_rounded,
                     title: 'Store-managed subscription',
-                    description:
-                        'Prepared for a future optional plan and restore through the same store account. Checkout is currently disabled.',
+                    description: premium.isComplimentaryAccess
+                        ? 'The optional plan is not active in this store. No checkout is started while free access is active.'
+                        : 'Subscribe and restore through the same Play Store account.',
                   ),
                   const _BenefitTile(
                     icon: Icons.lock_open_rounded,
@@ -115,7 +116,7 @@ class PremiumScreen extends ConsumerWidget {
 
   String _storeFootnote(PremiumState state) {
     if (state.isComplimentaryAccess) {
-      return 'Free-access release: premium purchases and subscriptions are disabled on Microsoft Store, Google Play and other platforms.';
+      return 'The subscription is not active in this store. Everything remains unlocked for free and no checkout is started.';
     }
     if (state.storeStatus == PremiumStoreStatus.unsupported) {
       return 'Store checkout is available in the Android, iPhone, Mac and Windows editions. Core tools remain available on this platform.';

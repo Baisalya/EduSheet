@@ -4,16 +4,17 @@ This file is the release contract for a human or AI preparing the next EduSheet 
 
 ## Current release state
 
-- Release date: 2026-08-29
-- App version (`pubspec.yaml`): `1.2.0+3`
-- MSIX version: `1.2.3.0`
+- Release date: 2026-08-30
+- App version (`pubspec.yaml`): `1.2.2+5`
+- Next MSIX version: `1.2.5.0`
 - Windows architecture: `x64`
 - Minimum Windows version: `10.0.17763.0`
 - Distribution mode: Microsoft Store MSIX preparation
 - Customer price: Free
-- Premium checkout: Disabled by default (`PREMIUM_ENABLED=false`)
+- Microsoft premium checkout: Disabled (`PREMIUM_ENABLED=false`)
 - Inactive future subscription product ID: `edusheet_premium_yearly`
-- Google Play premium/subscription product: Keep inactive; free app use only
+- Google Play premium/subscription product: Store discovery enabled in the
+  Android bundle; keep the product inactive so app use remains free
 - Microsoft Store subscription add-on: Scaffold only; do not submit or publish
 - Partner Center submission: Not performed
 - Partner Center app state: `EduSheet` reserved and `In draft`
@@ -22,9 +23,9 @@ This file is the release contract for a human or AI preparing the next EduSheet 
 - Package publisher: `CN=8A4649E8-2942-4B3D-9789-6B628C3C006F`
 - Publisher display name: `Baishalya`
 - Subscription add-on Store ID: `9PGCF60ZZ4ZC` (`edusheet_premium_yearly`, no submission started)
-- Current Store package: `release/microsoft_store/packages/EduSheet_1.2.3.0_x64_store.msix`
+- Current Store package: `release/microsoft_store/packages/EduSheet_1.2.4.0_x64_store.msix`
 - Current Store package SHA-256: update after the final package is generated
-- Current QA package: `release/microsoft_store/packages/EduSheet_1.2.3.0_x64_qa.msix`
+- Current QA package: `release/microsoft_store/packages/EduSheet_1.2.4.0_x64_qa.msix`
 - Current QA SHA-256: update after the final package is generated
 
 ## Version mapping - do not improvise
@@ -53,14 +54,20 @@ For the next release:
 
 ## Free-access rule for the current product decision
 
-The owner currently wants every user to use EduSheet for free.
+The owner currently wants every user to use EduSheet for free until the Google
+Play subscription is deliberately activated.
 
-- Normal release builds must use `PREMIUM_ENABLED=false`.
+- Normal Microsoft Store release builds must use `PREMIUM_ENABLED=false`.
 - All current workspace colour styles remain available.
-- Do not create or activate a paid Google Play product.
+- The Google Play AAB uses `PREMIUM_ENABLED=true`, but an inactive or missing
+  product fails open and keeps every style free.
+- Do not activate the paid Google Play product until purchase lifecycle and
+  backend verification checks are complete.
 - Do not create, submit, or activate the Microsoft subscription add-on.
 - The inactive add-on code and metadata may remain ready for a future explicit decision.
-- Never switch `PREMIUM_ENABLED` to `true` in a public build without explicit owner approval and completed purchase testing.
+- Use `PREMIUM_ENABLED=true` only for the Google Play build documented in
+  `release/google_play/RELEASE_HELPER.md`; keep paid activation off until the
+  purchase checks there are complete.
 
 ## Build the local QA MSIX
 
@@ -118,6 +125,7 @@ The script builds with premium checkout disabled, creates an unsigned Store MSIX
 - `release/microsoft_store/LISTING_EN_US.md`
 - `release/microsoft_store/INACTIVE_SUBSCRIPTION_ADDON.md`
 - `release/microsoft_store/RELEASE_HELPER.md`
+- `release/google_play/RELEASE_HELPER.md`
 - `privacy_policy.html`
 - Live `https://baisalya.com/EduSheet/` pages
 

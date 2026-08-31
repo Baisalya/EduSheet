@@ -79,6 +79,7 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
     final theme = Theme.of(context);
 
     return Semantics(
+      excludeSemantics: true,
       button: true,
       focusable: true,
       focused: _hasFocus,
@@ -88,7 +89,7 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
           'Insert ${widget.symbol?.accessibilityLabel ?? effectiveLabel ?? 'math symbol'}',
       hint: widget.onLongPress == null
           ? null
-          : 'Long press for alternatives or favourites',
+          : 'Long press or right-click for key actions',
       child: Focus(
         onFocusChange: (hasFocus) => setState(() => _hasFocus = hasFocus),
         onKeyEvent: (node, event) {
@@ -108,6 +109,7 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
           onTapCancel: _handleTapCancel,
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
+          onSecondaryTap: widget.onLongPress,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
             child: Stack(

@@ -64,10 +64,50 @@ void main() {
       await _flushAsyncWork();
 
       expect(controller.state.storeStatus, PremiumStoreStatus.unavailable);
+      expect(controller.state.isComplimentaryAccess, isTrue);
+      expect(controller.state.hasPremiumAccess, isTrue);
       expect(controller.state.product, isNull);
-      expect(controller.state.message, contains('not configured'));
+      expect(controller.state.message, contains('not active'));
     },
   );
+
+  test('active Store product turns off complimentary access', () async {
+    final controller = PremiumController(
+      store: _FakePremiumStore(
+        entry: const PremiumCatalogEntry(
+          product: PremiumProduct(
+            id: 'edusheet_premium_yearly',
+            title: 'EduSheet Premium',
+            description: 'Annual supporter subscription',
+            price: '₹399.00',
+          ),
+        ),
+      ),
+      premiumEnabled: true,
+    );
+    addTearDown(controller.dispose);
+
+    expect(controller.state.isComplimentaryAccess, isTrue);
+    await _flushAsyncWork();
+
+    expect(controller.state.storeStatus, PremiumStoreStatus.ready);
+    expect(controller.state.isComplimentaryAccess, isFalse);
+    expect(controller.state.hasPremiumAccess, isFalse);
+  });
+
+  test('disabled checkout keeps every premium style free', () async {
+    final controller = PremiumController(
+      store: _FakePremiumStore(),
+      premiumEnabled: false,
+    );
+    addTearDown(controller.dispose);
+
+    await _flushAsyncWork();
+
+    expect(controller.state.isComplimentaryAccess, isTrue);
+    expect(controller.state.hasPremiumAccess, isTrue);
+    expect(controller.state.storeStatus, PremiumStoreStatus.unsupported);
+  });
 }
 
 Future<void> _flushAsyncWork() async {

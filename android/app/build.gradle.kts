@@ -4,8 +4,7 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // The Flutter Gradle Plugin must be applied after the Android plugin.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -27,19 +26,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
-
     defaultConfig {
         applicationId = "com.baishalya.edusheet"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // The official Flutter in-app-purchase plugin requires Android 7.0+.
         minSdk = 24
-        targetSdk = 35
+        // Google Play requires new apps and updates to target Android 16 from
+        // the 2026 release deadline. compileSdk is already API 36.
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

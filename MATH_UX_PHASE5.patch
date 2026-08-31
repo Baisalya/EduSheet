@@ -1,0 +1,740 @@
+--- /dev/null
++++ b/docs/MATH_KEYBOARD_UX_PHASE5_2026-08-30.md
+@@ -0,0 +1,60 @@
++# Math Keyboard UX Phase 5 — Production Hardening & Final Teacher Gates
++
++Date: 2026-08-30
++Baseline: Phase 4 full project, confirmed by the user with `+220: All tests passed!`
++
++## Scope
++
++Phase 5 is a hardening phase, not a new architecture rewrite. It preserves the Phase 1–4 data model, `MathExpression` serialization, shared Create Paper / Question Bank composer architecture, and the existing catalogue/template system.
++
++## Production hardening
++
++### 1. Rebuild-safe math session ownership
++
++`MathKeyboardField.didUpdateWidget()` now preserves an active custom-math session when its parent rebuilds with a replacement `FocusNode`, editor controller, or both.
++
++The controller exposes `transferMathSessionOwner(...)`, which moves ownership in one provider state emission. This avoids publishing a transient hidden/system-keyboard state that could make the custom keyboard animate away or flash the system IME on Windows.
++
++A replacement FocusNode regains editing focus after the rebuilt child is attached, rather than trying to request focus before attachment.
++
++A genuine move to a different normal text field still releases the custom math session.
++
++### 2. 320 px + large-text structure layout
++
++The Build and Ready Formula grids no longer rely on fixed child aspect ratios. Their row extent adapts to the active `TextScaler`, giving structure titles/hints enough vertical room at accessibility text sizes while keeping the browser scrollable.
++
++### 3. Accessible keyboard controls
++
++- The resize handle now exposes a readable semantic label/value plus increase/decrease actions, while drag-to-resize remains available for mouse/touch users.
++- The Build entry exposes a semantic button action and teacher-readable description.
++
++## Final regression gates added
++
++- Active math session survives FocusNode replacement.
++- Active math session transfers to a replacement editor controller.
++- Moving to a genuine external text editor releases the session.
++- Controller-level owner transfer keeps the keyboard visible and in math mode.
++- Teacher can intentionally switch Math → Text → Math and regain the same formula session.
++- 320 px keyboard at 2× text scale can open Build without overflow and renders enlarged structure cards.
++- Resize and Build affordances remain accessible to assistive technology.
++
++## Explicit non-goals
++
++- No DB/schema change.
++- No `MathExpression` serialization change.
++- No Question Bank repository/model change.
++- No generated Riverpod modification.
++- No new package/dependency.
++- No undocumented `math_keyboard` package API usage.
++
++## Local validation
++
++```powershell
++dart format lib test
++flutter test test/features/math_keyboard/math_keyboard_controller_build_test.dart
++flutter test test/features/math_keyboard/math_keyboard_field_session_hardening_test.dart
++flutter test test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
++flutter test test/features/math_keyboard/formula_editor_sheet_test.dart
++flutter test
++flutter analyze --no-pub
++```
+--- a/lib/features/math_keyboard/presentation/providers/math_keyboard_controller.dart
++++ b/lib/features/math_keyboard/presentation/providers/math_keyboard_controller.dart
+@@ -156,6 +156,33 @@
+     SystemChannels.textInput.invokeMethod('TextInput.hide');
+   }
+ 
++  /// Transfers an already-visible math session to a rebuilt editor owner.
++  ///
++  /// This is intentionally a single state emission: replacing a FocusNode or
++  /// editor controller must not publish a transient hidden/system-keyboard
++  /// state between the old and new owner. Returns false when the supplied old
++  /// controller no longer owns a visible math session.
++  bool transferMathSessionOwner(
++    Object previousController,
++    Object controller,
++    FocusNode focusNode,
++  ) {
++    if (!state.isVisible ||
++        state.type != KeyboardType.math ||
++        !identical(state.activeController, previousController)) {
++      return false;
++    }
++
++    state = state.copyWith(
++      activeController: controller,
++      activeFocusNode: focusNode,
++      isVisible: true,
++      type: KeyboardType.math,
++    );
++    SystemChannels.textInput.invokeMethod('TextInput.hide');
++    return true;
++  }
++
+   void unregisterController(Object controller, {FocusNode? focusNode}) {
+     if (state.activeController != controller) return;
+ 
+--- a/lib/features/math_keyboard/presentation/widgets/math_keyboard_field.dart
++++ b/lib/features/math_keyboard/presentation/widgets/math_keyboard_field.dart
+@@ -61,35 +61,71 @@
+     super.didUpdateWidget(oldWidget);
+ 
+     final previousFocusNode = _focusNode;
+-    if (oldWidget.focusNode != widget.focusNode) {
++    final keyboardBeforeUpdate = ref.read(mathKeyboardControllerProvider);
++    final ownedVisibleMathSession =
++        keyboardBeforeUpdate.isVisible &&
++        keyboardBeforeUpdate.type == KeyboardType.math &&
++        identical(keyboardBeforeUpdate.activeController, oldWidget.controller) &&
++        identical(keyboardBeforeUpdate.activeFocusNode, previousFocusNode);
++    final hadFocusBeforeUpdate = previousFocusNode.hasFocus;
++    final focusNodeChanged = oldWidget.focusNode != widget.focusNode;
++    final controllerChanged = oldWidget.controller != widget.controller;
++
++    if (focusNodeChanged) {
+       previousFocusNode.removeListener(_onFocusChange);
++      if (!ownedVisibleMathSession) {
++        _mathKeyboardController.unregisterController(
++          oldWidget.controller,
++          focusNode: previousFocusNode,
++        );
++      }
++      if (_ownsFocusNode) {
++        previousFocusNode.dispose();
++      }
++
++      _focusNode = widget.focusNode ?? FocusNode();
++      _ownsFocusNode = widget.focusNode == null;
++      _focusNode.addListener(_onFocusChange);
++
++      // Replacing a FocusNode during a rebuild should not eject a teacher from
++      // an active formula session. The new node is not attached to the rebuilt
++      // child until after this method returns, so restore focus post-frame.
++      if (hadFocusBeforeUpdate) {
++        WidgetsBinding.instance.addPostFrameCallback((_) {
++          if (_disposed || !mounted || !_focusNode.canRequestFocus) return;
++          _focusNode.requestFocus();
++          _ensureVisibleAboveKeyboard();
++        });
++      }
++      _isFocused = _focusNode.hasFocus || hadFocusBeforeUpdate;
++    }
++
++    if (controllerChanged && !focusNodeChanged && !ownedVisibleMathSession) {
+       _mathKeyboardController.unregisterController(
+         oldWidget.controller,
+         focusNode: previousFocusNode,
+       );
+-      if (_ownsFocusNode) {
+-        previousFocusNode.dispose();
+-      }
+-      _focusNode = widget.focusNode ?? FocusNode();
+-      _ownsFocusNode = widget.focusNode == null;
+-      _focusNode.addListener(_onFocusChange);
+-      _isFocused = _focusNode.hasFocus;
+-      if (_isFocused) {
+-        _mathKeyboardController.registerController(
+-          widget.controller,
+-          _focusNode,
+-        );
+-      }
+-    }
+-
+-    if (oldWidget.controller == widget.controller) return;
+-
+-    _mathKeyboardController.unregisterController(
+-      oldWidget.controller,
+-      focusNode: previousFocusNode,
+-    );
+-
+-    if (_focusNode.hasFocus) {
++    }
++
++    final shouldOwnUpdatedSession =
++        ownedVisibleMathSession &&
++        (hadFocusBeforeUpdate || _focusNode.hasFocus);
++
++    if (shouldOwnUpdatedSession) {
++      // Transfer ownership in one provider state emission. Publishing a hidden
++      // keyboard between the old and new owner can flash the system IME or
++      // animate the custom keyboard out and back in on Windows.
++      _mathKeyboardController.transferMathSessionOwner(
++        oldWidget.controller,
++        widget.controller,
++        _focusNode,
++      );
++      _isFocused = true;
++      _ensureVisibleAboveKeyboard();
++      return;
++    }
++
++    if (_focusNode.hasFocus && (focusNodeChanged || controllerChanged)) {
+       _mathKeyboardController.registerController(widget.controller, _focusNode);
+     }
+   }
+--- a/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
++++ b/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+@@ -173,21 +173,30 @@
+       ),
+       child: Row(
+         children: [
+-          Tooltip(
+-            message: 'Drag to resize keyboard',
+-            child: GestureDetector(
+-              behavior: HitTestBehavior.opaque,
+-              onVerticalDragUpdate: (details) =>
+-                  controller.setHeight(state.height - details.delta.dy),
+-              child: Padding(
+-                padding: const EdgeInsets.symmetric(
+-                  horizontal: 7,
+-                  vertical: 10,
+-                ),
+-                child: Icon(
+-                  Icons.drag_indicator_rounded,
+-                  size: 19,
+-                  color: theme.colorScheme.onSurfaceVariant,
++          Semantics(
++            label: 'Resize math keyboard',
++            hint: 'Drag up or down, or use increase and decrease actions',
++            value: '${state.height.round()} pixels',
++            onIncrease: () => controller.setHeight(state.height + 40),
++            onDecrease: () => controller.setHeight(state.height - 40),
++            child: ExcludeSemantics(
++              child: Tooltip(
++                message: 'Drag to resize keyboard',
++                child: GestureDetector(
++                  behavior: HitTestBehavior.opaque,
++                  onVerticalDragUpdate: (details) =>
++                      controller.setHeight(state.height - details.delta.dy),
++                  child: Padding(
++                    padding: const EdgeInsets.symmetric(
++                      horizontal: 7,
++                      vertical: 10,
++                    ),
++                    child: Icon(
++                      Icons.drag_indicator_rounded,
++                      size: 19,
++                      color: theme.colorScheme.onSurfaceVariant,
++                    ),
++                  ),
+                 ),
+               ),
+             ),
+@@ -473,38 +482,47 @@
+         children: [
+           Padding(
+             padding: const EdgeInsets.only(left: 7, right: 5),
+-            child: Tooltip(
+-              message: 'Build fraction, root, power, subscript or a ready formula',
+-              child: Material(
+-                color: theme.colorScheme.primaryContainer,
+-                borderRadius: BorderRadius.circular(9),
+-                child: InkWell(
+-                  key: const ValueKey('math-build-button'),
+-                  borderRadius: BorderRadius.circular(9),
+-                  onTap: () =>
+-                      _showLocalPanel(_MathKeyboardLocalPanel.structures),
+-                  child: Padding(
+-                    padding: EdgeInsets.symmetric(
+-                      horizontal: compact ? 7 : 9,
+-                      vertical: 6,
+-                    ),
+-                    child: Row(
+-                      mainAxisSize: MainAxisSize.min,
+-                      children: [
+-                        Icon(
+-                          Icons.account_tree_outlined,
+-                          size: 16,
+-                          color: theme.colorScheme.onPrimaryContainer,
++            child: Semantics(
++              button: true,
++              label: 'Build a math structure',
++              hint: 'Fraction, root, power, subscript, integral, sum, or a ready formula',
++              onTap: () =>
++                  _showLocalPanel(_MathKeyboardLocalPanel.structures),
++              child: ExcludeSemantics(
++                child: Tooltip(
++                  message: 'Build fraction, root, power, subscript or a ready formula',
++                  child: Material(
++                    color: theme.colorScheme.primaryContainer,
++                    borderRadius: BorderRadius.circular(9),
++                    child: InkWell(
++                      key: const ValueKey('math-build-button'),
++                      borderRadius: BorderRadius.circular(9),
++                      onTap: () =>
++                          _showLocalPanel(_MathKeyboardLocalPanel.structures),
++                      child: Padding(
++                        padding: EdgeInsets.symmetric(
++                          horizontal: compact ? 7 : 9,
++                          vertical: 6,
+                         ),
+-                        const SizedBox(width: 4),
+-                        Text(
+-                          'Build',
+-                          style: theme.textTheme.labelSmall?.copyWith(
+-                            color: theme.colorScheme.onPrimaryContainer,
+-                            fontWeight: FontWeight.w900,
+-                          ),
++                        child: Row(
++                          mainAxisSize: MainAxisSize.min,
++                          children: [
++                            Icon(
++                              Icons.account_tree_outlined,
++                              size: 16,
++                              color: theme.colorScheme.onPrimaryContainer,
++                            ),
++                            const SizedBox(width: 4),
++                            Text(
++                              'Build',
++                              style: theme.textTheme.labelSmall?.copyWith(
++                                color: theme.colorScheme.onPrimaryContainer,
++                                fontWeight: FontWeight.w900,
++                              ),
++                            ),
++                          ],
+                         ),
+-                      ],
++                      ),
+                     ),
+                   ),
+                 ),
+@@ -663,7 +681,7 @@
+                 crossAxisCount: columns,
+                 mainAxisSpacing: 8,
+                 crossAxisSpacing: 8,
+-                childAspectRatio: columns >= 3 ? 2.5 : 2.15,
++                mainAxisExtent: _structureCardExtent(context),
+               ),
+               itemCount: structures.length,
+               itemBuilder: (context, index) {
+@@ -719,7 +737,7 @@
+                   crossAxisCount: columns,
+                   mainAxisSpacing: 8,
+                   crossAxisSpacing: 8,
+-                  childAspectRatio: columns >= 4 ? 2.7 : 2.45,
++                  mainAxisExtent: _structureCardExtent(context),
+                 ),
+                 itemCount: templates.length,
+                 itemBuilder: (context, index) {
+@@ -738,6 +756,16 @@
+         ],
+       ],
+     );
++  }
++
++
++  double _structureCardExtent(BuildContext context) {
++    final scaledLabelSize = MediaQuery.textScalerOf(context).scale(14);
++    final scale = (scaledLabelSize / 14).clamp(1.0, 2.0);
++    if (scale >= 1.75) return 110;
++    if (scale >= 1.4) return 96;
++    if (scale >= 1.15) return 84;
++    return 74;
+   }
+ 
+   Widget _buildGeometryKeyboardPanel(
+--- a/test/features/math_keyboard/formula_editor_sheet_test.dart
++++ b/test/features/math_keyboard/formula_editor_sheet_test.dart
+@@ -197,6 +197,56 @@
+   );
+ 
+   testWidgets(
++    'teacher can switch to text keyboard and reopen math without losing formula ownership',
++    (tester) async {
++      tester.view.physicalSize = const Size(900, 800);
++      tester.view.devicePixelRatio = 1;
++      addTearDown(tester.view.resetPhysicalSize);
++      addTearDown(tester.view.resetDevicePixelRatio);
++
++      await tester.pumpWidget(
++        const ProviderScope(
++          child: _FormulaEditorTestApp(
++            expression: MathExpression(
++              id: 'reopen-session',
++              latex: r'x+1',
++              plainText: 'x plus 1',
++            ),
++            autoOpenMathKeyboard: true,
++          ),
++        ),
++      );
++      await tester.pump();
++      await tester.pump(const Duration(milliseconds: 400));
++
++      _expectFormulaMathSession(tester, isVisible: true);
++      await tester.tap(find.text('Text'));
++      await tester.pump();
++      await tester.pump(const Duration(milliseconds: 120));
++
++      final context = tester.element(find.byType(FormulaEditorSheet));
++      final container = ProviderScope.containerOf(context, listen: false);
++      final systemState = container.read(mathKeyboardControllerProvider);
++      expect(systemState.isVisible, isFalse);
++      expect(systemState.type, KeyboardType.system);
++      expect(systemState.activeController, isA<MathFieldEditingController>());
++      expect(systemState.activeFocusNode, isNotNull);
++
++      await tester.tap(find.byTooltip('Math Keyboard'));
++      await tester.pump();
++      await tester.pump(const Duration(milliseconds: 350));
++
++      _expectFormulaMathSession(tester, isVisible: true);
++      expect(
++        find.text(
++          'Typing here — the next math key goes at the visible formula cursor.',
++        ),
++        findsOneWidget,
++      );
++    },
++  );
++
++  testWidgets(
+     'formula math keyboard stays active through its local category panel',
+     (tester) async {
+       tester.view.physicalSize = const Size(900, 800);
+--- a/test/features/math_keyboard/math_keyboard_controller_build_test.dart
++++ b/test/features/math_keyboard/math_keyboard_controller_build_test.dart
+@@ -53,4 +53,34 @@
+     expect(state.isSubscriptMode, isFalse);
+     expect(textController.text, '^');
+   });
++  test('visible math session owner transfers without hiding the keyboard', () {
++    final container = ProviderContainer();
++    addTearDown(container.dispose);
++
++    final firstController = TextEditingController();
++    final secondController = TextEditingController();
++    final firstFocus = FocusNode();
++    final secondFocus = FocusNode();
++    addTearDown(firstController.dispose);
++    addTearDown(secondController.dispose);
++    addTearDown(firstFocus.dispose);
++    addTearDown(secondFocus.dispose);
++
++    final keyboard = container.read(mathKeyboardControllerProvider.notifier);
++    keyboard.showMathKeyboardFor(firstController, firstFocus);
++
++    final transferred = keyboard.transferMathSessionOwner(
++      firstController,
++      secondController,
++      secondFocus,
++    );
++
++    final state = container.read(mathKeyboardControllerProvider);
++    expect(transferred, isTrue);
++    expect(state.isVisible, isTrue);
++    expect(state.type, KeyboardType.math);
++    expect(identical(state.activeController, secondController), isTrue);
++    expect(identical(state.activeFocusNode, secondFocus), isTrue);
++  });
++
+ }
+--- /dev/null
++++ b/test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
+@@ -0,0 +1,47 @@
++import 'dart:ui' show SemanticsAction;
++
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_view.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  testWidgets(
++    '320px keyboard remains usable at two-times text scale including Build',
++    (tester) async {
++      tester.view.physicalSize = const Size(320, 520);
++      tester.view.devicePixelRatio = 1;
++      addTearDown(tester.view.resetPhysicalSize);
++      addTearDown(tester.view.resetDevicePixelRatio);
++
++      final semantics = tester.ensureSemantics();
++      await tester.pumpWidget(
++        const ProviderScope(
++          child: MaterialApp(
++            home: MediaQuery(
++              data: MediaQueryData(textScaler: TextScaler.linear(2)),
++              child: Scaffold(body: MathKeyboardView()),
++            ),
++          ),
++        ),
++      );
++
++      expect(find.bySemanticsLabel('Build a math structure'), findsOneWidget);
++      final resizeNode = tester.getSemantics(
++        find.bySemanticsLabel('Resize math keyboard'),
++      );
++      expect(resizeNode.hasAction(SemanticsAction.increase), isTrue);
++      expect(resizeNode.hasAction(SemanticsAction.decrease), isTrue);
++
++      await tester.tap(find.byKey(const ValueKey('math-build-button')));
++      await tester.pump(const Duration(milliseconds: 200));
++
++      expect(find.text('Build math faster'), findsOneWidget);
++      final fractionCard = find.bySemanticsLabel('Insert Fraction');
++      expect(fractionCard, findsOneWidget);
++      expect(tester.getSize(fractionCard).height, greaterThanOrEqualTo(100));
++      expect(tester.takeException(), isNull);
++      semantics.dispose();
++    },
++  );
++}
+--- /dev/null
++++ b/test/features/math_keyboard/math_keyboard_field_session_hardening_test.dart
+@@ -0,0 +1,233 @@
++import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  testWidgets(
++    'active math session survives FocusNode replacement during rebuild',
++    (tester) async {
++      final container = ProviderContainer();
++      final firstController = TextEditingController(text: 'x');
++      final secondController = TextEditingController(text: 'y');
++      final firstFocus = FocusNode();
++      final secondFocus = FocusNode();
++      final externalFocus = FocusNode();
++      final harnessKey = GlobalKey<_SessionHarnessState>();
++      addTearDown(() {
++        firstController.dispose();
++        secondController.dispose();
++        firstFocus.dispose();
++        secondFocus.dispose();
++        externalFocus.dispose();
++        container.dispose();
++      });
++
++      await tester.pumpWidget(
++        UncontrolledProviderScope(
++          container: container,
++          child: MaterialApp(
++            home: Scaffold(
++              body: _SessionHarness(
++                key: harnessKey,
++                firstController: firstController,
++                secondController: secondController,
++                firstFocus: firstFocus,
++                secondFocus: secondFocus,
++                externalFocus: externalFocus,
++              ),
++            ),
++          ),
++        ),
++      );
++
++      firstFocus.requestFocus();
++      await tester.pump();
++      container
++          .read(mathKeyboardControllerProvider.notifier)
++          .showMathKeyboardFor(firstController, firstFocus);
++      await tester.pump();
++
++      harnessKey.currentState!.replaceFocusNode();
++      await tester.pump();
++      await tester.pump();
++
++      final state = container.read(mathKeyboardControllerProvider);
++      expect(state.isVisible, isTrue);
++      expect(state.type, KeyboardType.math);
++      expect(identical(state.activeController, firstController), isTrue);
++      expect(identical(state.activeFocusNode, secondFocus), isTrue);
++      expect(secondFocus.hasFocus, isTrue);
++      expect(tester.takeException(), isNull);
++    },
++  );
++
++  testWidgets(
++    'active math session transfers to replacement editor controller',
++    (tester) async {
++      final container = ProviderContainer();
++      final firstController = TextEditingController(text: 'x');
++      final secondController = TextEditingController(text: 'y');
++      final focusNode = FocusNode();
++      final unusedFocus = FocusNode();
++      final externalFocus = FocusNode();
++      final harnessKey = GlobalKey<_SessionHarnessState>();
++      addTearDown(() {
++        firstController.dispose();
++        secondController.dispose();
++        focusNode.dispose();
++        unusedFocus.dispose();
++        externalFocus.dispose();
++        container.dispose();
++      });
++
++      await tester.pumpWidget(
++        UncontrolledProviderScope(
++          container: container,
++          child: MaterialApp(
++            home: Scaffold(
++              body: _SessionHarness(
++                key: harnessKey,
++                firstController: firstController,
++                secondController: secondController,
++                firstFocus: focusNode,
++                secondFocus: unusedFocus,
++                externalFocus: externalFocus,
++              ),
++            ),
++          ),
++        ),
++      );
++
++      focusNode.requestFocus();
++      await tester.pump();
++      container
++          .read(mathKeyboardControllerProvider.notifier)
++          .showMathKeyboardFor(firstController, focusNode);
++      await tester.pump();
++
++      harnessKey.currentState!.replaceController();
++      await tester.pump();
++
++      final state = container.read(mathKeyboardControllerProvider);
++      expect(state.isVisible, isTrue);
++      expect(state.type, KeyboardType.math);
++      expect(identical(state.activeController, secondController), isTrue);
++      expect(identical(state.activeFocusNode, focusNode), isTrue);
++      expect(focusNode.hasFocus, isTrue);
++      expect(tester.takeException(), isNull);
++    },
++  );
++
++  testWidgets('moving to an external text field releases the math session', (
++    tester,
++  ) async {
++    final container = ProviderContainer();
++    final controller = TextEditingController(text: 'x');
++    final secondController = TextEditingController(text: 'y');
++    final focusNode = FocusNode();
++    final unusedFocus = FocusNode();
++    final externalFocus = FocusNode();
++    final harnessKey = GlobalKey<_SessionHarnessState>();
++    addTearDown(() {
++      controller.dispose();
++      secondController.dispose();
++      focusNode.dispose();
++      unusedFocus.dispose();
++      externalFocus.dispose();
++      container.dispose();
++    });
++
++    await tester.pumpWidget(
++      UncontrolledProviderScope(
++        container: container,
++        child: MaterialApp(
++          home: Scaffold(
++            body: _SessionHarness(
++              key: harnessKey,
++              firstController: controller,
++              secondController: secondController,
++              firstFocus: focusNode,
++              secondFocus: unusedFocus,
++              externalFocus: externalFocus,
++            ),
++          ),
++        ),
++      ),
++    );
++
++    focusNode.requestFocus();
++    await tester.pump();
++    container
++        .read(mathKeyboardControllerProvider.notifier)
++        .showMathKeyboardFor(controller, focusNode);
++    await tester.pump();
++
++    externalFocus.requestFocus();
++    await tester.pump();
++    await tester.pump();
++
++    final state = container.read(mathKeyboardControllerProvider);
++    expect(state.isVisible, isFalse);
++    expect(state.activeController, isNull);
++    expect(state.activeFocusNode, isNull);
++    expect(externalFocus.hasFocus, isTrue);
++    expect(tester.takeException(), isNull);
++  });
++}
++
++class _SessionHarness extends StatefulWidget {
++  const _SessionHarness({
++    super.key,
++    required this.firstController,
++    required this.secondController,
++    required this.firstFocus,
++    required this.secondFocus,
++    required this.externalFocus,
++  });
++
++  final TextEditingController firstController;
++  final TextEditingController secondController;
++  final FocusNode firstFocus;
++  final FocusNode secondFocus;
++  final FocusNode externalFocus;
++
++  @override
++  State<_SessionHarness> createState() => _SessionHarnessState();
++}
++
++class _SessionHarnessState extends State<_SessionHarness> {
++  bool _useSecondFocus = false;
++  bool _useSecondController = false;
++
++  void replaceFocusNode() => setState(() => _useSecondFocus = true);
++
++  void replaceController() => setState(() => _useSecondController = true);
++
++  @override
++  Widget build(BuildContext context) {
++    final controller = _useSecondController
++        ? widget.secondController
++        : widget.firstController;
++    final focusNode = _useSecondFocus ? widget.secondFocus : widget.firstFocus;
++
++    return Column(
++      children: [
++        MathKeyboardField(
++          controller: controller,
++          focusNode: focusNode,
++          builder: (context, fieldFocusNode, isMathActive) => TextField(
++            key: const ValueKey('math-session-editor'),
++            controller: controller,
++            focusNode: fieldFocusNode,
++          ),
++        ),
++        TextField(
++          key: const ValueKey('external-editor'),
++          focusNode: widget.externalFocus,
++        ),
++      ],
++    );
++  }
++}

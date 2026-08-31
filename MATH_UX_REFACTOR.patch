@@ -1,0 +1,611 @@
+--- a/lib/features/math_keyboard/domain/services/math_smart_palette.dart
++++ b/lib/features/math_keyboard/domain/services/math_smart_palette.dart
+@@ -23,10 +23,14 @@
+     r'_{}',
+     r'\sqrt{}',
+     '(',
++    '=',
++    r'\times',
++    r'\div',
+     r'\pm',
+-    r'\pi',
++    r'\neq',
+     r'\leq',
+     r'\geq',
++    r'\pi',
+   ];
+ 
+   static const Map<MathCategory, List<String>> _sources =
+--- a/lib/features/math_keyboard/presentation/providers/math_keyboard_controller.dart
++++ b/lib/features/math_keyboard/presentation/providers/math_keyboard_controller.dart
+@@ -277,17 +277,22 @@
+ 
+   void moveCursorLeft() {
+     MathEditorAdapterFactory.forController(state.activeController)?.moveLeft();
++    restoreActiveMathFocus();
+   }
+ 
+   void moveCursorRight() {
+     MathEditorAdapterFactory.forController(state.activeController)?.moveRight();
++    restoreActiveMathFocus();
+   }
+ 
+   void nextField() {
+     final adapter = MathEditorAdapterFactory.forController(
+       state.activeController,
+     );
+-    if (adapter?.moveToNextSlot() ?? false) return;
++    if (adapter?.moveToNextSlot() ?? false) {
++      restoreActiveMathFocus();
++      return;
++    }
+ 
+     final focusContext = state.activeFocusNode?.context;
+     if (focusContext != null) {
+@@ -331,12 +336,14 @@
+           _insertSource(symbol.modeBaseSource!);
+         }
+         togglePowerMode();
++        restoreActiveMathFocus();
+         return;
+       case MathInputBehavior.subscriptMode:
+         if (!state.isSubscriptMode && symbol.modeBaseSource != null) {
+           _insertSource(symbol.modeBaseSource!);
+         }
+         toggleSubscriptMode();
++        restoreActiveMathFocus();
+         return;
+       case MathInputBehavior.insert:
+         _insertSource(symbol.tex);
+@@ -365,15 +372,18 @@
+         symbolSizeLevel: state.symbolSizeLevel,
+       ),
+     );
++    restoreActiveMathFocus();
+   }
+ 
+   void clearAll() {
+     MathEditorAdapterFactory.forController(state.activeController)?.clear();
++    restoreActiveMathFocus();
+   }
+ 
+   void deleteBackward() {
+     MathEditorAdapterFactory.forController(
+       state.activeController,
+     )?.deleteBackward();
++    restoreActiveMathFocus();
+   }
+ }
+--- a/lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart
++++ b/lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart
+@@ -162,7 +162,11 @@
+                         ),
+                       ),
+                       const SizedBox(height: 10),
+-                      if (_visualReady) _buildVisualEditor(context),
++                      if (_visualReady)
++                        _buildVisualEditor(
++                          context,
++                          mathKeyboardVisible: mathKeyboardVisible,
++                        ),
+                       if (!_visualReady) ...[
+                         _buildRenderedFallback(context),
+                         const SizedBox(height: 8),
+@@ -310,32 +314,56 @@
+     );
+   }
+ 
+-  Widget _buildVisualEditor(BuildContext context) {
++  Widget _buildVisualEditor(
++    BuildContext context, {
++    required bool mathKeyboardVisible,
++  }) {
++    final theme = Theme.of(context);
++
+     return DecoratedBox(
+       decoration: BoxDecoration(
+-        color: Theme.of(context).colorScheme.surfaceContainerLow,
++        color: theme.colorScheme.surfaceContainerLow,
+         borderRadius: BorderRadius.circular(14),
+-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
++        border: Border.all(
++          color: mathKeyboardVisible
++              ? theme.colorScheme.primary
++              : theme.colorScheme.outlineVariant,
++          width: mathKeyboardVisible ? 2 : 1,
++        ),
+       ),
+       child: Padding(
+         padding: const EdgeInsets.all(10),
+-        child: MathKeyboardField(
+-          controller: _visualController,
+-          focusNode: _visualFocusNode,
+-          retainMathSessionOnFocusLoss: true,
+-          builder: (context, focusNode, isMathActive) => MathField(
+-            controller: _visualController,
+-            focusNode: focusNode,
+-            opensKeyboard: !isMathActive,
+-            decoration: const InputDecoration(
+-              labelText: 'Formula',
+-              hintText: 'Tap here and build the formula',
+-              helperText:
+-                  'Use the math keyboard below; the formula renders as you type.',
+-              border: OutlineInputBorder(),
++        child: Column(
++          crossAxisAlignment: CrossAxisAlignment.stretch,
++          children: [
++            _FormulaTypingStatus(active: mathKeyboardVisible),
++            const SizedBox(height: 8),
++            MathKeyboardField(
++              controller: _visualController,
++              focusNode: _visualFocusNode,
++              retainMathSessionOnFocusLoss: true,
++              builder: (context, focusNode, isMathActive) => MathField(
++                controller: _visualController,
++                focusNode: focusNode,
++                opensKeyboard: !isMathActive,
++                decoration: InputDecoration(
++                  labelText: 'Formula',
++                  hintText: 'Tap here and build the formula',
++                  helperText: isMathActive
++                      ? 'The typing position stays in this formula. Use “Next box” for fractions, roots, powers and subscripts.'
++                      : 'Tap the formula, then open the math keyboard.',
++                  border: const OutlineInputBorder(),
++                  focusedBorder: OutlineInputBorder(
++                    borderSide: BorderSide(
++                      color: theme.colorScheme.primary,
++                      width: 2,
++                    ),
++                  ),
++                ),
++                onChanged: _onVisualChanged,
++              ),
+             ),
+-            onChanged: _onVisualChanged,
+-          ),
++          ],
+         ),
+       ),
+     );
+@@ -681,6 +709,43 @@
+   }
+ }
+ 
++class _FormulaTypingStatus extends StatelessWidget {
++  const _FormulaTypingStatus({required this.active});
++
++  final bool active;
++
++  @override
++  Widget build(BuildContext context) {
++    final colors = Theme.of(context).colorScheme;
++    final foreground = active ? colors.primary : colors.onSurfaceVariant;
++
++    return Row(
++      children: [
++        Container(
++          width: 9,
++          height: 9,
++          decoration: BoxDecoration(
++            color: active ? colors.primary : colors.outlineVariant,
++            shape: BoxShape.circle,
++          ),
++        ),
++        const SizedBox(width: 7),
++        Expanded(
++          child: Text(
++            active
++                ? 'Math typing active — your next key goes into this formula.'
++                : 'Tap the formula to choose where math should be typed.',
++            style: Theme.of(context).textTheme.bodySmall?.copyWith(
++              color: foreground,
++              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
++            ),
++          ),
++        ),
++      ],
++    );
++  }
++}
++
+ class _InlineNotice extends StatelessWidget {
+   const _InlineNotice({
+     required this.icon,
+--- a/lib/features/math_keyboard/presentation/widgets/math_keyboard_action_bar.dart
++++ b/lib/features/math_keyboard/presentation/widgets/math_keyboard_action_bar.dart
+@@ -13,69 +13,92 @@
+     final controller = ref.read(mathKeyboardControllerProvider.notifier);
+     final theme = Theme.of(context);
+ 
+-    return Container(
+-      height: compact ? 52 : 58,
+-      padding: EdgeInsets.fromLTRB(7, 5, 7, compact ? 5 : 7),
+-      decoration: BoxDecoration(
+-        color: theme.colorScheme.surface,
+-        border: Border(
+-          top: BorderSide(color: theme.dividerColor.withValues(alpha: 0.1)),
+-        ),
+-      ),
+-      child: Row(
+-        children: [
+-          _ActionButton(
+-            label: 'ABC',
+-            onPressed: controller.showSystemKeyboard,
+-            color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.75),
+-            textColor: theme.colorScheme.onSecondaryContainer,
+-          ),
+-          const SizedBox(width: 5),
+-          _ActionButton(
+-            icon: Icons.chevron_left_rounded,
+-            onPressed: controller.moveCursorLeft,
+-          ),
+-          const SizedBox(width: 5),
+-          _ActionButton(
+-            icon: Icons.chevron_right_rounded,
+-            onPressed: controller.moveCursorRight,
+-          ),
+-          const SizedBox(width: 5),
+-          _ActionButton(
+-            icon: Icons.space_bar_rounded,
+-            onPressed: () => controller.insertText(' '),
+-            flex: 3,
+-          ),
+-          const SizedBox(width: 5),
+-          _ActionButton(
+-            icon: Icons.backspace_outlined,
+-            onPressed: controller.deleteBackward,
+-            color: theme.colorScheme.surfaceContainerHighest,
++    return LayoutBuilder(
++      builder: (context, constraints) {
++        final showLabels = !compact && constraints.maxWidth >= 560;
++
++        return Container(
++          height: compact ? 52 : 60,
++          padding: EdgeInsets.fromLTRB(7, 5, 7, compact ? 5 : 7),
++          decoration: BoxDecoration(
++            color: theme.colorScheme.surface,
++            border: Border(
++              top: BorderSide(
++                color: theme.dividerColor.withValues(alpha: 0.1),
++              ),
++            ),
+           ),
+-          const SizedBox(width: 5),
+-          _ActionButton(
+-            icon: Icons.keyboard_tab_rounded,
+-            onPressed: controller.nextField,
+-            color: theme.colorScheme.primary,
+-            textColor: theme.colorScheme.onPrimary,
++          child: Row(
++            children: [
++              _ActionButton(
++                icon: Icons.keyboard_rounded,
++                label: showLabels ? 'Text' : null,
++                tooltip: 'Switch to normal text keyboard',
++                onPressed: controller.showSystemKeyboard,
++                color: theme.colorScheme.secondaryContainer.withValues(
++                  alpha: 0.75,
++                ),
++                textColor: theme.colorScheme.onSecondaryContainer,
++                flex: showLabels ? 2 : 1,
++              ),
++              const SizedBox(width: 5),
++              _ActionButton(
++                icon: Icons.chevron_left_rounded,
++                tooltip: 'Move typing position left',
++                onPressed: controller.moveCursorLeft,
++              ),
++              const SizedBox(width: 5),
++              _ActionButton(
++                icon: Icons.chevron_right_rounded,
++                tooltip: 'Move typing position right',
++                onPressed: controller.moveCursorRight,
++              ),
++              const SizedBox(width: 5),
++              _ActionButton(
++                icon: Icons.space_bar_rounded,
++                label: showLabels ? 'Space' : null,
++                tooltip: 'Insert a space',
++                onPressed: () => controller.insertText(' '),
++                flex: showLabels ? 2 : 2,
++              ),
++              const SizedBox(width: 5),
++              _ActionButton(
++                icon: Icons.backspace_outlined,
++                tooltip: 'Delete before typing position',
++                onPressed: controller.deleteBackward,
++                color: theme.colorScheme.surfaceContainerHighest,
++              ),
++              const SizedBox(width: 5),
++              _ActionButton(
++                icon: Icons.keyboard_tab_rounded,
++                label: showLabels ? 'Next box' : null,
++                tooltip: 'Move to the next fraction, power, root, or formula box',
++                onPressed: controller.nextField,
++                color: theme.colorScheme.primary,
++                textColor: theme.colorScheme.onPrimary,
++                flex: showLabels ? 3 : 1,
++              ),
++            ],
+           ),
+-        ],
+-      ),
++        );
++      },
+     );
+   }
+ }
+ 
+ class _ActionButton extends StatelessWidget {
+-  final IconData? icon;
++  final IconData icon;
+   final String? label;
++  final String tooltip;
+   final VoidCallback onPressed;
+   final Color? color;
+   final Color? textColor;
+   final int flex;
+ 
+   const _ActionButton({
+-    this.icon,
++    required this.icon,
+     this.label,
++    required this.tooltip,
+     required this.onPressed,
+     this.color,
+     this.textColor,
+@@ -85,31 +108,41 @@
+   @override
+   Widget build(BuildContext context) {
+     final theme = Theme.of(context);
++    final foreground = textColor ?? theme.colorScheme.onSurfaceVariant;
++
+     return Expanded(
+       flex: flex,
+-      child: SizedBox(
+-        height: 48,
+-        child: Material(
+-          color: color ?? theme.colorScheme.surfaceContainerHigh,
+-          borderRadius: BorderRadius.circular(12),
+-          child: InkWell(
+-            onTap: onPressed,
++      child: Tooltip(
++        message: tooltip,
++        child: SizedBox(
++          height: 48,
++          child: Material(
++            color: color ?? theme.colorScheme.surfaceContainerHigh,
+             borderRadius: BorderRadius.circular(12),
+-            child: Center(
+-              child: label != null
+-                  ? Text(
+-                      label!,
+-                      style: TextStyle(
+-                        fontWeight: FontWeight.bold,
+-                        color: textColor ?? theme.colorScheme.onSurfaceVariant,
+-                        letterSpacing: 1.1,
++            child: InkWell(
++              onTap: onPressed,
++              borderRadius: BorderRadius.circular(12),
++              child: Center(
++                child: label == null
++                    ? Icon(icon, size: 22, color: foreground)
++                    : Row(
++                        mainAxisSize: MainAxisSize.min,
++                        children: [
++                          Icon(icon, size: 19, color: foreground),
++                          const SizedBox(width: 6),
++                          Flexible(
++                            child: Text(
++                              label!,
++                              overflow: TextOverflow.ellipsis,
++                              style: TextStyle(
++                                fontWeight: FontWeight.w700,
++                                color: foreground,
++                              ),
++                            ),
++                          ),
++                        ],
+                       ),
+-                    )
+-                  : Icon(
+-                      icon,
+-                      size: 22,
+-                      color: textColor ?? theme.colorScheme.onSurfaceVariant,
+-                    ),
++              ),
+             ),
+           ),
+         ),
+--- a/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
++++ b/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+@@ -40,7 +40,7 @@
+         child: LayoutBuilder(
+           builder: (context, constraints) {
+             final compact =
+-                constraints.maxHeight < 330 || constraints.maxWidth < 360;
++                constraints.maxHeight < 285 || constraints.maxWidth < 360;
+ 
+             return Column(
+               children: [
+@@ -73,7 +73,11 @@
+   }) {
+     final theme = Theme.of(context);
+     final primary = <({String label, IconData icon, MathCategory category})>[
+-      (label: '123', icon: Icons.pin_outlined, category: MathCategory.basic),
++      (
++        label: compact ? '123' : 'Common',
++        icon: Icons.pin_outlined,
++        category: MathCategory.basic,
++      ),
+       (
+         label: compact ? 'ALG' : 'Algebra',
+         icon: Icons.superscript_rounded,
+@@ -160,7 +164,7 @@
+                   icon: item.icon,
+                   label: item.label,
+                   selected: state.currentCategory == item.category,
+-                  showLabel: !compact || item.label == '123',
++                  showLabel: !compact || item.category == MathCategory.basic,
+                   onTap: () => controller.setCategory(item.category),
+                 );
+               },
+@@ -340,24 +344,56 @@
+           bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.08)),
+         ),
+       ),
+-      child: ListView.separated(
+-        scrollDirection: Axis.horizontal,
+-        padding: const EdgeInsets.symmetric(horizontal: 7),
+-        itemCount: symbols.length,
+-        separatorBuilder: (_, _) => const SizedBox(width: 4),
+-        itemBuilder: (context, index) {
+-          final symbol = symbols[index];
+-
+-          return SizedBox(
+-            width: _quickKeyWidth(symbol.label, compact: compact),
+-            child: MathKey(
+-              symbol: symbol,
+-              fontSize: compact ? 15 : 17,
+-              color: theme.colorScheme.surface,
+-              onTap: () => controller.insertSymbol(symbol),
++      child: Row(
++        children: [
++          Padding(
++            padding: const EdgeInsets.only(left: 8, right: 5),
++            child: Tooltip(
++              message: 'High-frequency structures and symbols for this topic',
++              child: Row(
++                mainAxisSize: MainAxisSize.min,
++                children: [
++                  Icon(
++                    Icons.bolt_rounded,
++                    size: 15,
++                    color: theme.colorScheme.primary,
++                  ),
++                  if (!compact) ...[
++                    const SizedBox(width: 3),
++                    Text(
++                      'Quick',
++                      style: theme.textTheme.labelSmall?.copyWith(
++                        color: theme.colorScheme.primary,
++                        fontWeight: FontWeight.w800,
++                      ),
++                    ),
++                  ],
++                ],
++              ),
+             ),
+-          );
+-        },
++          ),
++          Expanded(
++            child: ListView.separated(
++              scrollDirection: Axis.horizontal,
++              padding: const EdgeInsets.only(right: 7),
++              itemCount: symbols.length,
++              separatorBuilder: (_, _) => const SizedBox(width: 4),
++              itemBuilder: (context, index) {
++                final symbol = symbols[index];
++
++                return SizedBox(
++                  width: _quickKeyWidth(symbol.label, compact: compact),
++                  child: MathKey(
++                    symbol: symbol,
++                    fontSize: compact ? 15 : 17,
++                    color: theme.colorScheme.surface,
++                    onTap: () => controller.insertSymbol(symbol),
++                  ),
++                );
++              },
++            ),
++          ),
++        ],
+       ),
+     );
+   }
+--- a/lib/features/paper_composer/presentation/widgets/question_composer_page.dart
++++ b/lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+@@ -891,6 +891,26 @@
+             ),
+           ],
+         ),
++        const SizedBox(height: 6),
++        Row(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            Icon(
++              Icons.touch_app_outlined,
++              size: 15,
++              color: Theme.of(context).colorScheme.onSurfaceVariant,
++            ),
++            const SizedBox(width: 5),
++            Expanded(
++              child: Text(
++                'Math and diagrams are inserted exactly at the question cursor. Tap where they should appear first.',
++                style: Theme.of(context).textTheme.bodySmall?.copyWith(
++                  color: Theme.of(context).colorScheme.onSurfaceVariant,
++                ),
++              ),
++            ),
++          ],
++        ),
+         const SizedBox(height: 8),
+         SizedBox(
+           height: 34,
+--- a/test/features/editor/create_paper_save_sheet_test.dart
++++ b/test/features/editor/create_paper_save_sheet_test.dart
+@@ -86,6 +86,12 @@
+ 
+       expect(find.text('New question'), findsOneWidget);
+       expect(find.text('Math'), findsOneWidget);
++      expect(
++        find.text(
++          'Math and diagrams are inserted exactly at the question cursor. Tap where they should appear first.',
++        ),
++        findsOneWidget,
++      );
+       expect(find.text('Formula block'), findsNothing);
+       expect(find.text('Geometry'), findsOneWidget);
+       expect(find.text('Answer & more details'), findsOneWidget);
+@@ -97,6 +103,12 @@
+ 
+       expect(find.text('Add math formula'), findsOneWidget);
+       expect(find.text('Formula'), findsOneWidget);
++      expect(
++        find.text(
++          'Math typing active — your next key goes into this formula.',
++        ),
++        findsOneWidget,
++      );
+       expect(find.text('Add formula'), findsOneWidget);
+       expect(find.text('Advanced'), findsOneWidget);
+       expect(find.text('Readable description *'), findsNothing);
+--- a/test/features/math_keyboard/formula_editor_sheet_test.dart
++++ b/test/features/math_keyboard/formula_editor_sheet_test.dart
+@@ -35,6 +35,10 @@
+     expect(find.text('Readable description *'), findsNothing);
+     expect(find.text('Advanced'), findsOneWidget);
+     expect(find.text('Save formula'), findsOneWidget);
++    expect(
++      find.text('Tap the formula to choose where math should be typed.'),
++      findsOneWidget,
++    );
+ 
+     await tester.tap(find.text('Advanced'));
+     await tester.pumpAndSettle();
+@@ -67,6 +71,14 @@
+       await tester.pump(const Duration(milliseconds: 400));
+ 
+       _expectFormulaMathSession(tester, isVisible: true);
++      expect(
++        find.text(
++          'Math typing active — your next key goes into this formula.',
++        ),
++        findsOneWidget,
++      );
++      expect(find.text('Next box'), findsOneWidget);
++      expect(find.text('Text'), findsOneWidget);
+ 
+       await tester.tap(find.text('MORE'));
+       await tester.pump();

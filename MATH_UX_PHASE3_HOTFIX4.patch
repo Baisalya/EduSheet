@@ -1,0 +1,38 @@
+--- a/test/features/paper_composer/question_composer_typing_viewport_test.dart
++++ b/test/features/paper_composer/question_composer_typing_viewport_test.dart
+@@ -79,8 +79,16 @@
+ 
+     expect(find.text('Add math formula'), findsOneWidget);
+     _expectFormulaMathKeyboardVisible(tester);
++    // The formula editor opens the custom keyboard from a post-frame callback.
++    // A single long pump can execute that callback at the end of the frame,
++    // leaving AnimatedSlide logically visible but still at its initial hidden
++    // offset. Advance the keyboard's real 300 ms entrance animation before
++    // interacting with keys so this test exercises a genuinely hit-testable UI.
++    await tester.pump(const Duration(milliseconds: 350));
++
+     final buildButton = find.byKey(const ValueKey('math-build-button'));
+     expect(buildButton, findsOneWidget);
++    expect(tester.getCenter(buildButton).dy, lessThan(900));
+ 
+     await tester.tap(buildButton);
+     await tester.pump();
+--- a/test/features/question_bank/question_bank_paper_composer_widget_test.dart
++++ b/test/features/question_bank/question_bank_paper_composer_widget_test.dart
+@@ -83,8 +83,16 @@
+ 
+     expect(find.text('Add math formula'), findsOneWidget);
+     _expectFormulaMathKeyboardVisible(tester);
++    // The formula editor opens the custom keyboard from a post-frame callback.
++    // A single long pump can execute that callback at the end of the frame,
++    // leaving AnimatedSlide logically visible but still at its initial hidden
++    // offset. Advance the keyboard's real 300 ms entrance animation before
++    // interacting with keys so this test exercises a genuinely hit-testable UI.
++    await tester.pump(const Duration(milliseconds: 350));
++
+     final buildButton = find.byKey(const ValueKey('math-build-button'));
+     expect(buildButton, findsOneWidget);
++    expect(tester.getCenter(buildButton).dy, lessThan(900));
+ 
+     await tester.tap(buildButton);
+     await tester.pump();

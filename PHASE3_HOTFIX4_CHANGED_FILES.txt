@@ -1,0 +1,5 @@
+test/features/paper_composer/question_composer_typing_viewport_test.dart
+test/features/question_bank/question_bank_paper_composer_widget_test.dart
+docs/MATH_UX_PHASE3_HOTFIX4_TEST_SYNC.md
+MATH_UX_PHASE3_HOTFIX4.patch
+PHASE3_HOTFIX4_CHANGED_FILES.txt

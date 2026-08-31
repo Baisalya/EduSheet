@@ -1,0 +1,8 @@
+lib/features/math_keyboard/presentation/widgets/math_keyboard_field.dart
+lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+test/features/math_keyboard/math_keyboard_controller_build_test.dart
+test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
+docs/MATH_KEYBOARD_UX_PHASE5_HOTFIX1_2026-08-30.md
+README_PHASE5_HOTFIX1.txt
+MATH_UX_PHASE5_HOTFIX1.patch
+PHASE5_HOTFIX1_CHANGED_FILES.txt

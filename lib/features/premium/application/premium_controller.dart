@@ -16,7 +16,9 @@ class PremiumController extends StateNotifier<PremiumState> {
   PremiumController({PremiumStoreGateway? store, bool? premiumEnabled})
     : _store = store ?? createPremiumStoreGateway(),
       _premiumEnabled = premiumEnabled ?? AppConfig.premiumEnabled,
-      super(const PremiumState()) {
+      // Fail open while store discovery is pending. No feature may become
+      // paid merely because Play Billing is slow, unavailable, or inactive.
+      super(const PremiumState(isComplimentaryAccess: true)) {
     unawaited(_initialize());
   }
 
@@ -41,6 +43,7 @@ class PremiumController extends StateNotifier<PremiumState> {
       if (!_store.isSupported) {
         if (mounted) {
           state = state.copyWith(
+            isComplimentaryAccess: true,
             storeStatus: PremiumStoreStatus.unsupported,
             clearMessage: true,
           );
@@ -64,8 +67,11 @@ class PremiumController extends StateNotifier<PremiumState> {
       if (!mounted) return;
       if (entry == null) {
         state = state.copyWith(
+          isComplimentaryAccess: true,
           storeStatus: PremiumStoreStatus.unavailable,
-          message: 'Premium is not configured in this store yet.',
+          clearProduct: true,
+          message:
+              'The subscription is not active in this store yet. Everything remains free.',
         );
         return;
       }
@@ -75,6 +81,7 @@ class PremiumController extends StateNotifier<PremiumState> {
       }
 
       state = state.copyWith(
+        isComplimentaryAccess: false,
         storeStatus: PremiumStoreStatus.ready,
         product: entry.product,
         clearMessage: true,
@@ -82,6 +89,7 @@ class PremiumController extends StateNotifier<PremiumState> {
     } on PremiumStoreException catch (error) {
       if (!mounted) return;
       state = state.copyWith(
+        isComplimentaryAccess: true,
         storeStatus: _store.isSupported
             ? PremiumStoreStatus.unavailable
             : PremiumStoreStatus.unsupported,
@@ -90,6 +98,7 @@ class PremiumController extends StateNotifier<PremiumState> {
     } catch (_) {
       if (!mounted) return;
       state = state.copyWith(
+        isComplimentaryAccess: true,
         storeStatus: PremiumStoreStatus.unavailable,
         message: 'Premium could not connect to the app store.',
       );
@@ -180,6 +189,7 @@ class PremiumController extends StateNotifier<PremiumState> {
     if (!mounted) return;
     state = state.copyWith(
       isPremium: true,
+      isComplimentaryAccess: false,
       purchasePending: false,
       clearMessage: true,
     );

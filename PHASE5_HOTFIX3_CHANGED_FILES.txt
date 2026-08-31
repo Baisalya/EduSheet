@@ -1,0 +1,2 @@
+lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+docs/MATH_UX_PHASE5_HOTFIX3.md

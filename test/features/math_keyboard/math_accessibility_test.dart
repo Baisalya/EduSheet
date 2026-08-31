@@ -1,6 +1,7 @@
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_key.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,7 @@ void main() {
     'math key has a readable label, touch target and keyboard action',
     (tester) async {
       var insertions = 0;
+      var actionMenus = 0;
       final semantics = tester.ensureSemantics();
       await tester.pumpWidget(
         MaterialApp(
@@ -19,6 +21,7 @@ void main() {
                 label: 'plus',
                 tex: '+',
                 onTap: () => insertions++,
+                onLongPress: () => actionMenus++,
               ),
             ),
           ),
@@ -29,10 +32,14 @@ void main() {
       expect(size.width, greaterThanOrEqualTo(48));
       expect(size.height, greaterThanOrEqualTo(48));
       expect(tester.getSemantics(find.byType(MathKey)).label, 'Insert plus');
+      expect(find.bySemanticsLabel('Insert plus'), findsOneWidget);
 
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       expect(insertions, 1);
+
+      await tester.tap(find.byType(MathKey), buttons: kSecondaryButton);
+      expect(actionMenus, 1);
       semantics.dispose();
     },
   );

@@ -1,0 +1,1215 @@
+diff -ruN edusheet_phase2_baseline/EduSheet-master/docs/MATH_KEYBOARD_UX_PHASE2_2026-08-30.md edusheet_next/EduSheet-master/docs/MATH_KEYBOARD_UX_PHASE2_2026-08-30.md
+--- edusheet_phase2_baseline/EduSheet-master/docs/MATH_KEYBOARD_UX_PHASE2_2026-08-30.md	1970-01-01 00:00:00.000000000 +0000
++++ edusheet_next/EduSheet-master/docs/MATH_KEYBOARD_UX_PHASE2_2026-08-30.md	2026-08-30 08:36:39.888230793 +0000
+@@ -0,0 +1,122 @@
++# Math Keyboard Teacher UX — Phase 2 (2026-08-30)
++
++## Scope completed
++
++This phase builds on the previously tested caret/focus batch. It keeps the same question, Question Bank, paper, option, and `MathExpression` persistence models.
++
++### 1. More/category browsing is now keyboard-local
++
++The old `More` category picker pushed another bottom-sheet route inside the custom keyboard. It is now a normal view inside `MathKeyboardView`.
++
++Benefits:
++
++- no stacked sheet for ordinary category navigation
++- no extra Navigator push/pop for selecting Trig, Geometry, Statistics, Greek, etc.
++- custom math-session ownership remains intact while browsing categories
++- an explicit `Back to keys` action makes the transition obvious
++- Recent and Favourites are promoted at the top with live counts
++
++Search intentionally remains a keyboard-local modal route because mobile search needs the system text keyboard. Moving a real TextField into the custom math keyboard without a route boundary would create a system-IME/custom-keyboard focus conflict.
++
++### 2. Recent/Favourites no longer fail silently when empty
++
++Instead of a blank grid:
++
++- Recent explains that used math appears automatically
++- Favourites explains how to save symbols
++- both provide `Browse math keys`
++
++### 3. Teacher-language search redesign
++
++Search now starts from curated high-frequency math instead of dumping the entire catalogue.
++
++It adds plain-language shortcuts such as:
++
++- Fraction
++- Square root
++- Power
++- Angle
++- Integral
++- Vector
++- Mean
++- Greek
++
++Results emphasize the visual symbol plus its readable name/category. Structural entries receive a `Structure` badge. Teachers can add/remove favourites directly from a result without first inserting it.
++
++The existing semantic `MathSymbolCatalog.search` remains the source of truth. No parallel symbol database was introduced.
++
++### 4. Formula editor language is less technical
++
++Display placement now reads:
++
++- `In sentence` instead of `Inline`
++- `Own line` instead of `New line`
++
++When the custom math keyboard is already open, the redundant `Math keyboard open` button is removed. The editor instead keeps the primary visual formula surface plus the optional `Advanced` path.
++
++The active-position explanation now uses an explicit teacher workflow:
++
++`Structure → type the first box → Next box → continue`
++
++### 5. Regression coverage
++
++Updated/added widget tests cover:
++
++- custom math session remains active while the local category browser is open
++- opening `More` does not push a Navigator route
++- teacher-language symbol search
++- structure-result presentation
++- favouriting a search result without inserting it
++- existing Create Paper formula-session wording
++
++## Files changed in Phase 2
++
++- `lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart`
++- `lib/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart`
++- `lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart`
++- `test/features/math_keyboard/formula_editor_sheet_test.dart`
++- `test/features/math_keyboard/math_symbol_search_sheet_test.dart` (new)
++- `test/features/editor/create_paper_save_sheet_test.dart`
++- `docs/MATH_KEYBOARD_UX_PHASE2_2026-08-30.md` (new)
++
++## Intentionally unchanged
++
++- database schema and migrations
++- Question Bank repository/storage
++- paper repository/storage
++- `QuestionOption` model
++- `MathExpression` schema
++- semantic catalogue identities
++- generated Riverpod files
++- geometry persistence
++
++## Local validation commands
++
++Run from the project root:
++
++```powershell
++dart format `
++  lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart `
++  lib/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart `
++  lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart `
++  test/features/math_keyboard/formula_editor_sheet_test.dart `
++  test/features/math_keyboard/math_symbol_search_sheet_test.dart `
++  test/features/editor/create_paper_save_sheet_test.dart
++
++flutter analyze --no-pub
++
++flutter test test/features/math_keyboard/formula_editor_sheet_test.dart
++flutter test test/features/math_keyboard/math_symbol_search_sheet_test.dart
++flutter test test/features/editor/create_paper_save_sheet_test.dart
++```
++
++## Manual QA
++
++1. Create Paper → Math → tap `MORE`; confirm categories replace the key grid instead of opening another sheet.
++2. Pick `TRIG`; confirm formula focus/caret remains active and trig keys appear immediately.
++3. Open `MORE` → Recent/Favourites; verify their counts and useful empty states.
++4. Search `fraction`, `angle`, `wavelength`, `standard deviation`, and `vector`.
++5. Star a search result, close search, open Favourites, and confirm it appears.
++6. Build a fraction: tap fraction → type numerator → `Next box` → type denominator → continue.
++7. Confirm the formula editor says `In sentence` / `Own line` and Advanced remains optional.
++8. Repeat from Question Bank Add/Edit Question to verify the same shared composer behavior.
+diff -ruN edusheet_phase2_baseline/EduSheet-master/lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart edusheet_next/EduSheet-master/lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart
+--- edusheet_phase2_baseline/EduSheet-master/lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart	2026-08-30 08:16:44.000000000 +0000
++++ edusheet_next/EduSheet-master/lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart	2026-08-30 08:33:24.223612105 +0000
+@@ -155,7 +155,7 @@
+                     children: [
+                       Text(
+                         _visualReady
+-                            ? 'Edit the formula exactly as it should appear in the question.'
++                            ? 'Build the formula visually. Tap a structure, fill its boxes, then use “Next box” to move forward.'
+                             : 'This formula uses source syntax the visual editor cannot load yet.',
+                         style: theme.textTheme.bodyMedium?.copyWith(
+                           color: theme.colorScheme.onSurfaceVariant,
+@@ -183,24 +183,20 @@
+                       Wrap(
+                         spacing: 8,
+                         runSpacing: 8,
++                        crossAxisAlignment: WrapCrossAlignment.center,
+                         children: [
+-                          OutlinedButton.icon(
+-                            onPressed: _visualReady
+-                                ? _openStructuredMathKeyboard
+-                                : _tryOpenVisualFromSource,
+-                            icon: Icon(
+-                              _visualReady
+-                                  ? Icons.keyboard_alt_outlined
+-                                  : Icons.auto_fix_high_outlined,
++                          if (_visualReady && !mathKeyboardVisible)
++                            FilledButton.tonalIcon(
++                              onPressed: _openStructuredMathKeyboard,
++                              icon: const Icon(Icons.keyboard_alt_outlined),
++                              label: const Text('Open math keyboard'),
+                             ),
+-                            label: Text(
+-                              mathKeyboardVisible
+-                                  ? 'Math keyboard open'
+-                                  : _visualReady
+-                                  ? 'Open math keyboard'
+-                                  : 'Try visual editor',
++                          if (!_visualReady)
++                            OutlinedButton.icon(
++                              onPressed: _tryOpenVisualFromSource,
++                              icon: const Icon(Icons.auto_fix_high_outlined),
++                              label: const Text('Try visual editor'),
+                             ),
+-                          ),
+                           TextButton.icon(
+                             onPressed: () => setState(
+                               () => _advancedExpanded = !_advancedExpanded,
+@@ -277,11 +273,13 @@
+       segments: const [
+         ButtonSegment(
+           value: MathExpressionDisplay.inline,
+-          label: Text('Inline'),
++          icon: Icon(Icons.short_text_rounded),
++          label: Text('In sentence'),
+         ),
+         ButtonSegment(
+           value: MathExpressionDisplay.block,
+-          label: Text('New line'),
++          icon: Icon(Icons.notes_rounded),
++          label: Text('Own line'),
+         ),
+       ],
+       selected: {_display},
+@@ -719,28 +717,45 @@
+     final colors = Theme.of(context).colorScheme;
+     final foreground = active ? colors.primary : colors.onSurfaceVariant;
+ 
+-    return Row(
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.start,
+       children: [
+-        Container(
+-          width: 9,
+-          height: 9,
+-          decoration: BoxDecoration(
+-            color: active ? colors.primary : colors.outlineVariant,
+-            shape: BoxShape.circle,
+-          ),
++        Row(
++          children: [
++            Container(
++              width: 9,
++              height: 9,
++              decoration: BoxDecoration(
++                color: active ? colors.primary : colors.outlineVariant,
++                shape: BoxShape.circle,
++              ),
++            ),
++            const SizedBox(width: 7),
++            Expanded(
++              child: Text(
++                active
++                    ? 'Typing here — the next math key goes at the visible formula cursor.'
++                    : 'Tap the formula to choose where math should be typed.',
++                style: Theme.of(context).textTheme.bodySmall?.copyWith(
++                  color: foreground,
++                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
++                ),
++              ),
++            ),
++          ],
+         ),
+-        const SizedBox(width: 7),
+-        Expanded(
+-          child: Text(
+-            active
+-                ? 'Math typing active — your next key goes into this formula.'
+-                : 'Tap the formula to choose where math should be typed.',
+-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+-              color: foreground,
+-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
++        if (active) ...[
++          const SizedBox(height: 5),
++          Padding(
++            padding: const EdgeInsets.only(left: 16),
++            child: Text(
++              'Structure → type the first box → Next box → continue',
++              style: Theme.of(context).textTheme.labelSmall?.copyWith(
++                color: colors.onSurfaceVariant,
++              ),
+             ),
+           ),
+-        ),
++        ],
+       ],
+     );
+   }
+diff -ruN edusheet_phase2_baseline/EduSheet-master/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart edusheet_next/EduSheet-master/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+--- edusheet_phase2_baseline/EduSheet-master/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart	2026-08-30 08:16:44.000000000 +0000
++++ edusheet_next/EduSheet-master/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart	2026-08-30 08:35:24.959636256 +0000
+@@ -14,11 +14,18 @@
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_modal_presenter.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart';
+ 
+-class MathKeyboardView extends ConsumerWidget {
++class MathKeyboardView extends ConsumerStatefulWidget {
+   const MathKeyboardView({super.key});
+ 
+   @override
+-  Widget build(BuildContext context, WidgetRef ref) {
++  ConsumerState<MathKeyboardView> createState() => _MathKeyboardViewState();
++}
++
++class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
++  bool _categoryBrowserOpen = false;
++
++  @override
++  Widget build(BuildContext context) {
+     final state = ref.watch(mathKeyboardControllerProvider);
+     final controller = ref.read(mathKeyboardControllerProvider.notifier);
+     final theme = Theme.of(context);
+@@ -45,11 +52,14 @@
+             return Column(
+               children: [
+                 _buildHeader(context, state, controller, compact: compact),
+-                _buildQuickBar(context, state, controller, compact: compact),
++                if (!_categoryBrowserOpen)
++                  _buildQuickBar(context, state, controller, compact: compact),
+                 Expanded(
+                   child: AnimatedSwitcher(
+                     duration: const Duration(milliseconds: 160),
+-                    child: state.currentCategory == MathCategory.format
++                    child: _categoryBrowserOpen
++                        ? _buildCategoryBrowser(context, state, controller)
++                        : state.currentCategory == MathCategory.format
+                         ? _buildQuillToolbar(context, state, ref)
+                         : state.currentCategory == MathCategory.geometry
+                         ? _buildGeometryKeyboardPanel(context, controller)
+@@ -95,7 +105,8 @@
+       ),
+     ];
+     final primaryCategories = primary.map((item) => item.category).toSet();
+-    final moreSelected = !primaryCategories.contains(state.currentCategory);
++    final moreSelected =
++        _categoryBrowserOpen || !primaryCategories.contains(state.currentCategory);
+ 
+     return Container(
+       height: compact ? 46 : 50,
+@@ -130,7 +141,12 @@
+           IconButton(
+             tooltip: 'Find symbol or formula',
+             visualDensity: VisualDensity.compact,
+-            onPressed: () => _showSymbolSearch(context, controller),
++            onPressed: () {
++              if (_categoryBrowserOpen) {
++                setState(() => _categoryBrowserOpen = false);
++              }
++              _showSymbolSearch(context, controller);
++            },
+             icon: const Icon(Icons.search_rounded, size: 20),
+           ),
+           Expanded(
+@@ -154,8 +170,9 @@
+                     // based on height made a wide desktop keyboard show an
+                     // unexplained grid icon and broke the local-panel flow.
+                     showLabel: true,
+-                    onTap: () =>
+-                        _showCategoryPicker(context, state, controller),
++                    onTap: () => setState(
++                      () => _categoryBrowserOpen = !_categoryBrowserOpen,
++                    ),
+                   );
+                 }
+ 
+@@ -165,7 +182,12 @@
+                   label: item.label,
+                   selected: state.currentCategory == item.category,
+                   showLabel: !compact || item.category == MathCategory.basic,
+-                  onTap: () => controller.setCategory(item.category),
++                  onTap: () {
++                    if (_categoryBrowserOpen) {
++                      setState(() => _categoryBrowserOpen = false);
++                    }
++                    controller.setCategory(item.category);
++                  },
+                 );
+               },
+             ),
+@@ -175,13 +197,12 @@
+     );
+   }
+ 
+-  Future<void> _showCategoryPicker(
++  Widget _buildCategoryBrowser(
+     BuildContext context,
+     MathKeyboardStateData state,
+     MathKeyboardController controller,
+-  ) async {
++  ) {
+     const groups = <String, List<MathCategory>>{
+-      'MY KEYS': <MathCategory>[MathCategory.recent, MathCategory.favorites],
+       'MATHEMATICS': <MathCategory>[
+         MathCategory.trig,
+         MathCategory.geometry,
+@@ -202,56 +223,104 @@
+         MathCategory.misc,
+       ],
+     };
++    final theme = Theme.of(context);
++    final favorites = ref.watch(favoriteSymbolsProvider);
+ 
+-    await showMathKeyboardPanel<void>(
+-      context: context,
+-      showDragHandle: true,
+-      builder: (sheetContext) => SingleChildScrollView(
+-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+-        child: Column(
+-          crossAxisAlignment: CrossAxisAlignment.stretch,
++    void choose(MathCategory category) {
++      controller.setCategory(category);
++      setState(() => _categoryBrowserOpen = false);
++      controller.restoreActiveMathFocus();
++    }
++
++    return ListView(
++      key: const ValueKey('math-category-browser'),
++      padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
++      children: [
++        Row(
+           children: [
+-            Text(
+-              'More math & science keys',
+-              style: Theme.of(
+-                sheetContext,
+-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+-            ),
+-            const SizedBox(height: 12),
+-            for (final group in groups.entries) ...[
+-              Padding(
+-                padding: const EdgeInsets.only(top: 8, bottom: 6),
+-                child: Text(
+-                  group.key,
+-                  style: Theme.of(sheetContext).textTheme.labelSmall?.copyWith(
+-                    fontWeight: FontWeight.w800,
+-                    letterSpacing: 0.8,
+-                    color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+-                  ),
+-                ),
+-              ),
+-              Wrap(
+-                spacing: 8,
+-                runSpacing: 8,
++            Expanded(
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+-                  for (final category in group.value)
+-                    ChoiceChip(
+-                      avatar: Icon(_categoryIcon(category), size: 18),
+-                      label: Text(_categoryLabel(category)),
+-                      selected: state.currentCategory == category,
+-                      onSelected: (_) {
+-                        controller.setCategory(category);
+-                        Navigator.pop(sheetContext);
+-                      },
++                  Text(
++                    'More math & science keys',
++                    style: theme.textTheme.titleSmall?.copyWith(
++                      fontWeight: FontWeight.w800,
+                     ),
++                  ),
++                  const SizedBox(height: 2),
++                  Text(
++                    'Choose a topic without leaving the formula keyboard.',
++                    style: theme.textTheme.bodySmall?.copyWith(
++                      color: theme.colorScheme.onSurfaceVariant,
++                    ),
++                  ),
+                 ],
+               ),
+-            ],
++            ),
++            TextButton.icon(
++              onPressed: () {
++                setState(() => _categoryBrowserOpen = false);
++                controller.restoreActiveMathFocus();
++              },
++              icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
++              label: const Text('Back to keys'),
++            ),
+           ],
+         ),
+-      ),
++        const SizedBox(height: 10),
++        Row(
++          children: [
++            Expanded(
++              child: _MyKeysCard(
++                icon: Icons.history_rounded,
++                title: 'Recent',
++                detail: '${state.recentSymbols.length} used',
++                selected: state.currentCategory == MathCategory.recent,
++                onTap: () => choose(MathCategory.recent),
++              ),
++            ),
++            const SizedBox(width: 8),
++            Expanded(
++              child: _MyKeysCard(
++                icon: Icons.star_outline_rounded,
++                title: 'Favourites',
++                detail: '${favorites.length} saved',
++                selected: state.currentCategory == MathCategory.favorites,
++                onTap: () => choose(MathCategory.favorites),
++              ),
++            ),
++          ],
++        ),
++        const SizedBox(height: 8),
++        for (final group in groups.entries) ...[
++          Padding(
++            padding: const EdgeInsets.only(top: 8, bottom: 6),
++            child: Text(
++              group.key,
++              style: theme.textTheme.labelSmall?.copyWith(
++                fontWeight: FontWeight.w800,
++                letterSpacing: 0.8,
++                color: theme.colorScheme.onSurfaceVariant,
++              ),
++            ),
++          ),
++          Wrap(
++            spacing: 8,
++            runSpacing: 8,
++            children: [
++              for (final category in group.value)
++                ChoiceChip(
++                  avatar: Icon(_categoryIcon(category), size: 18),
++                  label: Text(_categoryLabel(category)),
++                  selected: state.currentCategory == category,
++                  onSelected: (_) => choose(category),
++                ),
++            ],
++          ),
++        ],
++      ],
+     );
+-    controller.restoreActiveMathFocus();
+   }
+ 
+   String _categoryLabel(MathCategory category) {
+@@ -834,6 +903,22 @@
+         MediaQuery.of(context).size.width > 600 || state.isTabletLayout;
+     final theme = Theme.of(context);
+ 
++    if (symbols.isEmpty &&
++        (state.currentCategory == MathCategory.recent ||
++            state.currentCategory == MathCategory.favorites)) {
++      final isRecent = state.currentCategory == MathCategory.recent;
++      return _KeyboardEmptyState(
++        key: ValueKey('empty-${state.currentCategory.name}'),
++        icon: isRecent ? Icons.history_rounded : Icons.star_outline_rounded,
++        title: isRecent ? 'No recent math yet' : 'No favourites yet',
++        message: isRecent
++            ? 'Symbols and structures you use will appear here automatically.'
++            : 'Long-press a key, or use Search, to save the math you use often.',
++        actionLabel: 'Browse math keys',
++        onAction: () => setState(() => _categoryBrowserOpen = true),
++      );
++    }
++
+     // Custom grid settings per category
+     final int crossAxisCount;
+     final double childAspectRatio;
+@@ -976,6 +1061,132 @@
+   }
+ }
+ 
++class _KeyboardEmptyState extends StatelessWidget {
++  const _KeyboardEmptyState({
++    super.key,
++    required this.icon,
++    required this.title,
++    required this.message,
++    required this.actionLabel,
++    required this.onAction,
++  });
++
++  final IconData icon;
++  final String title;
++  final String message;
++  final String actionLabel;
++  final VoidCallback onAction;
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Center(
++      child: Padding(
++        padding: const EdgeInsets.all(20),
++        child: Column(
++          mainAxisSize: MainAxisSize.min,
++          children: [
++            Icon(
++              icon,
++              size: 32,
++              color: theme.colorScheme.onSurfaceVariant,
++            ),
++            const SizedBox(height: 8),
++            Text(
++              title,
++              style: theme.textTheme.titleSmall?.copyWith(
++                fontWeight: FontWeight.w800,
++              ),
++            ),
++            const SizedBox(height: 4),
++            Text(
++              message,
++              textAlign: TextAlign.center,
++              style: theme.textTheme.bodySmall?.copyWith(
++                color: theme.colorScheme.onSurfaceVariant,
++              ),
++            ),
++            const SizedBox(height: 10),
++            FilledButton.tonal(
++              onPressed: onAction,
++              child: Text(actionLabel),
++            ),
++          ],
++        ),
++      ),
++    );
++  }
++}
++
++class _MyKeysCard extends StatelessWidget {
++  const _MyKeysCard({
++    required this.icon,
++    required this.title,
++    required this.detail,
++    required this.selected,
++    required this.onTap,
++  });
++
++  final IconData icon;
++  final String title;
++  final String detail;
++  final bool selected;
++  final VoidCallback onTap;
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Material(
++      color: selected
++          ? theme.colorScheme.primaryContainer
++          : theme.colorScheme.surfaceContainerHigh,
++      borderRadius: BorderRadius.circular(12),
++      child: InkWell(
++        borderRadius: BorderRadius.circular(12),
++        onTap: onTap,
++        child: Padding(
++          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
++          child: Row(
++            children: [
++              Icon(
++                icon,
++                size: 20,
++                color: selected
++                    ? theme.colorScheme.onPrimaryContainer
++                    : theme.colorScheme.primary,
++              ),
++              const SizedBox(width: 8),
++              Expanded(
++                child: Column(
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: [
++                    Text(
++                      title,
++                      maxLines: 1,
++                      overflow: TextOverflow.ellipsis,
++                      style: theme.textTheme.labelLarge?.copyWith(
++                        fontWeight: FontWeight.w800,
++                      ),
++                    ),
++                    Text(
++                      detail,
++                      maxLines: 1,
++                      overflow: TextOverflow.ellipsis,
++                      style: theme.textTheme.labelSmall?.copyWith(
++                        color: theme.colorScheme.onSurfaceVariant,
++                      ),
++                    ),
++                  ],
++                ),
++              ),
++            ],
++          ),
++        ),
++      ),
++    );
++  }
++}
++
+ class _CategoryPill extends StatelessWidget {
+   final IconData icon;
+   final String label;
+diff -ruN edusheet_phase2_baseline/EduSheet-master/lib/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart edusheet_next/EduSheet-master/lib/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart
+--- edusheet_phase2_baseline/EduSheet-master/lib/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart	2026-08-30 07:09:42.000000000 +0000
++++ edusheet_next/EduSheet-master/lib/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart	2026-08-30 08:35:47.356477676 +0000
+@@ -1,9 +1,12 @@
+ import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
+ 
+ import 'package:edusheet/features/math_keyboard/domain/catalog/math_symbol_catalog.dart';
+ import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
++import 'package:edusheet/features/math_keyboard/domain/services/math_smart_palette.dart';
++import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_provider.dart';
+ 
+-class MathSymbolSearchSheet extends StatefulWidget {
++class MathSymbolSearchSheet extends ConsumerStatefulWidget {
+   final String Function(MathCategory category) categoryLabel;
+   final ValueChanged<MathSymbol> onSelected;
+ 
+@@ -14,10 +17,23 @@
+   });
+ 
+   @override
+-  State<MathSymbolSearchSheet> createState() => _MathSymbolSearchSheetState();
++  ConsumerState<MathSymbolSearchSheet> createState() =>
++      _MathSymbolSearchSheetState();
+ }
+ 
+-class _MathSymbolSearchSheetState extends State<MathSymbolSearchSheet> {
++class _MathSymbolSearchSheetState
++    extends ConsumerState<MathSymbolSearchSheet> {
++  static const _popularQueries = <String>[
++    'Fraction',
++    'Square root',
++    'Power',
++    'Angle',
++    'Integral',
++    'Vector',
++    'Mean',
++    'Greek',
++  ];
++
+   final TextEditingController _searchController = TextEditingController();
+   String _query = '';
+   MathCategory? _category;
+@@ -28,10 +44,22 @@
+     super.dispose();
+   }
+ 
++  void _applyQuery(String value) {
++    _searchController.value = TextEditingValue(
++      text: value,
++      selection: TextSelection.collapsed(offset: value.length),
++    );
++    setState(() => _query = value);
++  }
++
+   @override
+   Widget build(BuildContext context) {
+     final theme = Theme.of(context);
+-    final symbols = MathSymbolCatalog.search(_query, category: _category);
++    final favorites = ref.watch(favoriteSymbolsProvider);
++    final favoriteIds = favorites.map((symbol) => symbol.id).toSet();
++    final symbols = _query.trim().isEmpty
++        ? MathSmartPalette.forCategory(_category ?? MathCategory.basic)
++        : MathSymbolCatalog.search(_query, category: _category, limit: 80);
+ 
+     return SafeArea(
+       child: Padding(
+@@ -40,26 +68,32 @@
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: [
+             Text(
+-              'Find a symbol or formula',
++              'Find math quickly',
+               style: theme.textTheme.titleLarge?.copyWith(
+                 fontWeight: FontWeight.w800,
+               ),
+             ),
++            const SizedBox(height: 3),
++            Text(
++              'Search the way a teacher thinks — “fraction”, “angle”, “wavelength”, “standard deviation”…',
++              style: theme.textTheme.bodySmall?.copyWith(
++                color: theme.colorScheme.onSurfaceVariant,
++              ),
++            ),
+             const SizedBox(height: 10),
+             TextField(
+               controller: _searchController,
+               autofocus: true,
++              textInputAction: TextInputAction.search,
+               onChanged: (value) => setState(() => _query = value),
+               decoration: InputDecoration(
+-                hintText: 'Try: angle, triangle, fraction, wavelength…',
++                hintText: 'What do you want to add?',
+                 prefixIcon: const Icon(Icons.search_rounded),
+                 suffixIcon: _query.isEmpty
+                     ? null
+                     : IconButton(
+-                        onPressed: () {
+-                          _searchController.clear();
+-                          setState(() => _query = '');
+-                        },
++                        tooltip: 'Clear search',
++                        onPressed: () => _applyQuery(''),
+                         icon: const Icon(Icons.clear_rounded),
+                       ),
+                 border: OutlineInputBorder(
+@@ -67,6 +101,25 @@
+                 ),
+               ),
+             ),
++            if (_query.trim().isEmpty) ...[
++              const SizedBox(height: 10),
++              SizedBox(
++                height: 34,
++                child: ListView.separated(
++                  scrollDirection: Axis.horizontal,
++                  itemCount: _popularQueries.length,
++                  separatorBuilder: (_, _) => const SizedBox(width: 6),
++                  itemBuilder: (context, index) {
++                    final query = _popularQueries[index];
++                    return ActionChip(
++                      avatar: const Icon(Icons.bolt_rounded, size: 15),
++                      label: Text(query),
++                      onPressed: () => _applyQuery(query),
++                    );
++                  },
++                ),
++              ),
++            ],
+             const SizedBox(height: 10),
+             SizedBox(
+               height: 38,
+@@ -98,69 +151,54 @@
+               ),
+             ),
+             const SizedBox(height: 10),
+-            Text(
+-              '${symbols.length} results',
+-              style: theme.textTheme.labelMedium?.copyWith(
+-                color: theme.colorScheme.onSurfaceVariant,
+-              ),
++            Row(
++              children: [
++                Text(
++                  _query.trim().isEmpty
++                      ? '${symbols.length} useful starting points'
++                      : '${symbols.length} results',
++                  style: theme.textTheme.labelMedium?.copyWith(
++                    color: theme.colorScheme.onSurfaceVariant,
++                  ),
++                ),
++                const Spacer(),
++                Text(
++                  'Tap a result to insert',
++                  style: theme.textTheme.labelSmall?.copyWith(
++                    color: theme.colorScheme.onSurfaceVariant,
++                  ),
++                ),
++              ],
+             ),
+             const SizedBox(height: 8),
+             Expanded(
+               child: symbols.isEmpty
+-                  ? const Center(child: Text('No matching symbol found'))
++                  ? _SearchEmptyState(query: _query)
+                   : LayoutBuilder(
+                       builder: (context, constraints) {
+-                        final columns = constraints.maxWidth > 700
+-                            ? 5
+-                            : constraints.maxWidth > 460
+-                            ? 4
+-                            : 3;
++                        final columns = constraints.maxWidth >= 720 ? 2 : 1;
+                         return GridView.builder(
+                           gridDelegate:
+                               SliverGridDelegateWithFixedCrossAxisCount(
+                                 crossAxisCount: columns,
+                                 mainAxisSpacing: 8,
+                                 crossAxisSpacing: 8,
+-                                childAspectRatio: 1.45,
++                                childAspectRatio: columns == 1 ? 4.0 : 3.4,
+                               ),
+                           itemCount: symbols.length,
+                           itemBuilder: (context, index) {
+                             final symbol = symbols[index];
+-                            return Material(
+-                              color: theme.colorScheme.surfaceContainerHigh,
+-                              borderRadius: BorderRadius.circular(12),
+-                              child: InkWell(
+-                                borderRadius: BorderRadius.circular(12),
+-                                onTap: () => widget.onSelected(symbol),
+-                                child: Padding(
+-                                  padding: const EdgeInsets.all(8),
+-                                  child: Column(
+-                                    mainAxisAlignment: MainAxisAlignment.center,
+-                                    children: [
+-                                      Text(
+-                                        symbol.label,
+-                                        maxLines: 1,
+-                                        overflow: TextOverflow.ellipsis,
+-                                        style: const TextStyle(
+-                                          fontSize: 17,
+-                                          fontWeight: FontWeight.w700,
+-                                        ),
+-                                      ),
+-                                      const SizedBox(height: 4),
+-                                      Text(
+-                                        widget.categoryLabel(symbol.category),
+-                                        style: theme.textTheme.labelSmall
+-                                            ?.copyWith(
+-                                              fontSize: 9,
+-                                              color: theme
+-                                                  .colorScheme
+-                                                  .onSurfaceVariant,
+-                                            ),
+-                                      ),
+-                                    ],
+-                                  ),
+-                                ),
++                            final isFavorite = favoriteIds.contains(symbol.id);
++                            return _SearchResultCard(
++                              symbol: symbol,
++                              categoryLabel: widget.categoryLabel(
++                                symbol.category,
+                               ),
++                              isFavorite: isFavorite,
++                              onFavorite: () => ref
++                                  .read(favoriteSymbolsProvider.notifier)
++                                  .toggleFavorite(symbol),
++                              onSelected: () => widget.onSelected(symbol),
+                             );
+                           },
+                         );
+@@ -169,6 +207,183 @@
+             ),
+           ],
+         ),
++      ),
++    );
++  }
++}
++
++class _SearchResultCard extends StatelessWidget {
++  const _SearchResultCard({
++    required this.symbol,
++    required this.categoryLabel,
++    required this.isFavorite,
++    required this.onFavorite,
++    required this.onSelected,
++  });
++
++  final MathSymbol symbol;
++  final String categoryLabel;
++  final bool isFavorite;
++  final VoidCallback onFavorite;
++  final VoidCallback onSelected;
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    final humanLabel = symbol.accessibilityLabel.trim();
++    final showHumanLabel =
++        humanLabel.isNotEmpty && humanLabel.toLowerCase() != symbol.label.toLowerCase();
++
++    return Material(
++      color: theme.colorScheme.surfaceContainerHigh,
++      borderRadius: BorderRadius.circular(12),
++      child: InkWell(
++        borderRadius: BorderRadius.circular(12),
++        onTap: onSelected,
++        child: Padding(
++          padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
++          child: Row(
++            children: [
++              SizedBox(
++                width: 64,
++                child: Text(
++                  symbol.label,
++                  maxLines: 2,
++                  overflow: TextOverflow.ellipsis,
++                  textAlign: TextAlign.center,
++                  style: const TextStyle(
++                    fontSize: 19,
++                    fontWeight: FontWeight.w700,
++                  ),
++                ),
++              ),
++              const SizedBox(width: 10),
++              Expanded(
++                child: Column(
++                  mainAxisAlignment: MainAxisAlignment.center,
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: [
++                    Text(
++                      showHumanLabel ? humanLabel : categoryLabel,
++                      maxLines: 1,
++                      overflow: TextOverflow.ellipsis,
++                      style: theme.textTheme.labelLarge?.copyWith(
++                        fontWeight: FontWeight.w700,
++                      ),
++                    ),
++                    const SizedBox(height: 3),
++                    Wrap(
++                      spacing: 6,
++                      runSpacing: 3,
++                      crossAxisAlignment: WrapCrossAlignment.center,
++                      children: [
++                        Text(
++                          categoryLabel,
++                          style: theme.textTheme.labelSmall?.copyWith(
++                            color: theme.colorScheme.onSurfaceVariant,
++                          ),
++                        ),
++                        if (symbol.isStructural)
++                          _MiniBadge(
++                            icon: Icons.account_tree_outlined,
++                            label: 'Structure',
++                          ),
++                      ],
++                    ),
++                  ],
++                ),
++              ),
++              IconButton(
++                tooltip: isFavorite
++                    ? 'Remove from favourites'
++                    : 'Add to favourites',
++                visualDensity: VisualDensity.compact,
++                onPressed: onFavorite,
++                icon: Icon(
++                  isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
++                  color: isFavorite ? theme.colorScheme.primary : null,
++                ),
++              ),
++            ],
++          ),
++        ),
++      ),
++    );
++  }
++}
++
++class _MiniBadge extends StatelessWidget {
++  const _MiniBadge({required this.icon, required this.label});
++
++  final IconData icon;
++  final String label;
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Container(
++      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
++      decoration: BoxDecoration(
++        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.55),
++        borderRadius: BorderRadius.circular(999),
++      ),
++      child: Row(
++        mainAxisSize: MainAxisSize.min,
++        children: [
++          Icon(icon, size: 11, color: theme.colorScheme.onPrimaryContainer),
++          const SizedBox(width: 3),
++          Text(
++            label,
++            style: theme.textTheme.labelSmall?.copyWith(
++              fontSize: 9,
++              fontWeight: FontWeight.w700,
++              color: theme.colorScheme.onPrimaryContainer,
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
++
++class _SearchEmptyState extends StatelessWidget {
++  const _SearchEmptyState({required this.query});
++
++  final String query;
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Center(
++      child: Padding(
++        padding: const EdgeInsets.all(24),
++        child: Column(
++          mainAxisSize: MainAxisSize.min,
++          children: [
++            Icon(
++              Icons.search_off_rounded,
++              size: 34,
++              color: theme.colorScheme.onSurfaceVariant,
++            ),
++            const SizedBox(height: 8),
++            Text(
++              'No matching math found',
++              style: theme.textTheme.titleSmall?.copyWith(
++                fontWeight: FontWeight.w700,
++              ),
++            ),
++            const SizedBox(height: 4),
++            Text(
++              query.trim().isEmpty
++                  ? 'Try a topic such as algebra or geometry.'
++                  : 'Try a simpler teacher term, for example “root”, “angle”, “mean” or “vector”.',
++              textAlign: TextAlign.center,
++              style: theme.textTheme.bodySmall?.copyWith(
++                color: theme.colorScheme.onSurfaceVariant,
++              ),
++            ),
++          ],
++        ),
+       ),
+     );
+   }
+diff -ruN edusheet_phase2_baseline/EduSheet-master/test/features/editor/create_paper_save_sheet_test.dart edusheet_next/EduSheet-master/test/features/editor/create_paper_save_sheet_test.dart
+--- edusheet_phase2_baseline/EduSheet-master/test/features/editor/create_paper_save_sheet_test.dart	2026-08-30 08:16:44.000000000 +0000
++++ edusheet_next/EduSheet-master/test/features/editor/create_paper_save_sheet_test.dart	2026-08-30 08:34:52.239981436 +0000
+@@ -105,7 +105,7 @@
+       expect(find.text('Formula'), findsOneWidget);
+       expect(
+         find.text(
+-          'Math typing active — your next key goes into this formula.',
++          'Typing here — the next math key goes at the visible formula cursor.',
+         ),
+         findsOneWidget,
+       );
+diff -ruN edusheet_phase2_baseline/EduSheet-master/test/features/math_keyboard/formula_editor_sheet_test.dart edusheet_next/EduSheet-master/test/features/math_keyboard/formula_editor_sheet_test.dart
+--- edusheet_phase2_baseline/EduSheet-master/test/features/math_keyboard/formula_editor_sheet_test.dart	2026-08-30 08:16:44.000000000 +0000
++++ edusheet_next/EduSheet-master/test/features/math_keyboard/formula_editor_sheet_test.dart	2026-08-30 08:34:36.055804746 +0000
+@@ -2,6 +2,7 @@
+ import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_view.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:flutter_test/flutter_test.dart';
+@@ -73,7 +74,7 @@
+       _expectFormulaMathSession(tester, isVisible: true);
+       expect(
+         find.text(
+-          'Math typing active — your next key goes into this formula.',
++          'Typing here — the next math key goes at the visible formula cursor.',
+         ),
+         findsOneWidget,
+       );
+@@ -85,6 +86,9 @@
+       await tester.pump(const Duration(milliseconds: 400));
+ 
+       expect(find.text('More math & science keys'), findsOneWidget);
++      expect(find.byKey(const ValueKey('math-category-browser')), findsOneWidget);
++      final keyboardContext = tester.element(find.byType(MathKeyboardView));
++      expect(Navigator.of(keyboardContext).canPop(), isFalse);
+       _expectFormulaMathSession(tester, isVisible: true);
+ 
+       await tester.ensureVisible(find.text('TRIG'));
+diff -ruN edusheet_phase2_baseline/EduSheet-master/test/features/math_keyboard/math_symbol_search_sheet_test.dart edusheet_next/EduSheet-master/test/features/math_keyboard/math_symbol_search_sheet_test.dart
+--- edusheet_phase2_baseline/EduSheet-master/test/features/math_keyboard/math_symbol_search_sheet_test.dart	1970-01-01 00:00:00.000000000 +0000
++++ edusheet_next/EduSheet-master/test/features/math_keyboard/math_symbol_search_sheet_test.dart	2026-08-30 08:34:36.188281568 +0000
+@@ -0,0 +1,89 @@
++import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
++import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_provider.dart';
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++
++void main() {
++  testWidgets('teacher search promotes plain-language math discovery', (
++    tester,
++  ) async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    MathSymbol? selected;
++
++    await tester.pumpWidget(
++      ProviderScope(
++        child: MaterialApp(
++          home: Scaffold(
++            body: SizedBox(
++              width: 820,
++              height: 720,
++              child: MathSymbolSearchSheet(
++                categoryLabel: (category) => category.name.toUpperCase(),
++                onSelected: (symbol) => selected = symbol,
++              ),
++            ),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.text('Find math quickly'), findsOneWidget);
++    expect(find.text('Fraction'), findsOneWidget);
++    expect(find.text('Square root'), findsOneWidget);
++
++    await tester.tap(find.text('Fraction'));
++    await tester.pumpAndSettle();
++
++    expect(find.text('fraction with numerator and denominator'), findsWidgets);
++    expect(find.text('Structure'), findsWidgets);
++
++    final resultLabel = find.text('fraction with numerator and denominator').first;
++    await tester.tap(resultLabel);
++    await tester.pump();
++
++    expect(selected, isNotNull);
++    expect(selected!.tex, r'\frac{}{}');
++  });
++
++  testWidgets('search results can be favourited without inserting', (
++    tester,
++  ) async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++
++    await tester.pumpWidget(
++      ProviderScope(
++        child: MaterialApp(
++          home: Scaffold(
++            body: SizedBox(
++              width: 820,
++              height: 720,
++              child: MathSymbolSearchSheet(
++                categoryLabel: (category) => category.name.toUpperCase(),
++                onSelected: (_) {},
++              ),
++            ),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    await tester.tap(find.text('Square root'));
++    await tester.pumpAndSettle();
++
++    final addFavourite = find.byTooltip('Add to favourites').first;
++    await tester.tap(addFavourite);
++    await tester.pumpAndSettle();
++
++    final context = tester.element(find.byType(MathSymbolSearchSheet));
++    final container = ProviderScope.containerOf(context, listen: false);
++    final favorites = container.read(favoriteSymbolsProvider);
++
++    expect(favorites, isNotEmpty);
++    expect(find.byTooltip('Remove from favourites'), findsWidgets);
++  });
++}

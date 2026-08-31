@@ -1,0 +1,4 @@
+checking file docs/MATH_KEYBOARD_UX_PHASE3_TEST_HOTFIX2_2026-08-30.md
+checking file test/features/math_keyboard/formula_editor_sheet_test.dart
+checking file test/features/paper_composer/question_composer_typing_viewport_test.dart
+checking file test/features/question_bank/question_bank_paper_composer_widget_test.dart

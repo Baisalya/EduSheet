@@ -1,0 +1,329 @@
+--- a/lib/features/math_keyboard/presentation/widgets/math_keyboard_field.dart
++++ b/lib/features/math_keyboard/presentation/widgets/math_keyboard_field.dart
+@@ -61,6 +61,10 @@
+     super.didUpdateWidget(oldWidget);
+ 
+     final previousFocusNode = _focusNode;
++    final focusNodeChanged = !identical(oldWidget.focusNode, widget.focusNode);
++    final controllerChanged = !identical(oldWidget.controller, widget.controller);
++    if (!focusNodeChanged && !controllerChanged) return;
++
+     final keyboardBeforeUpdate = ref.read(mathKeyboardControllerProvider);
+     final ownedVisibleMathSession =
+         keyboardBeforeUpdate.isVisible &&
+@@ -68,66 +72,79 @@
+         identical(keyboardBeforeUpdate.activeController, oldWidget.controller) &&
+         identical(keyboardBeforeUpdate.activeFocusNode, previousFocusNode);
+     final hadFocusBeforeUpdate = previousFocusNode.hasFocus;
+-    final focusNodeChanged = oldWidget.focusNode != widget.focusNode;
+-    final controllerChanged = oldWidget.controller != widget.controller;
++    final previousFocusWasOwned = _ownsFocusNode;
+ 
+     if (focusNodeChanged) {
+       previousFocusNode.removeListener(_onFocusChange);
+-      if (!ownedVisibleMathSession) {
+-        _mathKeyboardController.unregisterController(
+-          oldWidget.controller,
+-          focusNode: previousFocusNode,
+-        );
+-      }
+-      if (_ownsFocusNode) {
+-        previousFocusNode.dispose();
+-      }
+-
+       _focusNode = widget.focusNode ?? FocusNode();
+       _ownsFocusNode = widget.focusNode == null;
+       _focusNode.addListener(_onFocusChange);
+-
+-      // Replacing a FocusNode during a rebuild should not eject a teacher from
+-      // an active formula session. The new node is not attached to the rebuilt
+-      // child until after this method returns, so restore focus post-frame.
+-      if (hadFocusBeforeUpdate) {
+-        WidgetsBinding.instance.addPostFrameCallback((_) {
+-          if (_disposed || !mounted || !_focusNode.canRequestFocus) return;
+-          _focusNode.requestFocus();
+-          _ensureVisibleAboveKeyboard();
+-        });
+-      }
+       _isFocused = _focusNode.hasFocus || hadFocusBeforeUpdate;
+     }
+ 
+-    if (controllerChanged && !focusNodeChanged && !ownedVisibleMathSession) {
++    final updatedController = widget.controller;
++    final updatedFocusNode = _focusNode;
++    final previousController = oldWidget.controller;
++
++    // Riverpod must not be mutated from didUpdateWidget. Synchronize the
++    // keyboard owner only after the rebuilt editor/focus node is attached.
++    WidgetsBinding.instance.addPostFrameCallback((_) {
++      if (focusNodeChanged && previousFocusWasOwned) {
++        try {
++          previousFocusNode.dispose();
++        } catch (_) {
++          // The old internally-owned focus node may already be disposed during
++          // route teardown. Ownership synchronization is best-effort here.
++        }
++      }
++
++      if (_disposed || !mounted) return;
++
++      final currentKeyboardState = ref.read(mathKeyboardControllerProvider);
++      final shouldTransferVisibleSession =
++          ownedVisibleMathSession &&
++          currentKeyboardState.isVisible &&
++          currentKeyboardState.type == KeyboardType.math &&
++          identical(currentKeyboardState.activeController, previousController) &&
++          identical(currentKeyboardState.activeFocusNode, previousFocusNode) &&
++          (hadFocusBeforeUpdate || updatedFocusNode.hasFocus);
++
++      if (shouldTransferVisibleSession) {
++        _mathKeyboardController.transferMathSessionOwner(
++          previousController,
++          updatedController,
++          updatedFocusNode,
++        );
++
++        if (hadFocusBeforeUpdate &&
++            updatedFocusNode.canRequestFocus &&
++            updatedFocusNode.context != null &&
++            !updatedFocusNode.hasFocus) {
++          updatedFocusNode.requestFocus();
++        }
++        _ensureVisibleAboveKeyboard();
++        return;
++      }
++
+       _mathKeyboardController.unregisterController(
+-        oldWidget.controller,
++        previousController,
+         focusNode: previousFocusNode,
+       );
+-    }
+-
+-    final shouldOwnUpdatedSession =
+-        ownedVisibleMathSession &&
+-        (hadFocusBeforeUpdate || _focusNode.hasFocus);
+-
+-    if (shouldOwnUpdatedSession) {
+-      // Transfer ownership in one provider state emission. Publishing a hidden
+-      // keyboard between the old and new owner can flash the system IME or
+-      // animate the custom keyboard out and back in on Windows.
+-      _mathKeyboardController.transferMathSessionOwner(
+-        oldWidget.controller,
+-        widget.controller,
+-        _focusNode,
+-      );
+-      _isFocused = true;
+-      _ensureVisibleAboveKeyboard();
+-      return;
+-    }
+-
+-    if (_focusNode.hasFocus && (focusNodeChanged || controllerChanged)) {
+-      _mathKeyboardController.registerController(widget.controller, _focusNode);
+-    }
++
++      if (hadFocusBeforeUpdate &&
++          updatedFocusNode.canRequestFocus &&
++          updatedFocusNode.context != null &&
++          !updatedFocusNode.hasFocus) {
++        updatedFocusNode.requestFocus();
++      }
++
++      if (updatedFocusNode.hasFocus) {
++        _mathKeyboardController.registerController(
++          updatedController,
++          updatedFocusNode,
++        );
++      }
++    });
+   }
+ 
+   @override
+@@ -255,13 +272,23 @@
+     void reveal() {
+       if (_disposed || !mounted) return;
+ 
+-      Scrollable.ensureVisible(
+-        context,
+-        duration: const Duration(milliseconds: 260),
+-        curve: Curves.easeOutCubic,
+-        alignment: 0.18,
+-        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+-      );
++      final renderObject = context.findRenderObject();
++      if (renderObject == null || !renderObject.attached) return;
++
++      try {
++        Scrollable.ensureVisible(
++          context,
++          duration: const Duration(milliseconds: 260),
++          curve: Curves.easeOutCubic,
++          alignment: 0.18,
++          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
++        );
++      } catch (_) {
++        // Keeping the field above the keyboard is a convenience. During route
++        // teardown/re-parenting a ScrollPosition can detach between frames;
++        // focus/input must remain functional even when reveal is no longer
++        // possible for that frame.
++      }
+     }
+ 
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+--- a/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
++++ b/lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+@@ -177,6 +177,10 @@
+             label: 'Resize math keyboard',
+             hint: 'Drag up or down, or use increase and decrease actions',
+             value: '${state.height.round()} pixels',
++            increasedValue:
++                '${(state.height + 40).clamp(240.0, 520.0).round()} pixels',
++            decreasedValue:
++                '${(state.height - 40).clamp(240.0, 520.0).round()} pixels',
+             onIncrease: () => controller.setHeight(state.height + 40),
+             onDecrease: () => controller.setHeight(state.height - 40),
+             child: ExcludeSemantics(
+--- a/test/features/math_keyboard/math_keyboard_controller_build_test.dart
++++ b/test/features/math_keyboard/math_keyboard_controller_build_test.dart
+@@ -5,6 +5,8 @@
+ import 'package:flutter_test/flutter_test.dart';
+ 
+ void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
+   test('Build insertion cancels temporary modes and inserts immediately', () {
+     final container = ProviderContainer();
+     addTearDown(container.dispose);
+--- a/test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
++++ b/test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
+@@ -1,5 +1,3 @@
+-import 'dart:ui' show SemanticsAction;
+-
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_view.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+@@ -30,8 +28,17 @@
+       final resizeNode = tester.getSemantics(
+         find.bySemanticsLabel('Resize math keyboard'),
+       );
+-      expect(resizeNode.hasAction(SemanticsAction.increase), isTrue);
+-      expect(resizeNode.hasAction(SemanticsAction.decrease), isTrue);
++      expect(
++        resizeNode,
++        isSemantics(
++          label: 'Resize math keyboard',
++          value: '320 pixels',
++          increasedValue: '360 pixels',
++          decreasedValue: '280 pixels',
++          hasIncreaseAction: true,
++          hasDecreaseAction: true,
++        ),
++      );
+ 
+       await tester.tap(find.byKey(const ValueKey('math-build-button')));
+       await tester.pump(const Duration(milliseconds: 200));
+--- /dev/null
++++ b/docs/MATH_KEYBOARD_UX_PHASE5_HOTFIX1_2026-08-30.md
+@@ -0,0 +1,74 @@
++# Math Keyboard UX Phase 5 — Hotfix 1
++
++Date: 2026-08-30
++Baseline: `EduSheet_Math_UX_Phase5_Full_2026-08-30.zip`
++
++## Why this hotfix exists
++
++The Phase 5 targeted test run exposed four related hardening defects:
++
++1. `math_keyboard_controller_build_test.dart` used platform text-input channels without initializing a Flutter test binding.
++2. `MathKeyboardField.didUpdateWidget()` synchronously transferred/unregistered/registered Riverpod state while the widget tree was building. Riverpod correctly rejects provider mutation from lifecycle methods.
++3. The resize handle exposed accessibility increase/decrease actions with a current `value`, but omitted the required `increasedValue` / `decreasedValue` semantics values.
++4. The extreme-layout test called a `SemanticsNode.hasAction` API that is not available in the installed Flutter SDK.
++
++The provider and semantics failures cascaded into multiple scheduler/render/MathField teardown errors in `formula_editor_sheet_test.dart`; those are treated as secondary effects of the two production defects rather than separate feature regressions.
++
++## Production fixes
++
++### Post-frame editor-owner synchronization
++
++`MathKeyboardField.didUpdateWidget()` now only updates local widget/focus bookkeeping synchronously. Any Riverpod keyboard-session mutation is deferred until the rebuilt editor is attached in a post-frame callback.
++
++The handoff re-checks the current keyboard owner before transferring, so a stale rebuild callback cannot steal a newer math session.
++
++The visible math keyboard remains visible during a legitimate FocusNode/controller replacement; no temporary hidden/system-keyboard state is published.
++
++### Safe reveal during teardown
++
++`_ensureVisibleAboveKeyboard()` now verifies the render object is still attached and treats `Scrollable.ensureVisible` as best-effort. Route teardown/re-parenting can detach a ScrollPosition between frames; that must never break formula input.
++
++### Complete resize accessibility semantics
++
++The resize handle now supplies:
++
++- current value
++- increased value
++- decreased value
++- increase action
++- decrease action
++
++The announced values follow the existing 240–520 px keyboard-height clamp.
++
++## Test fixes
++
++- Initialize `TestWidgetsFlutterBinding` in the controller build test before platform-channel use.
++- Validate resize actions with Flutter's supported `isSemantics(...)` matcher instead of `SemanticsNode.hasAction`.
++
++## Scope
++
++Production files changed:
++
++- `lib/features/math_keyboard/presentation/widgets/math_keyboard_field.dart`
++- `lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart`
++
++Test files changed:
++
++- `test/features/math_keyboard/math_keyboard_controller_build_test.dart`
++- `test/features/math_keyboard/math_keyboard_extreme_layout_test.dart`
++
++No database, repository, MathExpression schema, Question Bank persistence, migration, or generated Riverpod file was changed.
++
++## Local validation
++
++Run:
++
++```powershell
++dart format lib test
++flutter test test/features/math_keyboard/math_keyboard_controller_build_test.dart
++flutter test test/features/math_keyboard/math_keyboard_field_session_hardening_test.dart
++flutter test test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
++flutter test test/features/math_keyboard/formula_editor_sheet_test.dart
++flutter test
++flutter analyze --no-pub
++```
+--- /dev/null
++++ b/README_PHASE5_HOTFIX1.txt
+@@ -0,0 +1,14 @@
++EduSheet Math UX Phase 5 - Hotfix 1
++===================================
++
++Apply this hotfix on top of the Phase 5 build.
++
++Fixes:
++- Riverpod provider mutation from MathKeyboardField.didUpdateWidget
++- atomic visible-session handoff after rebuild, post-frame
++- stale/detached Scrollable.ensureVisible callbacks
++- incomplete resize accessibility increased/decreased values
++- missing Flutter test binding in controller test
++- unsupported SemanticsNode.hasAction test API
++
++See docs/MATH_KEYBOARD_UX_PHASE5_HOTFIX1_2026-08-30.md for details.
+--- /dev/null
++++ b/PHASE5_HOTFIX1_CHANGED_FILES.txt
+@@ -0,0 +1,8 @@
++lib/features/math_keyboard/presentation/widgets/math_keyboard_field.dart
++lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
++test/features/math_keyboard/math_keyboard_controller_build_test.dart
++test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
++docs/MATH_KEYBOARD_UX_PHASE5_HOTFIX1_2026-08-30.md
++README_PHASE5_HOTFIX1.txt
++MATH_UX_PHASE5_HOTFIX1.patch
++PHASE5_HOTFIX1_CHANGED_FILES.txt

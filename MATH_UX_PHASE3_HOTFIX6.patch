@@ -1,0 +1,43 @@
+diff --git a/test/features/paper_composer/question_composer_typing_viewport_test.dart b/test/features/paper_composer/question_composer_typing_viewport_test.dart
+index 9ad3039..e1eafa0 100644
+--- a/test/features/paper_composer/question_composer_typing_viewport_test.dart
++++ b/test/features/paper_composer/question_composer_typing_viewport_test.dart
+@@ -94,12 +94,35 @@ void main() {
+     await tester.pump();
+     await tester.pump(const Duration(milliseconds: 250));
+ 
++    final structureBrowser = find.byKey(
++      const ValueKey('math-structure-browser'),
++    );
++    final pythagorasLabel = find.text('Pythagoras');
+     await tester.dragUntilVisible(
+-      find.text('Pythagoras'),
+-      find.byKey(const ValueKey('math-structure-browser')),
++      pythagorasLabel,
++      structureBrowser,
+       const Offset(0, -180),
+     );
+-    await tester.tap(find.text('Pythagoras'));
++    // dragUntilVisible stops as soon as the label enters the viewport. The
++    // first visible pixels can still sit under the keyboard's bottom action
++    // area, so move the card farther into the interactive region before
++    // tapping its real hit target.
++    await tester.drag(structureBrowser, const Offset(0, -120));
++    await tester.pump();
++    await tester.pump(const Duration(milliseconds: 120));
++
++    final pythagorasCard = find.byKey(
++      const ValueKey('math-template-math.7815fae5f495'),
++    );
++    expect(pythagorasCard, findsOneWidget);
++    final pythagorasTapTarget = find.ancestor(
++      of: pythagorasLabel,
++      matching: find.byType(InkWell),
++    );
++    expect(pythagorasTapTarget, findsOneWidget);
++    expect(tester.getCenter(pythagorasTapTarget).dy, lessThan(820));
++
++    await tester.tap(pythagorasTapTarget);
+     await tester.pump();
+     await tester.pump(const Duration(milliseconds: 250));
+ 

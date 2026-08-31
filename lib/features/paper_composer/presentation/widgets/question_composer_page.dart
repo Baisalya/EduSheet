@@ -108,11 +108,6 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     for (final controller in _optionControllers.values) {
       controller.dispose();
     }
-    try {
-      ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
-    } catch (_) {
-      // Provider scope may already be disposing during teardown.
-    }
     super.dispose();
   }
 
@@ -888,6 +883,26 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
               icon: Icons.document_scanner_outlined,
               label: 'Scan text',
               onTap: _scanQuestionText,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.touch_app_outlined,
+              size: 15,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 5),
+            Expanded(
+              child: Text(
+                'Math and diagrams are inserted exactly at the question cursor. Tap where they should appear first.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ],
         ),

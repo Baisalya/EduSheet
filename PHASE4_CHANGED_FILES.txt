@@ -1,0 +1,7 @@
+docs/MATH_KEYBOARD_UX_PHASE4_2026-08-30.md
+lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart
+lib/features/math_keyboard/presentation/widgets/math_keyboard_action_bar.dart
+lib/features/math_keyboard/presentation/widgets/math_keyboard_view.dart
+test/features/math_keyboard/formula_editor_sheet_test.dart
+test/features/math_keyboard/math_keyboard_action_bar_test.dart
+test/features/math_keyboard/math_keyboard_responsive_test.dart

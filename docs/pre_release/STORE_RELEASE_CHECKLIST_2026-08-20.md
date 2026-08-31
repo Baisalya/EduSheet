@@ -6,8 +6,9 @@ before sending the build to production review.
 
 ## Required store configuration
 
-- Create an active **non-consumable** product named
-  `edusheet_premium_lifetime` in Google Play Console and App Store Connect.
+- Create an annual auto-renewing subscription named
+  `edusheet_premium_yearly` in Google Play Console, but keep its base plan
+  inactive while EduSheet should remain fully free.
 - Set its price, localized title/description, tax category and reviewer notes.
 - Add the release build to a closed/internal test track and complete a real
   purchase, cancellation, pending-payment and restore test with licence users.
@@ -35,12 +36,13 @@ before sending the build to production review.
 - Verify app links, document VIEW/SEND handling, camera/gallery permission
   wording, PDF/Word export, purchase restore and update prompts on physical
   devices.
-- Keep `PREMIUM_ENABLED=true` for store builds. Use a different
-  `PREMIUM_PRODUCT_ID` only when the matching store product is configured.
+- Keep `PREMIUM_ENABLED=true` for Google Play builds. The app fails open while
+  the matching product is inactive/unavailable and enables checkout only when
+  Play returns `edusheet_premium_yearly` as an active product.
 
 ## Purchase verification note
 
-The current lifetime entitlement is delivered after the platform store reports
-the product as purchased/restored and is cached locally for offline use. Before
-introducing high-value server features or large-scale licensing, add server-side
-receipt/token verification and account-based entitlement recovery.
+The current subscription entitlement is delivered after the platform store
+reports the product as purchased/restored. Before activating the paid base plan,
+add server-side purchase-token verification and subscription lifecycle handling
+for renewal, expiry, grace period and account hold.

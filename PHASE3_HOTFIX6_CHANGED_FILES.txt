@@ -1,0 +1,3 @@
+test/features/paper_composer/question_composer_typing_viewport_test.dart
+docs/MATH_KEYBOARD_UX_PHASE3_HOTFIX6_PYTHAGORAS_TAP.md
+MATH_UX_PHASE3_HOTFIX6.patch

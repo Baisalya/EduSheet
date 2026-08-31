@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/math_keyboard_controller.dart';
@@ -42,23 +40,23 @@ class _MathKeyboardOverlay extends ConsumerWidget {
     final state = ref.watch(mathKeyboardControllerProvider);
     final isMathVisible = state.isVisible && state.type == KeyboardType.math;
 
-    final screenHeight = MediaQuery.sizeOf(context).height;
-    final adaptiveMax = math.max(240.0, math.min(500.0, screenHeight * 0.62));
-    final adaptiveMin = math.min(280.0, adaptiveMax);
-    final effectiveHeight = state.height
-        .clamp(adaptiveMin, adaptiveMax)
-        .toDouble();
+    final effectiveHeight = effectiveMathKeyboardHeight(
+      MediaQuery.sizeOf(context),
+      state.height,
+    );
 
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
       child: AnimatedSlide(
+        key: const ValueKey('math-keyboard-slide'),
         offset: isMathVisible ? Offset.zero : const Offset(0, 1),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.fastOutSlowIn,
+        duration: mathKeyboardTransitionDuration,
+        curve: Curves.easeOutCubic,
         child: Material(
           child: SizedBox(
+            key: const ValueKey('math-keyboard-overlay'),
             height: effectiveHeight,
             child: MathKeyboardInteractionRegion(
               child: HeroControllerScope.none(

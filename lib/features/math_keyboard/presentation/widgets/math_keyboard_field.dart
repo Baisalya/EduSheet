@@ -61,37 +61,99 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     super.didUpdateWidget(oldWidget);
 
     final previousFocusNode = _focusNode;
-    if (oldWidget.focusNode != widget.focusNode) {
+    final focusNodeChanged = !identical(oldWidget.focusNode, widget.focusNode);
+    final controllerChanged = !identical(
+      oldWidget.controller,
+      widget.controller,
+    );
+    if (!focusNodeChanged && !controllerChanged) return;
+
+    final keyboardBeforeUpdate = ref.read(mathKeyboardControllerProvider);
+    final ownedVisibleMathSession =
+        keyboardBeforeUpdate.isVisible &&
+        keyboardBeforeUpdate.type == KeyboardType.math &&
+        identical(
+          keyboardBeforeUpdate.activeController,
+          oldWidget.controller,
+        ) &&
+        identical(keyboardBeforeUpdate.activeFocusNode, previousFocusNode);
+    final hadFocusBeforeUpdate = previousFocusNode.hasFocus;
+    final previousFocusWasOwned = _ownsFocusNode;
+
+    if (focusNodeChanged) {
       previousFocusNode.removeListener(_onFocusChange);
-      _mathKeyboardController.unregisterController(
-        oldWidget.controller,
-        focusNode: previousFocusNode,
-      );
-      if (_ownsFocusNode) {
-        previousFocusNode.dispose();
-      }
       _focusNode = widget.focusNode ?? FocusNode();
       _ownsFocusNode = widget.focusNode == null;
       _focusNode.addListener(_onFocusChange);
-      _isFocused = _focusNode.hasFocus;
-      if (_isFocused) {
+      _isFocused = _focusNode.hasFocus || hadFocusBeforeUpdate;
+    }
+
+    final updatedController = widget.controller;
+    final updatedFocusNode = _focusNode;
+    final previousController = oldWidget.controller;
+
+    // Riverpod must not be mutated from didUpdateWidget. Synchronize the
+    // keyboard owner only after the rebuilt editor/focus node is attached.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (focusNodeChanged && previousFocusWasOwned) {
+        try {
+          previousFocusNode.dispose();
+        } catch (_) {
+          // The old internally-owned focus node may already be disposed during
+          // route teardown. Ownership synchronization is best-effort here.
+        }
+      }
+
+      if (_disposed || !mounted) return;
+
+      final currentKeyboardState = ref.read(mathKeyboardControllerProvider);
+      final shouldTransferVisibleSession =
+          ownedVisibleMathSession &&
+          currentKeyboardState.isVisible &&
+          currentKeyboardState.type == KeyboardType.math &&
+          identical(
+            currentKeyboardState.activeController,
+            previousController,
+          ) &&
+          identical(currentKeyboardState.activeFocusNode, previousFocusNode) &&
+          (hadFocusBeforeUpdate || updatedFocusNode.hasFocus);
+
+      if (shouldTransferVisibleSession) {
+        _mathKeyboardController.transferMathSessionOwner(
+          previousController,
+          updatedController,
+          updatedFocusNode,
+        );
+
+        if (hadFocusBeforeUpdate &&
+            updatedFocusNode.canRequestFocus &&
+            updatedFocusNode.context != null &&
+            !updatedFocusNode.hasFocus) {
+          updatedFocusNode.requestFocus();
+        }
+        _ensureVisibleAboveKeyboard();
+        return;
+      }
+
+      _mathKeyboardController.unregisterController(
+        previousController,
+        focusNode: previousFocusNode,
+      );
+
+      if (hadFocusBeforeUpdate &&
+          updatedFocusNode.canRequestFocus &&
+          updatedFocusNode.context != null &&
+          !updatedFocusNode.hasFocus) {
+        updatedFocusNode.requestFocus();
+      }
+
+      if (updatedFocusNode.hasFocus) {
         _mathKeyboardController.registerController(
-          widget.controller,
-          _focusNode,
+          updatedController,
+          updatedFocusNode,
         );
       }
-    }
-
-    if (oldWidget.controller == widget.controller) return;
-
-    _mathKeyboardController.unregisterController(
-      oldWidget.controller,
-      focusNode: previousFocusNode,
-    );
-
-    if (_focusNode.hasFocus) {
-      _mathKeyboardController.registerController(widget.controller, _focusNode);
-    }
+    });
   }
 
   @override
@@ -116,6 +178,98 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
       _focusNode.dispose();
     }
     super.dispose();
+  }
+
+  /// MathField disables its text-input connection while the custom keyboard is
+  /// active. That correctly suppresses the native IME, but on Windows it also
+  /// means ordinary hardware letters and numbers have no text client to reach.
+  /// Route those keys through the same structured editor adapter as on-screen
+  /// math keys. Other editors keep their normal native hardware-key behavior.
+  KeyEventResult _handleHardwareKey(FocusNode node, KeyEvent event) {
+    if (_disposed ||
+        event is! KeyDownEvent && event is! KeyRepeatEvent ||
+        widget.controller is! math_kb.MathFieldEditingController) {
+      return KeyEventResult.ignored;
+    }
+
+    final state = ref.read(mathKeyboardControllerProvider);
+    if (!state.isVisible ||
+        state.type != KeyboardType.math ||
+        !identical(state.activeController, widget.controller)) {
+      return KeyEventResult.ignored;
+    }
+
+    final hardware = HardwareKeyboard.instance;
+    if (hardware.isControlPressed ||
+        hardware.isAltPressed ||
+        hardware.isMetaPressed) {
+      return KeyEventResult.ignored;
+    }
+
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.delete) {
+      _mathKeyboardController.deleteBackward();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _mathKeyboardController.moveCursorLeft();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _mathKeyboardController.moveCursorRight();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.tab ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      _mathKeyboardController.nextField();
+      return KeyEventResult.handled;
+    }
+
+    final character = _mathHardwareCharacter(event);
+    if (character == null) return KeyEventResult.ignored;
+    _mathKeyboardController.insertText(character);
+    return KeyEventResult.handled;
+  }
+
+  String? _mathHardwareCharacter(KeyEvent event) {
+    final character = event.character;
+    if (character != null &&
+        character.runes.length == 1 &&
+        RegExp(r'^[A-Za-z0-9+\-*/=().,\[\]{}<>^_%|!:]$').hasMatch(character)) {
+      return character;
+    }
+
+    final explicitKeys = <LogicalKeyboardKey, String>{
+      LogicalKeyboardKey.numpad0: '0',
+      LogicalKeyboardKey.numpad1: '1',
+      LogicalKeyboardKey.numpad2: '2',
+      LogicalKeyboardKey.numpad3: '3',
+      LogicalKeyboardKey.numpad4: '4',
+      LogicalKeyboardKey.numpad5: '5',
+      LogicalKeyboardKey.numpad6: '6',
+      LogicalKeyboardKey.numpad7: '7',
+      LogicalKeyboardKey.numpad8: '8',
+      LogicalKeyboardKey.numpad9: '9',
+      LogicalKeyboardKey.numpadAdd: '+',
+      LogicalKeyboardKey.numpadSubtract: '-',
+      LogicalKeyboardKey.numpadMultiply: '*',
+      LogicalKeyboardKey.numpadDivide: '/',
+      LogicalKeyboardKey.numpadDecimal: '.',
+      LogicalKeyboardKey.numpadEqual: '=',
+    };
+    final explicit = explicitKeys[event.logicalKey];
+    if (explicit != null) return explicit;
+
+    final keyLabel = event.logicalKey.keyLabel;
+    if (keyLabel.length == 1 &&
+        RegExp(r'^[A-Za-z0-9+\-*/=().,\[\]{}<>^_%|!:]$').hasMatch(keyLabel)) {
+      return HardwareKeyboard.instance.isShiftPressed
+          ? keyLabel.toUpperCase()
+          : keyLabel.toLowerCase();
+    }
+    return null;
   }
 
   void _onFocusChange() {
@@ -219,13 +373,23 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     void reveal() {
       if (_disposed || !mounted) return;
 
-      Scrollable.ensureVisible(
-        context,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        alignment: 0.18,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-      );
+      final renderObject = context.findRenderObject();
+      if (renderObject == null || !renderObject.attached) return;
+
+      try {
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: 0.18,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+        );
+      } catch (_) {
+        // Keeping the field above the keyboard is a convenience. During route
+        // teardown/re-parenting a ScrollPosition can detach between frames;
+        // focus/input must remain functional even when reveal is no longer
+        // possible for that frame.
+      }
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -265,63 +429,67 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
               SystemChannels.textInput.invokeMethod('TextInput.hide');
             }
           },
-          child: Stack(
-            alignment: Alignment.centerRight,
-            children: [
-              widget.builder(context, _focusNode, isMathActive),
-              if (_isFocused)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: Material(
-                    color: isMathActive
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.secondaryContainer,
-                    shape: const CircleBorder(),
-                    elevation: 4,
-                    child: IconButton(
-                      icon: Icon(
-                        isMathActive ? Icons.keyboard : Icons.functions,
-                        size: 20,
-                        color: isMathActive
-                            ? Theme.of(context).colorScheme.onPrimary
-                            : Theme.of(
-                                context,
-                              ).colorScheme.onSecondaryContainer,
-                      ),
-                      onPressed: () async {
-                        if (isMathActive) {
-                          _mathKeyboardController.showSystemKeyboard();
-                          // Re-show system keyboard with a small delay to ensure readOnly is false
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (_disposed) return;
-                            SystemChannels.textInput.invokeMethod(
-                              'TextInput.show',
+          child: Focus(
+            canRequestFocus: false,
+            onKeyEvent: _handleHardwareKey,
+            child: Stack(
+              alignment: Alignment.centerRight,
+              children: [
+                widget.builder(context, _focusNode, isMathActive),
+                if (_isFocused)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Material(
+                      color: isMathActive
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.secondaryContainer,
+                      shape: const CircleBorder(),
+                      elevation: 4,
+                      child: IconButton(
+                        icon: Icon(
+                          isMathActive ? Icons.keyboard : Icons.functions,
+                          size: 20,
+                          color: isMathActive
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.onSecondaryContainer,
+                        ),
+                        onPressed: () async {
+                          if (isMathActive) {
+                            _mathKeyboardController.showSystemKeyboard();
+                            // Re-show system keyboard with a small delay to ensure readOnly is false
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (_disposed) return;
+                              SystemChannels.textInput.invokeMethod(
+                                'TextInput.show',
+                              );
+                            });
+                          } else {
+                            _mathKeyboardController.showMathKeyboardFor(
+                              widget.controller,
+                              _focusNode,
                             );
-                          });
-                        } else {
-                          _mathKeyboardController.showMathKeyboardFor(
-                            widget.controller,
-                            _focusNode,
-                          );
-                          // Explicitly hide system keyboard without losing focus
-                          SystemChannels.textInput.invokeMethod(
-                            'TextInput.hide',
-                          );
-                          _ensureVisibleAboveKeyboard();
-                        }
+                            // Explicitly hide system keyboard without losing focus
+                            SystemChannels.textInput.invokeMethod(
+                              'TextInput.hide',
+                            );
+                            _ensureVisibleAboveKeyboard();
+                          }
 
-                        if (!_focusNode.hasFocus) {
-                          _focusNode.requestFocus();
-                          _ensureVisibleAboveKeyboard();
-                        }
-                      },
-                      tooltip: isMathActive
-                          ? 'System Keyboard'
-                          : 'Math Keyboard',
+                          if (!_focusNode.hasFocus) {
+                            _focusNode.requestFocus();
+                            _ensureVisibleAboveKeyboard();
+                          }
+                        },
+                        tooltip: isMathActive
+                            ? 'System Keyboard'
+                            : 'Math Keyboard',
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
         if (isMathActive && _isFocused) _buildMathPreview(),
@@ -387,12 +555,14 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
                 color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 6),
-              Text(
-                'BOOK PREVIEW',
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
+              Expanded(
+                child: Text(
+                  'BOOK PREVIEW',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
                 ),
               ),
             ],

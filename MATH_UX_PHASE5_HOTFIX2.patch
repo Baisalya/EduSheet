@@ -1,0 +1,42 @@
+--- a/test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
++++ b/test/features/math_keyboard/math_keyboard_extreme_layout_test.dart
+@@ -1,3 +1,4 @@
++import 'package:edusheet/features/math_keyboard/domain/catalog/math_symbol_catalog.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_view.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+@@ -44,8 +45,33 @@
+       await tester.pump(const Duration(milliseconds: 200));
+ 
+       expect(find.text('Build math faster'), findsOneWidget);
+-      final fractionCard = find.bySemanticsLabel('Insert Fraction');
++
++      final fraction = MathSymbolCatalog.findByTex(r'\frac{}{}');
++      expect(fraction, isNotNull);
++      final fractionCard = find.byKey(ValueKey('math-build-${fraction!.id}'));
++      final structureBrowser = find.byKey(
++        const ValueKey('math-structure-browser'),
++      );
++
++      // At 320x520 with 2x text scaling the first structure card starts below
++      // the initial Build viewport. Scroll the real local panel until the
++      // canonical fraction card is rendered and physically visible before
++      // asserting its semantics and adaptive height.
++      await tester.dragUntilVisible(
++        fractionCard,
++        structureBrowser,
++        const Offset(0, -120),
++      );
++      await tester.pump();
++
+       expect(fractionCard, findsOneWidget);
++      expect(
++        find.descendant(
++          of: fractionCard,
++          matching: find.bySemanticsLabel('Insert Fraction'),
++        ),
++        findsOneWidget,
++      );
+       expect(tester.getSize(fractionCard).height, greaterThanOrEqualTo(100));
+       expect(tester.takeException(), isNull);
+       semantics.dispose();

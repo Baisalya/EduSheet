@@ -23,6 +23,11 @@ class AppConfig {
       ? microsoftPremiumProductId
       : premiumProductId;
 
+  /// When enabled, the store catalogue is the activation switch.
+  ///
+  /// An unavailable/inactive product keeps complimentary access enabled. Once
+  /// the matching Play product is active, the app exposes checkout and locks
+  /// only the optional premium styles until purchase.
   static const bool premiumEnabled = bool.fromEnvironment(
     'PREMIUM_ENABLED',
     defaultValue: false,

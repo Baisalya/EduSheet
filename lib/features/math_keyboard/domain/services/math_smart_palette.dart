@@ -23,10 +23,14 @@ class MathSmartPalette {
     r'_{}',
     r'\sqrt{}',
     '(',
+    '=',
+    r'\times',
+    r'\div',
     r'\pm',
-    r'\pi',
+    r'\neq',
     r'\leq',
     r'\geq',
+    r'\pi',
   ];
 
   static const Map<MathCategory, List<String>> _sources =

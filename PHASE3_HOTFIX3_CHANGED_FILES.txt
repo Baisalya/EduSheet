@@ -1,0 +1,4 @@
+lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart
+test/features/paper_composer/question_composer_typing_viewport_test.dart
+test/features/question_bank/question_bank_paper_composer_widget_test.dart
+docs/MATH_KEYBOARD_UX_PHASE3_HOTFIX3_2026-08-30.md

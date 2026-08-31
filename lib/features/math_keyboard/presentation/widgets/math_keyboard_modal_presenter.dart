@@ -1,13 +1,12 @@
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
-/// Presents secondary math-keyboard panels inside the keyboard's own Navigator.
+/// Presents the few math-keyboard flows that genuinely need a separate sheet.
 ///
-/// The math keyboard is hosted by a nested Navigator in [MathKeyboardWrapper].
-/// Using the app/root Navigator for category/search/action sheets creates a
-/// second, unrelated modal layer above the formula editor and can also steal
-/// focus from the active math field. Keeping these panels local makes the
-/// keyboard one coordinated editing surface on Windows and Android.
+/// Phase 3 keeps categories, structures, key actions and shape picking inside
+/// [MathKeyboardView]. Search remains a sheet because its TextField needs the
+/// system text keyboard. It still uses the keyboard's nested Navigator rather
+/// than the app/root Navigator so formula ownership and focus stay coordinated.
 Future<T?> showMathKeyboardPanel<T>({
   required BuildContext context,
   required WidgetBuilder builder,
