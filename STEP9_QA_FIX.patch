@@ -1,0 +1,18 @@
+--- a/lib/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart
+@@ -1,5 +1,6 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
+ import 'package:flutter/material.dart';
+ 
+ class WordPageLayoutDraft {
+@@ -41,7 +42,7 @@
+       );
+     }
+ 
+-    return showModalBottomSheet<WordPageLayoutDraft>(
++    return showAdaptiveModalBottomSheet<WordPageLayoutDraft>(
+       context: context,
+       isScrollControlled: true,
+       useSafeArea: true,

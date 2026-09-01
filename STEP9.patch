@@ -1,0 +1,3076 @@
+diff --git a/STEP9_WORD_PAGE_LAYOUT_TOOLS.md b/STEP9_WORD_PAGE_LAYOUT_TOOLS.md
+new file mode 100644
+index 0000000..a8a173c
+--- /dev/null
++++ b/STEP9_WORD_PAGE_LAYOUT_TOOLS.md
+@@ -0,0 +1,135 @@
++# EduSheet Step 9 — Word-style Page & Layout Tools
++
++## Goal
++
++Step 9 adds document/page-layout controls on top of the Step-8 dual Smart/Word editor without introducing a second paper model. The canonical `Paper` remains the source of truth for Word Mode, Smart Mode, preview, PDF and DOCX export.
++
++## Implemented
++
++### Canonical page layout
++
++A new backward-compatible `PaperPageLayout` value is persisted inside `Paper` JSON. Old papers without this field load safe defaults automatically.
++
++Supported settings:
++
++- Page size: paper style/template, A4, A5, A3, Letter, Legal
++- Portrait / landscape
++- Independent top/right/bottom/left margins
++- Header distance
++- Footer distance
++- Line spacing: 1.0 / 1.15 / 1.5 / 2.0 from the authoring UI
++- Paragraph spacing
++- Page-number position: footer center, footer right, header right
++- Repeated header text
++- Repeated footer text
++- Page numbers on/off
++
++No database migration and no new package dependency are required.
++
++### Android + Windows page setup
++
++Word Mode now exposes a `Layout` / `Page setup` action.
++
++- Phone/compact mode: scrollable bottom sheet
++- Windows/wide mode: bounded dialog
++- Margin presets: Normal, Narrow, Moderate
++- Numeric margin entry uses millimetres for teacher-friendly editing
++- Settings are applied back to the same `Paper` through the editor provider
++
++### Word Mode canvas
++
++The Word canvas reacts to page size, orientation, margins, line spacing and paragraph spacing. Running header/footer/page-number previews are shown in the document surface.
++
++### Manual page break
++
++Word Mode can insert a real manual page-break block.
++
++The block is compatibility-safe metadata-backed Word content, therefore it:
++
++- consumes 0 marks
++- consumes no question number
++- does not affect Answer Any N
++- does not enter OMR counts
++- does not become a Question Bank assessment item
++
++Smart Mode preserves it as Word content rather than destructively converting it.
++
++### Preview parity
++
++Paper preview now reflects:
++
++- selected page proportions
++- portrait/landscape orientation
++- asymmetric margins
++- line spacing
++- paragraph spacing
++- running header/footer/page-number position
++- section page-break markers
++- manual Word page-break markers
++
++### PDF parity
++
++Normal Create Paper PDF export now uses the canonical page-layout settings when no explicit specialist export override is supplied:
++
++- page size and orientation
++- asymmetric margins
++- running header/footer
++- page numbers and position
++- manual page breaks
++- section page breaks
++- paragraph spacing around section/question flow
++
++Existing `PaperExportConfig` remains an explicit export override for specialist output modes.
++
++### DOCX parity
++
++The handmade OpenXML exporter now writes page-layout information into the DOCX package:
++
++- `w:pgSz` for selected page size
++- `w:orient="landscape"` where applicable
++- asymmetric `w:pgMar`
++- header/footer distances
++- proper header/footer package parts and relationships
++- styles relationship + `word/styles.xml`
++- document line/paragraph spacing defaults
++- PAGE and NUMPAGES fields
++- footer-center / footer-right / header-right page-number placement
++- real `<w:br w:type="page"/>` manual page breaks
++
++When a manual page break exists inside a two-column template section, Word export intentionally falls back to linear section flow for that section so the explicit page break is not trapped inside a table cell.
++
++## QA added
++
++- Legacy Paper JSON gets page-layout defaults
++- Step-9 page settings survive Paper JSON round-trip
++- Unsafe persisted page-layout values are bounded
++- Manual page break consumes no assessment ordinal/marks
++- DOCX page size/orientation/margins are asserted
++- DOCX header/footer/styles relationships are asserted
++- PAGE/NUMPAGES fields are asserted
++- Manual page break is asserted in `word/document.xml`
++
++## Validation performed in this packaging environment
++
++The packaging environment does not contain Flutter/Dart, so runtime Flutter tests cannot be executed here. Static checks performed before packaging:
++
++- `git diff --check`
++- all changed `package:edusheet/...` imports resolve
++- string/comment-aware delimiter scan across changed Dart files
++- no merge conflict markers in changed files
++- ZIP CRC/integrity validation
++
++## Required workstation gate
++
++Run after applying the modified ZIP:
++
++```powershell
++dart format .
++flutter analyze
++flutter test test/features/editor/paper_page_layout_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
++
++Step 9 should be locked only after the real Flutter workstation reports a clean analyzer and passing tests.
+diff --git a/lib/features/editor/domain/models/paper_model.dart b/lib/features/editor/domain/models/paper_model.dart
+index 7acbc79..a819aa0 100644
+--- a/lib/features/editor/domain/models/paper_model.dart
++++ b/lib/features/editor/domain/models/paper_model.dart
+@@ -3,6 +3,7 @@ import 'dart:convert';
+ import 'package:flutter/material.dart';
+ 
+ import 'math_expression.dart';
++import 'paper_page_layout.dart';
+ 
+ /// Values 0-2 are persisted by legacy releases. Never reorder them.
+ enum QuestionType {
+@@ -133,6 +134,7 @@ class Paper {
+   final String headerText;
+   final String footerText;
+   final bool showPageNumbers;
++  final PaperPageLayout pageLayout;
+ 
+   Paper({
+     required this.id,
+@@ -152,6 +154,7 @@ class Paper {
+     this.headerText = '',
+     this.footerText = '',
+     this.showPageNumbers = true,
++    this.pageLayout = PaperPageLayout.defaults,
+     required this.createdAt,
+   });
+ 
+@@ -174,6 +177,7 @@ class Paper {
+     String? headerText,
+     String? footerText,
+     bool? showPageNumbers,
++    PaperPageLayout? pageLayout,
+     DateTime? createdAt,
+   }) {
+     return Paper(
+@@ -197,6 +201,7 @@ class Paper {
+       headerText: headerText ?? this.headerText,
+       footerText: footerText ?? this.footerText,
+       showPageNumbers: showPageNumbers ?? this.showPageNumbers,
++      pageLayout: pageLayout ?? this.pageLayout,
+       createdAt: createdAt ?? this.createdAt,
+     );
+   }
+@@ -224,6 +229,7 @@ class Paper {
+       'headerText': headerText,
+       'footerText': footerText,
+       'showPageNumbers': showPageNumbers,
++      'pageLayout': pageLayout.toJson(),
+       'createdAt': createdAt.toIso8601String(),
+     };
+   }
+@@ -269,6 +275,11 @@ class Paper {
+       headerText: json['headerText']?.toString() ?? '',
+       footerText: json['footerText']?.toString() ?? '',
+       showPageNumbers: json['showPageNumbers'] != false,
++      pageLayout: json['pageLayout'] is Map
++          ? PaperPageLayout.fromJson(
++              Map<String, dynamic>.from(json['pageLayout'] as Map),
++            )
++          : PaperPageLayout.defaults,
+       createdAt: json['createdAt'] != null
+           ? DateTime.parse(json['createdAt'])
+           : DateTime.now(),
+diff --git a/lib/features/editor/domain/models/paper_page_layout.dart b/lib/features/editor/domain/models/paper_page_layout.dart
+new file mode 100644
+index 0000000..8337125
+--- /dev/null
++++ b/lib/features/editor/domain/models/paper_page_layout.dart
+@@ -0,0 +1,219 @@
++/// Canonical page-layout settings shared by Smart Mode, Word Mode and export.
++///
++/// These values deliberately live in the editor domain instead of the PDF
++/// feature so the paper remains the single source of truth. Old papers that do
++/// not contain `pageLayout` deserialize to [PaperPageLayout.defaults].
++enum PaperPageSize { useTemplate, a4, a5, a3, letter, legal }
++
++enum PaperPageOrientation { portrait, landscape }
++
++enum PaperPageNumberPosition { footerCenter, footerRight, headerRight }
++
++class PaperPageMargins {
++  final double topPoints;
++  final double rightPoints;
++  final double bottomPoints;
++  final double leftPoints;
++
++  const PaperPageMargins({
++    this.topPoints = 36,
++    this.rightPoints = 36,
++    this.bottomPoints = 36,
++    this.leftPoints = 36,
++  });
++
++  const PaperPageMargins.all(double points)
++      : topPoints = points,
++        rightPoints = points,
++        bottomPoints = points,
++        leftPoints = points;
++
++  PaperPageMargins copyWith({
++    double? topPoints,
++    double? rightPoints,
++    double? bottomPoints,
++    double? leftPoints,
++  }) {
++    return PaperPageMargins(
++      topPoints: topPoints ?? this.topPoints,
++      rightPoints: rightPoints ?? this.rightPoints,
++      bottomPoints: bottomPoints ?? this.bottomPoints,
++      leftPoints: leftPoints ?? this.leftPoints,
++    );
++  }
++
++  Map<String, dynamic> toJson() => {
++        'topPoints': topPoints,
++        'rightPoints': rightPoints,
++        'bottomPoints': bottomPoints,
++        'leftPoints': leftPoints,
++      };
++
++  factory PaperPageMargins.fromJson(Map<String, dynamic> json) {
++    double value(String key) => _bounded(
++          (json[key] as num?)?.toDouble() ?? 36,
++          min: 12,
++          max: 144,
++        );
++
++    return PaperPageMargins(
++      topPoints: value('topPoints'),
++      rightPoints: value('rightPoints'),
++      bottomPoints: value('bottomPoints'),
++      leftPoints: value('leftPoints'),
++    );
++  }
++
++  bool get isUniform =>
++      (topPoints - rightPoints).abs() < 0.01 &&
++      (topPoints - bottomPoints).abs() < 0.01 &&
++      (topPoints - leftPoints).abs() < 0.01;
++}
++
++class PaperPageLayout {
++  final PaperPageSize pageSize;
++  final PaperPageOrientation orientation;
++  final PaperPageMargins margins;
++  final double headerDistancePoints;
++  final double footerDistancePoints;
++  final double lineSpacing;
++  final double paragraphSpacingPoints;
++  final PaperPageNumberPosition pageNumberPosition;
++
++  const PaperPageLayout({
++    this.pageSize = PaperPageSize.useTemplate,
++    this.orientation = PaperPageOrientation.portrait,
++    this.margins = const PaperPageMargins(),
++    this.headerDistancePoints = 18,
++    this.footerDistancePoints = 18,
++    this.lineSpacing = 1.15,
++    this.paragraphSpacingPoints = 6,
++    this.pageNumberPosition = PaperPageNumberPosition.footerCenter,
++  });
++
++  static const defaults = PaperPageLayout();
++
++  PaperPageLayout copyWith({
++    PaperPageSize? pageSize,
++    PaperPageOrientation? orientation,
++    PaperPageMargins? margins,
++    double? headerDistancePoints,
++    double? footerDistancePoints,
++    double? lineSpacing,
++    double? paragraphSpacingPoints,
++    PaperPageNumberPosition? pageNumberPosition,
++  }) {
++    return PaperPageLayout(
++      pageSize: pageSize ?? this.pageSize,
++      orientation: orientation ?? this.orientation,
++      margins: margins ?? this.margins,
++      headerDistancePoints:
++          headerDistancePoints ?? this.headerDistancePoints,
++      footerDistancePoints:
++          footerDistancePoints ?? this.footerDistancePoints,
++      lineSpacing: lineSpacing ?? this.lineSpacing,
++      paragraphSpacingPoints:
++          paragraphSpacingPoints ?? this.paragraphSpacingPoints,
++      pageNumberPosition: pageNumberPosition ?? this.pageNumberPosition,
++    );
++  }
++
++  Map<String, dynamic> toJson() => {
++        'pageSize': pageSize.name,
++        'orientation': orientation.name,
++        'margins': margins.toJson(),
++        'headerDistancePoints': headerDistancePoints,
++        'footerDistancePoints': footerDistancePoints,
++        'lineSpacing': lineSpacing,
++        'paragraphSpacingPoints': paragraphSpacingPoints,
++        'pageNumberPosition': pageNumberPosition.name,
++      };
++
++  factory PaperPageLayout.fromJson(Map<String, dynamic> json) {
++    T enumValue<T extends Enum>(List<T> values, dynamic raw, T fallback) {
++      final name = raw?.toString();
++      for (final value in values) {
++        if (value.name == name) {
++          return value;
++        }
++      }
++      return fallback;
++    }
++
++    final marginJson = json['margins'];
++    return PaperPageLayout(
++      pageSize: enumValue(
++        PaperPageSize.values,
++        json['pageSize'],
++        PaperPageSize.useTemplate,
++      ),
++      orientation: enumValue(
++        PaperPageOrientation.values,
++        json['orientation'],
++        PaperPageOrientation.portrait,
++      ),
++      margins: marginJson is Map
++          ? PaperPageMargins.fromJson(Map<String, dynamic>.from(marginJson))
++          : const PaperPageMargins(),
++      headerDistancePoints: _bounded(
++        (json['headerDistancePoints'] as num?)?.toDouble() ?? 18,
++        min: 0,
++        max: 72,
++      ),
++      footerDistancePoints: _bounded(
++        (json['footerDistancePoints'] as num?)?.toDouble() ?? 18,
++        min: 0,
++        max: 72,
++      ),
++      lineSpacing: _bounded(
++        (json['lineSpacing'] as num?)?.toDouble() ?? 1.15,
++        min: 0.8,
++        max: 3,
++      ),
++      paragraphSpacingPoints: _bounded(
++        (json['paragraphSpacingPoints'] as num?)?.toDouble() ?? 6,
++        min: 0,
++        max: 36,
++      ),
++      pageNumberPosition: enumValue(
++        PaperPageNumberPosition.values,
++        json['pageNumberPosition'],
++        PaperPageNumberPosition.footerCenter,
++      ),
++    );
++  }
++
++  /// Returns fixed page dimensions in PDF points when [pageSize] is explicit.
++  /// `useTemplate` intentionally returns null so the caller can resolve the
++  /// current visual template without creating a dependency from editor -> PDF.
++  ({double width, double height})? get explicitPageSizePoints {
++    final portrait = switch (pageSize) {
++      PaperPageSize.a4 => (width: 595.28, height: 841.89),
++      PaperPageSize.a5 => (width: 419.53, height: 595.28),
++      PaperPageSize.a3 => (width: 841.89, height: 1190.55),
++      PaperPageSize.letter => (width: 612.0, height: 792.0),
++      PaperPageSize.legal => (width: 612.0, height: 1008.0),
++      PaperPageSize.useTemplate => null,
++    };
++    if (portrait == null) {
++      return null;
++    }
++    if (orientation == PaperPageOrientation.landscape) {
++      return (width: portrait.height, height: portrait.width);
++    }
++    return portrait;
++  }
++}
++
++double _bounded(double value, {required double min, required double max}) {
++  if (!value.isFinite) {
++    return min;
++  }
++  if (value < min) {
++    return min;
++  }
++  if (value > max) {
++    return max;
++  }
++  return value;
++}
+diff --git a/lib/features/editor/presentation/providers/editor_provider.dart b/lib/features/editor/presentation/providers/editor_provider.dart
+index d369196..a7ee465 100644
+--- a/lib/features/editor/presentation/providers/editor_provider.dart
++++ b/lib/features/editor/presentation/providers/editor_provider.dart
+@@ -4,6 +4,7 @@ import 'package:edusheet/features/pdf/presentation/providers/template_provider.d
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import 'package:riverpod_annotation/riverpod_annotation.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/editor/domain/models/math_expression.dart';
+ import 'package:uuid/uuid.dart';
+ import 'package:flutter/material.dart';
+@@ -227,6 +228,27 @@ class EditorState extends _$EditorState {
+     );
+   }
+ 
++  /// Applies canonical page/layout settings as one undoable paper mutation.
++  /// Word Mode, preview, PDF and Word export all read these same values.
++  void updatePageLayout(PaperPageLayout layout) {
++    state = state.copyWith(pageLayout: layout);
++  }
++
++  /// Applies the Word-style Page Setup surface as one undoable mutation.
++  void applyPageLayout({
++    required PaperPageLayout layout,
++    required String headerText,
++    required String footerText,
++    required bool showPageNumbers,
++  }) {
++    state = state.copyWith(
++      pageLayout: layout,
++      headerText: headerText,
++      footerText: footerText,
++      showPageNumbers: showPageNumbers,
++    );
++  }
++
+   void updateBranding({String? schoolName, String? logo, int? logoIndex}) {
+     if (logoIndex != null) {
+       final newLogos = List<String>.from(state.logos);
+diff --git a/lib/features/paper_composer/application/word_content_block_service.dart b/lib/features/paper_composer/application/word_content_block_service.dart
+index 444de1c..3ba1172 100644
+--- a/lib/features/paper_composer/application/word_content_block_service.dart
++++ b/lib/features/paper_composer/application/word_content_block_service.dart
+@@ -3,7 +3,7 @@ import 'dart:convert';
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:uuid/uuid.dart';
+ 
+-enum WordContentBlockKind { paragraph, table, image }
++enum WordContentBlockKind { paragraph, table, image, pageBreak }
+ 
+ /// Compatibility-safe bridge for Word Mode free-form content.
+ ///
+@@ -53,6 +53,14 @@ class WordContentBlockService {
+     );
+   }
+ 
++  static Question pageBreak() {
++    return _base(
++      kind: WordContentBlockKind.pageBreak,
++      text: _delta(''),
++      plainText: '',
++    );
++  }
++
+   static Question _base({
+     required WordContentBlockKind kind,
+     required String text,
+diff --git a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+index 829340d..812bd74 100644
+--- a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
++++ b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+@@ -14,6 +14,7 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/section_fo
+ import 'package:edusheet/features/paper_composer/presentation/widgets/word_paper_editor.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_page.dart';
+ import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
++import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
+ import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
+ import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
+ import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
+@@ -549,6 +550,10 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+     final paper = ref.watch(editorStateProvider);
+     final saveStatus = ref.watch(editorSaveStatusProvider);
+     final editor = ref.read(editorStateProvider.notifier);
++    final template = PaperTemplateResolver.resolve(
++      paper.templateId,
++      ref.watch(templateProvider).all,
++    );
+ 
+     _sectionKeys.removeWhere(
+       (id, key) => !paper.sections.any((section) => section.id == id),
+@@ -592,6 +597,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                         ? WordPaperEditor(
+                             paper: paper,
+                             compact: compact,
++                            templatePageSize: template.paperSize,
+                             onTitleChanged: editor.updateTitle,
+                             onSchoolNameChanged: (value) =>
+                                 editor.updateBranding(schoolName: value),
+@@ -624,6 +630,14 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                                 _actions.deleteQuestion(sectionId, questionId),
+                             onAddSection: _addSection,
+                             onAddQuestion: (sectionId) => _openQuestion(sectionId),
++                            onApplyPageLayout:
++                                (layout, headerText, footerText, showPageNumbers) =>
++                                    editor.applyPageLayout(
++                                      layout: layout,
++                                      headerText: headerText,
++                                      footerText: footerText,
++                                      showPageNumbers: showPageNumbers,
++                                    ),
+                           )
+                         : Row(
+                             children: [
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart b/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+index 837115f..cb7575d 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+@@ -1,9 +1,11 @@
+ import 'dart:io';
+ 
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
+ import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
+ import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
++import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+@@ -33,7 +35,16 @@ class PaperPreviewPage extends ConsumerWidget {
+       paper.templateId,
+       ref.watch(templateProvider).all,
+     );
+-    final pageWidth = _previewPageWidth(template.paperSize);
++    final pagePoints = _resolvedPagePoints(paper.pageLayout, template.paperSize);
++    final pageWidth = _previewPageWidth(pagePoints.width);
++    final pageScale = pageWidth / pagePoints.width;
++    final previewPadding = EdgeInsets.fromLTRB(
++      (paper.pageLayout.margins.leftPoints * pageScale).clamp(18, 120).toDouble(),
++      (paper.pageLayout.margins.topPoints * pageScale).clamp(20, 140).toDouble(),
++      (paper.pageLayout.margins.rightPoints * pageScale).clamp(18, 120).toDouble(),
++      (paper.pageLayout.margins.bottomPoints * pageScale).clamp(24, 160).toDouble(),
++    );
++    final pageMinHeight = (pagePoints.height * pageScale).clamp(700, 1500).toDouble();
+     final marksDiagnostics = PaperMarksTeacherDiagnostics.fromPaper(paper);
+ 
+     return Scaffold(
+@@ -58,10 +69,10 @@ class PaperPreviewPage extends ConsumerWidget {
+                 key: const Key('paper-preview-document'),
+                 constraints: BoxConstraints(
+                   maxWidth: pageWidth,
+-                  minHeight: 900,
++                  minHeight: pageMinHeight,
+                 ),
+                 child: Container(
+-                  padding: const EdgeInsets.fromLTRB(34, 38, 34, 48),
++                  padding: previewPadding,
+                   decoration: BoxDecoration(
+                     color: Colors.white,
+                     borderRadius: BorderRadius.circular(8),
+@@ -85,10 +96,18 @@ class PaperPreviewPage extends ConsumerWidget {
+                       style: TextStyle(
+                         color: Colors.black,
+                         fontSize: template.questionFontSize,
++                        height: paper.pageLayout.lineSpacing,
+                       ),
+                       child: Column(
+                         crossAxisAlignment: CrossAxisAlignment.stretch,
+                         children: [
++                          if (paper.headerText.trim().isNotEmpty ||
++                              (paper.showPageNumbers &&
++                                  paper.pageLayout.pageNumberPosition ==
++                                      PaperPageNumberPosition.headerRight)) ...[
++                            _PreviewRunningHeader(paper: paper),
++                            const Divider(height: 18),
++                          ],
+                           PaperHeaderLayoutPreview(
+                             template: template,
+                             paper: paper,
+@@ -111,6 +130,14 @@ class PaperPreviewPage extends ConsumerWidget {
+                               section: section,
+                               template: template,
+                             ),
++                          if (paper.footerText.trim().isNotEmpty ||
++                              (paper.showPageNumbers &&
++                                  paper.pageLayout.pageNumberPosition !=
++                                      PaperPageNumberPosition.headerRight)) ...[
++                            const SizedBox(height: 18),
++                            const Divider(height: 18),
++                            _PreviewFooter(paper: paper),
++                          ],
+                         ],
+                       ),
+                     ),
+@@ -124,18 +151,83 @@ class PaperPreviewPage extends ConsumerWidget {
+     );
+   }
+ 
+-  static double _previewPageWidth(PaperSize size) {
+-    switch (size) {
+-      case PaperSize.a5:
+-        return 650;
+-      case PaperSize.a4:
+-      case PaperSize.letter:
+-        return 820;
+-      case PaperSize.a3:
+-        return 980;
+-      case PaperSize.legal:
+-        return 780;
++  static ({double width, double height}) _resolvedPagePoints(
++    PaperPageLayout layout,
++    PaperSize templateSize,
++  ) {
++    final explicit = layout.explicitPageSizePoints;
++    if (explicit != null) return explicit;
++    final portrait = switch (templateSize) {
++      PaperSize.a4 => (width: 595.28, height: 841.89),
++      PaperSize.a5 => (width: 419.53, height: 595.28),
++      PaperSize.a3 => (width: 841.89, height: 1190.55),
++      PaperSize.letter => (width: 612.0, height: 792.0),
++      PaperSize.legal => (width: 612.0, height: 1008.0),
++    };
++    if (layout.orientation == PaperPageOrientation.landscape) {
++      return (width: portrait.height, height: portrait.width);
+     }
++    return portrait;
++  }
++
++  static double _previewPageWidth(double widthPoints) {
++    return (820 * widthPoints / 595.28).clamp(620, 980).toDouble();
++  }
++}
++
++class _PreviewRunningHeader extends StatelessWidget {
++  final Paper paper;
++
++  const _PreviewRunningHeader({required this.paper});
++
++  @override
++  Widget build(BuildContext context) {
++    final showNumber = paper.showPageNumbers &&
++        paper.pageLayout.pageNumberPosition ==
++            PaperPageNumberPosition.headerRight;
++    return Row(
++      children: [
++        if (paper.headerText.trim().isNotEmpty)
++          Expanded(
++            child: Text(
++              paper.headerText.trim(),
++              style: const TextStyle(fontSize: 9),
++            ),
++          )
++        else
++          const Spacer(),
++        if (showNumber)
++          const Text(
++            'Page 1',
++            textAlign: TextAlign.right,
++            style: TextStyle(fontSize: 9),
++          ),
++      ],
++    );
++  }
++}
++
++class _PreviewFooter extends StatelessWidget {
++  final Paper paper;
++
++  const _PreviewFooter({required this.paper});
++
++  @override
++  Widget build(BuildContext context) {
++    final position = paper.pageLayout.pageNumberPosition;
++    final parts = <String>[
++      if (paper.footerText.trim().isNotEmpty) paper.footerText.trim(),
++      if (paper.showPageNumbers &&
++          position != PaperPageNumberPosition.headerRight)
++        'Page 1',
++    ];
++    return Text(
++      parts.join('  •  '),
++      textAlign: position == PaperPageNumberPosition.footerRight
++          ? TextAlign.right
++          : TextAlign.center,
++      style: const TextStyle(fontSize: 9),
++    );
+   }
+ }
+ 
+@@ -204,12 +296,20 @@ class _PreviewSection extends StatelessWidget {
+   @override
+   Widget build(BuildContext context) {
+     final questions = section.questions;
++    final hasManualPageBreak = questions.any(
++      (question) =>
++          question.isWordContentBlock &&
++          WordContentBlockService.kindOf(question) ==
++              WordContentBlockKind.pageBreak,
++    );
+     final answerRule = PaperStructureService.answerRuleText(section);
+     return Padding(
+       padding: const EdgeInsets.only(bottom: 20),
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.stretch,
+         children: [
++          if (section.pageBreakBefore)
++            const _PreviewPageBreak(label: 'Section starts on a new page'),
+           if (section.showTitle || section.prefix.trim().isNotEmpty)
+             Text(
+               '${section.prefix} ${section.showTitle ? section.title : ''}'
+@@ -237,7 +337,7 @@ class _PreviewSection extends StatelessWidget {
+             ),
+           if (section.showDivider) const Divider(height: 22),
+           const SizedBox(height: 4),
+-          if (template.paperLayout == PaperLayout.twoColumn)
++          if (template.paperLayout == PaperLayout.twoColumn && !hasManualPageBreak)
+             for (var index = 0; index < questions.length; index += 2)
+               Padding(
+                 padding: const EdgeInsets.only(bottom: 8),
+@@ -246,6 +346,7 @@ class _PreviewSection extends StatelessWidget {
+                   children: [
+                     Expanded(
+                       child: _PreviewQuestion(
++                        paper: paper,
+                         question: questions[index],
+                         label: questions[index].isWordContentBlock
+                             ? ''
+@@ -264,6 +365,7 @@ class _PreviewSection extends StatelessWidget {
+                     Expanded(
+                       child: index + 1 < questions.length
+                           ? _PreviewQuestion(
++                              paper: paper,
+                               question: questions[index + 1],
+                               label: questions[index + 1].isWordContentBlock
+                                   ? ''
+@@ -285,6 +387,7 @@ class _PreviewSection extends StatelessWidget {
+           else
+             for (final questionEntry in questions.asMap().entries)
+               _PreviewQuestion(
++                paper: paper,
+                 question: questionEntry.value,
+                 label: questionEntry.value.isWordContentBlock
+                     ? ''
+@@ -305,11 +408,13 @@ class _PreviewSection extends StatelessWidget {
+ }
+ 
+ class _PreviewQuestion extends StatelessWidget {
++  final Paper paper;
+   final Question question;
+   final String label;
+   final PaperSection section;
+ 
+   const _PreviewQuestion({
++    required this.paper,
+     required this.question,
+     required this.label,
+     required this.section,
+@@ -317,9 +422,15 @@ class _PreviewQuestion extends StatelessWidget {
+ 
+   @override
+   Widget build(BuildContext context) {
++    if (question.isWordContentBlock &&
++        WordContentBlockService.kindOf(question) ==
++            WordContentBlockKind.pageBreak) {
++      return const _PreviewPageBreak();
++    }
++    final paragraphGap = paper.pageLayout.paragraphSpacingPoints;
+     if (question.isWordContentBlock) {
+       return Padding(
+-        padding: const EdgeInsets.only(bottom: 10),
++        padding: EdgeInsets.only(bottom: (4 + paragraphGap).clamp(6, 30).toDouble()),
+         child: _PreviewQuestionContent(question: question, section: section),
+       );
+     }
+@@ -328,7 +439,9 @@ class _PreviewQuestion extends StatelessWidget {
+       section,
+     );
+     return Padding(
+-      padding: const EdgeInsets.only(bottom: 15),
++      padding: EdgeInsets.only(
++        bottom: (8 + paragraphGap).clamp(10, 36).toDouble(),
++      ),
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.stretch,
+         children: [
+@@ -366,6 +479,41 @@ class _PreviewQuestion extends StatelessWidget {
+   }
+ }
+ 
++class _PreviewPageBreak extends StatelessWidget {
++  final String label;
++
++  const _PreviewPageBreak({this.label = 'Page break'});
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Padding(
++      padding: const EdgeInsets.symmetric(vertical: 12),
++      child: Row(
++        children: [
++          Expanded(child: Divider(color: theme.colorScheme.outlineVariant)),
++          const SizedBox(width: 8),
++          Icon(
++            Icons.insert_page_break_outlined,
++            size: 16,
++            color: theme.colorScheme.onSurfaceVariant,
++          ),
++          const SizedBox(width: 5),
++          Text(
++            label,
++            style: theme.textTheme.labelSmall?.copyWith(
++              color: theme.colorScheme.onSurfaceVariant,
++              fontWeight: FontWeight.w700,
++            ),
++          ),
++          const SizedBox(width: 8),
++          Expanded(child: Divider(color: theme.colorScheme.outlineVariant)),
++        ],
++      ),
++    );
++  }
++}
++
+ class _PreviewQuestionContent extends StatelessWidget {
+   static const _codec = QuestionRichTextCodec();
+ 
+diff --git a/lib/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart b/lib/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart
+new file mode 100644
+index 0000000..fb57a10
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart
+@@ -0,0 +1,575 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
++import 'package:flutter/material.dart';
++
++class WordPageLayoutDraft {
++  final PaperPageLayout layout;
++  final String headerText;
++  final String footerText;
++  final bool showPageNumbers;
++
++  const WordPageLayoutDraft({
++    required this.layout,
++    required this.headerText,
++    required this.footerText,
++    required this.showPageNumbers,
++  });
++}
++
++/// Word-style page setup shared by Android and Windows.
++///
++/// The sheet edits canonical paper layout values rather than an export-only
++/// copy, so the same settings are visible in Word Mode, preview, PDF and DOCX.
++class WordPageLayoutSheet {
++  const WordPageLayoutSheet._();
++
++  static Future<WordPageLayoutDraft?> show(
++    BuildContext context, {
++    required Paper paper,
++  }) {
++    final wide = MediaQuery.sizeOf(context).width >= 720;
++    if (wide) {
++      return showDialog<WordPageLayoutDraft>(
++        context: context,
++        builder: (context) => Dialog(
++          clipBehavior: Clip.antiAlias,
++          child: ConstrainedBox(
++            constraints: const BoxConstraints(maxWidth: 720, maxHeight: 760),
++            child: _PageLayoutEditor(paper: paper, dialog: true),
++          ),
++        ),
++      );
++    }
++
++    return showModalBottomSheet<WordPageLayoutDraft>(
++      context: context,
++      isScrollControlled: true,
++      useSafeArea: true,
++      showDragHandle: true,
++      builder: (context) => FractionallySizedBox(
++        heightFactor: 0.92,
++        child: _PageLayoutEditor(paper: paper, dialog: false),
++      ),
++    );
++  }
++}
++
++class _PageLayoutEditor extends StatefulWidget {
++  final Paper paper;
++  final bool dialog;
++
++  const _PageLayoutEditor({required this.paper, required this.dialog});
++
++  @override
++  State<_PageLayoutEditor> createState() => _PageLayoutEditorState();
++}
++
++class _PageLayoutEditorState extends State<_PageLayoutEditor> {
++  late PaperPageSize _pageSize;
++  late PaperPageOrientation _orientation;
++  late PaperPageNumberPosition _pageNumberPosition;
++  late double _lineSpacing;
++  late double _paragraphSpacing;
++  late double _headerDistance;
++  late double _footerDistance;
++  late bool _showPageNumbers;
++
++  late final TextEditingController _topMargin;
++  late final TextEditingController _rightMargin;
++  late final TextEditingController _bottomMargin;
++  late final TextEditingController _leftMargin;
++  late final TextEditingController _headerText;
++  late final TextEditingController _footerText;
++
++  @override
++  void initState() {
++    super.initState();
++    final layout = widget.paper.pageLayout;
++    _pageSize = layout.pageSize;
++    _orientation = layout.orientation;
++    _pageNumberPosition = layout.pageNumberPosition;
++    _lineSpacing = layout.lineSpacing;
++    _paragraphSpacing = layout.paragraphSpacingPoints;
++    _headerDistance = layout.headerDistancePoints;
++    _footerDistance = layout.footerDistancePoints;
++    _showPageNumbers = widget.paper.showPageNumbers;
++    _topMargin = TextEditingController(
++      text: _formatMm(_pointsToMm(layout.margins.topPoints)),
++    );
++    _rightMargin = TextEditingController(
++      text: _formatMm(_pointsToMm(layout.margins.rightPoints)),
++    );
++    _bottomMargin = TextEditingController(
++      text: _formatMm(_pointsToMm(layout.margins.bottomPoints)),
++    );
++    _leftMargin = TextEditingController(
++      text: _formatMm(_pointsToMm(layout.margins.leftPoints)),
++    );
++    _headerText = TextEditingController(text: widget.paper.headerText);
++    _footerText = TextEditingController(text: widget.paper.footerText);
++  }
++
++  @override
++  void dispose() {
++    _topMargin.dispose();
++    _rightMargin.dispose();
++    _bottomMargin.dispose();
++    _leftMargin.dispose();
++    _headerText.dispose();
++    _footerText.dispose();
++    super.dispose();
++  }
++
++  void _applyMarginPreset(double points) {
++    final mm = _formatMm(_pointsToMm(points));
++    setState(() {
++      _topMargin.text = mm;
++      _rightMargin.text = mm;
++      _bottomMargin.text = mm;
++      _leftMargin.text = mm;
++    });
++  }
++
++  double _marginPoints(TextEditingController controller) {
++    final millimetres = double.tryParse(controller.text.trim()) ?? 12.7;
++    return _mmToPoints(millimetres).clamp(12, 144).toDouble();
++  }
++
++  void _save() {
++    final layout = PaperPageLayout(
++      pageSize: _pageSize,
++      orientation: _orientation,
++      margins: PaperPageMargins(
++        topPoints: _marginPoints(_topMargin),
++        rightPoints: _marginPoints(_rightMargin),
++        bottomPoints: _marginPoints(_bottomMargin),
++        leftPoints: _marginPoints(_leftMargin),
++      ),
++      headerDistancePoints: _headerDistance,
++      footerDistancePoints: _footerDistance,
++      lineSpacing: _lineSpacing,
++      paragraphSpacingPoints: _paragraphSpacing,
++      pageNumberPosition: _pageNumberPosition,
++    );
++
++    Navigator.of(context).pop(
++      WordPageLayoutDraft(
++        layout: layout,
++        headerText: _headerText.text.trim(),
++        footerText: _footerText.text.trim(),
++        showPageNumbers: _showPageNumbers,
++      ),
++    );
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        Padding(
++          padding: EdgeInsets.fromLTRB(20, widget.dialog ? 18 : 4, 12, 10),
++          child: Row(
++            children: [
++              Expanded(
++                child: Column(
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: [
++                    Text(
++                      'Page & layout',
++                      style: theme.textTheme.titleLarge?.copyWith(
++                        fontWeight: FontWeight.w800,
++                      ),
++                    ),
++                    const SizedBox(height: 2),
++                    Text(
++                      'These settings stay with this paper and are used by preview, PDF and Word export.',
++                      style: theme.textTheme.bodySmall?.copyWith(
++                        color: theme.colorScheme.onSurfaceVariant,
++                      ),
++                    ),
++                  ],
++                ),
++              ),
++              IconButton(
++                tooltip: 'Close',
++                onPressed: () => Navigator.of(context).pop(),
++                icon: const Icon(Icons.close_rounded),
++              ),
++            ],
++          ),
++        ),
++        const Divider(height: 1),
++        Expanded(
++          child: SingleChildScrollView(
++            padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
++            child: Column(
++              crossAxisAlignment: CrossAxisAlignment.stretch,
++              children: [
++                _SectionTitle('Page'),
++                const SizedBox(height: 10),
++                LayoutBuilder(
++                  builder: (context, constraints) {
++                    final stacked = constraints.maxWidth < 520;
++                    final size = DropdownButtonFormField<PaperPageSize>(
++                      key: const Key('word-page-size'),
++                      initialValue: _pageSize,
++                      decoration: const InputDecoration(
++                        labelText: 'Paper size',
++                        border: OutlineInputBorder(),
++                      ),
++                      items: [
++                        for (final value in PaperPageSize.values)
++                          DropdownMenuItem(
++                            value: value,
++                            child: Text(_pageSizeLabel(value)),
++                          ),
++                      ],
++                      onChanged: (value) {
++                        if (value != null) {
++                          setState(() => _pageSize = value);
++                        }
++                      },
++                    );
++                    final orientation = Column(
++                      crossAxisAlignment: CrossAxisAlignment.start,
++                      children: [
++                        Text('Orientation', style: theme.textTheme.labelLarge),
++                        const SizedBox(height: 6),
++                        SegmentedButton<PaperPageOrientation>(
++                          key: const Key('word-page-orientation'),
++                          showSelectedIcon: false,
++                          segments: const [
++                            ButtonSegment(
++                              value: PaperPageOrientation.portrait,
++                              icon: Icon(Icons.stay_current_portrait_rounded),
++                              label: Text('Portrait'),
++                            ),
++                            ButtonSegment(
++                              value: PaperPageOrientation.landscape,
++                              icon: Icon(Icons.stay_current_landscape_rounded),
++                              label: Text('Landscape'),
++                            ),
++                          ],
++                          selected: {_orientation},
++                          onSelectionChanged: (selection) => setState(
++                            () => _orientation = selection.first,
++                          ),
++                        ),
++                      ],
++                    );
++                    if (stacked) {
++                      return Column(
++                        children: [
++                          size,
++                          const SizedBox(height: 14),
++                          Align(
++                            alignment: Alignment.centerLeft,
++                            child: orientation,
++                          ),
++                        ],
++                      );
++                    }
++                    return Row(
++                      crossAxisAlignment: CrossAxisAlignment.end,
++                      children: [
++                        Expanded(child: size),
++                        const SizedBox(width: 18),
++                        orientation,
++                      ],
++                    );
++                  },
++                ),
++                const SizedBox(height: 22),
++                _SectionTitle('Margins'),
++                const SizedBox(height: 8),
++                Wrap(
++                  spacing: 8,
++                  runSpacing: 8,
++                  children: [
++                    ActionChip(
++                      label: const Text('Normal 12.7 mm'),
++                      onPressed: () => _applyMarginPreset(36),
++                    ),
++                    ActionChip(
++                      label: const Text('Narrow 8.5 mm'),
++                      onPressed: () => _applyMarginPreset(24),
++                    ),
++                    ActionChip(
++                      label: const Text('Moderate 19 mm'),
++                      onPressed: () => _applyMarginPreset(54),
++                    ),
++                  ],
++                ),
++                const SizedBox(height: 10),
++                LayoutBuilder(
++                  builder: (context, constraints) {
++                    final width = constraints.maxWidth < 520
++                        ? (constraints.maxWidth - 10) / 2
++                        : (constraints.maxWidth - 30) / 4;
++                    return Wrap(
++                      spacing: 10,
++                      runSpacing: 10,
++                      children: [
++                        SizedBox(
++                          width: width,
++                          child: _MarginField(
++                            key: const Key('word-margin-top'),
++                            label: 'Top (mm)',
++                            controller: _topMargin,
++                          ),
++                        ),
++                        SizedBox(
++                          width: width,
++                          child: _MarginField(
++                            key: const Key('word-margin-right'),
++                            label: 'Right (mm)',
++                            controller: _rightMargin,
++                          ),
++                        ),
++                        SizedBox(
++                          width: width,
++                          child: _MarginField(
++                            key: const Key('word-margin-bottom'),
++                            label: 'Bottom (mm)',
++                            controller: _bottomMargin,
++                          ),
++                        ),
++                        SizedBox(
++                          width: width,
++                          child: _MarginField(
++                            key: const Key('word-margin-left'),
++                            label: 'Left (mm)',
++                            controller: _leftMargin,
++                          ),
++                        ),
++                      ],
++                    );
++                  },
++                ),
++                const SizedBox(height: 22),
++                _SectionTitle('Header, footer & page number'),
++                const SizedBox(height: 10),
++                TextField(
++                  key: const Key('word-header-text'),
++                  controller: _headerText,
++                  decoration: const InputDecoration(
++                    labelText: 'Header text',
++                    hintText: 'Optional repeated header',
++                    border: OutlineInputBorder(),
++                  ),
++                ),
++                const SizedBox(height: 10),
++                TextField(
++                  key: const Key('word-footer-text'),
++                  controller: _footerText,
++                  decoration: const InputDecoration(
++                    labelText: 'Footer text',
++                    hintText: 'Optional repeated footer',
++                    border: OutlineInputBorder(),
++                  ),
++                ),
++                SwitchListTile.adaptive(
++                  key: const Key('word-show-page-numbers'),
++                  contentPadding: EdgeInsets.zero,
++                  title: const Text('Show page numbers'),
++                  value: _showPageNumbers,
++                  onChanged: (value) => setState(() => _showPageNumbers = value),
++                ),
++                if (_showPageNumbers)
++                  DropdownButtonFormField<PaperPageNumberPosition>(
++                    key: const Key('word-page-number-position'),
++                    initialValue: _pageNumberPosition,
++                    decoration: const InputDecoration(
++                      labelText: 'Page number position',
++                      border: OutlineInputBorder(),
++                    ),
++                    items: [
++                      for (final value in PaperPageNumberPosition.values)
++                        DropdownMenuItem(
++                          value: value,
++                          child: Text(_pageNumberPositionLabel(value)),
++                        ),
++                    ],
++                    onChanged: (value) {
++                      if (value != null) {
++                        setState(() => _pageNumberPosition = value);
++                      }
++                    },
++                  ),
++                const SizedBox(height: 12),
++                _DistanceSlider(
++                  label: 'Header distance',
++                  value: _headerDistance,
++                  onChanged: (value) => setState(() => _headerDistance = value),
++                ),
++                _DistanceSlider(
++                  label: 'Footer distance',
++                  value: _footerDistance,
++                  onChanged: (value) => setState(() => _footerDistance = value),
++                ),
++                const SizedBox(height: 22),
++                _SectionTitle('Document spacing'),
++                const SizedBox(height: 10),
++                DropdownButtonFormField<double>(
++                  key: const Key('word-line-spacing'),
++                  initialValue: _nearestLineSpacing(_lineSpacing),
++                  decoration: const InputDecoration(
++                    labelText: 'Line spacing',
++                    border: OutlineInputBorder(),
++                  ),
++                  items: const [
++                    DropdownMenuItem(value: 1.0, child: Text('Single (1.0)')),
++                    DropdownMenuItem(value: 1.15, child: Text('1.15')),
++                    DropdownMenuItem(value: 1.5, child: Text('1.5')),
++                    DropdownMenuItem(value: 2.0, child: Text('Double (2.0)')),
++                  ],
++                  onChanged: (value) {
++                    if (value != null) {
++                      setState(() => _lineSpacing = value);
++                    }
++                  },
++                ),
++                const SizedBox(height: 12),
++                Text(
++                  'Paragraph spacing: ${_paragraphSpacing.toStringAsFixed(0)} pt',
++                  style: theme.textTheme.labelLarge,
++                ),
++                Slider(
++                  key: const Key('word-paragraph-spacing'),
++                  min: 0,
++                  max: 24,
++                  divisions: 12,
++                  value: _paragraphSpacing.clamp(0, 24).toDouble(),
++                  label: '${_paragraphSpacing.toStringAsFixed(0)} pt',
++                  onChanged: (value) => setState(() => _paragraphSpacing = value),
++                ),
++              ],
++            ),
++          ),
++        ),
++        const Divider(height: 1),
++        Padding(
++          padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
++          child: Row(
++            mainAxisAlignment: MainAxisAlignment.end,
++            children: [
++              TextButton(
++                onPressed: () => Navigator.of(context).pop(),
++                child: const Text('Cancel'),
++              ),
++              const SizedBox(width: 8),
++              FilledButton.icon(
++                key: const Key('word-page-layout-save'),
++                onPressed: _save,
++                icon: const Icon(Icons.check_rounded),
++                label: const Text('Apply'),
++              ),
++            ],
++          ),
++        ),
++      ],
++    );
++  }
++
++  static double _nearestLineSpacing(double value) {
++    const values = [1.0, 1.15, 1.5, 2.0];
++    return values.reduce(
++      (a, b) => (a - value).abs() <= (b - value).abs() ? a : b,
++    );
++  }
++
++  static String _pageSizeLabel(PaperPageSize value) {
++    return switch (value) {
++      PaperPageSize.useTemplate => 'Use paper style',
++      PaperPageSize.a4 => 'A4',
++      PaperPageSize.a5 => 'A5',
++      PaperPageSize.a3 => 'A3',
++      PaperPageSize.letter => 'Letter',
++      PaperPageSize.legal => 'Legal',
++    };
++  }
++
++  static String _pageNumberPositionLabel(PaperPageNumberPosition value) {
++    return switch (value) {
++      PaperPageNumberPosition.footerCenter => 'Footer — center',
++      PaperPageNumberPosition.footerRight => 'Footer — right',
++      PaperPageNumberPosition.headerRight => 'Header — right',
++    };
++  }
++
++  static double _pointsToMm(double points) => points * 25.4 / 72;
++  static double _mmToPoints(double millimetres) => millimetres * 72 / 25.4;
++  static String _formatMm(double value) => value.toStringAsFixed(1);
++}
++
++class _SectionTitle extends StatelessWidget {
++  final String text;
++
++  const _SectionTitle(this.text);
++
++  @override
++  Widget build(BuildContext context) {
++    return Text(
++      text,
++      style: Theme.of(context).textTheme.titleSmall?.copyWith(
++            fontWeight: FontWeight.w800,
++          ),
++    );
++  }
++}
++
++class _MarginField extends StatelessWidget {
++  final String label;
++  final TextEditingController controller;
++
++  const _MarginField({
++    super.key,
++    required this.label,
++    required this.controller,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    return TextField(
++      controller: controller,
++      keyboardType: const TextInputType.numberWithOptions(decimal: true),
++      decoration: InputDecoration(
++        labelText: label,
++        isDense: true,
++        border: const OutlineInputBorder(),
++      ),
++    );
++  }
++}
++
++class _DistanceSlider extends StatelessWidget {
++  final String label;
++  final double value;
++  final ValueChanged<double> onChanged;
++
++  const _DistanceSlider({
++    required this.label,
++    required this.value,
++    required this.onChanged,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final millimetres = value * 25.4 / 72;
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.start,
++      children: [
++        Text('$label: ${millimetres.toStringAsFixed(1)} mm'),
++        Slider(
++          min: 0,
++          max: 54,
++          divisions: 18,
++          value: value.clamp(0, 54).toDouble(),
++          onChanged: onChanged,
++        ),
++      ],
++    );
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index b6de957..1aad62d 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -1,6 +1,7 @@
+ import 'dart:io';
+ 
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+@@ -9,6 +10,8 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/question_m
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/word_rich_text_editor.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_quill/flutter_quill.dart';
+ 
+@@ -22,6 +25,7 @@ import 'package:flutter_quill/flutter_quill.dart';
+ class WordPaperEditor extends StatefulWidget {
+   final Paper paper;
+   final bool compact;
++  final PaperSize templatePageSize;
+   final ValueChanged<String> onTitleChanged;
+   final ValueChanged<String> onSchoolNameChanged;
+   final ValueChanged<String> onInstructionChanged;
+@@ -36,11 +40,18 @@ class WordPaperEditor extends StatefulWidget {
+   final void Function(String sectionId, String questionId) onDeleteQuestion;
+   final VoidCallback onAddSection;
+   final ValueChanged<String> onAddQuestion;
++  final void Function(
++    PaperPageLayout layout,
++    String headerText,
++    String footerText,
++    bool showPageNumbers,
++  ) onApplyPageLayout;
+ 
+   const WordPaperEditor({
+     super.key,
+     required this.paper,
+     required this.compact,
++    required this.templatePageSize,
+     required this.onTitleChanged,
+     required this.onSchoolNameChanged,
+     required this.onInstructionChanged,
+@@ -53,6 +64,7 @@ class WordPaperEditor extends StatefulWidget {
+     required this.onDeleteQuestion,
+     required this.onAddSection,
+     required this.onAddQuestion,
++    required this.onApplyPageLayout,
+   });
+ 
+   @override
+@@ -156,6 +168,28 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+     widget.onAddQuestion(sectionId);
+   }
+ 
++  void _insertPageBreak() {
++    final sectionId = _targetSectionId;
++    if (sectionId == null) return;
++    final block = WordContentBlockService.pageBreak();
++    setState(() {
++      _activeSectionId = sectionId;
++      _pendingFocusQuestionId = null;
++    });
++    widget.onInsertWordBlock(sectionId, block, _targetInsertIndex(sectionId));
++  }
++
++  Future<void> _openPageLayout() async {
++    final draft = await WordPageLayoutSheet.show(context, paper: widget.paper);
++    if (draft == null || !mounted) return;
++    widget.onApplyPageLayout(
++      draft.layout,
++      draft.headerText,
++      draft.footerText,
++      draft.showPageNumbers,
++    );
++  }
++
+   Future<void> _editBlockTable(String sectionId, Question question) async {
+     final table = await QuestionTableEditorSheet.show(
+       context,
+@@ -178,9 +212,46 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+     );
+   }
+ 
++  ({double width, double height}) _resolvedPagePoints() {
++    final explicit = widget.paper.pageLayout.explicitPageSizePoints;
++    if (explicit != null) return explicit;
++
++    final portrait = switch (widget.templatePageSize) {
++      PaperSize.a4 => (width: 595.28, height: 841.89),
++      PaperSize.a5 => (width: 419.53, height: 595.28),
++      PaperSize.a3 => (width: 841.89, height: 1190.55),
++      PaperSize.letter => (width: 612.0, height: 792.0),
++      PaperSize.legal => (width: 612.0, height: 1008.0),
++    };
++    if (widget.paper.pageLayout.orientation == PaperPageOrientation.landscape) {
++      return (width: portrait.height, height: portrait.width);
++    }
++    return portrait;
++  }
++
+   @override
+   Widget build(BuildContext context) {
+     final theme = Theme.of(context);
++    final pagePoints = _resolvedPagePoints();
++    final relativeWidth = 820 * (pagePoints.width / 595.28);
++    final preferredPreviewWidth = relativeWidth.clamp(560, 980).toDouble();
++    final outerHorizontal = widget.compact ? 20.0 : 48.0;
++    final availablePreviewWidth =
++        (MediaQuery.sizeOf(context).width - outerHorizontal)
++            .clamp(280, 980)
++            .toDouble();
++    final previewWidth = preferredPreviewWidth < availablePreviewWidth
++        ? preferredPreviewWidth
++        : availablePreviewWidth;
++    final pageScale = previewWidth / pagePoints.width;
++    final margins = widget.paper.pageLayout.margins;
++    final pagePadding = EdgeInsets.fromLTRB(
++      (margins.leftPoints * pageScale).clamp(12, 120).toDouble(),
++      (margins.topPoints * pageScale).clamp(14, 140).toDouble(),
++      (margins.rightPoints * pageScale).clamp(12, 120).toDouble(),
++      (margins.bottomPoints * pageScale).clamp(18, 160).toDouble(),
++    );
++    final pageMinHeight = (pagePoints.height * pageScale).clamp(520, 1500).toDouble();
+     return ColoredBox(
+       color: theme.colorScheme.surfaceContainerLow,
+       child: Column(
+@@ -193,6 +264,8 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+             onInsertTable: _insertTable,
+             onInsertImage: _insertImage,
+             onInsertQuestion: _insertQuestion,
++            onInsertPageBreak: _insertPageBreak,
++            onPageLayout: _openPageLayout,
+           ),
+           const Divider(height: 1),
+           Expanded(
+@@ -206,7 +279,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+               ),
+               child: Center(
+                 child: ConstrainedBox(
+-                  constraints: const BoxConstraints(maxWidth: 900),
++                  constraints: BoxConstraints(maxWidth: previewWidth),
+                   child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.stretch,
+                     children: [
+@@ -218,62 +291,74 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                         elevation: 1,
+                         shadowColor: Colors.black26,
+                         borderRadius: BorderRadius.circular(8),
+-                        child: Padding(
+-                          padding: EdgeInsets.fromLTRB(
+-                            widget.compact ? 18 : 44,
+-                            widget.compact ? 22 : 40,
+-                            widget.compact ? 18 : 44,
+-                            widget.compact ? 28 : 52,
+-                          ),
+-                          child: Theme(
+-                            data: ThemeData.light(useMaterial3: true),
+-                            child: DefaultTextStyle(
+-                              style: const TextStyle(
+-                                color: Colors.black,
+-                                fontSize: 15,
+-                                height: 1.35,
+-                              ),
+-                              child: Column(
+-                                crossAxisAlignment: CrossAxisAlignment.stretch,
+-                                children: [
+-                                  _buildHeader(),
+-                                  const SizedBox(height: 16),
+-                                  if (widget.paper.instruction.trim().isNotEmpty ||
+-                                      widget.paper.sections.isNotEmpty)
+-                                    _InlineDocumentField(
+-                                      key: const Key('word-paper-instruction'),
+-                                      initialValue: widget.paper.instruction,
+-                                      hintText: 'General instructions',
+-                                      minLines: 1,
+-                                      maxLines: 6,
+-                                      textStyle: const TextStyle(
+-                                        fontStyle: FontStyle.italic,
++                        child: ConstrainedBox(
++                          constraints: BoxConstraints(minHeight: pageMinHeight),
++                          child: Padding(
++                            padding: pagePadding,
++                            child: Theme(
++                              data: ThemeData.light(useMaterial3: true),
++                              child: DefaultTextStyle(
++                                style: TextStyle(
++                                  color: Colors.black,
++                                  fontSize: 15,
++                                  height: widget.paper.pageLayout.lineSpacing,
++                                ),
++                                child: Column(
++                                  crossAxisAlignment: CrossAxisAlignment.stretch,
++                                  children: [
++                                    _buildHeader(),
++                                    const SizedBox(height: 16),
++                                    if (widget.paper.instruction.trim().isNotEmpty ||
++                                        widget.paper.sections.isNotEmpty)
++                                      _InlineDocumentField(
++                                        key: const Key('word-paper-instruction'),
++                                        initialValue: widget.paper.instruction,
++                                        hintText: 'General instructions',
++                                        minLines: 1,
++                                        maxLines: 6,
++                                        textStyle: const TextStyle(
++                                          fontStyle: FontStyle.italic,
++                                        ),
++                                        onChanged: widget.onInstructionChanged,
++                                      ),
++                                    if (widget.paper.instruction.trim().isNotEmpty)
++                                      const Divider(height: 28),
++                                    for (var sectionIndex = 0;
++                                        sectionIndex < widget.paper.sections.length;
++                                        sectionIndex++) ...[
++                                      _buildSection(
++                                        widget.paper.sections[sectionIndex],
++                                      ),
++                                      if (sectionIndex !=
++                                          widget.paper.sections.length - 1)
++                                        SizedBox(
++                                          height: 14 +
++                                              widget.paper.pageLayout
++                                                  .paragraphSpacingPoints,
++                                        ),
++                                    ],
++                                    if (widget.paper.footerText.trim().isNotEmpty ||
++                                        (widget.paper.showPageNumbers &&
++                                            widget.paper.pageLayout
++                                                    .pageNumberPosition !=
++                                                PaperPageNumberPosition
++                                                    .headerRight)) ...[
++                                      const SizedBox(height: 18),
++                                      const Divider(height: 16),
++                                      _WordFooterPreview(paper: widget.paper),
++                                    ],
++                                    const SizedBox(height: 20),
++                                    Align(
++                                      alignment: Alignment.center,
++                                      child: OutlinedButton.icon(
++                                        key: const Key('word-mode-add-section'),
++                                        onPressed: widget.onAddSection,
++                                        icon: const Icon(Icons.add_rounded),
++                                        label: const Text('Add section'),
+                                       ),
+-                                      onChanged: widget.onInstructionChanged,
+-                                    ),
+-                                  if (widget.paper.instruction.trim().isNotEmpty)
+-                                    const Divider(height: 28),
+-                                  for (var sectionIndex = 0;
+-                                      sectionIndex < widget.paper.sections.length;
+-                                      sectionIndex++) ...[
+-                                    _buildSection(
+-                                      widget.paper.sections[sectionIndex],
+                                     ),
+-                                    if (sectionIndex !=
+-                                        widget.paper.sections.length - 1)
+-                                      const SizedBox(height: 20),
+                                   ],
+-                                  const SizedBox(height: 20),
+-                                  Align(
+-                                    alignment: Alignment.center,
+-                                    child: OutlinedButton.icon(
+-                                      key: const Key('word-mode-add-section'),
+-                                      onPressed: widget.onAddSection,
+-                                      icon: const Icon(Icons.add_rounded),
+-                                      label: const Text('Add section'),
+-                                    ),
+-                                  ),
+-                                ],
++                                ),
+                               ),
+                             ),
+                           ),
+@@ -294,6 +379,36 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.stretch,
+       children: [
++        if (widget.paper.headerText.trim().isNotEmpty ||
++            (widget.paper.showPageNumbers &&
++                widget.paper.pageLayout.pageNumberPosition ==
++                    PaperPageNumberPosition.headerRight)) ...[
++          Row(
++            children: [
++              if (widget.paper.headerText.trim().isNotEmpty)
++                Expanded(
++                  child: Text(
++                    widget.paper.headerText.trim(),
++                    style: const TextStyle(
++                      fontSize: 10,
++                      color: Colors.black54,
++                    ),
++                  ),
++                )
++              else
++                const Spacer(),
++              if (widget.paper.showPageNumbers &&
++                  widget.paper.pageLayout.pageNumberPosition ==
++                      PaperPageNumberPosition.headerRight)
++                const Text(
++                  'Page 1',
++                  style: TextStyle(fontSize: 10, color: Colors.black54),
++                ),
++            ],
++          ),
++          const SizedBox(height: 6),
++          const Divider(height: 10),
++        ],
+         _InlineDocumentField(
+           key: const Key('word-paper-school-name'),
+           initialValue: widget.paper.schoolName,
+@@ -475,6 +590,8 @@ class _WordEditorRibbon extends StatelessWidget {
+   final Future<void> Function() onInsertTable;
+   final Future<void> Function() onInsertImage;
+   final VoidCallback onInsertQuestion;
++  final VoidCallback onInsertPageBreak;
++  final Future<void> Function() onPageLayout;
+ 
+   const _WordEditorRibbon({
+     required this.compact,
+@@ -484,6 +601,8 @@ class _WordEditorRibbon extends StatelessWidget {
+     required this.onInsertTable,
+     required this.onInsertImage,
+     required this.onInsertQuestion,
++    required this.onInsertPageBreak,
++    required this.onPageLayout,
+   });
+ 
+   @override
+@@ -515,6 +634,8 @@ class _WordEditorRibbon extends StatelessWidget {
+                         onInsertTable: onInsertTable,
+                         onInsertImage: onInsertImage,
+                         onInsertQuestion: onInsertQuestion,
++                        onInsertPageBreak: onInsertPageBreak,
++                        onPageLayout: onPageLayout,
+                       ),
+                       if (controller != null) ...[
+                         const SizedBox(height: 4),
+@@ -563,6 +684,14 @@ class _WordEditorRibbon extends StatelessWidget {
+                         onInsertTable: onInsertTable,
+                         onInsertImage: onInsertImage,
+                         onInsertQuestion: onInsertQuestion,
++                        onInsertPageBreak: onInsertPageBreak,
++                        onPageLayout: onPageLayout,
++                      ),
++                      const VerticalDivider(width: 20),
++                      _LayoutActions(
++                        canInsertPageBreak: canInsert,
++                        onInsertPageBreak: onInsertPageBreak,
++                        onPageLayout: onPageLayout,
+                       ),
+                     ],
+                   ),
+@@ -639,6 +768,8 @@ class _InsertActions extends StatelessWidget {
+   final Future<void> Function() onInsertTable;
+   final Future<void> Function() onInsertImage;
+   final VoidCallback onInsertQuestion;
++  final VoidCallback onInsertPageBreak;
++  final Future<void> Function() onPageLayout;
+ 
+   const _InsertActions({
+     required this.compact,
+@@ -648,6 +779,8 @@ class _InsertActions extends StatelessWidget {
+     required this.onInsertTable,
+     required this.onInsertImage,
+     required this.onInsertQuestion,
++    required this.onInsertPageBreak,
++    required this.onPageLayout,
+   });
+ 
+   @override
+@@ -695,6 +828,22 @@ class _InsertActions extends StatelessWidget {
+         enabled: enabled,
+         onTap: onInsertQuestion,
+       ),
++      if (compact) ...[
++        _RibbonAction(
++          key: const Key('word-ribbon-page-layout'),
++          icon: Icons.description_outlined,
++          label: 'Layout',
++          enabled: true,
++          onTap: onPageLayout,
++        ),
++        _RibbonAction(
++          key: const Key('word-ribbon-page-break'),
++          icon: Icons.insert_page_break_outlined,
++          label: 'Page break',
++          enabled: enabled,
++          onTap: onInsertPageBreak,
++        ),
++      ],
+     ];
+ 
+     if (compact) {
+@@ -709,8 +858,8 @@ class _InsertActions extends StatelessWidget {
+         Text(
+           'Insert',
+           style: Theme.of(context).textTheme.labelSmall?.copyWith(
+-            fontWeight: FontWeight.w800,
+-          ),
++                fontWeight: FontWeight.w800,
++              ),
+         ),
+         const SizedBox(height: 3),
+         Row(mainAxisSize: MainAxisSize.min, children: actions),
+@@ -719,6 +868,53 @@ class _InsertActions extends StatelessWidget {
+   }
+ }
+ 
++class _LayoutActions extends StatelessWidget {
++  final bool canInsertPageBreak;
++  final VoidCallback onInsertPageBreak;
++  final Future<void> Function() onPageLayout;
++
++  const _LayoutActions({
++    required this.canInsertPageBreak,
++    required this.onInsertPageBreak,
++    required this.onPageLayout,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.start,
++      children: [
++        Text(
++          'Layout',
++          style: Theme.of(context).textTheme.labelSmall?.copyWith(
++                fontWeight: FontWeight.w800,
++              ),
++        ),
++        const SizedBox(height: 3),
++        Row(
++          mainAxisSize: MainAxisSize.min,
++          children: [
++            _RibbonAction(
++              key: const Key('word-ribbon-page-layout'),
++              icon: Icons.description_outlined,
++              label: 'Page setup',
++              enabled: true,
++              onTap: onPageLayout,
++            ),
++            _RibbonAction(
++              key: const Key('word-ribbon-page-break'),
++              icon: Icons.insert_page_break_outlined,
++              label: 'Page break',
++              enabled: canInsertPageBreak,
++              onTap: onInsertPageBreak,
++            ),
++          ],
++        ),
++      ],
++    );
++  }
++}
++
+ class _RibbonAction extends StatelessWidget {
+   final IconData icon;
+   final String label;
+@@ -746,6 +942,31 @@ class _RibbonAction extends StatelessWidget {
+   }
+ }
+ 
++class _WordFooterPreview extends StatelessWidget {
++  final Paper paper;
++
++  const _WordFooterPreview({required this.paper});
++
++  @override
++  Widget build(BuildContext context) {
++    final position = paper.pageLayout.pageNumberPosition;
++    final showFooterPageNumber =
++        paper.showPageNumbers && position != PaperPageNumberPosition.headerRight;
++    final parts = <String>[
++      if (paper.footerText.trim().isNotEmpty) paper.footerText.trim(),
++      if (showFooterPageNumber) 'Page 1',
++    ];
++    if (parts.isEmpty) return const SizedBox.shrink();
++    return Text(
++      parts.join('  •  '),
++      textAlign: position == PaperPageNumberPosition.footerRight
++          ? TextAlign.right
++          : TextAlign.center,
++      style: const TextStyle(fontSize: 10, color: Colors.black54),
++    );
++  }
++}
++
+ class _WordModeNotice extends StatelessWidget {
+   final bool compact;
+ 
+@@ -863,6 +1084,9 @@ class _WordQuestionBlock extends StatelessWidget {
+     final advanced = QuestionAdvancedContent.fromQuestion(question);
+     final isWordBlock = question.isWordContentBlock;
+     final kind = WordContentBlockService.kindOf(question);
++    if (isWordBlock && kind == WordContentBlockKind.pageBreak) {
++      return _WordPageBreakMarker(onDelete: onDelete);
++    }
+     final label = isWordBlock
+         ? ''
+         : PaperStructureService.questionLabel(
+@@ -872,7 +1096,11 @@ class _WordQuestionBlock extends StatelessWidget {
+           );
+ 
+     return Padding(
+-      padding: const EdgeInsets.only(bottom: 12),
++      padding: EdgeInsets.only(
++        bottom: (6 + paper.pageLayout.paragraphSpacingPoints)
++            .clamp(8, 32)
++            .toDouble(),
++      ),
+       child: DecoratedBox(
+         decoration: BoxDecoration(
+           color: isWordBlock
+@@ -1070,6 +1298,56 @@ class _WordQuestionBlock extends StatelessWidget {
+ 
+ 
+ 
++class _WordPageBreakMarker extends StatelessWidget {
++  final VoidCallback onDelete;
++
++  const _WordPageBreakMarker({required this.onDelete});
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Padding(
++      padding: const EdgeInsets.symmetric(vertical: 12),
++      child: Row(
++        children: [
++          Expanded(
++            child: Divider(
++              color: theme.colorScheme.outlineVariant,
++              thickness: 1,
++            ),
++          ),
++          const SizedBox(width: 10),
++          Icon(
++            Icons.insert_page_break_outlined,
++            size: 18,
++            color: theme.colorScheme.primary,
++          ),
++          const SizedBox(width: 6),
++          Text(
++            'Page break',
++            style: theme.textTheme.labelMedium?.copyWith(
++              color: theme.colorScheme.primary,
++              fontWeight: FontWeight.w700,
++            ),
++          ),
++          IconButton(
++            tooltip: 'Remove page break',
++            onPressed: onDelete,
++            icon: const Icon(Icons.close_rounded, size: 18),
++          ),
++          const SizedBox(width: 2),
++          Expanded(
++            child: Divider(
++              color: theme.colorScheme.outlineVariant,
++              thickness: 1,
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
++
+ class _InlineOptionEditor extends StatefulWidget {
+   final String label;
+   final QuestionOption option;
+diff --git a/lib/features/pdf/services/pdf_service.dart b/lib/features/pdf/services/pdf_service.dart
+index ee54aa6..765812a 100644
+--- a/lib/features/pdf/services/pdf_service.dart
++++ b/lib/features/pdf/services/pdf_service.dart
+@@ -12,7 +12,7 @@ class PdfService {
+   static Future<void> generateAndPreview(
+     Paper paper,
+     PaperTemplate template, {
+-    PaperExportConfig config = const PaperExportConfig(),
++    PaperExportConfig? config,
+   }) async {
+     final pdf = await QuestionPaperService.generateDocument(
+       paper,
+@@ -27,7 +27,7 @@ class PdfService {
+     Paper paper,
+     PaperTemplate template, {
+     String? fileNameBase,
+-    PaperExportConfig config = const PaperExportConfig(),
++    PaperExportConfig? config,
+     ExportCancellationToken? cancellationToken,
+     ExportProgressCallback? onProgress,
+   }) async {
+diff --git a/lib/features/pdf/services/question_paper_service.dart b/lib/features/pdf/services/question_paper_service.dart
+index de14095..1d742b1 100644
+--- a/lib/features/pdf/services/question_paper_service.dart
++++ b/lib/features/pdf/services/question_paper_service.dart
+@@ -3,10 +3,12 @@ import 'dart:io';
+ 
+ import 'package:edusheet/features/editor/domain/models/math_expression.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/omr/domain/models/omr_config.dart';
+ import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
++import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/omr/services/omr_widgets_builder.dart';
+ import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+@@ -76,12 +78,32 @@ class QuestionPaperService {
+     }
+   }
+ 
++  static PdfPageFormat _pageFormatForPaper(
++    PaperPageLayout layout,
++    PaperSize templateSize,
++  ) {
++    var format = switch (layout.pageSize) {
++      PaperPageSize.useTemplate => _getPageFormat(templateSize),
++      PaperPageSize.a4 => PdfPageFormat.a4,
++      PaperPageSize.a5 => PdfPageFormat.a5,
++      PaperPageSize.a3 => PdfPageFormat.a3,
++      PaperPageSize.letter => PdfPageFormat.letter,
++      PaperPageSize.legal => PdfPageFormat.legal,
++    };
++    if (layout.orientation == PaperPageOrientation.landscape) {
++      format = format.landscape;
++    }
++    return format;
++  }
++
+   static Future<pw.Document> generateDocument(
+     Paper paper,
+     PaperTemplate template, {
+-    PaperExportConfig config = const PaperExportConfig(),
++    PaperExportConfig? config,
+   }) async {
+-    final configErrors = config.validate();
++    final usePaperLayout = config == null;
++    final exportConfig = config ?? const PaperExportConfig();
++    final configErrors = exportConfig.validate();
+     if (configErrors.isNotEmpty) {
+       throw ArgumentError(configErrors.join(' '));
+     }
+@@ -140,26 +162,37 @@ class QuestionPaperService {
+     }
+ 
+     final headerBuilder = CustomHeaderBuilder();
+-    var pageFormat = switch (config.pageSize) {
+-      ExportPageSize.useTemplate => _getPageFormat(template.paperSize),
+-      ExportPageSize.a4 => PdfPageFormat.a4,
+-      ExportPageSize.letter => PdfPageFormat.letter,
+-    };
+-    if (config.orientation == ExportOrientation.landscape) {
++    var pageFormat = usePaperLayout
++        ? _pageFormatForPaper(paper.pageLayout, template.paperSize)
++        : switch (exportConfig.pageSize) {
++            ExportPageSize.useTemplate => _getPageFormat(template.paperSize),
++            ExportPageSize.a4 => PdfPageFormat.a4,
++            ExportPageSize.letter => PdfPageFormat.letter,
++          };
++    if (!usePaperLayout &&
++        exportConfig.orientation == ExportOrientation.landscape) {
+       pageFormat = pageFormat.landscape;
+     }
+-    final horizontalMargin =
+-        config.marginPoints +
+-        (config.booklet.enabled ? config.booklet.gutterPoints / 2 : 0);
++    final bookletExtra = exportConfig.booklet.enabled
++        ? exportConfig.booklet.gutterPoints / 2
++        : 0.0;
++    final pageMargins = usePaperLayout
++        ? pw.EdgeInsets.fromLTRB(
++            paper.pageLayout.margins.leftPoints + bookletExtra,
++            paper.pageLayout.margins.topPoints,
++            paper.pageLayout.margins.rightPoints + bookletExtra,
++            paper.pageLayout.margins.bottomPoints,
++          )
++        : pw.EdgeInsets.symmetric(
++            horizontal: exportConfig.marginPoints + bookletExtra,
++            vertical: exportConfig.marginPoints,
++          );
+ 
+     pdf.addPage(
+       pw.MultiPage(
+         pageTheme: pw.PageTheme(
+           pageFormat: pageFormat,
+-          margin: pw.EdgeInsets.symmetric(
+-            horizontal: horizontalMargin,
+-            vertical: config.marginPoints,
+-          ),
++          margin: pageMargins,
+           buildBackground: (context) {
+             if (template.hasBorder) {
+               return pw.FullPage(
+@@ -179,18 +212,31 @@ class QuestionPaperService {
+           },
+         ),
+         header: (context) {
+-          if (paper.headerText.trim().isEmpty || context.pageNumber == 1) {
+-            return pw.SizedBox();
++          final parts = <String>[];
++          if (paper.headerText.trim().isNotEmpty) {
++            parts.add(paper.headerText.trim());
++          }
++          if (paper.showPageNumbers &&
++              paper.pageLayout.pageNumberPosition ==
++                  PaperPageNumberPosition.headerRight) {
++            parts.add('Page ${context.pageNumber} of ${context.pagesCount}');
+           }
++          if (parts.isEmpty) return pw.SizedBox();
++          final rightAligned = paper.pageLayout.pageNumberPosition ==
++              PaperPageNumberPosition.headerRight;
+           return pw.Container(
+-            alignment: pw.Alignment.center,
+-            padding: const pw.EdgeInsets.only(bottom: 6),
++            alignment: rightAligned ? pw.Alignment.centerRight : pw.Alignment.center,
++            padding: pw.EdgeInsets.only(
++              bottom: usePaperLayout
++                  ? paper.pageLayout.headerDistancePoints.clamp(0, 36).toDouble()
++                  : 6,
++            ),
+             decoration: const pw.BoxDecoration(
+               border: pw.Border(bottom: pw.BorderSide(width: 0.5)),
+             ),
+             child: pw.Text(
+-              paper.headerText.trim(),
+-              style: pw.TextStyle(fontSize: 9 * config.fontScale),
++              parts.join('  •  '),
++              style: pw.TextStyle(fontSize: 9 * exportConfig.fontScale),
+             ),
+           );
+         },
+@@ -199,13 +245,21 @@ class QuestionPaperService {
+           if (paper.footerText.trim().isNotEmpty) {
+             parts.add(paper.footerText.trim());
+           }
+-          if (paper.showPageNumbers) {
++          final pageNumberPosition = paper.pageLayout.pageNumberPosition;
++          if (paper.showPageNumbers &&
++              pageNumberPosition != PaperPageNumberPosition.headerRight) {
+             parts.add('Page ${context.pageNumber} of ${context.pagesCount}');
+           }
+           if (parts.isEmpty) return pw.SizedBox();
+           return pw.Container(
+-            alignment: pw.Alignment.center,
+-            padding: const pw.EdgeInsets.only(top: 6),
++            alignment: pageNumberPosition == PaperPageNumberPosition.footerRight
++                ? pw.Alignment.centerRight
++                : pw.Alignment.center,
++            padding: pw.EdgeInsets.only(
++              top: usePaperLayout
++                  ? paper.pageLayout.footerDistancePoints.clamp(0, 36).toDouble()
++                  : 6,
++            ),
+             child: pw.Text(
+               parts.join('  •  '),
+               style: const pw.TextStyle(fontSize: 9),
+@@ -214,7 +268,7 @@ class QuestionPaperService {
+         },
+         build: (context) => [
+           if (paper.includeCoverPage) ...[
+-            _buildCoverPage(paper, template, config),
++            _buildCoverPage(paper, template, exportConfig),
+             pw.NewPage(),
+           ],
+           headerBuilder.build(
+@@ -223,26 +277,26 @@ class QuestionPaperService {
+             template,
+             customImages: customImages,
+           ),
+-          if (config.outputMode == PaperOutputMode.multipleSet)
++          if (exportConfig.outputMode == PaperOutputMode.multipleSet)
+             pw.Align(
+               alignment: pw.Alignment.center,
+               child: pw.Text(
+-                'SET ${config.setLabel.trim().toUpperCase()}',
++                'SET ${exportConfig.setLabel.trim().toUpperCase()}',
+                 style: pw.TextStyle(
+-                  fontSize: 16 * config.fontScale,
++                  fontSize: 16 * exportConfig.fontScale,
+                   fontWeight: pw.FontWeight.bold,
+                 ),
+               ),
+             ),
+-          if (config.includesAnswers)
++          if (exportConfig.includesAnswers)
+             pw.Align(
+               alignment: pw.Alignment.center,
+               child: pw.Text(
+-                config.includesSolutions
++                exportConfig.includesSolutions
+                     ? 'TEACHER SOLUTION COPY'
+                     : 'ANSWER KEY',
+                 style: pw.TextStyle(
+-                  fontSize: 13 * config.fontScale,
++                  fontSize: 13 * exportConfig.fontScale,
+                   fontWeight: pw.FontWeight.bold,
+                 ),
+               ),
+@@ -263,7 +317,13 @@ class QuestionPaperService {
+           ...paper.sections.expand(
+             (section) => [
+               if (section.pageBreakBefore) pw.NewPage(),
+-              _buildSection(section, template, paper, config, questionImages),
++              ..._buildSectionFlow(
++                section,
++                template,
++                paper,
++                exportConfig,
++                questionImages,
++              ),
+             ],
+           ),
+           if (paper.includeOmr)
+@@ -275,19 +335,69 @@ class QuestionPaperService {
+     return pdf;
+   }
+ 
+-  static pw.Widget _buildSection(
++  static List<pw.Widget> _buildSectionFlow(
+     PaperSection section,
+     PaperTemplate template,
+     Paper paper,
+     PaperExportConfig config,
+     Map<String, pw.ImageProvider> questionImages,
+   ) {
++    final widgets = <pw.Widget>[];
++    var current = <MapEntry<int, Question>>[];
++    var showHeading = true;
++
++    void flush() {
++      if (current.isEmpty && !showHeading) return;
++      widgets.add(
++        _buildSectionSegment(
++          section,
++          current,
++          template,
++          paper,
++          config,
++          questionImages,
++          showHeading: showHeading,
++        ),
++      );
++      current = <MapEntry<int, Question>>[];
++      showHeading = false;
++    }
++
++    for (final entry in section.questions.asMap().entries) {
++      final question = entry.value;
++      final isPageBreak = question.isWordContentBlock &&
++          WordContentBlockService.kindOf(question) ==
++              WordContentBlockKind.pageBreak;
++      if (!isPageBreak) {
++        current.add(entry);
++        continue;
++      }
++
++      if (current.isNotEmpty) flush();
++      widgets.add(pw.NewPage());
++    }
++
++    if (current.isNotEmpty || showHeading) flush();
++    return widgets;
++  }
++
++  static pw.Widget _buildSectionSegment(
++    PaperSection section,
++    List<MapEntry<int, Question>> entries,
++    PaperTemplate template,
++    Paper paper,
++    PaperExportConfig config,
++    Map<String, pw.ImageProvider> questionImages, {
++    required bool showHeading,
++  }) {
+     final answerRule = PaperStructureService.answerRuleText(section);
+     return pw.Column(
+       crossAxisAlignment: pw.CrossAxisAlignment.start,
+       children: [
+-        pw.SizedBox(height: 20 * config.spacingScale),
+-        if (section.showTitle || section.prefix.isNotEmpty)
++        pw.SizedBox(
++          height: (showHeading ? 20 : 8) * config.spacingScale,
++        ),
++        if (showHeading && (section.showTitle || section.prefix.isNotEmpty))
+           pw.Container(
+             padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+             decoration: template.type == TemplateType.coaching
+@@ -305,9 +415,15 @@ class QuestionPaperService {
+               ),
+             ),
+           ),
+-        if (section.instruction != null && section.instruction!.isNotEmpty)
++        if (showHeading &&
++            section.instruction != null &&
++            section.instruction!.isNotEmpty)
+           pw.Padding(
+-            padding: const pw.EdgeInsets.only(bottom: 8),
++            padding: pw.EdgeInsets.only(
++              bottom: paper.pageLayout.paragraphSpacingPoints
++                  .clamp(2, 18)
++                  .toDouble(),
++            ),
+             child: pw.Text(
+               'Instruction: ${section.instruction}',
+               style: pw.TextStyle(
+@@ -316,9 +432,13 @@ class QuestionPaperService {
+               ),
+             ),
+           ),
+-        if (answerRule != null)
++        if (showHeading && answerRule != null)
+           pw.Padding(
+-            padding: const pw.EdgeInsets.only(bottom: 8),
++            padding: pw.EdgeInsets.only(
++              bottom: paper.pageLayout.paragraphSpacingPoints
++                  .clamp(2, 18)
++                  .toDouble(),
++            ),
+             child: pw.Text(
+               answerRule,
+               style: pw.TextStyle(
+@@ -327,20 +447,28 @@ class QuestionPaperService {
+               ),
+             ),
+           ),
+-        if (section.showDivider) pw.Divider(),
+-        _buildQuestionList(section, template, paper, config, questionImages),
++        if (showHeading && section.showDivider) pw.Divider(),
++        _buildQuestionEntries(
++          section,
++          entries,
++          template,
++          paper,
++          config,
++          questionImages,
++        ),
+       ],
+     );
+   }
+ 
+-  static pw.Widget _buildQuestionList(
++  static pw.Widget _buildQuestionEntries(
+     PaperSection section,
++    List<MapEntry<int, Question>> entries,
+     PaperTemplate template,
+     Paper paper,
+     PaperExportConfig config,
+     Map<String, pw.ImageProvider> questionImages,
+   ) {
+-    final questions = section.questions.asMap().entries.map((entry) {
++    final questions = entries.map((entry) {
+       return _buildQuestion(
+         PaperStructureService.numberedQuestionOrdinal(section, entry.key),
+         entry.value,
+diff --git a/lib/features/pdf/services/word_export_service.dart b/lib/features/pdf/services/word_export_service.dart
+index c5babb8..4dad76f 100644
+--- a/lib/features/pdf/services/word_export_service.dart
++++ b/lib/features/pdf/services/word_export_service.dart
+@@ -3,10 +3,12 @@ import 'dart:io';
+ import 'package:archive/archive.dart';
+ import 'package:edusheet/features/editor/domain/models/math_expression.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+ import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
++import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+@@ -53,12 +55,59 @@ class WordExportService {
+       archive.addFile(ArchiveFile.string(name, content));
+     }
+ 
+-    addString('[Content_Types].xml', _contentTypesXml(imageParts));
++    final relationshipBase = imageParts.length + 1;
++    final hasHeader = paper.headerText.trim().isNotEmpty ||
++        (paper.showPageNumbers &&
++            paper.pageLayout.pageNumberPosition ==
++                PaperPageNumberPosition.headerRight);
++    final hasFooter = paper.footerText.trim().isNotEmpty ||
++        (paper.showPageNumbers &&
++            paper.pageLayout.pageNumberPosition !=
++                PaperPageNumberPosition.headerRight);
++    final headerRelId = hasHeader ? 'rId$relationshipBase' : null;
++    final footerRelId = hasFooter
++        ? 'rId${relationshipBase + (hasHeader ? 1 : 0)}'
++        : null;
++    final stylesRelId =
++        'rId${relationshipBase + (hasHeader ? 1 : 0) + (hasFooter ? 1 : 0)}';
++
++    addString(
++      '[Content_Types].xml',
++      _contentTypesXml(
++        imageParts,
++        hasHeader: hasHeader,
++        hasFooter: hasFooter,
++      ),
++    );
+     addString('_rels/.rels', _rootRelsXml());
+     addString('docProps/core.xml', _coreXml(paper));
+     addString('docProps/app.xml', _appXml());
+-    addString('word/_rels/document.xml.rels', _documentRelsXml(imageParts));
+-    addString('word/document.xml', _documentXml(paper, template, imageParts));
++    addString(
++      'word/_rels/document.xml.rels',
++      _documentRelsXml(
++        imageParts,
++        headerRelId: headerRelId,
++        footerRelId: footerRelId,
++        stylesRelId: stylesRelId,
++      ),
++    );
++    addString('word/styles.xml', _stylesXml(paper.pageLayout));
++    if (hasHeader) {
++      addString('word/header1.xml', _headerPartXml(paper));
++    }
++    if (hasFooter) {
++      addString('word/footer1.xml', _footerPartXml(paper));
++    }
++    addString(
++      'word/document.xml',
++      _documentXml(
++        paper,
++        template,
++        imageParts,
++        headerRelId: headerRelId,
++        footerRelId: footerRelId,
++      ),
++    );
+ 
+     for (final image in imageParts) {
+       archive.addFile(
+@@ -122,8 +171,10 @@ class WordExportService {
+   static String _documentXml(
+     Paper paper,
+     PaperTemplate template,
+-    List<_ImagePart> images,
+-  ) {
++    List<_ImagePart> images, {
++    required String? headerRelId,
++    required String? footerRelId,
++  }) {
+     final buffer = StringBuffer();
+ 
+     buffer
+@@ -171,7 +222,14 @@ class WordExportService {
+     }
+ 
+     buffer
+-      ..write(_sectionProperties(template))
++      ..write(
++        _sectionProperties(
++          template,
++          paper,
++          headerRelId: headerRelId,
++          footerRelId: footerRelId,
++        ),
++      )
+       ..write('</w:body></w:document>');
+ 
+     return buffer.toString();
+@@ -400,7 +458,14 @@ class WordExportService {
+       buffer.write(_divider());
+     }
+ 
+-    if (template.paperLayout == PaperLayout.twoColumn) {
++    final hasManualPageBreak = section.questions.any(
++      (question) =>
++          question.isWordContentBlock &&
++          WordContentBlockService.kindOf(question) ==
++              WordContentBlockKind.pageBreak,
++    );
++
++    if (template.paperLayout == PaperLayout.twoColumn && !hasManualPageBreak) {
+       buffer.write(
+         '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
+         '<w:tblCellMar><w:right w:w="180" w:type="dxa"/>'
+@@ -417,7 +482,10 @@ class WordExportService {
+         );
+         final right = index + 1 < section.questions.length
+             ? _questionXml(
+-                PaperStructureService.numberedQuestionOrdinal(section, index + 1),
++                PaperStructureService.numberedQuestionOrdinal(
++                  section,
++                  index + 1,
++                ),
+                 section.questions[index + 1],
+                 template,
+                 paper,
+@@ -430,10 +498,17 @@ class WordExportService {
+       buffer.write('</w:tbl>');
+     } else {
+       for (final entry in section.questions.asMap().entries) {
++        final question = entry.value;
++        if (question.isWordContentBlock &&
++            WordContentBlockService.kindOf(question) ==
++                WordContentBlockKind.pageBreak) {
++          buffer.write(_manualPageBreakParagraph());
++          continue;
++        }
+         buffer.write(
+           _questionXml(
+             PaperStructureService.numberedQuestionOrdinal(section, entry.key),
+-            entry.value,
++            question,
+             template,
+             paper,
+             section,
+@@ -458,6 +533,8 @@ class WordExportService {
+     final text = OfficeTextFormatter.questionText(question.text).trim();
+     final alignment = _wordAlignment(_flutterTextAlignName(question.alignment));
+     final fontSize = template.questionFontSize;
++    final paragraphSpacing =
++        _pointsToTwips(paper.pageLayout.paragraphSpacingPoints);
+ 
+     if (question.isWordContentBlock) {
+       if (text.isNotEmpty) {
+@@ -467,7 +544,7 @@ class WordExportService {
+             alignment: alignment,
+             fontSize: fontSize,
+             spacingBefore: 40,
+-            spacingAfter: 80,
++            spacingAfter: paragraphSpacing,
+           ),
+         );
+       }
+@@ -496,7 +573,7 @@ class WordExportService {
+         ],
+         alignment: alignment,
+         spacingBefore: 80,
+-        spacingAfter: 80,
++        spacingAfter: paragraphSpacing,
+       ),
+     );
+ 
+@@ -1169,21 +1246,62 @@ class WordExportService {
+         '$content</w:tc>';
+   }
+ 
+-  static String _sectionProperties(PaperTemplate template) {
+-    final page = _pageSizeTwips(template.paperSize);
++  static String _sectionProperties(
++    PaperTemplate template,
++    Paper paper, {
++    required String? headerRelId,
++    required String? footerRelId,
++  }) {
++    final page = _resolvedPageSizeTwips(template, paper.pageLayout);
++    final margins = paper.pageLayout.margins;
++    final orientation = paper.pageLayout.orientation;
+     final border = template.hasBorder
+         ? '<w:pgBorders w:offsetFrom="page"><w:top w:val="single" w:sz="8" w:space="24" w:color="000000"/>'
+               '<w:left w:val="single" w:sz="8" w:space="24" w:color="000000"/>'
+               '<w:bottom w:val="single" w:sz="8" w:space="24" w:color="000000"/>'
+               '<w:right w:val="single" w:sz="8" w:space="24" w:color="000000"/></w:pgBorders>'
+         : '';
++    final refs = StringBuffer();
++    if (headerRelId != null) {
++      refs.write('<w:headerReference w:type="default" r:id="$headerRelId"/>');
++    }
++    if (footerRelId != null) {
++      refs.write('<w:footerReference w:type="default" r:id="$footerRelId"/>');
++    }
++    final orient = orientation == PaperPageOrientation.landscape
++        ? ' w:orient="landscape"'
++        : '';
+ 
+-    return '<w:sectPr><w:pgSz w:w="${page.width}" w:h="${page.height}"/>'
+-        '<w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" '
+-        'w:header="360" w:footer="360" w:gutter="0"/>'
++    return '<w:sectPr>${refs.toString()}'
++        '<w:pgSz w:w="${page.width}" w:h="${page.height}"$orient/>'
++        '<w:pgMar w:top="${_pointsToTwips(margins.topPoints)}" '
++        'w:right="${_pointsToTwips(margins.rightPoints)}" '
++        'w:bottom="${_pointsToTwips(margins.bottomPoints)}" '
++        'w:left="${_pointsToTwips(margins.leftPoints)}" '
++        'w:header="${_pointsToTwips(paper.pageLayout.headerDistancePoints)}" '
++        'w:footer="${_pointsToTwips(paper.pageLayout.footerDistancePoints)}" '
++        'w:gutter="0"/>'
+         '<w:cols w:space="720"/>$border</w:sectPr>';
+   }
+ 
++  static _PageSize _resolvedPageSizeTwips(
++    PaperTemplate template,
++    PaperPageLayout layout,
++  ) {
++    final portrait = switch (layout.pageSize) {
++      PaperPageSize.useTemplate => _pageSizeTwips(template.paperSize),
++      PaperPageSize.a4 => const _PageSize(11906, 16838),
++      PaperPageSize.a5 => const _PageSize(8391, 11906),
++      PaperPageSize.a3 => const _PageSize(16838, 23811),
++      PaperPageSize.letter => const _PageSize(12240, 15840),
++      PaperPageSize.legal => const _PageSize(12240, 20160),
++    };
++    if (layout.orientation == PaperPageOrientation.landscape) {
++      return _PageSize(portrait.height, portrait.width);
++    }
++    return portrait;
++  }
++
+   static _PageSize _pageSizeTwips(PaperSize size) {
+     switch (size) {
+       case PaperSize.a3:
+@@ -1199,19 +1317,56 @@ class WordExportService {
+     }
+   }
+ 
+-  static String _documentRelsXml(List<_ImagePart> images) {
+-    final rels = images.map((image) {
+-      return '<Relationship Id="${image.relationshipId}" '
+-          'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+-          'Target="media/${image.fileName}"/>';
+-    }).join();
++  static int _pointsToTwips(double points) => (points * 20).round();
++
++  static String _manualPageBreakParagraph() {
++    return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
++  }
++
++  static String _documentRelsXml(
++    List<_ImagePart> images, {
++    required String? headerRelId,
++    required String? footerRelId,
++    required String stylesRelId,
++  }) {
++    final rels = StringBuffer();
++    for (final image in images) {
++      rels.write(
++        '<Relationship Id="${image.relationshipId}" '
++        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
++        'Target="media/${image.fileName}"/>',
++      );
++    }
++    if (headerRelId != null) {
++      rels.write(
++        '<Relationship Id="$headerRelId" '
++        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" '
++        'Target="header1.xml"/>',
++      );
++    }
++    if (footerRelId != null) {
++      rels.write(
++        '<Relationship Id="$footerRelId" '
++        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" '
++        'Target="footer1.xml"/>',
++      );
++    }
++    rels.write(
++      '<Relationship Id="$stylesRelId" '
++      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
++      'Target="styles.xml"/>',
++    );
+ 
+     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+-        '$rels</Relationships>';
++        '${rels.toString()}</Relationships>';
+   }
+ 
+-  static String _contentTypesXml(List<_ImagePart> images) {
++  static String _contentTypesXml(
++    List<_ImagePart> images, {
++    required bool hasHeader,
++    required bool hasFooter,
++  }) {
+     final imageDefaults = images
+         .map(
+           (image) =>
+@@ -1220,6 +1375,12 @@ class WordExportService {
+         )
+         .toSet()
+         .join();
++    final headerOverride = hasHeader
++        ? '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>'
++        : '';
++    final footerOverride = hasFooter
++        ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
++        : '';
+ 
+     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+@@ -1227,11 +1388,136 @@ class WordExportService {
+         '<Default Extension="xml" ContentType="application/xml"/>'
+         '$imageDefaults'
+         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
++        '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
++        '$headerOverride$footerOverride'
+         '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+         '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
+         '</Types>';
+   }
+ 
++  static String _stylesXml(PaperPageLayout layout) {
++    final line = (layout.lineSpacing * 240).round().clamp(192, 720);
++    final after = _pointsToTwips(layout.paragraphSpacingPoints);
++    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
++        '<w:styles xmlns:w="$_wordNamespace">'
++        '<w:docDefaults><w:rPrDefault><w:rPr>'
++        '<w:sz w:val="24"/><w:szCs w:val="24"/>'
++        '</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr>'
++        '<w:spacing w:after="$after" w:line="$line" w:lineRule="auto"/>'
++        '</w:pPr></w:pPrDefault></w:docDefaults>'
++        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">'
++        '<w:name w:val="Normal"/><w:qFormat/>'
++        '<w:pPr><w:spacing w:after="$after" w:line="$line" w:lineRule="auto"/></w:pPr>'
++        '</w:style>'
++        '</w:styles>';
++  }
++
++  static String _headerPartXml(Paper paper) {
++    final text = paper.headerText.trim();
++    final includePageNumber = paper.showPageNumbers &&
++        paper.pageLayout.pageNumberPosition ==
++            PaperPageNumberPosition.headerRight;
++    final body = _headerFooterBody(
++      text: text,
++      includePageNumber: includePageNumber,
++      pageNumberAlignment: 'right',
++      textAlignment: 'left',
++    );
++    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
++        '<w:hdr xmlns:w="$_wordNamespace" xmlns:r="$_relationsNamespace">'
++        '$body</w:hdr>';
++  }
++
++  static String _footerPartXml(Paper paper) {
++    final text = paper.footerText.trim();
++    final position = paper.pageLayout.pageNumberPosition;
++    final includePageNumber = paper.showPageNumbers &&
++        position != PaperPageNumberPosition.headerRight;
++    final pageAlignment = position == PaperPageNumberPosition.footerRight
++        ? 'right'
++        : 'center';
++    final body = _headerFooterBody(
++      text: text,
++      includePageNumber: includePageNumber,
++      pageNumberAlignment: pageAlignment,
++      textAlignment: text.isNotEmpty && includePageNumber ? 'left' : pageAlignment,
++    );
++    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
++        '<w:ftr xmlns:w="$_wordNamespace" xmlns:r="$_relationsNamespace">'
++        '$body</w:ftr>';
++  }
++
++  static String _headerFooterBody({
++    required String text,
++    required bool includePageNumber,
++    required String pageNumberAlignment,
++    required String textAlignment,
++  }) {
++    if (text.isNotEmpty && includePageNumber) {
++      final borderlessTableStart =
++          '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
++          '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/>'
++          '<w:bottom w:val="nil"/><w:right w:val="nil"/>'
++          '<w:insideH w:val="nil"/><w:insideV w:val="nil"/>'
++          '</w:tblBorders></w:tblPr><w:tr>';
++      final textParagraph = _paragraph(
++        text,
++        alignment: textAlignment,
++        fontSize: 9,
++        spacingAfter: 0,
++      );
++      final pageParagraph = _pageNumberParagraph(
++        alignment: pageNumberAlignment,
++      );
++      if (pageNumberAlignment == 'center') {
++        return '$borderlessTableStart'
++            '${_headerFooterCell(textParagraph, 1667)}'
++            '${_headerFooterCell(pageParagraph, 1666)}'
++            '${_headerFooterCell(_paragraph('', spacingAfter: 0), 1667)}'
++            '</w:tr></w:tbl>';
++      }
++      return '$borderlessTableStart'
++          '${_headerFooterCell(textParagraph, 2500)}'
++          '${_headerFooterCell(pageParagraph, 2500)}'
++          '</w:tr></w:tbl>';
++    }
++    if (text.isNotEmpty) {
++      return _paragraph(
++        text,
++        alignment: textAlignment,
++        fontSize: 9,
++        spacingAfter: 0,
++      );
++    }
++    if (includePageNumber) {
++      return _pageNumberParagraph(alignment: pageNumberAlignment);
++    }
++    return _paragraph('', spacingAfter: 0);
++  }
++
++  static String _headerFooterCell(String content, int widthPct) {
++    return '<w:tc><w:tcPr><w:tcW w:w="$widthPct" w:type="pct"/></w:tcPr>'
++        '$content</w:tc>';
++  }
++
++  static String _pageNumberParagraph({required String alignment}) {
++    return '<w:p><w:pPr><w:jc w:val="$alignment"/>'
++        '<w:spacing w:after="0"/></w:pPr>'
++        '<w:r><w:t xml:space="preserve">Page </w:t></w:r>'
++        '${_fieldRun('PAGE')}'
++        '<w:r><w:t xml:space="preserve"> of </w:t></w:r>'
++        '${_fieldRun('NUMPAGES')}'
++        '</w:p>';
++  }
++
++  static String _fieldRun(String instruction) {
++    return '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
++        '<w:r><w:instrText xml:space="preserve"> $instruction </w:instrText></w:r>'
++        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
++        '<w:r><w:t>1</w:t></w:r>'
++        '<w:r><w:fldChar w:fldCharType="end"/></w:r>';
++  }
++
+   static String _rootRelsXml() {
+     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+diff --git a/test/features/editor/paper_page_layout_test.dart b/test/features/editor/paper_page_layout_test.dart
+new file mode 100644
+index 0000000..a176d02
+--- /dev/null
++++ b/test/features/editor/paper_page_layout_test.dart
+@@ -0,0 +1,117 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
++import 'package:edusheet/features/editor/services/paper_structure_service.dart';
++import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('legacy paper JSON receives backward-compatible page layout defaults', () {
++    final paper = Paper.fromJson({
++      'id': 'legacy-paper',
++      'title': 'Legacy',
++      'sections': const [],
++      'createdAt': '2026-08-31T00:00:00.000',
++    });
++
++    expect(paper.pageLayout.pageSize, PaperPageSize.useTemplate);
++    expect(paper.pageLayout.orientation, PaperPageOrientation.portrait);
++    expect(paper.pageLayout.margins.topPoints, 36);
++    expect(paper.pageLayout.lineSpacing, 1.15);
++    expect(
++      paper.pageLayout.pageNumberPosition,
++      PaperPageNumberPosition.footerCenter,
++    );
++  });
++
++  test('Step 9 page layout survives Paper JSON round-trip', () {
++    final original = Paper(
++      id: 'layout-paper',
++      title: 'Layout',
++      headerText: 'Running header',
++      footerText: 'Running footer',
++      showPageNumbers: true,
++      pageLayout: const PaperPageLayout(
++        pageSize: PaperPageSize.a5,
++        orientation: PaperPageOrientation.landscape,
++        margins: PaperPageMargins(
++          topPoints: 42,
++          rightPoints: 31,
++          bottomPoints: 52,
++          leftPoints: 37,
++        ),
++        headerDistancePoints: 14,
++        footerDistancePoints: 16,
++        lineSpacing: 1.5,
++        paragraphSpacingPoints: 10,
++        pageNumberPosition: PaperPageNumberPosition.headerRight,
++      ),
++      createdAt: DateTime.utc(2026, 8, 31),
++    );
++
++    final restored = Paper.fromJson(original.toJson());
++
++    expect(restored.headerText, 'Running header');
++    expect(restored.footerText, 'Running footer');
++    expect(restored.pageLayout.pageSize, PaperPageSize.a5);
++    expect(restored.pageLayout.orientation, PaperPageOrientation.landscape);
++    expect(restored.pageLayout.margins.leftPoints, 37);
++    expect(restored.pageLayout.headerDistancePoints, 14);
++    expect(restored.pageLayout.footerDistancePoints, 16);
++    expect(restored.pageLayout.lineSpacing, 1.5);
++    expect(restored.pageLayout.paragraphSpacingPoints, 10);
++    expect(
++      restored.pageLayout.pageNumberPosition,
++      PaperPageNumberPosition.headerRight,
++    );
++  });
++
++  test('manual page break is layout-only and consumes no assessment ordinal', () {
++    final pageBreak = WordContentBlockService.pageBreak();
++    final section = PaperSection(
++      id: 'section-a',
++      title: 'Section A',
++      questions: [
++        Question(id: 'q1', text: 'Question one', marks: 2),
++        pageBreak,
++        Question(id: 'q2', text: 'Question two', marks: 3),
++      ],
++    );
++
++    expect(pageBreak.isWordContentBlock, isTrue);
++    expect(
++      WordContentBlockService.kindOf(pageBreak),
++      WordContentBlockKind.pageBreak,
++    );
++    expect(pageBreak.marks, 0);
++    expect(PaperStructureService.assessmentQuestionCount(section), 2);
++    expect(PaperStructureService.numberedQuestionOrdinal(section, 0), 1);
++    expect(PaperStructureService.numberedQuestionOrdinal(section, 1), 1);
++    expect(PaperStructureService.numberedQuestionOrdinal(section, 2), 2);
++  });
++
++  test('page layout deserialization bounds unsafe persisted values', () {
++    final layout = PaperPageLayout.fromJson({
++      'pageSize': 'legal',
++      'orientation': 'landscape',
++      'margins': {
++        'topPoints': -10,
++        'rightPoints': 999,
++        'bottomPoints': 48,
++        'leftPoints': 50,
++      },
++      'headerDistancePoints': -50,
++      'footerDistancePoints': 999,
++      'lineSpacing': 20,
++      'paragraphSpacingPoints': -10,
++      'pageNumberPosition': 'footerRight',
++    });
++
++    expect(layout.margins.topPoints, 12);
++    expect(layout.margins.rightPoints, 144);
++    expect(layout.headerDistancePoints, 0);
++    expect(layout.footerDistancePoints, 72);
++    expect(layout.lineSpacing, 3);
++    expect(layout.paragraphSpacingPoints, 0);
++    expect(layout.pageNumberPosition, PaperPageNumberPosition.footerRight);
++  });
++}
+diff --git a/test/features/pdf/office_export_services_test.dart b/test/features/pdf/office_export_services_test.dart
+index 6248a40..0ab76c0 100644
+--- a/test/features/pdf/office_export_services_test.dart
++++ b/test/features/pdf/office_export_services_test.dart
+@@ -3,6 +3,7 @@ import 'dart:io';
+ 
+ import 'package:archive/archive.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+@@ -200,6 +201,75 @@ void main() {
+     expect(documentXml, contains('Use a bar graph.'));
+   });
+ 
++  test('Word export applies Step 9 page layout, header/footer and page fields', () async {
++    final pageBreak = WordContentBlockService.pageBreak();
++    final paper = Paper(
++      id: 'step9-layout-paper',
++      title: 'Step 9 Layout',
++      headerText: 'Class X Mathematics',
++      footerText: 'EduSheet School',
++      showPageNumbers: true,
++      pageLayout: const PaperPageLayout(
++        pageSize: PaperPageSize.letter,
++        orientation: PaperPageOrientation.landscape,
++        margins: PaperPageMargins(
++          topPoints: 54,
++          rightPoints: 36,
++          bottomPoints: 72,
++          leftPoints: 45,
++        ),
++        headerDistancePoints: 20,
++        footerDistancePoints: 24,
++        lineSpacing: 1.5,
++        paragraphSpacingPoints: 9,
++        pageNumberPosition: PaperPageNumberPosition.footerRight,
++      ),
++      createdAt: DateTime(2026, 8, 31),
++      sections: [
++        PaperSection(
++          id: 'section-a',
++          title: 'Section A',
++          questions: [
++            Question(id: 'q1', text: 'Before break', marks: 2),
++            pageBreak,
++            Question(id: 'q2', text: 'After break', marks: 3),
++          ],
++        ),
++      ],
++    );
++
++    final output = await WordExportService.export(paper, _sampleTemplate());
++    final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
++    final documentXml = _archiveText(archive, 'word/document.xml');
++    final relsXml = _archiveText(archive, 'word/_rels/document.xml.rels');
++    final contentTypes = _archiveText(archive, '[Content_Types].xml');
++    final stylesXml = _archiveText(archive, 'word/styles.xml');
++    final headerXml = _archiveText(archive, 'word/header1.xml');
++    final footerXml = _archiveText(archive, 'word/footer1.xml');
++
++    expect(documentXml, contains('<w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>'));
++    expect(documentXml, contains('w:top="1080"'));
++    expect(documentXml, contains('w:right="720"'));
++    expect(documentXml, contains('w:bottom="1440"'));
++    expect(documentXml, contains('w:left="900"'));
++    expect(documentXml, contains('w:header="400"'));
++    expect(documentXml, contains('w:footer="480"'));
++    expect(_occurrences(documentXml, '<w:br w:type="page"/>'), 1);
++    expect(documentXml, contains('Before break'));
++    expect(documentXml, contains('After break'));
++    expect(relsXml, contains('relationships/header'));
++    expect(relsXml, contains('relationships/footer'));
++    expect(relsXml, contains('relationships/styles'));
++    expect(contentTypes, contains('/word/header1.xml'));
++    expect(contentTypes, contains('/word/footer1.xml'));
++    expect(stylesXml, contains('w:line="360"'));
++    expect(stylesXml, contains('w:after="180"'));
++    expect(headerXml, contains('Class X Mathematics'));
++    expect(footerXml, contains('EduSheet School'));
++    expect(footerXml, contains(' PAGE '));
++    expect(footerXml, contains(' NUMPAGES '));
++  });
++
+   test('Word export preserves free Word Mode content without assessment chrome', () async {
+     final freeParagraph = WordContentBlockService.paragraph(
+       text: 'Custom teacher note between questions.',

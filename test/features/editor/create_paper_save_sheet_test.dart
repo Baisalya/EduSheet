@@ -46,7 +46,8 @@ void main() {
 
     expect(find.text('Create questions, not forms'), findsOneWidget);
     expect(find.text('Write first question'), findsOneWidget);
-    expect(find.text('Word Mode'), findsNothing);
+    expect(find.text('Smart'), findsOneWidget);
+    expect(find.text('Word'), findsOneWidget);
     expect(find.text('Start from template'), findsNothing);
   });
 

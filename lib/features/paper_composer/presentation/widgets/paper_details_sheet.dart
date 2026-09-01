@@ -1,4 +1,5 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/pdf/application/paper_header_profile.dart';
 import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
@@ -611,7 +612,8 @@ class _MarksStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final message = summary.teacherMessage;
+    final diagnostics = PaperMarksTeacherDiagnostics(summary);
+    final message = diagnostics.mismatchMessage;
     if (message == null) {
       return Row(
         children: [
@@ -623,9 +625,7 @@ class _MarksStatus extends StatelessWidget {
           const SizedBox(width: 7),
           Expanded(
             child: Text(
-              summary.declaredMaximumMarks == null
-                  ? 'Maximum marks will follow the current question total (${_format(summary.assignedMarks)}).'
-                  : 'Question marks match the declared maximum.',
+              diagnostics.setupStatus,
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -647,10 +647,6 @@ class _MarksStatus extends StatelessWidget {
       ),
     );
   }
-
-  static String _format(double value) => value == value.roundToDouble()
-      ? value.toInt().toString()
-      : value.toStringAsFixed(1);
 }
 
 class _LogoControl extends StatelessWidget {

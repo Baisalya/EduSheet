@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/editor/services/autosave_coordinator.dart';
+import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/paper_composer_actions.dart';
+import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
 import 'package:edusheet/features/paper_composer/presentation/responsive/paper_composer_breakpoints.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_details_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_inspector_panel.dart';
@@ -9,19 +13,25 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_outl
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_preview_page.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_section_card.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/section_format_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/word_paper_editor.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_page.dart';
 import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
+import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
 import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
 import 'package:edusheet/features/question_bank/presentation/widgets/question_bank_picker_sheet.dart';
 import 'package:edusheet/features/question_bank/presentation/widgets/save_to_question_bank_sheet.dart';
-import 'package:edusheet/shared/services/review_service.dart';
-import 'package:open_filex/open_filex.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
+import 'package:edusheet/shared/services/review_service.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+enum _PaperEditingMode { smart, word }
 
 class PaperComposerScreen extends ConsumerStatefulWidget {
   const PaperComposerScreen({super.key});
@@ -35,6 +45,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   final ScrollController _documentScroll = ScrollController();
   final Map<String, GlobalKey> _sectionKeys = {};
   final Map<String, GlobalKey> _questionKeys = {};
+  _PaperEditingMode _editingMode = _PaperEditingMode.smart;
 
   @override
   void dispose() {
@@ -113,6 +124,10 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     QuestionType? initialType,
     int? insertAt,
   }) async {
+    final paper = ref.read(editorStateProvider);
+    final section = paper.sections
+        .where((item) => item.id == sectionId)
+        .firstOrNull;
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         fullscreenDialog: MediaQuery.sizeOf(context).width < 700,
@@ -120,6 +135,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
           sectionId: sectionId,
           question: question,
           initialType: initialType,
+          initialMarks: question == null ? section?.defaultMarks : null,
           insertAt: insertAt,
         ),
       ),
@@ -296,6 +312,28 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     _actions.updateSectionInstruction(section.id, value);
   }
 
+  Future<void> _editSectionFormat(Paper paper, PaperSection section) async {
+    final draft = await SectionFormatSheet.show(
+      context,
+      section: section,
+      paperNumberingStyle: paper.questionNumberStyle,
+    );
+    if (draft == null || !mounted) return;
+    _actions.updateSectionStructure(
+      section.id,
+      prefix: draft.prefix,
+      requiredCount: draft.requiredCount,
+      numberingStyle: draft.numberingStyle,
+      defaultMarks: draft.defaultMarks,
+      showTitle: draft.showTitle,
+      showDivider: draft.showDivider,
+      pageBreakBefore: draft.pageBreakBefore,
+      answerSpaceLines: draft.answerSpaceLines,
+      ruledAnswerArea: draft.ruledAnswerArea,
+      graphAnswerArea: draft.graphAnswerArea,
+    );
+  }
+
   Future<String?> _askText({
     required String title,
     required String label,
@@ -358,9 +396,16 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   }
 
   Future<void> _deleteSection(PaperSection section) async {
+    final assessmentCount = PaperStructureService.assessmentQuestionCount(
+      section,
+    );
+    final wordContentCount = section.questions.length - assessmentCount;
+    final contentNote = wordContentCount > 0
+        ? ' and $wordContentCount Word content block${wordContentCount == 1 ? '' : 's'}'
+        : '';
     final confirmed = await _confirmDelete(
       'Delete section?',
-      'This removes ${section.questions.length} question${section.questions.length == 1 ? '' : 's'} from this paper.',
+      'This removes $assessmentCount question${assessmentCount == 1 ? '' : 's'}$contentNote from this paper.',
     );
     if (confirmed) _actions.deleteSection(section.id);
   }
@@ -417,6 +462,85 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         alignment: 0.18,
       );
     });
+  }
+
+  Future<void> _importEduSheetWordRoundTrip() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['docx'],
+      allowMultiple: false,
+    );
+    final path = picked?.files.single.path;
+    if (path == null || !mounted) return;
+
+    final result = await SmartPaperDocxRoundTripService.importFromFile(
+      File(path),
+    );
+    if (!mounted) return;
+
+    if (!result.canApplySafely) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Word file needs safe import'),
+          content: Text(
+            '${result.message}\n\n'
+            'EduSheet will not replace the current Smart Paper with a stale or lossy conversion.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(
+              result.canRestoreExactly
+                  ? 'Restore this EduSheet Word file?'
+                  : 'Apply safe Word edits?',
+            ),
+            content: Text(
+              result.canRestoreExactly
+                  ? 'The embedded Smart Paper matches the visible Word document. Restoring it will replace the paper currently open in the editor.'
+                  : '${result.message}\n\nOnly changes inside EduSheet-tagged editable Word fields were accepted. Structured Math/Geometry, tables, images and page layout remain anchored to the canonical Smart Paper.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(
+                  result.canRestoreExactly ? 'Restore' : 'Apply edits',
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+
+    ref.read(editorStateProvider.notifier).loadPaper(result.paper!);
+    setState(() => _editingMode = _PaperEditingMode.word);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.canRestoreExactly
+              ? 'Exact Smart Paper restored from Word'
+              : 'Safe Word edits merged into Smart Paper',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _openPreview(Paper paper) async {
@@ -510,6 +634,10 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     final paper = ref.watch(editorStateProvider);
     final saveStatus = ref.watch(editorSaveStatusProvider);
     final editor = ref.read(editorStateProvider.notifier);
+    final template = PaperTemplateResolver.resolve(
+      paper.templateId,
+      ref.watch(templateProvider).all,
+    );
 
     _sectionKeys.removeWhere(
       (id, key) => !paper.sections.any((section) => section.id == id),
@@ -544,42 +672,107 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                 compact,
                 expanded,
               ),
-              body: Row(
+              body: Column(
                 children: [
-                  if (expanded) ...[
-                    SizedBox(
-                      width: 260,
-                      child: PaperOutlinePanel(
-                        paper: paper,
-                        onAddSection: _addSection,
-                        onSelectSection: _scrollToSection,
-                        onSelectQuestion: _scrollToQuestion,
-                      ),
-                    ),
-                    const VerticalDivider(width: 1),
-                  ],
-                  Expanded(child: _buildDocument(context, paper, compact)),
-                  if (expanded) ...[
-                    const VerticalDivider(width: 1),
-                    SizedBox(
-                      width: 280,
-                      child: PaperInspectorPanel(
-                        paper: paper,
-                        onEditDetails: () =>
-                            PaperDetailsSheet.show(context, paper),
-                        onChooseStyle: () => PaperStyleSheet.show(
-                          context,
-                          selectedTemplateId: paper.templateId,
-                        ),
-                        onPreview: () => _openPreview(paper),
-                        onExportPdf: () => _exportPdf(paper),
-                        onExportWord: () => _exportWord(paper),
-                      ),
-                    ),
-                  ],
+                  _buildModeSwitch(context, compact),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: _editingMode == _PaperEditingMode.word
+                        ? WordPaperEditor(
+                            paper: paper,
+                            compact: compact,
+                            templatePageSize: template.paperSize,
+                            onTitleChanged: editor.updateTitle,
+                            onSchoolNameChanged: (value) =>
+                                editor.updateBranding(schoolName: value),
+                            onInstructionChanged: editor.updateInstruction,
+                            onHeaderFieldChanged: (fieldId, value) =>
+                                editor.updateHeaderField(
+                                  fieldId,
+                                  value: value,
+                                  isPlaceholder: value.trim().isEmpty,
+                                ),
+                            onSectionTitleChanged: (sectionId, value) =>
+                                editor.updateSection(sectionId, title: value),
+                            onSectionInstructionChanged: (sectionId, value) =>
+                                editor.updateSection(
+                                  sectionId,
+                                  instruction: value,
+                                ),
+                            onEditQuestion: (sectionId, question) =>
+                                _openQuestion(sectionId, question: question),
+                            onReplaceQuestion: (sectionId, question) =>
+                                _actions.replaceQuestion(sectionId, question),
+                            onInsertWordBlock:
+                                (sectionId, question, insertAt) =>
+                                    _actions.insertQuestionBlock(
+                                      sectionId,
+                                      question,
+                                      insertAt: insertAt,
+                                    ),
+                            onDeleteQuestion: (sectionId, questionId) =>
+                                _actions.deleteQuestion(sectionId, questionId),
+                            onAddSection: _addSection,
+                            onAddQuestion: (sectionId) =>
+                                _openQuestion(sectionId),
+                            onImportWord: _importEduSheetWordRoundTrip,
+                            onApplyPageLayout:
+                                (
+                                  layout,
+                                  headerText,
+                                  footerText,
+                                  showPageNumbers,
+                                ) => editor.applyPageLayout(
+                                  layout: layout,
+                                  headerText: headerText,
+                                  footerText: footerText,
+                                  showPageNumbers: showPageNumbers,
+                                ),
+                          )
+                        : Row(
+                            children: [
+                              if (expanded) ...[
+                                SizedBox(
+                                  width: 260,
+                                  child: PaperOutlinePanel(
+                                    paper: paper,
+                                    onAddSection: _addSection,
+                                    onSelectSection: _scrollToSection,
+                                    onSelectQuestion: _scrollToQuestion,
+                                  ),
+                                ),
+                                const VerticalDivider(width: 1),
+                              ],
+                              Expanded(
+                                child: _buildDocument(context, paper, compact),
+                              ),
+                              if (expanded) ...[
+                                const VerticalDivider(width: 1),
+                                SizedBox(
+                                  width: 280,
+                                  child: PaperInspectorPanel(
+                                    paper: paper,
+                                    onEditDetails: () =>
+                                        PaperDetailsSheet.show(context, paper),
+                                    onChooseStyle: () => PaperStyleSheet.show(
+                                      context,
+                                      selectedTemplateId: paper.templateId,
+                                    ),
+                                    onPreview: () => _openPreview(paper),
+                                    onExportPdf: () => _exportPdf(paper),
+                                    onExportWord: () => _exportWord(paper),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                  ),
                 ],
               ),
-              floatingActionButton: compact && paper.sections.isNotEmpty
+              floatingActionButton:
+                  _editingMode == _PaperEditingMode.smart &&
+                      compact &&
+                      paper.sections.isNotEmpty
                   ? FloatingActionButton.extended(
                       onPressed: () => _openQuestion(paper.sections.last.id),
                       icon: const Icon(Icons.add_rounded),
@@ -588,6 +781,64 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                   : null,
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeSwitch(BuildContext context, bool compact) {
+    final theme = Theme.of(context);
+    return Material(
+      key: const Key('paper-editor-mode-switch'),
+      color: theme.colorScheme.surface,
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 8 : 18,
+          vertical: 7,
+        ),
+        child: Row(
+          mainAxisAlignment: compact
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.start,
+          children: [
+            if (!compact) ...[
+              Expanded(
+                child: Text(
+                  _editingMode == _PaperEditingMode.smart
+                      ? 'Smart Mode · structured paper tools'
+                      : 'Word Mode · edit the same paper as a document',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            SegmentedButton<_PaperEditingMode>(
+              key: const Key('paper-editor-mode-segmented'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                  value: _PaperEditingMode.smart,
+                  icon: Icon(Icons.auto_awesome_outlined, size: 17),
+                  label: Text('Smart'),
+                ),
+                ButtonSegment(
+                  value: _PaperEditingMode.word,
+                  icon: Icon(Icons.article_outlined, size: 17),
+                  label: Text('Word'),
+                ),
+              ],
+              selected: {_editingMode},
+              onSelectionChanged: (selection) {
+                if (selection.isEmpty) return;
+                setState(() => _editingMode = selection.first);
+              },
+            ),
+          ],
         ),
       ),
     );
@@ -740,8 +991,9 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
       color: theme.colorScheme.surfaceContainerLowest,
       child: paper.sections.isEmpty
           ? _buildEmptyPaper(context, paper)
-          : ListView.separated(
-              controller: _documentScroll,
+          : ReorderableListView.builder(
+              scrollController: _documentScroll,
+              buildDefaultDragHandles: false,
               padding: EdgeInsets.fromLTRB(
                 compact ? 10 : 24,
                 20,
@@ -749,43 +1001,73 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                 compact ? 110 : 40,
               ),
               itemCount: paper.sections.length + 1,
-              separatorBuilder: (_, _) => const SizedBox(height: 16),
+              onReorderItem: (oldIndex, newIndex) {
+                if (oldIndex >= paper.sections.length) return;
+                // PaperComposerActions still accepts the legacy Flutter
+                // ReorderCallback insertion index. onReorderItem already
+                // adjusts downward moves after removing oldIndex, so convert
+                // back at this presentation boundary instead of changing the
+                // editor/provider contract used elsewhere.
+                final legacyNewIndex = newIndex > oldIndex
+                    ? newIndex + 1
+                    : newIndex;
+                final destination = legacyNewIndex
+                    .clamp(0, paper.sections.length)
+                    .toInt();
+                _actions.reorderSections(oldIndex, destination);
+              },
               itemBuilder: (context, index) {
                 if (index == paper.sections.length) {
-                  return Center(
-                    child: OutlinedButton.icon(
-                      onPressed: _addSection,
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Add section'),
+                  return Padding(
+                    key: const ValueKey('paper-add-section-footer'),
+                    padding: const EdgeInsets.only(top: 4, bottom: 8),
+                    child: Center(
+                      child: OutlinedButton.icon(
+                        onPressed: _addSection,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Add section'),
+                      ),
                     ),
                   );
                 }
 
                 final section = paper.sections[index];
-                return Center(
+                return Padding(
                   key: _keyForSection(section.id),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 920),
-                    child: PaperSectionCard(
-                      section: section,
-                      sectionNumber: index + 1,
-                      onAddQuestion: () => _openQuestion(section.id),
-                      onAddFromBank: () => _addFromQuestionBank(section),
-                      onEditQuestion: (question) =>
-                          _openQuestion(section.id, question: question),
-                      onDuplicateQuestion: (question) =>
-                          _actions.duplicateQuestion(section.id, question.id),
-                      onDeleteQuestion: (question) =>
-                          _deleteQuestion(section, question),
-                      onSaveQuestionToBank: (question) =>
-                          _saveQuestionToBank(paper, question),
-                      questionKeyFor: (question) =>
-                          _keyForQuestion(section.id, question.id),
-                      onRename: () => _renameSection(section),
-                      onEditInstruction: () => _editSectionInstruction(section),
-                      onDuplicateSection: () =>
-                          _actions.duplicateSection(section.id),
-                      onDeleteSection: () => _deleteSection(section),
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 920),
+                      child: PaperSectionCard(
+                        section: section,
+                        sectionNumber: index + 1,
+                        paperNumberingStyle: paper.questionNumberStyle,
+                        customQuestionNumberLabels:
+                            paper.customQuestionNumberLabels,
+                        sectionReorderIndex: index,
+                        onAddQuestion: () => _openQuestion(section.id),
+                        onAddFromBank: () => _addFromQuestionBank(section),
+                        onEditQuestion: (question) =>
+                            _openQuestion(section.id, question: question),
+                        onDuplicateQuestion: (question) =>
+                            _actions.duplicateQuestion(section.id, question.id),
+                        onDeleteQuestion: (question) =>
+                            _deleteQuestion(section, question),
+                        onSaveQuestionToBank: (question) =>
+                            _saveQuestionToBank(paper, question),
+                        questionKeyFor: (question) =>
+                            _keyForQuestion(section.id, question.id),
+                        onRename: () => _renameSection(section),
+                        onEditInstruction: () =>
+                            _editSectionInstruction(section),
+                        onEditStructure: () =>
+                            _editSectionFormat(paper, section),
+                        onReorderQuestions: (oldIndex, newIndex) => _actions
+                            .reorderQuestions(section.id, oldIndex, newIndex),
+                        onDuplicateSection: () =>
+                            _actions.duplicateSection(section.id),
+                        onDeleteSection: () => _deleteSection(section),
+                      ),
                     ),
                   ),
                 );
@@ -861,8 +1143,17 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   static int _questionCount(Paper paper) {
     return paper.sections.fold<int>(
       0,
-      (sum, section) => sum + section.questions.length,
+      (sum, section) =>
+          sum + PaperStructureService.assessmentQuestionCount(section),
     );
+  }
+}
+
+extension _IterableFirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull {
+    final iterator = this.iterator;
+    if (!iterator.moveNext()) return null;
+    return iterator.current;
   }
 }
 

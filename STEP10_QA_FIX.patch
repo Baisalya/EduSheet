@@ -1,0 +1,284 @@
+diff --git a/lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart b/lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart
+index acd0537..6ed697c 100644
+--- a/lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart
++++ b/lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart
+@@ -337,9 +337,13 @@ class SmartPaperDocxRoundTripService {
+           .map((attribute) => '${attribute.name.local}=${attribute.value}')
+           .toList()
+         ..sort();
+-      for (final attr in attrs) buffer.write('|$attr');
++      for (final attr in attrs) {
++        buffer.write('|$attr');
++      }
+       buffer.write('>');
+-      for (final child in node.children) visit(child);
++      for (final child in node.children) {
++        visit(child);
++      }
+       buffer.write('</$local>');
+     }
+ 
+@@ -716,9 +720,13 @@ class SmartPaperDocxRoundTripService {
+           .map((attribute) => '${attribute.name.local}=${attribute.value}')
+           .toList()
+         ..sort();
+-      for (final attr in attrs) buffer.write('|$attr');
++      for (final attr in attrs) {
++        buffer.write('|$attr');
++      }
+       buffer.write('>');
+-      for (final child in node.children) visit(child);
++      for (final child in node.children) {
++        visit(child);
++      }
+       buffer.write('</$local>');
+     }
+ 
+@@ -774,7 +782,9 @@ class SmartPaperDocxRoundTripService {
+         buffer.write('|$attribute');
+       }
+       buffer.write('>');
+-      for (final child in node.children) visit(child);
++      for (final child in node.children) {
++        visit(child);
++      }
+       buffer.write('</$local>');
+     }
+ 
+@@ -804,9 +814,7 @@ class SmartPaperDocxRoundTripService {
+   }
+ 
+   static List<int> _bytes(ArchiveFile entry) {
+-    final content = entry.content;
+-    if (content is List<int>) return content;
+-    throw const FormatException('Unsupported archive entry payload.');
++    return List<int>.from(entry.content);
+   }
+ 
+   static String? _firstText(xml.XmlElement root, String localName) {
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index 6738b71..4325483 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -794,57 +794,67 @@ class _InsertActions extends StatelessWidget {
+ 
+   @override
+   Widget build(BuildContext context) {
+-    final actions = <Widget>[
+-      _RibbonAction(
+-        key: const Key('word-ribbon-import'),
+-        icon: Icons.file_open_outlined,
+-        label: 'Import Word',
+-        enabled: true,
+-        onTap: onImportWord,
+-      ),
+-      _RibbonAction(
+-        key: const Key('word-ribbon-math'),
+-        icon: Icons.functions_rounded,
+-        label: 'Math',
+-        enabled: session.hasActiveEditor,
+-        onTap: session.insertMath,
+-      ),
+-      _RibbonAction(
+-        key: const Key('word-ribbon-geometry'),
+-        icon: Icons.category_outlined,
+-        label: 'Geometry',
+-        enabled: session.hasActiveEditor,
+-        onTap: session.insertGeometry,
+-      ),
+-      _RibbonAction(
+-        key: const Key('word-ribbon-paragraph'),
+-        icon: Icons.notes_rounded,
+-        label: 'Paragraph',
+-        enabled: enabled,
+-        onTap: onInsertParagraph,
+-      ),
+-      _RibbonAction(
+-        key: const Key('word-ribbon-table'),
+-        icon: Icons.grid_on_outlined,
+-        label: 'Table',
+-        enabled: enabled,
+-        onTap: onInsertTable,
+-      ),
+-      _RibbonAction(
+-        key: const Key('word-ribbon-image'),
+-        icon: Icons.image_outlined,
+-        label: 'Image',
+-        enabled: enabled,
+-        onTap: onInsertImage,
+-      ),
+-      _RibbonAction(
+-        key: const Key('word-ribbon-question'),
+-        icon: Icons.quiz_outlined,
+-        label: 'Question',
+-        enabled: enabled,
+-        onTap: onInsertQuestion,
+-      ),
+-      if (compact) ...[
++    final importAction = _RibbonAction(
++      key: const Key('word-ribbon-import'),
++      icon: Icons.file_open_outlined,
++      label: 'Import Word',
++      enabled: true,
++      onTap: onImportWord,
++    );
++    final mathAction = _RibbonAction(
++      key: const Key('word-ribbon-math'),
++      icon: Icons.functions_rounded,
++      label: 'Math',
++      enabled: session.hasActiveEditor,
++      onTap: session.insertMath,
++    );
++    final geometryAction = _RibbonAction(
++      key: const Key('word-ribbon-geometry'),
++      icon: Icons.category_outlined,
++      label: 'Geometry',
++      enabled: session.hasActiveEditor,
++      onTap: session.insertGeometry,
++    );
++    final paragraphAction = _RibbonAction(
++      key: const Key('word-ribbon-paragraph'),
++      icon: Icons.notes_rounded,
++      label: 'Paragraph',
++      enabled: enabled,
++      onTap: onInsertParagraph,
++    );
++    final tableAction = _RibbonAction(
++      key: const Key('word-ribbon-table'),
++      icon: Icons.grid_on_outlined,
++      label: 'Table',
++      enabled: enabled,
++      onTap: onInsertTable,
++    );
++    final imageAction = _RibbonAction(
++      key: const Key('word-ribbon-image'),
++      icon: Icons.image_outlined,
++      label: 'Image',
++      enabled: enabled,
++      onTap: onInsertImage,
++    );
++    final questionAction = _RibbonAction(
++      key: const Key('word-ribbon-question'),
++      icon: Icons.quiz_outlined,
++      label: 'Question',
++      enabled: enabled,
++      onTap: onInsertQuestion,
++    );
++
++    if (compact) {
++      // Keep the most common creation actions visible first on narrow phones.
++      // Step 10's Import Word action remains available by horizontal scroll,
++      // but no longer pushes Paragraph off the initial viewport.
++      final compactActions = <Widget>[
++        paragraphAction,
++        questionAction,
++        tableAction,
++        imageAction,
++        mathAction,
++        geometryAction,
+         _RibbonAction(
+           key: const Key('word-ribbon-page-layout'),
+           icon: Icons.description_outlined,
+@@ -859,15 +869,23 @@ class _InsertActions extends StatelessWidget {
+           enabled: enabled,
+           onTap: onInsertPageBreak,
+         ),
+-      ],
+-    ];
+-
+-    if (compact) {
++        importAction,
++      ];
+       return SingleChildScrollView(
+         scrollDirection: Axis.horizontal,
+-        child: Row(children: actions),
++        child: Row(children: compactActions),
+       );
+     }
++
++    final actions = <Widget>[
++      importAction,
++      mathAction,
++      geometryAction,
++      paragraphAction,
++      tableAction,
++      imageAction,
++      questionAction,
++    ];
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: [
+diff --git a/test/features/pdf/office_export_services_test.dart b/test/features/pdf/office_export_services_test.dart
+index 208e4b4..06da7ec 100644
+--- a/test/features/pdf/office_export_services_test.dart
++++ b/test/features/pdf/office_export_services_test.dart
+@@ -18,6 +18,7 @@ import 'package:edusheet/features/pdf/services/word_export_service.dart';
+ import 'package:flutter/services.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:pdf/pdf.dart';
++import 'package:xml/xml.dart' as xml;
+ 
+ void main() {
+   TestWidgetsFlutterBinding.ensureInitialized();
+@@ -240,7 +241,16 @@ void main() {
+     expect(documentXml, contains('<w:br w:type="page"/>'));
+     expect(documentXml, contains('Answer any 1 of 2 questions.'));
+     expect(documentXml, contains('a. '));
+-    expect(documentXml, contains('A) One     B) Two'));
++    expect(
++      documentXml,
++      contains(SmartPaperDocxRoundTripService.questionOptionTag('q1', 'a')),
++    );
++    expect(
++      documentXml,
++      contains(SmartPaperDocxRoundTripService.questionOptionTag('q1', 'b')),
++    );
++    final renderedText = xml.XmlDocument.parse(documentXml).rootElement.innerText;
++    expect(renderedText, contains('A) One     B) Two'));
+     expect(documentXml, contains('________________________________________'));
+   });
+ 
+diff --git a/test/release/smart_paper_word_round_trip_gate_test.dart b/test/release/smart_paper_word_round_trip_gate_test.dart
+index 3552c98..50fa555 100644
+--- a/test/release/smart_paper_word_round_trip_gate_test.dart
++++ b/test/release/smart_paper_word_round_trip_gate_test.dart
+@@ -1,13 +1,39 @@
+ import 'dart:convert';
++import 'dart:io';
+ 
+ import 'package:archive/archive.dart';
+ import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
+ import 'package:edusheet/features/pdf/services/word_export_service.dart';
++import 'package:flutter/services.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ 
+ import '../support/smart_paper_release_fixture.dart';
+ 
+ void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  const pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
++  late Directory tempDir;
++
++  setUp(() async {
++    tempDir = await Directory.systemTemp.createTemp('step10_round_trip_gate_');
++    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
++        .setMockMethodCallHandler(pathProviderChannel, (call) async {
++          if (call.method == 'getApplicationDocumentsDirectory') {
++            return tempDir.path;
++          }
++          return null;
++        });
++  });
++
++  tearDown(() async {
++    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
++        .setMockMethodCallHandler(pathProviderChannel, null);
++    if (await tempDir.exists()) {
++      await tempDir.delete(recursive: true);
++    }
++  });
++
+   test('Step 10 Word export restores the exact canonical Smart Paper', () async {
+     final paper = SmartPaperReleaseFixture.paper();
+     final output = await WordExportService.export(

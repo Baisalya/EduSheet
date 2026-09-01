@@ -1,4 +1,5 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,8 @@ class QuestionCard extends StatelessWidget {
   static const _codec = QuestionRichTextCodec();
   final Question question;
   final int number;
+  final String? numberLabel;
+  final int? reorderIndex;
   final VoidCallback onEdit;
   final VoidCallback onDuplicate;
   final VoidCallback onDelete;
@@ -16,6 +19,8 @@ class QuestionCard extends StatelessWidget {
     super.key,
     required this.question,
     required this.number,
+    this.numberLabel,
+    this.reorderIndex,
     required this.onEdit,
     required this.onDuplicate,
     required this.onDelete,
@@ -26,8 +31,10 @@ class QuestionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final unplacedMath = _codec.unplacedMathExpressions(question);
+    final isWordBlock = question.isWordContentBlock;
     final plain = question.plainTextAccessibility.trim();
     final hasDiagram = plain.contains('[diagram]');
+    final blockKind = question.wordContentBlockKind;
 
     return Card(
       elevation: 0,
@@ -39,7 +46,7 @@ class QuestionCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onEdit,
+        onTap: isWordBlock ? null : onEdit,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
           child: Row(
@@ -53,10 +60,16 @@ class QuestionCard extends StatelessWidget {
                   color: theme.colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(
-                  '$number',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
+                child: isWordBlock
+                    ? Icon(switch (blockKind) {
+                        'table' => Icons.grid_on_outlined,
+                        'image' => Icons.image_outlined,
+                        _ => Icons.notes_rounded,
+                      }, size: 19)
+                    : Text(
+                        numberLabel ?? '$number',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -64,7 +77,11 @@ class QuestionCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      plain.isEmpty ? 'Untitled question' : plain,
+                      plain.isEmpty
+                          ? (isWordBlock
+                                ? 'Free Word content'
+                                : 'Untitled question')
+                          : plain,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyLarge?.copyWith(
@@ -77,10 +94,25 @@ class QuestionCard extends StatelessWidget {
                       runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        _MetaChip(label: question.type.label),
-                        _MetaChip(label: '${_marks(question.marks)} marks'),
-                        if (question.isOptional)
-                          const _MetaChip(label: 'Optional'),
+                        if (isWordBlock)
+                          const _MetaChip(
+                            label: 'Word content',
+                            icon: Icons.article_outlined,
+                          )
+                        else ...[
+                          _MetaChip(label: question.type.label),
+                          _MetaChip(label: '${_marks(question.marks)} marks'),
+                          if (question.isOptional)
+                            const _MetaChip(label: 'Optional'),
+                        ],
+                        if (question.options.isNotEmpty &&
+                            QuestionOptionLayoutCodec.fromQuestion(question) !=
+                                QuestionOptionLayout.vertical)
+                          _MetaChip(
+                            label:
+                                '${QuestionOptionLayoutCodec.fromQuestion(question).label} options',
+                            icon: Icons.view_module_outlined,
+                          ),
                         if (question.mathExpressions.isNotEmpty)
                           _MetaChip(
                             label:
@@ -94,6 +126,15 @@ class QuestionCard extends StatelessWidget {
                           ),
                       ],
                     ),
+                    if (isWordBlock) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Free-form content from Word Mode • switch to Word Mode to edit',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                     if (unplacedMath.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       SizedBox(
@@ -125,6 +166,20 @@ class QuestionCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (reorderIndex != null)
+                ReorderableDragStartListener(
+                  index: reorderIndex!,
+                  child: const Tooltip(
+                    message: 'Drag to reorder',
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 10,
+                      ),
+                      child: Icon(Icons.drag_indicator_rounded),
+                    ),
+                  ),
+                ),
               PopupMenuButton<_QuestionMenuAction>(
                 tooltip: 'Question actions',
                 onSelected: (value) {
@@ -143,16 +198,17 @@ class QuestionCard extends StatelessWidget {
                       break;
                   }
                 },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: _QuestionMenuAction.edit,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.edit_outlined),
-                      title: Text('Edit'),
+                itemBuilder: (context) => [
+                  if (!isWordBlock)
+                    const PopupMenuItem(
+                      value: _QuestionMenuAction.edit,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.edit_outlined),
+                        title: Text('Edit'),
+                      ),
                     ),
-                  ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: _QuestionMenuAction.duplicate,
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -160,15 +216,16 @@ class QuestionCard extends StatelessWidget {
                       title: Text('Duplicate'),
                     ),
                   ),
-                  PopupMenuItem(
-                    value: _QuestionMenuAction.saveToBank,
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.bookmark_add_outlined),
-                      title: Text('Save to Question Bank'),
+                  if (!isWordBlock)
+                    const PopupMenuItem(
+                      value: _QuestionMenuAction.saveToBank,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.bookmark_add_outlined),
+                        title: Text('Save to Question Bank'),
+                      ),
                     ),
-                  ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: _QuestionMenuAction.delete,
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,

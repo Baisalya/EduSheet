@@ -1,59 +1,7 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
-import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
+import 'package:edusheet/features/paper_composer/application/question_insertion_anchor.dart';
 import 'package:flutter/material.dart';
-
-class QuestionTypeControl extends StatelessWidget {
-  final QuestionType type;
-  final VoidCallback onTap;
-
-  const QuestionTypeControl({
-    super.key,
-    required this.type,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(type.composerIcon),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    type.label,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  Text(
-                    'Question type',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.keyboard_arrow_down_rounded),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class QuestionMarksControl extends StatelessWidget {
   final TextEditingController controller;
@@ -208,5 +156,223 @@ class ComposerErrorText extends StatelessWidget {
         fontWeight: FontWeight.w700,
       ),
     );
+  }
+}
+
+class QuestionInsertionStatus extends StatelessWidget {
+  final QuestionInsertionAnchor anchor;
+  final bool isFocused;
+  final bool compact;
+  final VoidCallback onTap;
+
+  const QuestionInsertionStatus({
+    super.key,
+    required this.anchor,
+    required this.isFocused,
+    required this.compact,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final foreground = isFocused ? scheme.primary : scheme.onSurfaceVariant;
+    final background = isFocused
+        ? scheme.primaryContainer.withValues(alpha: 0.55)
+        : scheme.surfaceContainerHighest.withValues(alpha: 0.7);
+    final title = anchor.hasSelection
+        ? '${anchor.length} selected · line ${anchor.lineNumber}'
+        : '${isFocused ? 'Typing here' : 'Cursor saved'} · line ${anchor.lineNumber}, pos ${anchor.columnNumber}';
+
+    return Tooltip(
+      message: '${anchor.actionLabel}\n${anchor.contextLabel}',
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          key: const ValueKey('question-insertion-status'),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 9 : 11,
+              vertical: 6,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  anchor.hasSelection
+                      ? Icons.select_all_rounded
+                      : Icons.my_location_rounded,
+                  size: 15,
+                  color: foreground,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    title,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class QuestionMobileAuthoringToolbar extends StatelessWidget {
+  final QuestionInsertionAnchor anchor;
+  final bool formattingActive;
+  final bool canUndo;
+  final bool canRedo;
+  final VoidCallback onReturnToCursor;
+  final VoidCallback onAdd;
+  final VoidCallback onMath;
+  final VoidCallback onGeometry;
+  final VoidCallback onFormat;
+  final VoidCallback onUndo;
+  final VoidCallback onRedo;
+
+  const QuestionMobileAuthoringToolbar({
+    super.key,
+    required this.anchor,
+    required this.formattingActive,
+    required this.canUndo,
+    required this.canRedo,
+    required this.onReturnToCursor,
+    required this.onAdd,
+    required this.onMath,
+    required this.onGeometry,
+    required this.onFormat,
+    required this.onUndo,
+    required this.onRedo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          key: const ValueKey('question-sticky-insertion-anchor'),
+          onTap: onReturnToCursor,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+            child: Row(
+              children: [
+                Icon(Icons.place_outlined, size: 15, color: scheme.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Question tools use: ${anchor.compactLocation}',
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  'Return',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        SizedBox(
+          height: 40,
+          child: SingleChildScrollView(
+            key: const ValueKey('question-mobile-authoring-tools'),
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _QuestionAuthoringTool(
+                  icon: Icons.add_rounded,
+                  label: 'Add',
+                  onPressed: onAdd,
+                  emphasized: true,
+                ),
+                _QuestionAuthoringTool(
+                  icon: Icons.functions_rounded,
+                  label: 'Math',
+                  onPressed: onMath,
+                ),
+                _QuestionAuthoringTool(
+                  icon: Icons.category_outlined,
+                  label: 'Geometry',
+                  onPressed: onGeometry,
+                ),
+                _QuestionAuthoringTool(
+                  icon: Icons.format_bold_rounded,
+                  label: 'Format',
+                  onPressed: onFormat,
+                  selected: formattingActive,
+                ),
+                _QuestionAuthoringTool(
+                  icon: Icons.undo_rounded,
+                  label: 'Undo',
+                  onPressed: canUndo ? onUndo : null,
+                ),
+                _QuestionAuthoringTool(
+                  icon: Icons.redo_rounded,
+                  label: 'Redo',
+                  onPressed: canRedo ? onRedo : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuestionAuthoringTool extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool emphasized;
+  final bool selected;
+
+  const _QuestionAuthoringTool({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.emphasized = false,
+    this.selected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final button = emphasized || selected
+        ? FilledButton.tonalIcon(
+            onPressed: onPressed,
+            icon: Icon(icon, size: 17),
+            label: Text(label),
+          )
+        : OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon, size: 17),
+            label: Text(label),
+          );
+    return Padding(padding: const EdgeInsets.only(right: 7), child: button);
   }
 }

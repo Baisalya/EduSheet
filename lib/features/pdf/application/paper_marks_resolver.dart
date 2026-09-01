@@ -20,18 +20,6 @@ class PaperMarksSummary {
   bool get hasMismatch =>
       balance == PaperMarksBalance.underAssigned ||
       balance == PaperMarksBalance.overAssigned;
-
-  String? get teacherMessage {
-    switch (balance) {
-      case PaperMarksBalance.automatic:
-      case PaperMarksBalance.balanced:
-        return null;
-      case PaperMarksBalance.underAssigned:
-        return '${PaperMarksResolver.format(difference)} marks are not assigned yet.';
-      case PaperMarksBalance.overAssigned:
-        return 'Question marks exceed maximum marks by ${PaperMarksResolver.format(difference)}.';
-    }
-  }
 }
 
 class PaperMarksResolver {

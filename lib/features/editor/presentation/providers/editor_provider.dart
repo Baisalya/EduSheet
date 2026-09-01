@@ -4,6 +4,7 @@ import 'package:edusheet/features/pdf/presentation/providers/template_provider.d
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
@@ -221,6 +222,27 @@ class EditorState extends _$EditorState {
       maximumMarks: maximumMarks,
       clearMaximumMarks: clearMaximumMarks,
       includeCoverPage: includeCoverPage,
+      headerText: headerText,
+      footerText: footerText,
+      showPageNumbers: showPageNumbers,
+    );
+  }
+
+  /// Applies canonical page/layout settings as one undoable paper mutation.
+  /// Word Mode, preview, PDF and Word export all read these same values.
+  void updatePageLayout(PaperPageLayout layout) {
+    state = state.copyWith(pageLayout: layout);
+  }
+
+  /// Applies the Word-style Page Setup surface as one undoable mutation.
+  void applyPageLayout({
+    required PaperPageLayout layout,
+    required String headerText,
+    required String footerText,
+    required bool showPageNumbers,
+  }) {
+    state = state.copyWith(
+      pageLayout: layout,
       headerText: headerText,
       footerText: footerText,
       showPageNumbers: showPageNumbers,
@@ -522,6 +544,37 @@ class EditorState extends _$EditorState {
           );
         }
         return section;
+      }).toList(),
+    );
+  }
+
+  void replaceQuestionObject(String sectionId, Question question) {
+    state = state.copyWith(
+      sections: state.sections.map((section) {
+        if (section.id != sectionId) return section;
+        final questions = [...section.questions];
+        final index = questions.indexWhere((item) => item.id == question.id);
+        if (index < 0) return section;
+        questions[index] = question;
+        return section.copyWith(questions: questions);
+      }).toList(),
+    );
+  }
+
+  void insertQuestionObject(
+    String sectionId,
+    Question question, {
+    int? insertAt,
+  }) {
+    state = state.copyWith(
+      sections: state.sections.map((section) {
+        if (section.id != sectionId) return section;
+        final questions = [...section.questions];
+        final index = (insertAt ?? questions.length)
+            .clamp(0, questions.length)
+            .toInt();
+        questions.insert(index, question);
+        return section.copyWith(questions: questions);
       }).toList(),
     );
   }

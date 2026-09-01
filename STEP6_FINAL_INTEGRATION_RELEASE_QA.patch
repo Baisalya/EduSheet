@@ -1,0 +1,716 @@
+diff -ruN /mnt/data/edusheet_step6_baseline/STEP6_FINAL_INTEGRATION_RELEASE_QA.md /mnt/data/edusheet_step6/EduSheet-master/STEP6_FINAL_INTEGRATION_RELEASE_QA.md
+--- /mnt/data/edusheet_step6_baseline/STEP6_FINAL_INTEGRATION_RELEASE_QA.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step6/EduSheet-master/STEP6_FINAL_INTEGRATION_RELEASE_QA.md	2026-08-31 11:52:34.700558236 +0000
+@@ -0,0 +1,55 @@
++# Step 6 — Final Integration & Release QA
++
++This phase does not introduce another authoring model or persistence schema. It
++locks the Universal Smart Paper Editor delivered in Steps 1–5 behind focused
++integration gates that exercise the product as a teacher would actually use it.
++
++## Release gates added
++
++1. **Paper compatibility**
++   - Full Step 1–5 paper is encoded to JSON and decoded again.
++   - Section structure, option layout, advanced metadata, tables, attachments,
++     sub-questions, internal OR choices and unrelated legacy metadata must
++     survive unchanged.
++   - Pre-refactor MCQ / descriptive / fill-in-the-blank payloads must still open.
++
++2. **Question Bank round-trip**
++   - An advanced reusable question is written through the real local Question
++     Bank repository and loaded again.
++   - Stimulus, word bank, answer space, table, attachment metadata, parts, OR
++     choices, option layout and teaching metadata must remain intact.
++
++3. **Preview / PDF / Word semantic parity**
++   - The same complex paper is rendered in the on-screen preview, exported to
++     DOCX, and exported to PDF.
++   - A shared set of semantic markers must appear in all three outputs.
++   - Teacher-only marks diagnostics remain excluded from student documents.
++
++4. **Phone and Windows responsive authoring**
++   - The same advanced question is pumped at a compact Android-size viewport
++     and an expanded Windows-size viewport.
++   - Both must render without Flutter layout exceptions.
++
++5. **Advanced-paper performance**
++   - A 200-question paper containing stimulus metadata, word banks, tables,
++     nested parts and OR choices is profiled through the existing paper
++     validator/serializer.
++   - It must remain inside the existing 5-second service budget.
++
++## One-command Windows gate
++
++Run from the EduSheet project root:
++
++```powershell
++powershell -ExecutionPolicy Bypass -File .\tool\run_smart_paper_release_gate.ps1
++```
++
++The script intentionally runs the focused Step-6 tests first and then the full
++suite. A release is not considered green unless both pass.
++
++## No schema/dependency changes
++
++- No database migration.
++- No new package.
++- Existing Question/Paper JSON remains the persistence contract.
++- Existing Step 1–5 production behavior is not replaced by a second editor.
+diff -ruN /mnt/data/edusheet_step6_baseline/test/release/smart_paper_compatibility_gate_test.dart /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_compatibility_gate_test.dart
+--- /mnt/data/edusheet_step6_baseline/test/release/smart_paper_compatibility_gate_test.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_compatibility_gate_test.dart	2026-08-31 11:50:31.541166762 +0000
+@@ -0,0 +1,96 @@
++import 'dart:convert';
++
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++import '../support/smart_paper_release_fixture.dart';
++
++void main() {
++  group('Smart Paper release compatibility gate', () {
++    test('complete Step 1-5 paper survives a real JSON round trip', () {
++      final original = SmartPaperReleaseFixture.paper(
++        attachmentPath: r'C:\teacher\rainfall.png',
++      );
++      final json = jsonDecode(jsonEncode(original.toJson())) as Map<String, dynamic>;
++      final restored = Paper.fromJson(json);
++
++      expect(restored.id, original.id);
++      expect(restored.templateId, original.templateId);
++      expect(restored.maximumMarks, 10);
++      expect(restored.customHeaderValues['legacyHeaderOwner'], 'preserve-me');
++      expect(restored.sections, hasLength(1));
++
++      final section = restored.sections.single;
++      expect(section.requiredCount, 2);
++      expect(section.numberingStyle, QuestionNumberStyle.lowerAlpha);
++      expect(section.defaultMarks, 5);
++      expect(section.answerSpaceLines, 2);
++      expect(section.ruledAnswerArea, isTrue);
++
++      final advancedQuestion = section.questions.first;
++      expect(advancedQuestion.type, QuestionType.custom);
++      expect(advancedQuestion.options, hasLength(2));
++      expect(advancedQuestion.tableData?.caption, 'Observation table');
++      expect(advancedQuestion.attachments.single.path, r'C:\teacher\rainfall.png');
++      expect(advancedQuestion.subQuestions, hasLength(2));
++      expect(advancedQuestion.internalChoices, hasLength(2));
++      expect(
++        QuestionOptionLayoutCodec.fromQuestion(advancedQuestion),
++        QuestionOptionLayout.inline,
++      );
++      expect(
++        (advancedQuestion.metadata['legacyOwner'] as Map)['keep'],
++        isTrue,
++      );
++
++      final advanced = QuestionAdvancedContent.fromQuestion(advancedQuestion);
++      expect(advanced.stimulus?.kind, QuestionStimulusKind.caseStudy);
++      expect(advanced.stimulus?.title, 'Rainfall evidence');
++      expect(advanced.wordBank, ['increase', 'decrease', 'unchanged']);
++      expect(advanced.answerSpace.style, QuestionAnswerSpaceStyle.box);
++      expect(advanced.answerSpace.lines, 3);
++
++      final mcq = section.questions.last;
++      expect(mcq.type, QuestionType.mcq);
++      expect(QuestionOptionLayoutCodec.fromQuestion(mcq), QuestionOptionLayout.twoColumn);
++      expect(mcq.metadata['legacyMcqMetadata'], isTrue);
++    });
++
++    test('legacy three-type payload still opens after Smart Paper refactor', () {
++      final restored = Paper.fromJson({
++        'id': 'legacy-release-gate',
++        'title': 'Legacy paper',
++        'sections': [
++          {
++            'id': 'legacy-section',
++            'title': 'Section A',
++            'questions': [
++              {
++                'id': 'legacy-mcq',
++                'text': 'Choose one',
++                'type': 0,
++                'marks': 1,
++                'options': [
++                  {'id': 'a', 'text': 'A', 'isCorrect': true},
++                  {'id': 'b', 'text': 'B', 'isCorrect': false},
++                ],
++              },
++              {'id': 'legacy-desc', 'text': 'Explain', 'type': 1, 'marks': 3},
++              {'id': 'legacy-blank', 'text': 'Fill ____', 'type': 2, 'marks': 1},
++            ],
++          },
++        ],
++        'createdAt': '2026-01-01T00:00:00.000Z',
++      });
++
++      final questions = restored.sections.single.questions;
++      expect(questions[0].type, QuestionType.mcq);
++      expect(questions[1].type, QuestionType.descriptive);
++      expect(questions[2].type, QuestionType.fillInTheBlanks);
++      expect(QuestionAdvancedContent.fromQuestion(questions[1]).hasAny, isFalse);
++      expect(QuestionOptionLayoutCodec.fromQuestion(questions[0]), QuestionOptionLayout.vertical);
++    });
++  });
++}
+diff -ruN /mnt/data/edusheet_step6_baseline/test/release/smart_paper_export_parity_gate_test.dart /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_export_parity_gate_test.dart
+--- /mnt/data/edusheet_step6_baseline/test/release/smart_paper_export_parity_gate_test.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_export_parity_gate_test.dart	2026-08-31 11:51:55.604700370 +0000
+@@ -0,0 +1,125 @@
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:archive/archive.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_preview_page.dart';
++import 'package:edusheet/features/pdf/data/repositories/template_repository.dart';
++import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
++import 'package:edusheet/features/pdf/services/pdf_service.dart';
++import 'package:edusheet/features/pdf/services/word_export_service.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
++
++import '../support/smart_paper_release_fixture.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  const pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
++  late Directory tempDirectory;
++  late TemplateRepository templateRepository;
++
++  setUp(() async {
++    tempDirectory = await Directory.systemTemp.createTemp('edusheet-release-export-');
++    templateRepository = TemplateRepository(
++      fileResolver: () async => File(
++        '${tempDirectory.path}${Platform.pathSeparator}templates.json',
++      ),
++    );
++    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
++        .setMockMethodCallHandler(pathProviderChannel, (call) async {
++          if (call.method == 'getApplicationDocumentsDirectory') {
++            return tempDirectory.path;
++          }
++          return null;
++        });
++  });
++
++  tearDown(() async {
++    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
++        .setMockMethodCallHandler(pathProviderChannel, null);
++    if (await tempDirectory.exists()) {
++      await tempDirectory.delete(recursive: true);
++    }
++  });
++
++  testWidgets('preview exposes the same advanced semantic content used for export', (
++    tester,
++  ) async {
++    await tester.binding.setSurfaceSize(const Size(1500, 1800));
++    addTearDown(() => tester.binding.setSurfaceSize(null));
++    final paper = SmartPaperReleaseFixture.paper();
++
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          templateRepositoryProvider.overrideWithValue(templateRepository),
++        ],
++        child: MaterialApp(home: PaperPreviewPage(paper: paper)),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    final document = find.byKey(const Key('paper-preview-document'));
++    expect(document, findsOneWidget);
++    for (final marker in SmartPaperReleaseFixture.semanticMarkers) {
++      expect(
++        find.descendant(of: document, matching: find.text(marker)),
++        findsWidgets,
++        reason: 'Preview lost semantic marker: $marker',
++      );
++    }
++    expect(tester.takeException(), isNull);
++  });
++
++  test('PDF and Word exports retain the same advanced semantic markers', () async {
++    final paper = SmartPaperReleaseFixture.paper();
++    final template = SmartPaperReleaseFixture.template;
++
++    final wordFile = await WordExportService.export(
++      paper,
++      template,
++      fileNameBase: 'Smart Paper Release Word',
++    );
++    final archive = ZipDecoder().decodeBytes(await wordFile.readAsBytes());
++    final wordXml = _archiveText(archive, 'word/document.xml');
++
++    final pdfFile = await PdfService.export(
++      paper,
++      template,
++      fileNameBase: 'Smart Paper Release PDF',
++    );
++    final pdfDocument = sf.PdfDocument(inputBytes: await pdfFile.readAsBytes());
++    addTearDown(pdfDocument.dispose);
++    final pdfText = sf.PdfTextExtractor(pdfDocument).extractText();
++
++    for (final marker in SmartPaperReleaseFixture.semanticMarkers) {
++      expect(wordXml, contains(marker), reason: 'Word lost semantic marker: $marker');
++      expect(pdfText, contains(marker), reason: 'PDF lost semantic marker: $marker');
++    }
++
++    expect(_occurrences(wordXml, 'Maximum Marks:'), 1);
++    expect(wordXml, isNot(contains('Assigned marks')));
++    expect(pdfText, isNot(contains('Assigned marks')));
++  });
++}
++
++String _archiveText(Archive archive, String name) {
++  final file = archive.files.firstWhere((entry) => entry.name == name);
++  return utf8.decode(file.content as List<int>);
++}
++
++int _occurrences(String source, String pattern) {
++  if (pattern.isEmpty) return 0;
++  var count = 0;
++  var offset = 0;
++  while (true) {
++    final index = source.indexOf(pattern, offset);
++    if (index < 0) return count;
++    count++;
++    offset = index + pattern.length;
++  }
++}
+diff -ruN /mnt/data/edusheet_step6_baseline/test/release/smart_paper_performance_gate_test.dart /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_performance_gate_test.dart
+--- /mnt/data/edusheet_step6_baseline/test/release/smart_paper_performance_gate_test.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_performance_gate_test.dart	2026-08-31 11:51:07.028147995 +0000
+@@ -0,0 +1,80 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/services/paper_performance_profiler.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('200 advanced questions remain inside the existing service budget', () {
++    const profiler = PaperPerformanceProfiler();
++    final profile = profiler.profile(_advancedPaper(200));
++
++    expect(profile.questionCount, 200);
++    expect(profile.validation.hasErrors, isFalse);
++    expect(profile.validationDuration, lessThan(const Duration(seconds: 5)));
++    expect(profile.serializationDuration, lessThan(const Duration(seconds: 5)));
++    expect(profile.serializedBytes, greaterThan(100000));
++  });
++}
++
++Paper _advancedPaper(int count) {
++  const advanced = QuestionAdvancedContent(
++    stimulus: QuestionStimulus(
++      kind: QuestionStimulusKind.sourceText,
++      title: 'Data source',
++      text: 'A short source paragraph used to exercise advanced metadata serialization.',
++    ),
++    wordBank: ['alpha', 'beta', 'gamma'],
++    answerSpace: QuestionAnswerSpace(
++      style: QuestionAnswerSpaceStyle.ruled,
++      lines: 2,
++    ),
++  );
++
++  final questions = List<Question>.generate(count, (index) {
++    return Question(
++      id: 'advanced-performance-$index',
++      text: 'Interpret data set $index and justify the result.',
++      marks: 2,
++      tableData: QuestionTable(
++        headers: const ['X', 'Y'],
++        rows: [
++          ['$index', '${index + 1}'],
++        ],
++        caption: 'Data $index',
++      ),
++      subQuestions: [
++        Question(
++          id: 'advanced-performance-$index-a',
++          text: 'State one observation.',
++          marks: 1,
++        ),
++      ],
++      internalChoices: [
++        Question(
++          id: 'advanced-performance-$index-or-a',
++          text: 'Explain using words.',
++          marks: 1,
++        ),
++        Question(
++          id: 'advanced-performance-$index-or-b',
++          text: 'Explain using a ratio.',
++          marks: 1,
++        ),
++      ],
++      metadata: advanced.writeToMetadata(const {'releaseGate': true}),
++    );
++  });
++
++  return Paper(
++    id: 'advanced-performance-paper',
++    title: 'Advanced performance paper',
++    createdAt: DateTime.utc(2026, 8, 31),
++    sections: [
++      PaperSection(
++        id: 'advanced-performance-section',
++        title: 'Section A',
++        questions: questions,
++      ),
++    ],
++  );
++}
+diff -ruN /mnt/data/edusheet_step6_baseline/test/release/smart_paper_question_bank_gate_test.dart /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_question_bank_gate_test.dart
+--- /mnt/data/edusheet_step6_baseline/test/release/smart_paper_question_bank_gate_test.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_question_bank_gate_test.dart	2026-08-31 11:53:14.725165579 +0000
+@@ -0,0 +1,57 @@
++import 'dart:io';
++
++import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/question_bank/data/repositories/local_question_bank_repository.dart';
++import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++import '../support/smart_paper_release_fixture.dart';
++
++void main() {
++  test('Question Bank preserves the complete Smart Paper question structure', () async {
++    final directory = await Directory.systemTemp.createTemp('edusheet-release-bank-');
++    addTearDown(() async {
++      if (await directory.exists()) {
++        await directory.delete(recursive: true);
++      }
++    });
++
++    final repository = LocalQuestionBankRepository(
++      fileResolver: () async => File('${directory.path}${Platform.pathSeparator}question_bank.json'),
++    );
++    final source = SmartPaperReleaseFixture.advancedQuestion(
++      attachmentPath: '${directory.path}${Platform.pathSeparator}rainfall.png',
++    );
++
++    await repository.addQuestion(
++      QuestionBankQuestion.fromQuestion(source, isFavorite: true),
++    );
++    final restoredEntry = (await repository.getAllQuestions()).single;
++    final restored = restoredEntry.question;
++
++    expect(restored.id, source.id);
++    expect(restored.subject, 'Mathematics');
++    expect(restored.chapter, 'Data Handling');
++    expect(restored.topic, 'Comparison');
++    expect(restored.tags, ['release-gate', 'data']);
++    expect(restored.options, hasLength(2));
++    expect(restored.tableData?.headers, ['Village', 'Rainfall']);
++    expect(restored.attachments.single.caption, 'Rainfall chart');
++    expect(restored.attachments.single.alternativeText, 'A simple rainfall bar chart.');
++    expect(restored.subQuestions.map((q) => q.id).toList(), ['release-part-a', 'release-part-b']);
++    expect(restored.internalChoices.map((q) => q.id).toList(), ['release-or-a', 'release-or-b']);
++    expect(
++      QuestionOptionLayoutCodec.fromQuestion(restored),
++      QuestionOptionLayout.inline,
++    );
++    expect((restored.metadata['legacyOwner'] as Map)['version'], 7);
++
++    final advanced = QuestionAdvancedContent.fromQuestion(restored);
++    expect(advanced.stimulus?.title, 'Rainfall evidence');
++    expect(advanced.wordBank, ['increase', 'decrease', 'unchanged']);
++    expect(advanced.answerSpace.style, QuestionAnswerSpaceStyle.box);
++    expect(advanced.answerSpace.lines, 3);
++    expect(restoredEntry.isFavorite, isTrue);
++  });
++}
+diff -ruN /mnt/data/edusheet_step6_baseline/test/release/smart_paper_responsive_gate_test.dart /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_responsive_gate_test.dart
+--- /mnt/data/edusheet_step6_baseline/test/release/smart_paper_responsive_gate_test.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step6/EduSheet-master/test/release/smart_paper_responsive_gate_test.dart	2026-08-31 11:53:14.724907833 +0000
+@@ -0,0 +1,75 @@
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_page.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_localizations/flutter_localizations.dart';
++import 'package:flutter_quill/flutter_quill.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++import '../support/smart_paper_release_fixture.dart';
++
++void main() {
++  testWidgets('advanced Smart Paper question fits a phone authoring viewport', (
++    tester,
++  ) async {
++    await _pumpAdvancedComposer(
++      tester,
++      size: const Size(360, 760),
++      platform: TargetPlatform.android,
++    );
++
++    expect(find.text('Paper blocks'), findsOneWidget);
++    expect(find.text('Rainfall evidence'), findsOneWidget);
++    expect(find.text('Table / data'), findsOneWidget);
++    expect(find.text('Add'), findsOneWidget);
++    expect(find.text('Math'), findsOneWidget);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('advanced Smart Paper question fits an expanded Windows viewport', (
++    tester,
++  ) async {
++    await _pumpAdvancedComposer(
++      tester,
++      size: const Size(1280, 900),
++      platform: TargetPlatform.windows,
++    );
++
++    expect(find.text('Paper blocks'), findsOneWidget);
++    expect(find.text('Rainfall evidence'), findsOneWidget);
++    expect(find.text('Table / data'), findsOneWidget);
++    expect(tester.takeException(), isNull);
++  });
++}
++
++Future<void> _pumpAdvancedComposer(
++  WidgetTester tester, {
++  required Size size,
++  required TargetPlatform platform,
++}) async {
++  tester.view.physicalSize = size;
++  tester.view.devicePixelRatio = 1;
++  addTearDown(tester.view.resetPhysicalSize);
++  addTearDown(tester.view.resetDevicePixelRatio);
++
++  await tester.pumpWidget(
++    ProviderScope(
++      child: MaterialApp(
++        theme: ThemeData(platform: platform),
++        localizationsDelegates: const [
++          GlobalMaterialLocalizations.delegate,
++          GlobalWidgetsLocalizations.delegate,
++          GlobalCupertinoLocalizations.delegate,
++          FlutterQuillLocalizations.delegate,
++        ],
++        supportedLocales: const [Locale('en', 'US')],
++        builder: (context, child) => MathKeyboardWrapper(child: child!),
++        home: QuestionComposerPage(
++          sectionId: 'release-section',
++          question: SmartPaperReleaseFixture.advancedQuestion(),
++        ),
++      ),
++    ),
++  );
++  await tester.pumpAndSettle();
++}
+diff -ruN /mnt/data/edusheet_step6_baseline/test/support/smart_paper_release_fixture.dart /mnt/data/edusheet_step6/EduSheet-master/test/support/smart_paper_release_fixture.dart
+--- /mnt/data/edusheet_step6_baseline/test/support/smart_paper_release_fixture.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step6/EduSheet-master/test/support/smart_paper_release_fixture.dart	2026-08-31 11:51:55.307308384 +0000
+@@ -0,0 +1,180 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/pdf/application/paper_style_catalog.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
++
++class SmartPaperReleaseFixture {
++  const SmartPaperReleaseFixture._();
++
++  static PaperTemplate get template => PaperStyleCatalog.presets
++      .firstWhere((preset) => preset.template.id == PaperStyleCatalog.defaultTemplateId)
++      .template;
++
++  static Paper paper({String? attachmentPath}) {
++    final advancedQuestion = _advancedQuestion(attachmentPath: attachmentPath);
++    return Paper(
++      id: 'release-paper',
++      title: 'Smart Paper Release Gate',
++      schoolName: 'EduSheet Demo School',
++      instruction: 'Read every instruction carefully.',
++      templateId: PaperStyleCatalog.defaultTemplateId,
++      maximumMarks: 10,
++      questionNumberStyle: QuestionNumberStyle.number,
++      headerFields: [
++        PaperHeaderField(id: 'subject', label: 'Subject', value: 'Mathematics'),
++        PaperHeaderField(id: 'time', label: 'Time', value: '90 minutes'),
++      ],
++      customHeaderValues: const {'legacyHeaderOwner': 'preserve-me'},
++      createdAt: DateTime.utc(2026, 8, 31, 12),
++      sections: [
++        PaperSection(
++          id: 'release-section-a',
++          title: 'Section A',
++          instruction: 'Answer both questions.',
++          prefix: 'A.',
++          requiredCount: 2,
++          numberingStyle: QuestionNumberStyle.lowerAlpha,
++          defaultMarks: 5,
++          showTitle: true,
++          showDivider: true,
++          answerSpaceLines: 2,
++          ruledAnswerArea: true,
++          questions: [
++            advancedQuestion,
++            Question(
++              id: 'release-mcq',
++              text: 'Which expression is equal to 12?',
++              type: QuestionType.mcq,
++              marks: 5,
++              options: [
++                QuestionOption(id: 'mcq-a', text: '3 × 4', isCorrect: true),
++                QuestionOption(id: 'mcq-b', text: '2 × 5'),
++                QuestionOption(id: 'mcq-c', text: '7 + 3'),
++                QuestionOption(id: 'mcq-d', text: '15 − 2'),
++              ],
++              metadata: QuestionOptionLayoutCodec.write(
++                const {'legacyMcqMetadata': true},
++                QuestionOptionLayout.twoColumn,
++              ),
++            ),
++          ],
++        ),
++      ],
++    );
++  }
++
++  static Question advancedQuestion({String? attachmentPath}) {
++    return _advancedQuestion(attachmentPath: attachmentPath);
++  }
++
++  static Question _advancedQuestion({String? attachmentPath}) {
++    const advanced = QuestionAdvancedContent(
++      stimulus: QuestionStimulus(
++        kind: QuestionStimulusKind.caseStudy,
++        title: 'Rainfall evidence',
++        text: 'Village A received 40 mm of rain while Village B received 25 mm.',
++      ),
++      wordBank: ['increase', 'decrease', 'unchanged'],
++      answerSpace: QuestionAnswerSpace(
++        style: QuestionAnswerSpaceStyle.box,
++        lines: 3,
++      ),
++    );
++
++    final metadata = advanced.writeToMetadata(
++      QuestionOptionLayoutCodec.write(
++        const {
++          'legacyOwner': {
++            'keep': true,
++            'version': 7,
++          },
++        },
++        QuestionOptionLayout.inline,
++      ),
++    );
++
++    return Question(
++      id: 'release-advanced',
++      text: 'Study the evidence and answer the following.',
++      type: QuestionType.custom,
++      marks: 5,
++      subject: 'Mathematics',
++      chapter: 'Data Handling',
++      topic: 'Comparison',
++      difficulty: QuestionDifficulty.medium,
++      tags: const ['release-gate', 'data'],
++      instructions: 'Show working where required.',
++      options: [
++        QuestionOption(id: 'adv-a', text: '15 mm', isCorrect: true),
++        QuestionOption(id: 'adv-b', text: '25 mm'),
++      ],
++      tableData: const QuestionTable(
++        headers: ['Village', 'Rainfall'],
++        rows: [
++          ['A', '40 mm'],
++          ['B', '25 mm'],
++        ],
++        caption: 'Observation table',
++        accessibilitySummary: 'Rainfall comparison for Village A and Village B.',
++      ),
++      attachments: attachmentPath == null
++          ? const []
++          : [
++              QuestionAttachment(
++                id: 'release-image',
++                kind: QuestionAttachmentKind.image,
++                path: attachmentPath,
++                alternativeText: 'A simple rainfall bar chart.',
++                caption: 'Rainfall chart',
++                mimeType: 'image/png',
++                width: 320,
++                height: 180,
++              ),
++            ],
++      subQuestions: [
++        Question(
++          id: 'release-part-a',
++          text: 'Calculate the rainfall difference.',
++          type: QuestionType.numerical,
++          marks: 2,
++          correctAnswer: '15 mm',
++        ),
++        Question(
++          id: 'release-part-b',
++          text: 'State which village received more rain.',
++          type: QuestionType.shortAnswer,
++          marks: 1,
++          correctAnswer: 'Village A',
++        ),
++      ],
++      internalChoices: [
++        Question(
++          id: 'release-or-a',
++          text: 'Explain the comparison in one sentence.',
++          marks: 2,
++        ),
++        Question(
++          id: 'release-or-b',
++          text: 'Represent the comparison as a ratio.',
++          marks: 2,
++        ),
++      ],
++      metadata: metadata,
++    );
++  }
++
++  static const semanticMarkers = <String>[
++    'Smart Paper Release Gate',
++    'Section A',
++    'Study the evidence and answer the following.',
++    'Rainfall evidence',
++    'Village A received 40 mm of rain while Village B received 25 mm.',
++    'increase',
++    'Observation table',
++    'Calculate the rainfall difference.',
++    'Explain the comparison in one sentence.',
++    'Represent the comparison as a ratio.',
++    'Which expression is equal to 12?',
++  ];
++}
+diff -ruN /mnt/data/edusheet_step6_baseline/tool/run_smart_paper_release_gate.ps1 /mnt/data/edusheet_step6/EduSheet-master/tool/run_smart_paper_release_gate.ps1
+--- /mnt/data/edusheet_step6_baseline/tool/run_smart_paper_release_gate.ps1	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step6/EduSheet-master/tool/run_smart_paper_release_gate.ps1	2026-08-31 11:52:34.696132373 +0000
+@@ -0,0 +1,16 @@
++$ErrorActionPreference = 'Stop'
++
++Write-Host 'EduSheet Smart Paper release gate' -ForegroundColor Cyan
++Write-Host '1/4 Formatting check'
++dart format --output=none --set-exit-if-changed lib test
++
++Write-Host '2/4 Static analysis'
++flutter analyze
++
++Write-Host '3/4 Focused Smart Paper release tests'
++flutter test test/release
++
++Write-Host '4/4 Full regression suite'
++flutter test
++
++Write-Host 'Smart Paper release gate passed.' -ForegroundColor Green

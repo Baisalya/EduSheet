@@ -71,7 +71,10 @@ class PaperValidator {
           ),
         );
       }
-      if (section.questions.isEmpty) {
+      final assessmentQuestionCount = section.questions
+          .where((question) => !question.isWordContentBlock)
+          .length;
+      if (assessmentQuestionCount == 0) {
         issues.add(
           PaperIssue(
             code: 'section.empty',
@@ -83,12 +86,12 @@ class PaperValidator {
       }
       final requiredCount = section.requiredCount;
       if (requiredCount != null &&
-          (requiredCount <= 0 || requiredCount > section.questions.length)) {
+          (requiredCount <= 0 || requiredCount > assessmentQuestionCount)) {
         issues.add(
           PaperIssue(
             code: 'section.invalid_attempt_rule',
             message:
-                '${_sectionName(section)} asks for $requiredCount of ${section.questions.length} questions.',
+                '${_sectionName(section)} asks for $requiredCount of $assessmentQuestionCount questions.',
             severity: PaperIssueSeverity.error,
             sectionId: section.id,
           ),
@@ -99,6 +102,7 @@ class PaperValidator {
         if (!questionIds.add(question.id)) {
           duplicateQuestionIds.add(question.id);
         }
+        if (question.isWordContentBlock) continue;
         if (question.plainTextAccessibility.trim().isEmpty &&
             question.mathExpressions.isEmpty) {
           issues.add(

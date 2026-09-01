@@ -19,6 +19,45 @@ class PaperComposerActions {
     _editor.updateSection(sectionId, instruction: instruction.trim());
   }
 
+  void updateSectionStructure(
+    String sectionId, {
+    required String prefix,
+    required int? requiredCount,
+    required QuestionNumberStyle? numberingStyle,
+    required double? defaultMarks,
+    required bool showTitle,
+    required bool showDivider,
+    required bool pageBreakBefore,
+    required int answerSpaceLines,
+    required bool ruledAnswerArea,
+    required bool graphAnswerArea,
+  }) {
+    _editor.updateSection(
+      sectionId,
+      prefix: prefix.trim(),
+      requiredCount: requiredCount,
+      clearRequiredCount: requiredCount == null,
+      numberingStyle: numberingStyle,
+      clearNumberingStyle: numberingStyle == null,
+      defaultMarks: defaultMarks,
+      clearDefaultMarks: defaultMarks == null,
+      showTitle: showTitle,
+      showDivider: showDivider,
+      pageBreakBefore: pageBreakBefore,
+      answerSpaceLines: answerSpaceLines,
+      ruledAnswerArea: ruledAnswerArea,
+      graphAnswerArea: graphAnswerArea,
+    );
+  }
+
+  void reorderQuestions(String sectionId, int oldIndex, int newIndex) {
+    _editor.reorderQuestions(sectionId, oldIndex, newIndex);
+  }
+
+  void reorderSections(int oldIndex, int newIndex) {
+    _editor.reorderSections(oldIndex, newIndex);
+  }
+
   void deleteSection(String sectionId) => _editor.deleteSection(sectionId);
 
   void duplicateSection(String sectionId) =>
@@ -34,6 +73,18 @@ class PaperComposerActions {
 
   void addSectionWithQuestionsFromBank(List<Question> questions) {
     _editor.addSectionWithQuestionsFromBank(questions);
+  }
+
+  void replaceQuestion(String sectionId, Question question) {
+    _editor.replaceQuestionObject(sectionId, question);
+  }
+
+  void insertQuestionBlock(
+    String sectionId,
+    Question question, {
+    int? insertAt,
+  }) {
+    _editor.insertQuestionObject(sectionId, question, insertAt: insertAt);
   }
 
   void deleteQuestion(String sectionId, String questionId) {

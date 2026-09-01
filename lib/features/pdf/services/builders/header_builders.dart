@@ -1,6 +1,6 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
-import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
+import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:pdf/pdf.dart';
@@ -103,7 +103,7 @@ class CustomHeaderBuilder {
           element,
           scale,
           alignment,
-          'Maximum Marks: ${PaperMarksResolver.format(PaperMarksResolver.effectiveMaximumMarks(paper))}',
+          PaperDocumentMarks.maximumMarksLabel(paper),
           style,
         );
       case ElementType.headerFieldsBlock:

@@ -1,4 +1,5 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:flutter/material.dart';
 
 class PaperOutlinePanel extends StatelessWidget {
@@ -110,7 +111,7 @@ class _OutlineSection extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
         ),
         subtitle: Text(
-          '${section.questions.length} question${section.questions.length == 1 ? '' : 's'}',
+          '${PaperStructureService.assessmentQuestionCount(section)} question${PaperStructureService.assessmentQuestionCount(section) == 1 ? '' : 's'}',
           style: Theme.of(context).textTheme.labelSmall,
         ),
         onExpansionChanged: (expanded) {
@@ -123,17 +124,21 @@ class _OutlineSection extends StatelessWidget {
               minTileHeight: 36,
               contentPadding: const EdgeInsets.symmetric(horizontal: 8),
               leading: SizedBox(
-                width: 20,
-                child: Text(
-                  '${entry.key + 1}.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
-                ),
+                width: 22,
+                child: entry.value.isWordContentBlock
+                    ? const Icon(Icons.article_outlined, size: 16)
+                    : Text(
+                        '${PaperStructureService.numberedQuestionOrdinal(section, entry.key)}.',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
               ),
               title: Text(
                 entry.value.plainTextAccessibility.trim().isEmpty
-                    ? 'Untitled question'
+                    ? (entry.value.isWordContentBlock
+                          ? 'Free Word content'
+                          : 'Untitled question')
                     : entry.value.plainTextAccessibility.trim(),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

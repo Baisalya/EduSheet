@@ -1,4 +1,6 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
 import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
@@ -29,9 +31,11 @@ class PaperInspectorPanel extends ConsumerWidget {
     final theme = Theme.of(context);
     final questionCount = paper.sections.fold<int>(
       0,
-      (sum, section) => sum + section.questions.length,
+      (sum, section) =>
+          sum + PaperStructureService.assessmentQuestionCount(section),
     );
     final marks = PaperMarksResolver.summarize(paper);
+    final marksDiagnostics = PaperMarksTeacherDiagnostics(marks);
     final template = PaperTemplateResolver.resolve(
       paper.templateId,
       ref.watch(templateProvider).all,
@@ -74,8 +78,8 @@ class PaperInspectorPanel extends ConsumerWidget {
                 : 'Paper setup needs details',
           ),
           _StatusLine(
-            ok: !marks.hasMismatch,
-            text: marks.teacherMessage ?? 'Marks balanced',
+            ok: !marksDiagnostics.hasMismatch,
+            text: marksDiagnostics.inspectorStatus,
           ),
           const SizedBox(height: 14),
           Container(

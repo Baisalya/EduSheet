@@ -1,0 +1,8 @@
+STEP6_FINAL_INTEGRATION_RELEASE_QA.md
+tool/run_smart_paper_release_gate.ps1
+test/release/smart_paper_export_parity_gate_test.dart
+test/release/smart_paper_question_bank_gate_test.dart
+test/release/smart_paper_performance_gate_test.dart
+test/release/smart_paper_compatibility_gate_test.dart
+test/release/smart_paper_responsive_gate_test.dart
+test/support/smart_paper_release_fixture.dart

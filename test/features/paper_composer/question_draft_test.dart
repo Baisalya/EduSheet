@@ -90,9 +90,9 @@ void main() {
     });
 
     test(
-      'changing to option type creates options without changing storage enum',
+      'quick start creates option helpers without changing storage contract',
       () {
-        final draft = QuestionDraft.create().copyWith(type: QuestionType.mcq);
+        final draft = QuestionDraft.create().applyQuickStart(QuestionType.mcq);
 
         expect(draft.type, QuestionType.mcq);
         expect(draft.options, hasLength(4));
@@ -100,24 +100,56 @@ void main() {
       },
     );
 
-    test('changing away from option type clears transient answer options', () {
-      final draft = QuestionDraft.create(
-        type: QuestionType.mcq,
-      ).copyWith(type: QuestionType.shortAnswer);
+    test('advanced structural content is explicitly editable in the draft', () {
+      final draft = QuestionDraft.create().copyWith(
+        tableData: const QuestionTable(
+          headers: ['Word', 'Meaning'],
+          rows: [
+            ['A', 'B'],
+          ],
+        ),
+        subQuestions: [Question(id: 'part-a', text: 'Part A')],
+        internalChoices: [Question(id: 'or-a', text: 'Alternative')],
+        attachments: const [
+          QuestionAttachment(
+            id: 'img-1',
+            kind: QuestionAttachmentKind.image,
+            path: '/tmp/image.png',
+            alternativeText: 'Reference image',
+          ),
+        ],
+      );
 
-      expect(draft.options, isEmpty);
+      final saved = draft.toQuestion(plainTextAccessibility: 'Question');
+      expect(saved.tableData?.headers, ['Word', 'Meaning']);
+      expect(saved.subQuestions.single.id, 'part-a');
+      expect(saved.internalChoices.single.id, 'or-a');
+      expect(saved.attachments.single.id, 'img-1');
     });
 
-    test('true/false transitions use semantically correct option sets', () {
-      final trueFalse = QuestionDraft.create(
-        type: QuestionType.mcq,
-      ).copyWith(type: QuestionType.trueFalse);
+    test('changing legacy type never deletes composed answer options', () {
+      final original = QuestionDraft.create(type: QuestionType.mcq);
+      final draft = original.copyWith(type: QuestionType.shortAnswer);
 
-      expect(trueFalse.options.map((item) => item.text), ['True', 'False']);
-
-      final mcq = trueFalse.copyWith(type: QuestionType.mcq);
-      expect(mcq.options, hasLength(4));
-      expect(mcq.options.every((item) => item.text.isEmpty), isTrue);
+      expect(draft.type, QuestionType.shortAnswer);
+      expect(
+        draft.options.map((item) => item.id),
+        original.options.map((item) => item.id),
+      );
     });
+
+    test(
+      'quick start adds required helpers without removing existing content',
+      () {
+        final trueFalse = QuestionDraft.create().applyQuickStart(
+          QuestionType.trueFalse,
+        );
+        expect(trueFalse.options.map((item) => item.text), ['True', 'False']);
+
+        final preserved = trueFalse.applyQuickStart(QuestionType.shortAnswer);
+        expect(preserved.type, QuestionType.shortAnswer);
+        expect(preserved.options.map((item) => item.text), ['True', 'False']);
+      },
+    );
   });
 }

@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
+import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
 import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
 import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/application/paper_style_catalog.dart';
@@ -141,7 +143,7 @@ void main() {
     expect(resolved.id, PaperStyleCatalog.defaultTemplateId);
   });
 
-  test('marks resolver explains under and over assignment', () {
+  test('marks calculation stays separate from teacher diagnostics', () {
     final section = PaperSection(
       id: 's1',
       title: 'Section A',
@@ -159,19 +161,34 @@ void main() {
     );
     final over = under.copyWith(maximumMarks: 40);
 
+    final underSummary = PaperMarksResolver.summarize(under);
+    final overSummary = PaperMarksResolver.summarize(over);
+
+    expect(underSummary.balance, PaperMarksBalance.underAssigned);
+    expect(overSummary.balance, PaperMarksBalance.overAssigned);
     expect(
-      PaperMarksResolver.summarize(under).balance,
-      PaperMarksBalance.underAssigned,
-    );
-    expect(
-      PaperMarksResolver.summarize(under).teacherMessage,
+      PaperMarksTeacherDiagnostics(underSummary).mismatchMessage,
       contains('10 marks'),
     );
     expect(
-      PaperMarksResolver.summarize(over).balance,
-      PaperMarksBalance.overAssigned,
+      PaperMarksTeacherDiagnostics(overSummary).mismatchMessage,
+      contains('10'),
     );
-    expect(PaperMarksResolver.summarize(over).teacherMessage, contains('10'));
+    expect(PaperDocumentMarks.maximumMarksLabel(under), 'Maximum Marks: 60');
+  });
+
+  test('every built-in paper header owns at most one maximum-marks slot', () {
+    for (final template in PaperStyleCatalog.allBuiltInTemplates) {
+      final layout = PaperHeaderLayoutFactory.resolve(template);
+      final marksSlots = layout.elements
+          .where((element) => element.type == ElementType.maxMarks)
+          .length;
+      expect(
+        marksSlots,
+        lessThanOrEqualTo(1),
+        reason: '${template.id} renders maximum marks more than once',
+      );
+    }
   });
 
   test('custom clone preserves page size', () async {

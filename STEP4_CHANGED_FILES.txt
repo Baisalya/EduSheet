@@ -1,0 +1,17 @@
+lib/features/editor/domain/models/question_option_layout.dart
+lib/features/editor/services/paper_structure_service.dart
+lib/features/paper_composer/application/paper_composer_actions.dart
+lib/features/paper_composer/domain/question_draft.dart
+lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+lib/features/paper_composer/presentation/widgets/paper_section_card.dart
+lib/features/paper_composer/presentation/widgets/question_card.dart
+lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
+lib/features/pdf/services/question_paper_service.dart
+lib/features/pdf/services/word_export_service.dart
+test/features/paper_composer/paper_section_smart_formatting_test.dart
+test/features/paper_composer/paper_structure_service_test.dart
+test/features/paper_composer/question_option_layout_test.dart
+test/features/paper_composer/question_smart_formatting_controls_test.dart
+test/features/pdf/office_export_services_test.dart

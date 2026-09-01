@@ -1,0 +1,1318 @@
+diff --git a/EduSheet-master/docs/UNIVERSAL_SMART_PAPER_EDITOR_ARCHITECTURE.md b/EduSheet-master/docs/UNIVERSAL_SMART_PAPER_EDITOR_ARCHITECTURE.md
+new file mode 100644
+index 0000000..455e6ad
+--- /dev/null
++++ b/EduSheet-master/docs/UNIVERSAL_SMART_PAPER_EDITOR_ARCHITECTURE.md
+@@ -0,0 +1,71 @@
++# Universal Smart Paper Editor architecture
++
++## Product rule
++
++EduSheet is a manual-first question-paper editor for phones. A teacher should be
++able to type the paper in the format they already know, while EduSheet removes
++the painful parts: mathematical input, repeated labels, answer choices, marks,
++diagrams and export formatting.
++
++The editor must not force a teacher to classify every visible paper pattern as
++one mutually-exclusive `QuestionType` before they can write it.
++
++## Compatibility boundary
++
++`Question` in `features/editor/domain/models/paper_model.dart` remains the
++persisted storage contract. Step 2 does **not** create a parallel database or a
++new saved-paper schema.
++
++The Universal Smart Paper Editor adapts the existing independent fields into a
++composable authoring document:
++
++- rich question prompt / ordinary text
++- answer options
++- attachments / diagrams
++- table data
++- sub-questions
++- internal choices
++
++`QuestionType` remains a legacy classification and semantic/export hint. It no
++longer owns or deletes structural content in `QuestionDraft`.
++
++## Authoring model
++
++`UniversalQuestionDocument` is a storage-independent list of content blocks.
++`UniversalQuestionAdapter` maps the current `QuestionDraft` into that view. This
++is intentionally an adapter first: existing papers and the Question Bank stay
++compatible while later phases can move Preview/PDF/Word to the same normalized
++rendering model.
++
++## Mobile workflow
++
++The default workflow is:
++
++1. Tap the question and type freely.
++2. Tap Math for formula input at the current caret.
++3. Tap Add only when a helper is useful.
++4. Insert ordinary editable paper text for blanks, `(a)/(b)/(c)` parts,
++   `OR`, and instruction lines.
++5. Add structured answer options when answer semantics are useful.
++6. Use Quick start only as an optional helper; it never locks the layout.
++
++The first Add menu intentionally exposes only actions that are fully supported
++by the current editor. Table/image/passages remain future additions rather than
++buttons that pretend to work.
++
++## Non-negotiable invariants
++
++- Changing a quick-start classification must never silently delete composed
++  content.
++- Math and geometry insertion use the captured caret/range.
++- Existing advanced fields survive round-trips through `QuestionDraft`.
++- Saved `Question` JSON remains backward compatible.
++- Preview/export behavior is not silently changed in this step.
++
++## Next architecture step
++
++Step 3 should build the focused mobile authoring experience on top of this
++foundation: stronger caret/insertion feedback, contextual bottom actions,
++manual section/group/instruction blocks, and fully-editable table/media
++components. Preview/PDF/Word normalization remains a later explicit rendering
++phase so authoring changes cannot accidentally alter printed papers.
+diff --git a/EduSheet-master/lib/features/paper_composer/application/question_authoring_text_tools.dart b/EduSheet-master/lib/features/paper_composer/application/question_authoring_text_tools.dart
+new file mode 100644
+index 0000000..eb9e831
+--- /dev/null
++++ b/EduSheet-master/lib/features/paper_composer/application/question_authoring_text_tools.dart
+@@ -0,0 +1,62 @@
++/// Pure text helpers used by the manual-first mobile paper authoring workflow.
++///
++/// These helpers intentionally create ordinary printable text. A teacher can
++/// edit or delete the inserted text afterwards exactly as they would in Word.
++class QuestionAuthoringTextTools {
++  const QuestionAuthoringTextTools._();
++
++  static String blank({int width = 10}) {
++    final safeWidth = width.clamp(4, 40).toInt();
++    return List.filled(safeWidth, '_').join();
++  }
++
++  static String nextSubQuestionInsertion(String plainText) {
++    final label = _nextPartLabel(plainText);
++    if (plainText.trim().isEmpty) return '($label) ';
++    return plainText.endsWith('\n') ? '($label) ' : '\n($label) ';
++  }
++
++  static String orDividerInsertion(String plainText) {
++    if (plainText.trim().isEmpty) return 'OR\n';
++    return plainText.endsWith('\n') ? '\nOR\n' : '\n\nOR\n';
++  }
++
++  static String instructionInsertion(String plainText) {
++    if (plainText.trim().isEmpty) return 'Instruction: ';
++    return plainText.endsWith('\n') ? 'Instruction: ' : '\nInstruction: ';
++  }
++
++  static String _nextPartLabel(String plainText) {
++    final matches = RegExp(
++      r'^\s*\(([a-z]+)\)\s+',
++      multiLine: true,
++      caseSensitive: false,
++    ).allMatches(plainText);
++    var largest = 0;
++    for (final match in matches) {
++      final value = _alphaToNumber(match.group(1) ?? '');
++      if (value > largest) largest = value;
++    }
++    return _numberToAlpha(largest + 1);
++  }
++
++  static int _alphaToNumber(String value) {
++    var result = 0;
++    for (final codeUnit in value.toLowerCase().codeUnits) {
++      if (codeUnit < 97 || codeUnit > 122) return 0;
++      result = (result * 26) + (codeUnit - 96);
++    }
++    return result;
++  }
++
++  static String _numberToAlpha(int value) {
++    var number = value < 1 ? 1 : value;
++    final codes = <int>[];
++    while (number > 0) {
++      number -= 1;
++      codes.add(97 + (number % 26));
++      number ~/= 26;
++    }
++    return String.fromCharCodes(codes.reversed);
++  }
++}
+diff --git a/EduSheet-master/lib/features/paper_composer/application/universal_question_adapter.dart b/EduSheet-master/lib/features/paper_composer/application/universal_question_adapter.dart
+new file mode 100644
+index 0000000..736203d
+--- /dev/null
++++ b/EduSheet-master/lib/features/paper_composer/application/universal_question_adapter.dart
+@@ -0,0 +1,92 @@
++import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
++import 'package:edusheet/features/paper_composer/domain/universal_question_document.dart';
++
++/// Compatibility adapter between the legacy persisted Question contract and
++/// the Universal Smart Paper Editor view.
++///
++/// It does not introduce a second persistence schema. Existing Question fields
++/// remain the source of truth while the authoring UI is free to treat their
++/// contents as composable blocks.
++class UniversalQuestionAdapter {
++  const UniversalQuestionAdapter._();
++
++  static UniversalQuestionDocument fromDraft(QuestionDraft draft) {
++    final blocks = <UniversalQuestionBlock>[
++      const UniversalQuestionBlock(
++        kind: UniversalQuestionBlockKind.prompt,
++        id: 'prompt',
++      ),
++    ];
++
++    if (draft.options.isNotEmpty) {
++      blocks.add(
++        UniversalQuestionBlock(
++          kind: UniversalQuestionBlockKind.answerOptions,
++          id: 'answer-options',
++          itemCount: draft.options.length,
++        ),
++      );
++    }
++
++    for (final attachment in draft.attachments) {
++      blocks.add(
++        UniversalQuestionBlock(
++          kind: UniversalQuestionBlockKind.attachment,
++          id: 'attachment:${attachment.id}',
++        ),
++      );
++    }
++
++    if (draft.tableData != null) {
++      blocks.add(
++        const UniversalQuestionBlock(
++          kind: UniversalQuestionBlockKind.table,
++          id: 'table',
++        ),
++      );
++    }
++
++    if (draft.subQuestions.isNotEmpty) {
++      blocks.add(
++        UniversalQuestionBlock(
++          kind: UniversalQuestionBlockKind.subQuestions,
++          id: 'sub-questions',
++          itemCount: draft.subQuestions.length,
++        ),
++      );
++    }
++
++    if (draft.internalChoices.isNotEmpty) {
++      blocks.add(
++        UniversalQuestionBlock(
++          kind: UniversalQuestionBlockKind.internalChoice,
++          id: 'internal-choice',
++          itemCount: draft.internalChoices.length,
++        ),
++      );
++    }
++
++    return UniversalQuestionDocument(blocks: List.unmodifiable(blocks));
++  }
++
++  static String authoringSummary(QuestionDraft draft) {
++    final document = fromDraft(draft);
++    final parts = <String>[];
++    if (document.contains(UniversalQuestionBlockKind.answerOptions)) {
++      parts.add('${draft.options.length} options');
++    }
++    if (document.contains(UniversalQuestionBlockKind.subQuestions)) {
++      parts.add('${draft.subQuestions.length} parts');
++    }
++    if (document.contains(UniversalQuestionBlockKind.internalChoice)) {
++      parts.add('OR choice');
++    }
++    if (document.contains(UniversalQuestionBlockKind.table)) {
++      parts.add('table');
++    }
++    if (document.contains(UniversalQuestionBlockKind.attachment)) {
++      parts.add('${draft.attachments.length} attachment${draft.attachments.length == 1 ? '' : 's'}');
++    }
++    return parts.isEmpty ? 'Free writing' : parts.join(' · ');
++  }
++}
+diff --git a/EduSheet-master/lib/features/paper_composer/domain/question_draft.dart b/EduSheet-master/lib/features/paper_composer/domain/question_draft.dart
+index b59aadb..9d007c7 100644
+--- a/EduSheet-master/lib/features/paper_composer/domain/question_draft.dart
++++ b/EduSheet-master/lib/features/paper_composer/domain/question_draft.dart
+@@ -8,8 +8,11 @@ import 'question_details_draft.dart';
+ /// Editing model for the paper composer.
+ ///
+ /// The persisted [Question] remains the storage contract. This draft only owns
+-/// fields that the focused question-writing workflow edits directly; every
+-/// other persisted field is preserved through [_seed].
++/// fields that the focused question-writing workflow edits directly. Structural
++/// content (options, attachments, tables, sub-questions and internal choices)
++/// is owned explicitly so the Universal Smart Paper Editor can compose them
++/// independently of the legacy [QuestionType]. The persisted [Question] remains
++/// the compatibility/storage contract.
+ class QuestionDraft {
+   final Question _seed;
+   final String text;
+@@ -18,6 +21,10 @@ class QuestionDraft {
+   final bool isOptional;
+   final List<QuestionOption> options;
+   final List<MathExpression> mathExpressions;
++  final List<QuestionAttachment> attachments;
++  final QuestionTable? tableData;
++  final List<Question> subQuestions;
++  final List<Question> internalChoices;
+   final QuestionDetailsDraft details;
+ 
+   const QuestionDraft._({
+@@ -28,6 +35,10 @@ class QuestionDraft {
+     required this.isOptional,
+     required this.options,
+     required this.mathExpressions,
++    required this.attachments,
++    required this.tableData,
++    required this.subQuestions,
++    required this.internalChoices,
+     required this.details,
+   }) : _seed = seed;
+ 
+@@ -60,6 +71,10 @@ class QuestionDraft {
+       isOptional: isOptional,
+       options: _defaultOptions(type),
+       mathExpressions: const [],
++      attachments: const [],
++      tableData: null,
++      subQuestions: const [],
++      internalChoices: const [],
+       details: const QuestionDetailsDraft(),
+     );
+   }
+@@ -75,6 +90,12 @@ class QuestionDraft {
+       mathExpressions: question.mathExpressions
+           .map((item) => item.copyWith())
+           .toList(),
++      attachments: question.attachments
++          .map((item) => item.copyWith())
++          .toList(),
++      tableData: _copyTable(question.tableData),
++      subQuestions: List<Question>.from(question.subQuestions),
++      internalChoices: List<Question>.from(question.internalChoices),
+       details: QuestionDetailsDraft.fromQuestion(question),
+     );
+   }
+@@ -86,34 +107,55 @@ class QuestionDraft {
+     bool? isOptional,
+     List<QuestionOption>? options,
+     List<MathExpression>? mathExpressions,
++    List<QuestionAttachment>? attachments,
++    QuestionTable? tableData,
++    bool clearTableData = false,
++    List<Question>? subQuestions,
++    List<Question>? internalChoices,
+     QuestionDetailsDraft? details,
+   }) {
+-    final nextType = type ?? this.type;
+-    var nextOptions = options ?? this.options;
+-    if (type != null && type != this.type) {
+-      if (!nextType.usesOptions) {
+-        nextOptions = const [];
+-      } else if (nextType == QuestionType.trueFalse ||
+-          this.type == QuestionType.trueFalse ||
+-          nextOptions.isEmpty) {
+-        // True/False has fixed semantic choices. Leaving it should also create
+-        // fresh generic choices rather than carrying "True"/"False" into MCQ.
+-        nextOptions = _defaultOptions(nextType);
+-      }
+-    }
+-
+     return QuestionDraft._(
+       seed: _seed,
+       text: text ?? this.text,
+-      type: nextType,
++      type: type ?? this.type,
+       marks: marks ?? this.marks,
+       isOptional: isOptional ?? this.isOptional,
+-      options: nextOptions,
++      options: options ?? this.options,
+       mathExpressions: mathExpressions ?? this.mathExpressions,
++      attachments: attachments ?? this.attachments,
++      tableData: clearTableData ? null : (tableData ?? this.tableData),
++      subQuestions: subQuestions ?? this.subQuestions,
++      internalChoices: internalChoices ?? this.internalChoices,
+       details: details ?? this.details,
+     );
+   }
+ 
++  /// Applies an optional quick-start helper without making QuestionType the
++  /// owner of document structure. Existing content is never removed.
++  QuestionDraft applyQuickStart(QuestionType nextType) {
++    var nextOptions = options;
++    if (nextType == QuestionType.trueFalse && nextOptions.isEmpty) {
++      nextOptions = _defaultOptions(nextType);
++    } else if (nextType.usesOptions && nextOptions.isEmpty) {
++      nextOptions = _defaultOptions(nextType);
++    }
++    return copyWith(type: nextType, options: nextOptions);
++  }
++
++  /// Adds structured answer choices as a convenience while keeping the paper
++  /// itself manual-first. The legacy type is updated only for answer semantics
++  /// and export compatibility.
++  QuestionDraft ensureAnswerOptions({bool multipleCorrect = false}) {
++    if (options.isNotEmpty) return this;
++    final nextType = multipleCorrect
++        ? QuestionType.multipleSelect
++        : QuestionType.mcq;
++    return copyWith(
++      type: nextType,
++      options: _defaultOptions(nextType),
++    );
++  }
++
+   Question toQuestion({required String plainTextAccessibility}) {
+     final now = DateTime.now();
+     final metadata = Map<String, dynamic>.from(_seed.metadata)
+@@ -144,6 +186,10 @@ class QuestionDraft {
+       instructions: details.instructions,
+       sourceReference: details.sourceReference,
+       mathExpressions: mathExpressions,
++      attachments: attachments,
++      tableData: tableData,
++      subQuestions: subQuestions,
++      internalChoices: internalChoices,
+       modifiedAt: now,
+       version: isExisting ? _seed.version + 1 : 1,
+       status: QuestionStatus.complete,
+@@ -152,6 +198,16 @@ class QuestionDraft {
+     );
+   }
+ 
++  static QuestionTable? _copyTable(QuestionTable? table) {
++    if (table == null) return null;
++    return QuestionTable(
++      headers: List<String>.from(table.headers),
++      rows: table.rows.map((row) => List<String>.from(row)).toList(),
++      caption: table.caption,
++      accessibilitySummary: table.accessibilitySummary,
++    );
++  }
++
+   static List<QuestionOption> _defaultOptions(QuestionType type) {
+     if (!type.usesOptions) return const [];
+     if (type == QuestionType.trueFalse) {
+diff --git a/EduSheet-master/lib/features/paper_composer/domain/universal_question_document.dart b/EduSheet-master/lib/features/paper_composer/domain/universal_question_document.dart
+new file mode 100644
+index 0000000..72ca6e6
+--- /dev/null
++++ b/EduSheet-master/lib/features/paper_composer/domain/universal_question_document.dart
+@@ -0,0 +1,47 @@
++/// A storage-independent view of the content that makes up one question.
++///
++/// EduSheet historically persisted a single [QuestionType] together with
++/// separate fields such as options, attachments, tables, sub-questions and
++/// internal choices. The smart paper editor must not treat those structures as
++/// mutually exclusive. This document deliberately models them as co-existing
++/// content blocks.
++enum UniversalQuestionBlockKind {
++  prompt,
++  answerOptions,
++  attachment,
++  table,
++  subQuestions,
++  internalChoice,
++}
++
++class UniversalQuestionBlock {
++  final UniversalQuestionBlockKind kind;
++  final String id;
++  final int itemCount;
++
++  const UniversalQuestionBlock({
++    required this.kind,
++    required this.id,
++    this.itemCount = 1,
++  });
++}
++
++class UniversalQuestionDocument {
++  final List<UniversalQuestionBlock> blocks;
++
++  const UniversalQuestionDocument({required this.blocks});
++
++  bool contains(UniversalQuestionBlockKind kind) {
++    return blocks.any((block) => block.kind == kind);
++  }
++
++  int itemCount(UniversalQuestionBlockKind kind) {
++    return blocks
++        .where((block) => block.kind == kind)
++        .fold(0, (sum, block) => sum + block.itemCount);
++  }
++
++  bool get hasStructuredContent => blocks.any(
++    (block) => block.kind != UniversalQuestionBlockKind.prompt,
++  );
++}
+diff --git a/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_add_content_sheet.dart b/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_add_content_sheet.dart
+new file mode 100644
+index 0000000..2df35e0
+--- /dev/null
++++ b/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_add_content_sheet.dart
+@@ -0,0 +1,167 @@
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
++import 'package:flutter/material.dart';
++
++enum QuestionAddContentAction {
++  math,
++  geometry,
++  blank,
++  subQuestion,
++  orDivider,
++  answerOptions,
++  instruction,
++  scanText,
++  quickStart,
++}
++
++class QuestionAddContentSheet {
++  const QuestionAddContentSheet._();
++
++  static Future<QuestionAddContentAction?> show(BuildContext context) {
++    return showAdaptiveModalBottomSheet<QuestionAddContentAction>(
++      context: context,
++      useSafeArea: true,
++      isScrollControlled: true,
++      builder: (context) => const _QuestionAddContentBody(),
++    );
++  }
++}
++
++class _QuestionAddContentBody extends StatelessWidget {
++  const _QuestionAddContentBody();
++
++  @override
++  Widget build(BuildContext context) {
++    final items = <_AddContentItem>[
++      const _AddContentItem(
++        action: QuestionAddContentAction.math,
++        icon: Icons.functions_rounded,
++        title: 'Math formula',
++        subtitle: 'Insert exactly at the blinking cursor',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.geometry,
++        icon: Icons.category_outlined,
++        title: 'Geometry / diagram',
++        subtitle: 'Build and place a diagram in the question',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.blank,
++        icon: Icons.space_bar_rounded,
++        title: 'Blank line',
++        subtitle: 'Useful for fill-in-the-blank questions',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.subQuestion,
++        icon: Icons.subdirectory_arrow_right_rounded,
++        title: 'Sub-question',
++        subtitle: 'Insert the next (a), (b), (c)… label',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.orDivider,
++        icon: Icons.compare_arrows_rounded,
++        title: 'OR separator',
++        subtitle: 'Insert an editable OR line in the paper text',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.answerOptions,
++        icon: Icons.checklist_rounded,
++        title: 'Answer options',
++        subtitle: 'Add editable choices without locking the layout',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.instruction,
++        icon: Icons.info_outline_rounded,
++        title: 'Instruction line',
++        subtitle: 'Insert editable instruction text',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.scanText,
++        icon: Icons.document_scanner_outlined,
++        title: 'Scan text',
++        subtitle: 'Insert scanned text at the current cursor',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.quickStart,
++        icon: Icons.auto_awesome_outlined,
++        title: 'Quick start helper',
++        subtitle: 'MCQ, fill blank, numerical and more — optional',
++      ),
++    ];
++
++    return FractionallySizedBox(
++      heightFactor: 0.86,
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.stretch,
++        children: [
++          Center(
++            child: Container(
++              width: 42,
++              height: 4,
++              margin: const EdgeInsets.symmetric(vertical: 12),
++              decoration: BoxDecoration(
++                color: Theme.of(context).colorScheme.outlineVariant,
++                borderRadius: BorderRadius.circular(99),
++              ),
++            ),
++          ),
++          Padding(
++            padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
++            child: Text(
++              'Add to question',
++              style: Theme.of(
++                context,
++              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
++            ),
++          ),
++          Padding(
++            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
++            child: Text(
++              'Everything stays editable. Add only the helper you need.',
++              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
++                color: Theme.of(context).colorScheme.onSurfaceVariant,
++              ),
++            ),
++          ),
++          Expanded(
++            child: ListView.builder(
++              padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
++              itemCount: items.length,
++              itemBuilder: (context, index) {
++                final item = items[index];
++                return Card(
++                  elevation: 0,
++                  color: Theme.of(context).colorScheme.surfaceContainerLow,
++                  child: ListTile(
++                    minTileHeight: 64,
++                    leading: Icon(item.icon),
++                    title: Text(
++                      item.title,
++                      style: const TextStyle(fontWeight: FontWeight.w700),
++                    ),
++                    subtitle: Text(item.subtitle),
++                    trailing: const Icon(Icons.chevron_right_rounded),
++                    onTap: () => Navigator.pop(context, item.action),
++                  ),
++                );
++              },
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
++
++class _AddContentItem {
++  final QuestionAddContentAction action;
++  final IconData icon;
++  final String title;
++  final String subtitle;
++
++  const _AddContentItem({
++    required this.action,
++    required this.icon,
++    required this.title,
++    required this.subtitle,
++  });
++}
+diff --git a/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_composer_controls.dart b/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_composer_controls.dart
+index 928ec0d..8b44ad8 100644
+--- a/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_composer_controls.dart
++++ b/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_composer_controls.dart
+@@ -1,60 +1,7 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
+-import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
+ import 'package:flutter/material.dart';
+ 
+-class QuestionTypeControl extends StatelessWidget {
+-  final QuestionType type;
+-  final VoidCallback onTap;
+-
+-  const QuestionTypeControl({
+-    super.key,
+-    required this.type,
+-    required this.onTap,
+-  });
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    return InkWell(
+-      borderRadius: BorderRadius.circular(12),
+-      onTap: onTap,
+-      child: Container(
+-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+-        decoration: BoxDecoration(
+-          borderRadius: BorderRadius.circular(12),
+-          border: Border.all(
+-            color: Theme.of(context).colorScheme.outlineVariant,
+-          ),
+-        ),
+-        child: Row(
+-          children: [
+-            Icon(type.composerIcon),
+-            const SizedBox(width: 10),
+-            Expanded(
+-              child: Column(
+-                crossAxisAlignment: CrossAxisAlignment.start,
+-                children: [
+-                  Text(
+-                    type.label,
+-                    style: const TextStyle(fontWeight: FontWeight.w800),
+-                  ),
+-                  Text(
+-                    'Question type',
+-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+-                    ),
+-                  ),
+-                ],
+-              ),
+-            ),
+-            const Icon(Icons.keyboard_arrow_down_rounded),
+-          ],
+-        ),
+-      ),
+-    );
+-  }
+-}
+-
+ class QuestionMarksControl extends StatelessWidget {
+   final TextEditingController controller;
+   final String? errorText;
+diff --git a/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_composer_page.dart b/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+index 5c918c0..385763c 100644
+--- a/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_composer_page.dart
++++ b/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+@@ -12,11 +12,14 @@ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_expres
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
+ import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
+ import 'package:edusheet/features/paper_composer/application/paper_composer_actions.dart';
++import 'package:edusheet/features/paper_composer/application/question_authoring_text_tools.dart';
+ import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
++import 'package:edusheet/features/paper_composer/application/universal_question_adapter.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_type_picker.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_more_details_sheet.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_controls.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_add_content_sheet.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter_quill/flutter_quill.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+@@ -134,7 +137,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+     );
+     if (selected == null || !mounted) return;
+     setState(() {
+-      _draft = _draft.copyWith(type: selected);
++      _draft = _draft.applyQuickStart(selected);
+       _optionsError = null;
+       _syncOptionControllers();
+     });
+@@ -397,6 +400,84 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+     _bodyFocus.requestFocus();
+   }
+ 
++  void _insertEditableText(String value) {
++    final selection = _safeSelectionRange();
++    _bodyController.replaceText(selection.$1, selection.$2, value, null);
++    _bodyController.updateSelection(
++      TextSelection.collapsed(offset: selection.$1 + value.length),
++      ChangeSource.local,
++    );
++    setState(() => _bodyError = null);
++    _restoreBodyFocus();
++  }
++
++  void _insertBlank() {
++    _insertEditableText(QuestionAuthoringTextTools.blank());
++  }
++
++  void _insertSubQuestion() {
++    final plainText = _bodyController.document.toPlainText();
++    _insertEditableText(
++      QuestionAuthoringTextTools.nextSubQuestionInsertion(plainText),
++    );
++  }
++
++  void _insertOrDivider() {
++    final plainText = _bodyController.document.toPlainText();
++    _insertEditableText(
++      QuestionAuthoringTextTools.orDividerInsertion(plainText),
++    );
++  }
++
++  void _insertInstruction() {
++    final plainText = _bodyController.document.toPlainText();
++    _insertEditableText(
++      QuestionAuthoringTextTools.instructionInsertion(plainText),
++    );
++  }
++
++  void _ensureAnswerOptions() {
++    setState(() {
++      _draft = _draft.ensureAnswerOptions();
++      _optionsError = null;
++      _syncOptionControllers();
++    });
++  }
++
++  Future<void> _showAddContent() async {
++    final action = await QuestionAddContentSheet.show(context);
++    if (action == null || !mounted) return;
++    switch (action) {
++      case QuestionAddContentAction.math:
++        await _insertFormula();
++        break;
++      case QuestionAddContentAction.geometry:
++        await _insertGeometry();
++        break;
++      case QuestionAddContentAction.blank:
++        _insertBlank();
++        break;
++      case QuestionAddContentAction.subQuestion:
++        _insertSubQuestion();
++        break;
++      case QuestionAddContentAction.orDivider:
++        _insertOrDivider();
++        break;
++      case QuestionAddContentAction.answerOptions:
++        _ensureAnswerOptions();
++        break;
++      case QuestionAddContentAction.instruction:
++        _insertInstruction();
++        break;
++      case QuestionAddContentAction.scanText:
++        await _scanQuestionText();
++        break;
++      case QuestionAddContentAction.quickStart:
++        await _chooseType();
++        break;
++    }
++  }
++
+   void _addOption() {
+     final option = QuestionOption(id: const Uuid().v4(), text: '');
+     setState(() {
+@@ -450,7 +531,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+           ? null
+           : 'Write the question or add a formula/diagram';
+       _marksError = validMarks ? null : 'Enter marks above 0';
+-      _optionsError = _draft.type.usesOptions && nonEmptyOptions < 2
++      _optionsError = _draft.options.isNotEmpty && nonEmptyOptions < 2
+           ? 'Add at least two answer options'
+           : null;
+     });
+@@ -480,7 +561,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+         return plain.isEmpty ? expression.latex : plain;
+       }),
+     ].where((item) => item.trim().isNotEmpty).join(' ');
+-    final options = _draft.type.usesOptions
++    final options = _draft.options.isNotEmpty
+         ? _materializedOptions()
+               .where((item) => item.text.trim().isNotEmpty)
+               .map((item) => item.copyWith(text: item.text.trim()))
+@@ -609,7 +690,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+                   (widget.question == null ? 'New question' : 'Edit question'),
+             ),
+             Text(
+-              '${_draft.type.label} · ${_formatMarks(_draft.marks)} marks',
++              '${UniversalQuestionAdapter.authoringSummary(_draft)} · ${_formatMarks(_draft.marks)} marks',
+               style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                 color: Theme.of(context).colorScheme.onSurfaceVariant,
+               ),
+@@ -664,7 +745,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+                           const SizedBox(height: 16),
+                           _buildLegacyFormulaTray(context),
+                         ],
+-                        if (_draft.type.usesOptions) ...[
++                        if (_draft.options.isNotEmpty) ...[
+                           const SizedBox(height: 20),
+                           _buildOptions(context),
+                         ],
+@@ -719,8 +800,29 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+         padding: const EdgeInsets.all(12),
+         child: compact
+             ? Column(
++                crossAxisAlignment: CrossAxisAlignment.stretch,
+                 children: [
+-                  QuestionTypeControl(type: _draft.type, onTap: _chooseType),
++                  Row(
++                    children: [
++                      const Expanded(
++                        child: Text(
++                          'Write freely',
++                          style: TextStyle(fontWeight: FontWeight.w800),
++                        ),
++                      ),
++                      TextButton.icon(
++                        onPressed: _chooseType,
++                        icon: const Icon(Icons.auto_awesome_outlined, size: 18),
++                        label: const Text('Quick start'),
++                      ),
++                    ],
++                  ),
++                  Text(
++                    'Quick start is optional. It adds helpers but never locks your paper format.',
++                    style: theme.textTheme.bodySmall?.copyWith(
++                      color: theme.colorScheme.onSurfaceVariant,
++                    ),
++                  ),
+                   const SizedBox(height: 10),
+                   QuestionMarksControl(
+                     controller: _marksController,
+@@ -734,9 +836,33 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+             : Row(
+                 children: [
+                   Expanded(
+-                    child: QuestionTypeControl(
+-                      type: _draft.type,
+-                      onTap: _chooseType,
++                    child: Column(
++                      crossAxisAlignment: CrossAxisAlignment.start,
++                      children: [
++                        Row(
++                          children: [
++                            const Text(
++                              'Write freely',
++                              style: TextStyle(fontWeight: FontWeight.w800),
++                            ),
++                            const SizedBox(width: 8),
++                            TextButton.icon(
++                              onPressed: _chooseType,
++                              icon: const Icon(
++                                Icons.auto_awesome_outlined,
++                                size: 18,
++                              ),
++                              label: const Text('Quick start'),
++                            ),
++                          ],
++                        ),
++                        Text(
++                          'Type the paper exactly as you want. Add helpers only when useful.',
++                          style: theme.textTheme.bodySmall?.copyWith(
++                            color: theme.colorScheme.onSurfaceVariant,
++                          ),
++                        ),
++                      ],
+                     ),
+                   ),
+                   const SizedBox(width: 12),
+@@ -869,6 +995,11 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+           spacing: 8,
+           runSpacing: 8,
+           children: [
++            QuestionInsertAction(
++              icon: Icons.add_rounded,
++              label: 'Add',
++              onTap: _showAddContent,
++            ),
+             QuestionInsertAction(
+               icon: Icons.functions_rounded,
+               label: 'Math',
+@@ -879,11 +1010,6 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+               label: 'Geometry',
+               onTap: _insertGeometry,
+             ),
+-            QuestionInsertAction(
+-              icon: Icons.document_scanner_outlined,
+-              label: 'Scan text',
+-              onTap: _scanQuestionText,
+-            ),
+           ],
+         ),
+         const SizedBox(height: 6),
+@@ -898,7 +1024,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+             const SizedBox(width: 5),
+             Expanded(
+               child: Text(
+-                'Math and diagrams are inserted exactly at the question cursor. Tap where they should appear first.',
++                'Math, blanks, parts, OR and instructions insert at the blinking cursor. Structured helpers such as answer options appear below the question.',
+                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                   color: Theme.of(context).colorScheme.onSurfaceVariant,
+                 ),
+diff --git a/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_type_picker.dart b/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_type_picker.dart
+index b1eb196..6ee4b32 100644
+--- a/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_type_picker.dart
++++ b/EduSheet-master/lib/features/paper_composer/presentation/widgets/question_type_picker.dart
+@@ -14,8 +14,10 @@ class QuestionTypePicker {
+     QuestionType.numerical,
+   ];
+ 
+-  /// Types the focused composer can create without losing required structure.
+-  /// Existing papers may still contain every persisted [QuestionType].
++  /// Optional quick-start helpers the focused composer can safely apply.
++  /// Structural compositions such as tables/sub-questions are not represented
++  /// here as mutually-exclusive choices. Existing papers may still contain
++  /// every persisted [QuestionType].
+   static const authorable = <QuestionType>[
+     QuestionType.mcq,
+     QuestionType.descriptive,
+@@ -26,10 +28,6 @@ class QuestionTypePicker {
+     QuestionType.shortAnswer,
+     QuestionType.longAnswer,
+     QuestionType.numerical,
+-    QuestionType.mathematicalExpression,
+-    QuestionType.assertionReason,
+-    QuestionType.imageOrDiagram,
+-    QuestionType.custom,
+   ];
+ 
+   static Future<QuestionType?> show(
+@@ -65,13 +63,13 @@ class QuestionTypePicker {
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                       Text(
+-                        'Question type',
++                        'Quick start helper',
+                         style: Theme.of(context).textTheme.headlineSmall
+                             ?.copyWith(fontWeight: FontWeight.w800),
+                       ),
+                       const SizedBox(height: 4),
+                       Text(
+-                        'Focused types only. Existing advanced question structures remain compatible.',
++                        'Optional starting helpers only. They never lock the paper layout; you can type and add content manually.',
+                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                           color: Theme.of(context).colorScheme.onSurfaceVariant,
+                         ),
+@@ -83,7 +81,7 @@ class QuestionTypePicker {
+                   padding: const EdgeInsets.symmetric(horizontal: 16),
+                   child: TextField(
+                     decoration: const InputDecoration(
+-                      hintText: 'Search types',
++                      hintText: 'Search quick starts',
+                       prefixIcon: Icon(Icons.search_rounded),
+                     ),
+                     onChanged: (value) => setSheetState(() => query = value),
+diff --git a/EduSheet-master/test/features/paper_composer/question_authoring_text_tools_test.dart b/EduSheet-master/test/features/paper_composer/question_authoring_text_tools_test.dart
+new file mode 100644
+index 0000000..47d8897
+--- /dev/null
++++ b/EduSheet-master/test/features/paper_composer/question_authoring_text_tools_test.dart
+@@ -0,0 +1,46 @@
++import 'package:edusheet/features/paper_composer/application/question_authoring_text_tools.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  group('QuestionAuthoringTextTools', () {
++    test('blank is printable ordinary text', () {
++      expect(QuestionAuthoringTextTools.blank(width: 8), '________');
++      expect(QuestionAuthoringTextTools.blank(width: 1), '____');
++    });
++
++    test('sub-question helper follows existing line-start labels', () {
++      expect(
++        QuestionAuthoringTextTools.nextSubQuestionInsertion('Question'),
++        '\n(a) ',
++      );
++      expect(
++        QuestionAuthoringTextTools.nextSubQuestionInsertion(
++          'Question\n(a) First\n(b) Second',
++        ),
++        '\n(c) ',
++      );
++    });
++
++    test('sub-question labels continue beyond z instead of resetting', () {
++      final parts = List.generate(
++        26,
++        (index) => '(${String.fromCharCode(97 + index)}) Part',
++      ).join('\n');
++      expect(
++        QuestionAuthoringTextTools.nextSubQuestionInsertion(parts),
++        '\n(aa) ',
++      );
++    });
++
++    test('OR and instruction helpers remain editable printable text', () {
++      expect(
++        QuestionAuthoringTextTools.orDividerInsertion('Question'),
++        '\n\nOR\n',
++      );
++      expect(
++        QuestionAuthoringTextTools.instructionInsertion('Question'),
++        '\nInstruction: ',
++      );
++    });
++  });
++}
+diff --git a/EduSheet-master/test/features/paper_composer/question_composer_manual_first_test.dart b/EduSheet-master/test/features/paper_composer/question_composer_manual_first_test.dart
+new file mode 100644
+index 0000000..6f79c0e
+--- /dev/null
++++ b/EduSheet-master/test/features/paper_composer/question_composer_manual_first_test.dart
+@@ -0,0 +1,80 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_page.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_localizations/flutter_localizations.dart';
++import 'package:flutter_quill/flutter_quill.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  testWidgets('mobile composer leads with free writing and optional helpers', (
++    tester,
++  ) async {
++    await _pumpComposer(tester);
++
++    expect(find.text('Write freely'), findsOneWidget);
++    expect(find.text('Quick start'), findsOneWidget);
++    expect(find.text('Add'), findsOneWidget);
++    expect(find.text('Math'), findsOneWidget);
++    expect(find.text('Question type'), findsNothing);
++
++    await tester.ensureVisible(find.text('Add'));
++    await tester.tap(find.text('Add'));
++    await tester.pumpAndSettle();
++
++    expect(find.text('Add to question'), findsOneWidget);
++    expect(find.text('Blank line'), findsOneWidget);
++    expect(find.text('Sub-question'), findsOneWidget);
++    expect(find.text('OR separator'), findsOneWidget);
++    expect(find.text('Answer options'), findsOneWidget);
++    expect(find.text('Quick start helper'), findsOneWidget);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('answer options are added as a helper instead of a required type', (
++    tester,
++  ) async {
++    await _pumpComposer(tester);
++
++    await tester.ensureVisible(find.text('Add'));
++    await tester.tap(find.text('Add'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Answer options'));
++    await tester.pumpAndSettle();
++
++    expect(find.text('Answer options'), findsOneWidget);
++    expect(find.text('Option A'), findsOneWidget);
++    expect(find.text('Option B'), findsOneWidget);
++    expect(find.text('Option C'), findsOneWidget);
++    expect(find.text('Option D'), findsOneWidget);
++    expect(tester.takeException(), isNull);
++  });
++}
++
++Future<void> _pumpComposer(WidgetTester tester) async {
++  tester.view.physicalSize = const Size(390, 780);
++  tester.view.devicePixelRatio = 1;
++  addTearDown(tester.view.resetPhysicalSize);
++  addTearDown(tester.view.resetDevicePixelRatio);
++
++  await tester.pumpWidget(
++    ProviderScope(
++      child: MaterialApp(
++        localizationsDelegates: [
++          GlobalMaterialLocalizations.delegate,
++          GlobalWidgetsLocalizations.delegate,
++          GlobalCupertinoLocalizations.delegate,
++          FlutterQuillLocalizations.delegate,
++        ],
++        supportedLocales: const [Locale('en', 'US')],
++        builder: (context, child) => MathKeyboardWrapper(child: child!),
++        home: const QuestionComposerPage(
++          sectionId: 'section',
++          initialType: QuestionType.descriptive,
++        ),
++      ),
++    ),
++  );
++  await tester.pumpAndSettle();
++}
+diff --git a/EduSheet-master/test/features/paper_composer/question_draft_test.dart b/EduSheet-master/test/features/paper_composer/question_draft_test.dart
+index 74ed586..f0f11da 100644
+--- a/EduSheet-master/test/features/paper_composer/question_draft_test.dart
++++ b/EduSheet-master/test/features/paper_composer/question_draft_test.dart
+@@ -90,9 +90,9 @@ void main() {
+     });
+ 
+     test(
+-      'changing to option type creates options without changing storage enum',
++      'quick start creates option helpers without changing storage contract',
+       () {
+-        final draft = QuestionDraft.create().copyWith(type: QuestionType.mcq);
++        final draft = QuestionDraft.create().applyQuickStart(QuestionType.mcq);
+ 
+         expect(draft.type, QuestionType.mcq);
+         expect(draft.options, hasLength(4));
+@@ -100,24 +100,50 @@ void main() {
+       },
+     );
+ 
+-    test('changing away from option type clears transient answer options', () {
+-      final draft = QuestionDraft.create(
+-        type: QuestionType.mcq,
+-      ).copyWith(type: QuestionType.shortAnswer);
++    test('advanced structural content is explicitly editable in the draft', () {
++      final draft = QuestionDraft.create().copyWith(
++        tableData: const QuestionTable(
++          headers: ['Word', 'Meaning'],
++          rows: [
++            ['A', 'B'],
++          ],
++        ),
++        subQuestions: [Question(id: 'part-a', text: 'Part A')],
++        internalChoices: [Question(id: 'or-a', text: 'Alternative')],
++        attachments: const [
++          QuestionAttachment(
++            id: 'img-1',
++            kind: QuestionAttachmentKind.image,
++            path: '/tmp/image.png',
++            alternativeText: 'Reference image',
++          ),
++        ],
++      );
+ 
+-      expect(draft.options, isEmpty);
++      final saved = draft.toQuestion(plainTextAccessibility: 'Question');
++      expect(saved.tableData?.headers, ['Word', 'Meaning']);
++      expect(saved.subQuestions.single.id, 'part-a');
++      expect(saved.internalChoices.single.id, 'or-a');
++      expect(saved.attachments.single.id, 'img-1');
+     });
+ 
+-    test('true/false transitions use semantically correct option sets', () {
+-      final trueFalse = QuestionDraft.create(
+-        type: QuestionType.mcq,
+-      ).copyWith(type: QuestionType.trueFalse);
++    test('changing legacy type never deletes composed answer options', () {
++      final original = QuestionDraft.create(type: QuestionType.mcq);
++      final draft = original.copyWith(type: QuestionType.shortAnswer);
+ 
++      expect(draft.type, QuestionType.shortAnswer);
++      expect(draft.options.map((item) => item.id), original.options.map((item) => item.id));
++    });
++
++    test('quick start adds required helpers without removing existing content', () {
++      final trueFalse = QuestionDraft.create().applyQuickStart(
++        QuestionType.trueFalse,
++      );
+       expect(trueFalse.options.map((item) => item.text), ['True', 'False']);
+ 
+-      final mcq = trueFalse.copyWith(type: QuestionType.mcq);
+-      expect(mcq.options, hasLength(4));
+-      expect(mcq.options.every((item) => item.text.isEmpty), isTrue);
++      final preserved = trueFalse.applyQuickStart(QuestionType.shortAnswer);
++      expect(preserved.type, QuestionType.shortAnswer);
++      expect(preserved.options.map((item) => item.text), ['True', 'False']);
+     });
+   });
+ }
+diff --git a/EduSheet-master/test/features/paper_composer/question_type_picker_policy_test.dart b/EduSheet-master/test/features/paper_composer/question_type_picker_policy_test.dart
+index e397eb1..ae51287 100644
+--- a/EduSheet-master/test/features/paper_composer/question_type_picker_policy_test.dart
++++ b/EduSheet-master/test/features/paper_composer/question_type_picker_policy_test.dart
+@@ -3,14 +3,18 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/question_t
+ import 'package:flutter_test/flutter_test.dart';
+ 
+ void main() {
+-  test('new composer only advertises question types it can fully author', () {
++  test('quick start only advertises helpers the focused composer can author', () {
+     expect(QuestionTypePicker.authorable, contains(QuestionType.mcq));
+     expect(QuestionTypePicker.authorable, contains(QuestionType.numerical));
+     expect(
+       QuestionTypePicker.authorable,
+-      contains(QuestionType.imageOrDiagram),
++      isNot(contains(QuestionType.imageOrDiagram)),
+     );
+ 
++    // These are structural compositions, not mutually-exclusive quick starts.
++    // Existing saved questions remain compatible through QuestionDraft and the
++    // UniversalQuestionAdapter instead of pretending the focused UI can fully
++    // author them from one enum choice.
+     expect(
+       QuestionTypePicker.authorable,
+       isNot(contains(QuestionType.internalChoice)),
+diff --git a/EduSheet-master/test/features/paper_composer/universal_question_document_test.dart b/EduSheet-master/test/features/paper_composer/universal_question_document_test.dart
+new file mode 100644
+index 0000000..755939b
+--- /dev/null
++++ b/EduSheet-master/test/features/paper_composer/universal_question_document_test.dart
+@@ -0,0 +1,69 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/application/universal_question_adapter.dart';
++import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
++import 'package:edusheet/features/paper_composer/domain/universal_question_document.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('universal document allows formerly exclusive structures to coexist', () {
++    final draft = QuestionDraft.fromQuestion(
++      Question(
++        id: 'mixed',
++        text: 'Read the data and answer.',
++        type: QuestionType.caseStudy,
++        options: [
++          QuestionOption(id: 'a', text: 'One'),
++          QuestionOption(id: 'b', text: 'Two'),
++        ],
++        attachments: const [
++          QuestionAttachment(
++            id: 'diagram',
++            kind: QuestionAttachmentKind.diagram,
++            path: '/tmp/diagram.json',
++            alternativeText: 'A diagram',
++          ),
++        ],
++        tableData: const QuestionTable(
++          headers: ['x', 'y'],
++          rows: [
++            ['1', '2'],
++          ],
++        ),
++        subQuestions: [Question(id: 'part-a', text: 'Part A')],
++        internalChoices: [Question(id: 'choice-b', text: 'Alternative B')],
++      ),
++    );
++
++    final document = UniversalQuestionAdapter.fromDraft(draft);
++
++    expect(document.contains(UniversalQuestionBlockKind.prompt), isTrue);
++    expect(
++      document.contains(UniversalQuestionBlockKind.answerOptions),
++      isTrue,
++    );
++    expect(document.contains(UniversalQuestionBlockKind.attachment), isTrue);
++    expect(document.contains(UniversalQuestionBlockKind.table), isTrue);
++    expect(
++      document.contains(UniversalQuestionBlockKind.subQuestions),
++      isTrue,
++    );
++    expect(
++      document.contains(UniversalQuestionBlockKind.internalChoice),
++      isTrue,
++    );
++    expect(
++      document.itemCount(UniversalQuestionBlockKind.answerOptions),
++      2,
++    );
++    expect(document.hasStructuredContent, isTrue);
++  });
++
++  test('plain manual question stays a one-block universal document', () {
++    final draft = QuestionDraft.create();
++    final document = UniversalQuestionAdapter.fromDraft(draft);
++
++    expect(document.blocks, hasLength(1));
++    expect(document.blocks.single.kind, UniversalQuestionBlockKind.prompt);
++    expect(UniversalQuestionAdapter.authoringSummary(draft), 'Free writing');
++  });
++}

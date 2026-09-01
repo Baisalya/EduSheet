@@ -1,0 +1,5009 @@
+diff --git a/lib/features/paper_composer/application/question_advanced_structure_service.dart b/lib/features/paper_composer/application/question_advanced_structure_service.dart
+new file mode 100644
+index 0000000..f6ac3a5
+--- /dev/null
++++ b/lib/features/paper_composer/application/question_advanced_structure_service.dart
+@@ -0,0 +1,139 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
++
++class ResolvedQuestionAnswerSpace {
++  final QuestionAnswerSpaceStyle style;
++  final int lines;
++  final bool questionOverride;
++
++  const ResolvedQuestionAnswerSpace({
++    required this.style,
++    required this.lines,
++    required this.questionOverride,
++  });
++
++  bool get isVisible => style != QuestionAnswerSpaceStyle.none && lines > 0;
++}
++
++class QuestionAdvancedStructureService {
++  const QuestionAdvancedStructureService._();
++
++  static String partLabel(int index) => '(${_numberToAlpha(index + 1)})';
++
++  static List<String> accessibilityFragments(QuestionDraft draft) {
++    final fragments = <String>[];
++    final advanced = draft.advancedContent;
++    if (advanced.hasStimulus) {
++      final stimulus = advanced.stimulus!;
++      if (stimulus.title.trim().isNotEmpty) {
++        fragments.add(stimulus.title.trim());
++      }
++      fragments.add(stimulus.text.trim());
++    }
++    if (advanced.hasWordBank) {
++      fragments.add('Word bank: ${advanced.wordBank.join(', ')}');
++    }
++    final table = draft.tableData;
++    if (table != null) {
++      if (table.caption.trim().isNotEmpty) fragments.add(table.caption.trim());
++      if (table.accessibilitySummary.trim().isNotEmpty) {
++        fragments.add(table.accessibilitySummary.trim());
++      } else {
++        final cells = <String>[
++          ...table.headers,
++          ...table.rows.expand((row) => row),
++        ].map((cell) => cell.trim()).where((cell) => cell.isNotEmpty).toList();
++        if (cells.isNotEmpty) fragments.add('Table: ${cells.join(', ')}');
++      }
++    }
++    for (final attachment in draft.attachments) {
++      final description = attachment.alternativeText.trim().isNotEmpty
++          ? attachment.alternativeText.trim()
++          : attachment.caption.trim();
++      if (description.isNotEmpty) fragments.add(description);
++    }
++    for (final child in draft.subQuestions) {
++      if (child.plainTextAccessibility.trim().isNotEmpty) {
++        fragments.add(child.plainTextAccessibility.trim());
++      }
++    }
++    for (final choice in draft.internalChoices) {
++      if (choice.plainTextAccessibility.trim().isNotEmpty) {
++        fragments.add(choice.plainTextAccessibility.trim());
++      }
++    }
++    return fragments;
++  }
++
++  static bool internalChoiceMarksBalanced(List<Question> choices) {
++    if (choices.length < 2) return true;
++    final first = choices.first.marks;
++    return choices.skip(1).every((choice) => (choice.marks - first).abs() < 0.001);
++  }
++
++  static String internalChoiceMarksSummary(List<Question> choices) {
++    if (choices.isEmpty) return '';
++    final marks = choices.map((choice) => _marks(choice.marks)).toSet();
++    return marks.length == 1 ? '${marks.first} marks each' : '${marks.join(' / ')} marks';
++  }
++
++  static ResolvedQuestionAnswerSpace resolveAnswerSpace(
++    Question question,
++    PaperSection section, {
++    int fallbackLines = 0,
++  }) {
++    final advanced = QuestionAdvancedContent.fromQuestion(question);
++    if (advanced.hasAnswerSpace) {
++      return ResolvedQuestionAnswerSpace(
++        style: advanced.answerSpace.style,
++        lines: advanced.answerSpace.lines,
++        questionOverride: true,
++      );
++    }
++
++    if (section.answerSpaceLines > 0) {
++      final style = section.graphAnswerArea
++          ? QuestionAnswerSpaceStyle.graph
++          : section.ruledAnswerArea
++          ? QuestionAnswerSpaceStyle.ruled
++          : QuestionAnswerSpaceStyle.blank;
++      return ResolvedQuestionAnswerSpace(
++        style: style,
++        lines: section.answerSpaceLines,
++        questionOverride: false,
++      );
++    }
++
++    if (fallbackLines > 0) {
++      return ResolvedQuestionAnswerSpace(
++        style: QuestionAnswerSpaceStyle.ruled,
++        lines: fallbackLines,
++        questionOverride: false,
++      );
++    }
++
++    return const ResolvedQuestionAnswerSpace(
++      style: QuestionAnswerSpaceStyle.none,
++      lines: 0,
++      questionOverride: false,
++    );
++  }
++
++  static String _numberToAlpha(int value) {
++    var number = value < 1 ? 1 : value;
++    final codes = <int>[];
++    while (number > 0) {
++      number -= 1;
++      codes.add(97 + (number % 26));
++      number ~/= 26;
++    }
++    return String.fromCharCodes(codes.reversed);
++  }
++
++  static String _marks(double value) {
++    return value == value.roundToDouble()
++        ? value.toInt().toString()
++        : value.toStringAsFixed(1);
++  }
++}
+diff --git a/lib/features/paper_composer/application/universal_question_adapter.dart b/lib/features/paper_composer/application/universal_question_adapter.dart
+index 736203d..123d936 100644
+--- a/lib/features/paper_composer/application/universal_question_adapter.dart
++++ b/lib/features/paper_composer/application/universal_question_adapter.dart
+@@ -1,3 +1,4 @@
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
+ import 'package:edusheet/features/paper_composer/domain/universal_question_document.dart';
+ 
+@@ -18,6 +19,25 @@ class UniversalQuestionAdapter {
+       ),
+     ];
+ 
++    if (draft.advancedContent.hasStimulus) {
++      blocks.add(
++        const UniversalQuestionBlock(
++          kind: UniversalQuestionBlockKind.stimulus,
++          id: 'stimulus',
++        ),
++      );
++    }
++
++    if (draft.advancedContent.hasWordBank) {
++      blocks.add(
++        UniversalQuestionBlock(
++          kind: UniversalQuestionBlockKind.wordBank,
++          id: 'word-bank',
++          itemCount: draft.advancedContent.wordBank.length,
++        ),
++      );
++    }
++
+     if (draft.options.isNotEmpty) {
+       blocks.add(
+         UniversalQuestionBlock(
+@@ -66,12 +86,27 @@ class UniversalQuestionAdapter {
+       );
+     }
+ 
++    if (draft.advancedContent.hasAnswerSpace) {
++      blocks.add(
++        const UniversalQuestionBlock(
++          kind: UniversalQuestionBlockKind.answerSpace,
++          id: 'answer-space',
++        ),
++      );
++    }
++
+     return UniversalQuestionDocument(blocks: List.unmodifiable(blocks));
+   }
+ 
+   static String authoringSummary(QuestionDraft draft) {
+     final document = fromDraft(draft);
+     final parts = <String>[];
++    if (document.contains(UniversalQuestionBlockKind.stimulus)) {
++      parts.add(draft.advancedContent.stimulus!.kind.label);
++    }
++    if (document.contains(UniversalQuestionBlockKind.wordBank)) {
++      parts.add('word bank');
++    }
+     if (document.contains(UniversalQuestionBlockKind.answerOptions)) {
+       parts.add('${draft.options.length} options');
+     }
+@@ -87,6 +122,9 @@ class UniversalQuestionAdapter {
+     if (document.contains(UniversalQuestionBlockKind.attachment)) {
+       parts.add('${draft.attachments.length} attachment${draft.attachments.length == 1 ? '' : 's'}');
+     }
++    if (document.contains(UniversalQuestionBlockKind.answerSpace)) {
++      parts.add('answer space');
++    }
+     return parts.isEmpty ? 'Free writing' : parts.join(' · ');
+   }
+ }
+diff --git a/lib/features/paper_composer/domain/question_advanced_content.dart b/lib/features/paper_composer/domain/question_advanced_content.dart
+new file mode 100644
+index 0000000..aaef4e2
+--- /dev/null
++++ b/lib/features/paper_composer/domain/question_advanced_content.dart
+@@ -0,0 +1,206 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++
++/// Metadata-backed advanced paper content for one question.
++///
++/// The persisted [Question] model already provides a JSON-safe metadata map.
++/// EduSheet therefore keeps advanced authoring helpers inside that existing
++/// contract instead of introducing a second database schema. Older questions
++/// simply decode to [QuestionAdvancedContent.empty].
++enum QuestionStimulusKind { passage, poem, caseStudy, sourceText }
++
++extension QuestionStimulusKindLabel on QuestionStimulusKind {
++  String get label => switch (this) {
++    QuestionStimulusKind.passage => 'Passage',
++    QuestionStimulusKind.poem => 'Poem',
++    QuestionStimulusKind.caseStudy => 'Case study',
++    QuestionStimulusKind.sourceText => 'Source text',
++  };
++}
++
++class QuestionStimulus {
++  final QuestionStimulusKind kind;
++  final String title;
++  final String text;
++
++  const QuestionStimulus({
++    this.kind = QuestionStimulusKind.passage,
++    this.title = '',
++    required this.text,
++  });
++
++  bool get isEmpty => text.trim().isEmpty;
++
++  QuestionStimulus copyWith({
++    QuestionStimulusKind? kind,
++    String? title,
++    String? text,
++  }) {
++    return QuestionStimulus(
++      kind: kind ?? this.kind,
++      title: title ?? this.title,
++      text: text ?? this.text,
++    );
++  }
++
++  Map<String, dynamic> toJson() => {
++    'kind': kind.name,
++    'title': title,
++    'text': text,
++  };
++
++  factory QuestionStimulus.fromJson(Map<String, dynamic> json) {
++    return QuestionStimulus(
++      kind: QuestionStimulusKind.values.firstWhere(
++        (value) => value.name == json['kind']?.toString(),
++        orElse: () => QuestionStimulusKind.passage,
++      ),
++      title: json['title']?.toString() ?? '',
++      text: json['text']?.toString() ?? '',
++    );
++  }
++}
++
++enum QuestionAnswerSpaceStyle { none, blank, ruled, box, graph }
++
++extension QuestionAnswerSpaceStyleLabel on QuestionAnswerSpaceStyle {
++  String get label => switch (this) {
++    QuestionAnswerSpaceStyle.none => 'Use section setting',
++    QuestionAnswerSpaceStyle.blank => 'Blank space',
++    QuestionAnswerSpaceStyle.ruled => 'Ruled lines',
++    QuestionAnswerSpaceStyle.box => 'Answer box',
++    QuestionAnswerSpaceStyle.graph => 'Graph grid',
++  };
++}
++
++class QuestionAnswerSpace {
++  final QuestionAnswerSpaceStyle style;
++  final int lines;
++
++  const QuestionAnswerSpace({
++    this.style = QuestionAnswerSpaceStyle.none,
++    this.lines = 0,
++  });
++
++  bool get isConfigured => style != QuestionAnswerSpaceStyle.none && lines > 0;
++
++  QuestionAnswerSpace copyWith({
++    QuestionAnswerSpaceStyle? style,
++    int? lines,
++  }) {
++    return QuestionAnswerSpace(
++      style: style ?? this.style,
++      lines: lines ?? this.lines,
++    );
++  }
++
++  Map<String, dynamic> toJson() => {
++    'style': style.name,
++    'lines': lines,
++  };
++
++  factory QuestionAnswerSpace.fromJson(Map<String, dynamic> json) {
++    return QuestionAnswerSpace(
++      style: QuestionAnswerSpaceStyle.values.firstWhere(
++        (value) => value.name == json['style']?.toString(),
++        orElse: () => QuestionAnswerSpaceStyle.none,
++      ),
++      lines: ((json['lines'] as num?)?.toInt() ?? 0).clamp(0, 30).toInt(),
++    );
++  }
++}
++
++class QuestionAdvancedContent {
++  static const metadataKey = 'smartPaperContentV1';
++
++  final QuestionStimulus? stimulus;
++  final List<String> wordBank;
++  final QuestionAnswerSpace answerSpace;
++
++  const QuestionAdvancedContent({
++    this.stimulus,
++    this.wordBank = const [],
++    this.answerSpace = const QuestionAnswerSpace(),
++  });
++
++  static const empty = QuestionAdvancedContent();
++
++  bool get hasStimulus => stimulus != null && !stimulus!.isEmpty;
++  bool get hasWordBank => wordBank.any((item) => item.trim().isNotEmpty);
++  bool get hasAnswerSpace => answerSpace.isConfigured;
++  bool get hasAny => hasStimulus || hasWordBank || hasAnswerSpace;
++
++  QuestionAdvancedContent copyWith({
++    QuestionStimulus? stimulus,
++    bool clearStimulus = false,
++    List<String>? wordBank,
++    QuestionAnswerSpace? answerSpace,
++  }) {
++    return QuestionAdvancedContent(
++      stimulus: clearStimulus ? null : (stimulus ?? this.stimulus),
++      wordBank: wordBank ?? this.wordBank,
++      answerSpace: answerSpace ?? this.answerSpace,
++    );
++  }
++
++  Map<String, dynamic> toJson() {
++    return {
++      if (hasStimulus) 'stimulus': stimulus!.toJson(),
++      if (hasWordBank)
++        'wordBank': wordBank
++            .map((item) => item.trim())
++            .where((item) => item.isNotEmpty)
++            .toList(),
++      if (hasAnswerSpace) 'answerSpace': answerSpace.toJson(),
++    };
++  }
++
++  static QuestionAdvancedContent fromQuestion(Question question) {
++    return fromMetadata(question.metadata);
++  }
++
++  static QuestionAdvancedContent fromMetadata(Map<String, dynamic> metadata) {
++    final raw = metadata[metadataKey];
++    if (raw is! Map) return empty;
++    final json = Map<String, dynamic>.from(raw);
++
++    QuestionStimulus? stimulus;
++    final rawStimulus = json['stimulus'];
++    if (rawStimulus is Map) {
++      final parsed = QuestionStimulus.fromJson(
++        Map<String, dynamic>.from(rawStimulus),
++      );
++      if (!parsed.isEmpty) stimulus = parsed;
++    }
++
++    final wordBank = (json['wordBank'] as List? ?? const [])
++        .map((item) => item.toString().trim())
++        .where((item) => item.isNotEmpty)
++        .toList();
++
++    var answerSpace = const QuestionAnswerSpace();
++    final rawAnswerSpace = json['answerSpace'];
++    if (rawAnswerSpace is Map) {
++      answerSpace = QuestionAnswerSpace.fromJson(
++        Map<String, dynamic>.from(rawAnswerSpace),
++      );
++    }
++
++    return QuestionAdvancedContent(
++      stimulus: stimulus,
++      wordBank: wordBank,
++      answerSpace: answerSpace,
++    );
++  }
++
++  /// Writes only EduSheet's namespaced advanced-content entry while retaining
++  /// every unrelated metadata key owned by older releases or other features.
++  Map<String, dynamic> writeToMetadata(Map<String, dynamic> source) {
++    final next = Map<String, dynamic>.from(source);
++    if (!hasAny) {
++      next.remove(metadataKey);
++    } else {
++      next[metadataKey] = toJson();
++    }
++    return next;
++  }
++}
+diff --git a/lib/features/paper_composer/domain/question_draft.dart b/lib/features/paper_composer/domain/question_draft.dart
+index 9c4c210..86e293c 100644
+--- a/lib/features/paper_composer/domain/question_draft.dart
++++ b/lib/features/paper_composer/domain/question_draft.dart
+@@ -4,6 +4,7 @@ import 'package:edusheet/features/editor/domain/models/question_option_layout.da
+ import 'package:flutter/material.dart';
+ import 'package:uuid/uuid.dart';
+ 
++import 'question_advanced_content.dart';
+ import 'question_details_draft.dart';
+ 
+ /// Editing model for the paper composer.
+@@ -27,6 +28,7 @@ class QuestionDraft {
+   final List<Question> subQuestions;
+   final List<Question> internalChoices;
+   final QuestionOptionLayout optionLayout;
++  final QuestionAdvancedContent advancedContent;
+   final QuestionDetailsDraft details;
+ 
+   const QuestionDraft._({
+@@ -42,6 +44,7 @@ class QuestionDraft {
+     required this.subQuestions,
+     required this.internalChoices,
+     required this.optionLayout,
++    required this.advancedContent,
+     required this.details,
+   }) : _seed = seed;
+ 
+@@ -79,6 +82,7 @@ class QuestionDraft {
+       subQuestions: const [],
+       internalChoices: const [],
+       optionLayout: QuestionOptionLayout.vertical,
++      advancedContent: QuestionAdvancedContent.empty,
+       details: const QuestionDetailsDraft(),
+     );
+   }
+@@ -101,6 +105,7 @@ class QuestionDraft {
+       subQuestions: List<Question>.from(question.subQuestions),
+       internalChoices: List<Question>.from(question.internalChoices),
+       optionLayout: QuestionOptionLayoutCodec.fromQuestion(question),
++      advancedContent: QuestionAdvancedContent.fromQuestion(question),
+       details: QuestionDetailsDraft.fromQuestion(question),
+     );
+   }
+@@ -118,6 +123,7 @@ class QuestionDraft {
+     List<Question>? subQuestions,
+     List<Question>? internalChoices,
+     QuestionOptionLayout? optionLayout,
++    QuestionAdvancedContent? advancedContent,
+     QuestionDetailsDraft? details,
+   }) {
+     return QuestionDraft._(
+@@ -133,6 +139,7 @@ class QuestionDraft {
+       subQuestions: subQuestions ?? this.subQuestions,
+       internalChoices: internalChoices ?? this.internalChoices,
+       optionLayout: optionLayout ?? this.optionLayout,
++      advancedContent: advancedContent ?? this.advancedContent,
+       details: details ?? this.details,
+     );
+   }
+@@ -168,6 +175,7 @@ class QuestionDraft {
+     var metadata = Map<String, dynamic>.from(_seed.metadata)
+       ..remove('paperComposerDraft');
+     metadata = QuestionOptionLayoutCodec.write(metadata, optionLayout);
++    metadata = advancedContent.writeToMetadata(metadata);
+ 
+     return _seed.copyWith(
+       text: text,
+diff --git a/lib/features/paper_composer/domain/universal_question_document.dart b/lib/features/paper_composer/domain/universal_question_document.dart
+index 72ca6e6..dcf0042 100644
+--- a/lib/features/paper_composer/domain/universal_question_document.dart
++++ b/lib/features/paper_composer/domain/universal_question_document.dart
+@@ -7,11 +7,14 @@
+ /// content blocks.
+ enum UniversalQuestionBlockKind {
+   prompt,
++  stimulus,
++  wordBank,
+   answerOptions,
+   attachment,
+   table,
+   subQuestions,
+   internalChoice,
++  answerSpace,
+ }
+ 
+ class UniversalQuestionBlock {
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart b/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+index 791cf47..a7b8915 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+@@ -1,8 +1,12 @@
++import 'dart:io';
++
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
+ import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
++import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
+@@ -286,7 +290,6 @@ class _PreviewSection extends StatelessWidget {
+ }
+ 
+ class _PreviewQuestion extends StatelessWidget {
+-  static const _codec = QuestionRichTextCodec();
+   final Question question;
+   final String label;
+   final PaperSection section;
+@@ -299,6 +302,10 @@ class _PreviewQuestion extends StatelessWidget {
+ 
+   @override
+   Widget build(BuildContext context) {
++    final answerSpace = QuestionAdvancedStructureService.resolveAnswerSpace(
++      question,
++      section,
++    );
+     return Padding(
+       padding: const EdgeInsets.only(bottom: 15),
+       child: Column(
+@@ -315,33 +322,9 @@ class _PreviewQuestion extends StatelessWidget {
+                 ),
+               ),
+               Expanded(
+-                child: Column(
+-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+-                  children: [
+-                    QuestionRichTextPreview(question: question, maxHeight: 220),
+-                    for (final expression in _codec.unplacedMathExpressions(
+-                      question,
+-                    ))
+-                      Padding(
+-                        padding: const EdgeInsets.symmetric(vertical: 6),
+-                        child: SafeMathExpression(expression: expression),
+-                      ),
+-                    if (question.options.isNotEmpty) ...[
+-                      const SizedBox(height: 5),
+-                      _PreviewOptions(question: question),
+-                    ],
+-                    if (question.isOptional)
+-                      const Padding(
+-                        padding: EdgeInsets.only(top: 3),
+-                        child: Text(
+-                          '(Optional / OR choice)',
+-                          style: TextStyle(
+-                            fontSize: 11,
+-                            fontStyle: FontStyle.italic,
+-                          ),
+-                        ),
+-                      ),
+-                  ],
++                child: _PreviewQuestionContent(
++                  question: question,
++                  section: section,
+                 ),
+               ),
+               const SizedBox(width: 8),
+@@ -351,10 +334,251 @@ class _PreviewQuestion extends StatelessWidget {
+               ),
+             ],
+           ),
+-          if (section.answerSpaceLines > 0)
++          if (answerSpace.isVisible)
+             Padding(
+               padding: const EdgeInsets.only(left: 38, top: 6),
+-              child: _AnswerSpacePreview(section: section),
++              child: _AnswerSpacePreview(answerSpace: answerSpace),
++            ),
++        ],
++      ),
++    );
++  }
++}
++
++class _PreviewQuestionContent extends StatelessWidget {
++  static const _codec = QuestionRichTextCodec();
++
++  final Question question;
++  final PaperSection section;
++
++  const _PreviewQuestionContent({
++    required this.question,
++    required this.section,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final advanced = QuestionAdvancedContent.fromQuestion(question);
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        QuestionRichTextPreview(question: question, maxHeight: 220),
++        if (advanced.hasStimulus) ...[
++          const SizedBox(height: 7),
++          _PreviewStimulus(stimulus: advanced.stimulus!),
++        ],
++        for (final expression in _codec.unplacedMathExpressions(question))
++          Padding(
++            padding: const EdgeInsets.symmetric(vertical: 6),
++            child: SafeMathExpression(expression: expression),
++          ),
++        if (question.attachments.isNotEmpty) ...[
++          const SizedBox(height: 6),
++          for (final attachment in question.attachments)
++            _PreviewAttachment(attachment: attachment),
++        ],
++        if (question.tableData != null) ...[
++          const SizedBox(height: 7),
++          _PreviewQuestionTable(table: question.tableData!),
++        ],
++        if (advanced.hasWordBank) ...[
++          const SizedBox(height: 7),
++          _PreviewWordBank(items: advanced.wordBank),
++        ],
++        if (question.options.isNotEmpty) ...[
++          const SizedBox(height: 5),
++          _PreviewOptions(question: question),
++        ],
++        if (question.subQuestions.isNotEmpty) ...[
++          const SizedBox(height: 8),
++          for (final entry in question.subQuestions.asMap().entries)
++            _PreviewNestedQuestion(
++              label: QuestionAdvancedStructureService.partLabel(entry.key),
++              question: entry.value,
++              section: section,
++            ),
++        ],
++        if (question.internalChoices.isNotEmpty) ...[
++          const SizedBox(height: 8),
++          for (final entry in question.internalChoices.asMap().entries) ...[
++            if (entry.key > 0)
++              const Padding(
++                padding: EdgeInsets.symmetric(vertical: 5),
++                child: Center(
++                  child: Text(
++                    'OR',
++                    style: TextStyle(fontWeight: FontWeight.w900),
++                  ),
++                ),
++              ),
++            _PreviewNestedQuestion(
++              label: '',
++              question: entry.value,
++              section: section,
++            ),
++          ],
++        ],
++        if (question.isOptional)
++          const Padding(
++            padding: EdgeInsets.only(top: 3),
++            child: Text(
++              '(Optional / OR choice)',
++              style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
++            ),
++          ),
++      ],
++    );
++  }
++}
++
++class _PreviewNestedQuestion extends StatelessWidget {
++  final String label;
++  final Question question;
++  final PaperSection section;
++
++  const _PreviewNestedQuestion({
++    required this.label,
++    required this.question,
++    required this.section,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final answerSpace = QuestionAdvancedStructureService.resolveAnswerSpace(
++      question,
++      section,
++    );
++    return Padding(
++      padding: const EdgeInsets.only(bottom: 7),
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.stretch,
++        children: [
++          Row(
++            crossAxisAlignment: CrossAxisAlignment.start,
++            children: [
++              if (label.isNotEmpty)
++                SizedBox(
++                  width: 34,
++                  child: Text(
++                    label,
++                    style: const TextStyle(fontWeight: FontWeight.w800),
++                  ),
++                ),
++              Expanded(
++                child: _PreviewQuestionContent(
++                  question: question,
++                  section: section,
++                ),
++              ),
++              const SizedBox(width: 6),
++              Text(
++                '[${PaperMarksResolver.format(question.marks)}]',
++                style: const TextStyle(fontWeight: FontWeight.w700),
++              ),
++            ],
++          ),
++          if (answerSpace.questionOverride && answerSpace.isVisible)
++            Padding(
++              padding: EdgeInsets.only(left: label.isEmpty ? 0 : 34, top: 4),
++              child: _AnswerSpacePreview(answerSpace: answerSpace),
++            ),
++        ],
++      ),
++    );
++  }
++}
++
++class _PreviewStimulus extends StatelessWidget {
++  final QuestionStimulus stimulus;
++
++  const _PreviewStimulus({required this.stimulus});
++
++  @override
++  Widget build(BuildContext context) {
++    return Container(
++      padding: const EdgeInsets.all(9),
++      decoration: BoxDecoration(
++        border: Border.all(color: Colors.black26),
++        borderRadius: BorderRadius.circular(4),
++      ),
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.stretch,
++        children: [
++          if (stimulus.title.trim().isNotEmpty) ...[
++            Text(
++              stimulus.title.trim(),
++              style: const TextStyle(fontWeight: FontWeight.w800),
++            ),
++            const SizedBox(height: 4),
++          ],
++          Text(
++            stimulus.text,
++            style: TextStyle(
++              fontStyle: stimulus.kind == QuestionStimulusKind.poem
++                  ? FontStyle.italic
++                  : FontStyle.normal,
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
++
++class _PreviewWordBank extends StatelessWidget {
++  final List<String> items;
++
++  const _PreviewWordBank({required this.items});
++
++  @override
++  Widget build(BuildContext context) {
++    return Container(
++      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
++      decoration: BoxDecoration(border: Border.all(color: Colors.black26)),
++      child: Wrap(
++        alignment: WrapAlignment.center,
++        spacing: 14,
++        runSpacing: 5,
++        children: items.map((item) => Text(item)).toList(),
++      ),
++    );
++  }
++}
++
++class _PreviewAttachment extends StatelessWidget {
++  final QuestionAttachment attachment;
++
++  const _PreviewAttachment({required this.attachment});
++
++  @override
++  Widget build(BuildContext context) {
++    if (attachment.kind != QuestionAttachmentKind.image ||
++        attachment.path.trim().isEmpty) {
++      return const SizedBox.shrink();
++    }
++    final file = File(attachment.path);
++    return Padding(
++      padding: const EdgeInsets.only(bottom: 6),
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.stretch,
++        children: [
++          if (file.existsSync())
++            ConstrainedBox(
++              constraints: const BoxConstraints(maxHeight: 260),
++              child: Image.file(
++                file,
++                fit: BoxFit.contain,
++                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
++              ),
++            ),
++          if (attachment.caption.trim().isNotEmpty)
++            Padding(
++              padding: const EdgeInsets.only(top: 3),
++              child: Text(
++                attachment.caption.trim(),
++                textAlign: TextAlign.center,
++                style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic),
++              ),
+             ),
+         ],
+       ),
+@@ -362,6 +586,81 @@ class _PreviewQuestion extends StatelessWidget {
+   }
+ }
+ 
++class _PreviewQuestionTable extends StatelessWidget {
++  final QuestionTable table;
++
++  const _PreviewQuestionTable({required this.table});
++
++  @override
++  Widget build(BuildContext context) {
++    final columnCount = table.headers.isNotEmpty
++        ? table.headers.length
++        : (table.rows.isEmpty ? 0 : table.rows.first.length);
++    if (columnCount == 0) return const SizedBox.shrink();
++
++    final rows = <TableRow>[];
++    if (table.headers.isNotEmpty) {
++      rows.add(
++        TableRow(
++          children: List.generate(
++            columnCount,
++            (index) => _PreviewTableCell(
++              text: index < table.headers.length ? table.headers[index] : '',
++              bold: true,
++            ),
++          ),
++        ),
++      );
++    }
++    for (final row in table.rows) {
++      rows.add(
++        TableRow(
++          children: List.generate(
++            columnCount,
++            (index) => _PreviewTableCell(
++              text: index < row.length ? row[index] : '',
++            ),
++          ),
++        ),
++      );
++    }
++
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        if (table.caption.trim().isNotEmpty)
++          Padding(
++            padding: const EdgeInsets.only(bottom: 4),
++            child: Text(
++              table.caption.trim(),
++              textAlign: TextAlign.center,
++              style: const TextStyle(fontWeight: FontWeight.w700),
++            ),
++          ),
++        Table(border: TableBorder.all(color: Colors.black45), children: rows),
++      ],
++    );
++  }
++}
++
++class _PreviewTableCell extends StatelessWidget {
++  final String text;
++  final bool bold;
++
++  const _PreviewTableCell({required this.text, this.bold = false});
++
++  @override
++  Widget build(BuildContext context) {
++    return Padding(
++      padding: const EdgeInsets.all(5),
++      child: Text(
++        text,
++        style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.normal),
++      ),
++    );
++  }
++}
++
+ class _PreviewOptions extends StatelessWidget {
+   final Question question;
+ 
+@@ -413,35 +712,41 @@ class _PreviewOptions extends StatelessWidget {
+ }
+ 
+ class _AnswerSpacePreview extends StatelessWidget {
+-  final PaperSection section;
++  final ResolvedQuestionAnswerSpace answerSpace;
+ 
+-  const _AnswerSpacePreview({required this.section});
++  const _AnswerSpacePreview({required this.answerSpace});
+ 
+   @override
+   Widget build(BuildContext context) {
+-    if (section.graphAnswerArea) {
+-      return Container(
+-        height: section.answerSpaceLines * 10.0,
+-        decoration: BoxDecoration(
+-          border: Border.all(color: Colors.black26),
+-        ),
+-        child: CustomPaint(painter: _PreviewGraphPainter()),
+-      );
+-    }
+-    if (section.ruledAnswerArea) {
+-      return Column(
+-        children: [
+-          for (var index = 0; index < section.answerSpaceLines; index++)
+-            Container(
+-              height: 14,
+-              decoration: const BoxDecoration(
+-                border: Border(bottom: BorderSide(color: Colors.black26)),
++    switch (answerSpace.style) {
++      case QuestionAnswerSpaceStyle.graph:
++        return Container(
++          height: answerSpace.lines * 10.0,
++          decoration: BoxDecoration(border: Border.all(color: Colors.black26)),
++          child: CustomPaint(painter: _PreviewGraphPainter()),
++        );
++      case QuestionAnswerSpaceStyle.box:
++        return Container(
++          height: answerSpace.lines * 14.0,
++          decoration: BoxDecoration(border: Border.all(color: Colors.black38)),
++        );
++      case QuestionAnswerSpaceStyle.ruled:
++        return Column(
++          children: [
++            for (var index = 0; index < answerSpace.lines; index++)
++              Container(
++                height: 14,
++                decoration: const BoxDecoration(
++                  border: Border(bottom: BorderSide(color: Colors.black26)),
++                ),
+               ),
+-            ),
+-        ],
+-      );
++          ],
++        );
++      case QuestionAnswerSpaceStyle.blank:
++        return SizedBox(height: answerSpace.lines * 14.0);
++      case QuestionAnswerSpaceStyle.none:
++        return const SizedBox.shrink();
+     }
+-    return SizedBox(height: section.answerSpaceLines * 14.0);
+   }
+ }
+ 
+diff --git a/lib/features/paper_composer/presentation/widgets/question_add_content_sheet.dart b/lib/features/paper_composer/presentation/widgets/question_add_content_sheet.dart
+index b5391dc..47168ee 100644
+--- a/lib/features/paper_composer/presentation/widgets/question_add_content_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/question_add_content_sheet.dart
+@@ -9,6 +9,13 @@ enum QuestionAddContentAction {
+   subQuestion,
+   orDivider,
+   answerOptions,
++  stimulus,
++  wordBank,
++  table,
++  image,
++  structuredPart,
++  internalChoice,
++  answerSpace,
+   instruction,
+   scanText,
+   quickStart,
+@@ -67,6 +74,48 @@ class _QuestionAddContentBody extends StatelessWidget {
+         title: 'OR separator',
+         subtitle: 'Insert an editable OR line in the paper text',
+       ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.stimulus,
++        icon: Icons.menu_book_outlined,
++        title: 'Passage / poem / case study',
++        subtitle: 'Add source material with the question prompt',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.wordBank,
++        icon: Icons.view_module_outlined,
++        title: 'Word bank',
++        subtitle: 'Add a printable word or phrase box',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.table,
++        icon: Icons.table_chart_outlined,
++        title: 'Table / data',
++        subtitle: 'Build rows and columns without manual spacing',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.image,
++        icon: Icons.image_outlined,
++        title: 'Image / chart / map',
++        subtitle: 'Attach an image with optional caption and description',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.structuredPart,
++        icon: Icons.account_tree_outlined,
++        title: 'Structured question part',
++        subtitle: 'Add an editable (a), (b), (c)… child question',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.internalChoice,
++        icon: Icons.compare_arrows_rounded,
++        title: 'Internal OR choice',
++        subtitle: 'Add full alternative questions with marks validation',
++      ),
++      const _AddContentItem(
++        action: QuestionAddContentAction.answerSpace,
++        icon: Icons.border_bottom_rounded,
++        title: 'Answer space',
++        subtitle: 'Set blank, ruled, box or graph space for this question',
++      ),
+       const _AddContentItem(
+         action: QuestionAddContentAction.instruction,
+         icon: Icons.info_outline_rounded,
+diff --git a/lib/features/paper_composer/presentation/widgets/question_advanced_content_panel.dart b/lib/features/paper_composer/presentation/widgets/question_advanced_content_panel.dart
+new file mode 100644
+index 0000000..206e0dc
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/question_advanced_content_panel.dart
+@@ -0,0 +1,512 @@
++import 'dart:io';
++
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
++import 'package:flutter/material.dart';
++import 'package:path/path.dart' as p;
++
++class QuestionAdvancedContentPanel extends StatelessWidget {
++  final QuestionDraft draft;
++  final VoidCallback onEditStimulus;
++  final VoidCallback onRemoveStimulus;
++  final VoidCallback onEditWordBank;
++  final VoidCallback onRemoveWordBank;
++  final VoidCallback onEditTable;
++  final VoidCallback onRemoveTable;
++  final VoidCallback onAddImage;
++  final ValueChanged<QuestionAttachment> onEditImage;
++  final ValueChanged<QuestionAttachment> onRemoveImage;
++  final VoidCallback onAddSubQuestion;
++  final ValueChanged<int> onEditSubQuestion;
++  final ValueChanged<int> onRemoveSubQuestion;
++  final VoidCallback onAddInternalChoice;
++  final ValueChanged<int> onEditInternalChoice;
++  final ValueChanged<int> onRemoveInternalChoice;
++  final VoidCallback onEditAnswerSpace;
++  final VoidCallback onRemoveAnswerSpace;
++
++  const QuestionAdvancedContentPanel({
++    super.key,
++    required this.draft,
++    required this.onEditStimulus,
++    required this.onRemoveStimulus,
++    required this.onEditWordBank,
++    required this.onRemoveWordBank,
++    required this.onEditTable,
++    required this.onRemoveTable,
++    required this.onAddImage,
++    required this.onEditImage,
++    required this.onRemoveImage,
++    required this.onAddSubQuestion,
++    required this.onEditSubQuestion,
++    required this.onRemoveSubQuestion,
++    required this.onAddInternalChoice,
++    required this.onEditInternalChoice,
++    required this.onRemoveInternalChoice,
++    required this.onEditAnswerSpace,
++    required this.onRemoveAnswerSpace,
++  });
++
++  bool get _hasAnything =>
++      draft.advancedContent.hasAny ||
++      draft.tableData != null ||
++      draft.attachments.isNotEmpty ||
++      draft.subQuestions.isNotEmpty ||
++      draft.internalChoices.isNotEmpty;
++
++  @override
++  Widget build(BuildContext context) {
++    if (!_hasAnything) return const SizedBox.shrink();
++    final advanced = draft.advancedContent;
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        Row(
++          children: [
++            const Expanded(
++              child: Text(
++                'Paper blocks',
++                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
++              ),
++            ),
++            Text(
++              'Editable',
++              style: Theme.of(context).textTheme.labelMedium?.copyWith(
++                color: Theme.of(context).colorScheme.onSurfaceVariant,
++              ),
++            ),
++          ],
++        ),
++        const SizedBox(height: 8),
++        if (advanced.hasStimulus)
++          _AdvancedBlockCard(
++            icon: Icons.menu_book_outlined,
++            title: advanced.stimulus!.kind.label,
++            subtitle: advanced.stimulus!.title.trim().isNotEmpty
++                ? advanced.stimulus!.title.trim()
++                : _compact(advanced.stimulus!.text),
++            onEdit: onEditStimulus,
++            onRemove: onRemoveStimulus,
++            child: Text(
++              advanced.stimulus!.text,
++              maxLines: 5,
++              overflow: TextOverflow.ellipsis,
++            ),
++          ),
++        if (advanced.hasWordBank)
++          _AdvancedBlockCard(
++            icon: Icons.view_module_outlined,
++            title: 'Word bank',
++            subtitle: '${advanced.wordBank.length} items',
++            onEdit: onEditWordBank,
++            onRemove: onRemoveWordBank,
++            child: Wrap(
++              spacing: 6,
++              runSpacing: 6,
++              children: advanced.wordBank
++                  .map((item) => Chip(label: Text(item), visualDensity: VisualDensity.compact))
++                  .toList(),
++            ),
++          ),
++        if (draft.tableData != null)
++          _AdvancedBlockCard(
++            icon: Icons.table_chart_outlined,
++            title: 'Table / data',
++            subtitle: _tableSummary(draft.tableData!),
++            onEdit: onEditTable,
++            onRemove: onRemoveTable,
++            child: _TableMiniPreview(table: draft.tableData!),
++          ),
++        if (draft.attachments.isNotEmpty)
++          _AdvancedBlockCard(
++            icon: Icons.image_outlined,
++            title: 'Images',
++            subtitle: '${draft.attachments.length} attached',
++            onEdit: onAddImage,
++            editLabel: 'Add',
++            onRemove: null,
++            child: Column(
++              children: [
++                for (final attachment in draft.attachments)
++                  _ImageAttachmentRow(
++                    attachment: attachment,
++                    onEdit: () => onEditImage(attachment),
++                    onRemove: () => onRemoveImage(attachment),
++                  ),
++              ],
++            ),
++          ),
++        if (draft.subQuestions.isNotEmpty)
++          _AdvancedBlockCard(
++            icon: Icons.account_tree_outlined,
++            title: 'Question parts',
++            subtitle: '${draft.subQuestions.length} structured parts',
++            onEdit: onAddSubQuestion,
++            editLabel: 'Add',
++            onRemove: null,
++            child: Column(
++              children: [
++                for (final entry in draft.subQuestions.asMap().entries)
++                  _NestedQuestionRow(
++                    label: QuestionAdvancedStructureService.partLabel(entry.key),
++                    question: entry.value,
++                    onEdit: () => onEditSubQuestion(entry.key),
++                    onRemove: () => onRemoveSubQuestion(entry.key),
++                  ),
++              ],
++            ),
++          ),
++        if (draft.internalChoices.isNotEmpty)
++          _AdvancedBlockCard(
++            icon: Icons.compare_arrows_rounded,
++            title: 'Internal OR choice',
++            subtitle: QuestionAdvancedStructureService.internalChoiceMarksSummary(
++              draft.internalChoices,
++            ),
++            warning: QuestionAdvancedStructureService.internalChoiceMarksBalanced(
++              draft.internalChoices,
++            )
++                ? null
++                : 'Alternatives have different marks.',
++            onEdit: onAddInternalChoice,
++            editLabel: 'Add',
++            onRemove: null,
++            child: Column(
++              children: [
++                for (final entry in draft.internalChoices.asMap().entries) ...[
++                  if (entry.key > 0)
++                    const Padding(
++                      padding: EdgeInsets.symmetric(vertical: 4),
++                      child: Text('OR', style: TextStyle(fontWeight: FontWeight.w900)),
++                    ),
++                  _NestedQuestionRow(
++                    label: '${entry.key + 1}',
++                    question: entry.value,
++                    onEdit: () => onEditInternalChoice(entry.key),
++                    onRemove: () => onRemoveInternalChoice(entry.key),
++                  ),
++                ],
++              ],
++            ),
++          ),
++        if (advanced.hasAnswerSpace)
++          _AdvancedBlockCard(
++            icon: Icons.border_bottom_rounded,
++            title: 'Answer space',
++            subtitle:
++                '${advanced.answerSpace.style.label} · ${advanced.answerSpace.lines} lines',
++            onEdit: onEditAnswerSpace,
++            onRemove: onRemoveAnswerSpace,
++            child: _AnswerSpaceMiniPreview(
++              style: advanced.answerSpace.style.name,
++              lines: advanced.answerSpace.lines,
++            ),
++          ),
++      ],
++    );
++  }
++
++  String _compact(String value) {
++    final compact = value.replaceAll(RegExp(r'\s+'), ' ').trim();
++    return compact.length <= 90 ? compact : '${compact.substring(0, 87)}…';
++  }
++
++  String _tableSummary(QuestionTable table) {
++    final columns = table.headers.isNotEmpty
++        ? table.headers.length
++        : (table.rows.isEmpty ? 0 : table.rows.first.length);
++    return '${table.rows.length} rows × $columns columns';
++  }
++}
++
++class _AdvancedBlockCard extends StatelessWidget {
++  final IconData icon;
++  final String title;
++  final String subtitle;
++  final String? warning;
++  final Widget child;
++  final VoidCallback? onEdit;
++  final String editLabel;
++  final VoidCallback? onRemove;
++
++  const _AdvancedBlockCard({
++    required this.icon,
++    required this.title,
++    required this.subtitle,
++    required this.child,
++    this.warning,
++    this.onEdit,
++    this.editLabel = 'Edit',
++    this.onRemove,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Card(
++      elevation: 0,
++      color: theme.colorScheme.surfaceContainerLow,
++      margin: const EdgeInsets.only(bottom: 9),
++      child: Padding(
++        padding: const EdgeInsets.all(12),
++        child: Column(
++          crossAxisAlignment: CrossAxisAlignment.stretch,
++          children: [
++            Row(
++              crossAxisAlignment: CrossAxisAlignment.start,
++              children: [
++                Icon(icon, size: 21),
++                const SizedBox(width: 8),
++                Expanded(
++                  child: Column(
++                    crossAxisAlignment: CrossAxisAlignment.start,
++                    children: [
++                      Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
++                      Text(
++                        subtitle,
++                        style: theme.textTheme.bodySmall?.copyWith(
++                          color: theme.colorScheme.onSurfaceVariant,
++                        ),
++                      ),
++                    ],
++                  ),
++                ),
++                if (onEdit != null)
++                  TextButton(onPressed: onEdit, child: Text(editLabel)),
++                if (onRemove != null)
++                  IconButton(
++                    tooltip: 'Remove $title',
++                    onPressed: onRemove,
++                    icon: const Icon(Icons.delete_outline_rounded),
++                  ),
++              ],
++            ),
++            if (warning != null) ...[
++              const SizedBox(height: 6),
++              Text(
++                warning!,
++                style: theme.textTheme.bodySmall?.copyWith(
++                  color: theme.colorScheme.error,
++                  fontWeight: FontWeight.w700,
++                ),
++              ),
++            ],
++            const SizedBox(height: 8),
++            child,
++          ],
++        ),
++      ),
++    );
++  }
++}
++
++class _TableMiniPreview extends StatelessWidget {
++  final QuestionTable table;
++
++  const _TableMiniPreview({required this.table});
++
++  @override
++  Widget build(BuildContext context) {
++    final rows = <TableRow>[];
++    if (table.headers.isNotEmpty) {
++      rows.add(
++        TableRow(
++          children: table.headers
++              .map((cell) => _TableCell(text: cell, bold: true))
++              .toList(),
++        ),
++      );
++    }
++    for (final row in table.rows.take(3)) {
++      rows.add(TableRow(children: row.map((cell) => _TableCell(text: cell)).toList()));
++    }
++    return SingleChildScrollView(
++      scrollDirection: Axis.horizontal,
++      child: SizedBox(
++        width: 520,
++        child: Table(
++          border: TableBorder.all(color: Theme.of(context).colorScheme.outlineVariant),
++          children: rows,
++        ),
++      ),
++    );
++  }
++}
++
++class _TableCell extends StatelessWidget {
++  final String text;
++  final bool bold;
++
++  const _TableCell({required this.text, this.bold = false});
++
++  @override
++  Widget build(BuildContext context) {
++    return Padding(
++      padding: const EdgeInsets.all(6),
++      child: Text(
++        text,
++        maxLines: 2,
++        overflow: TextOverflow.ellipsis,
++        style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.normal),
++      ),
++    );
++  }
++}
++
++class _ImageAttachmentRow extends StatelessWidget {
++  final QuestionAttachment attachment;
++  final VoidCallback onEdit;
++  final VoidCallback onRemove;
++
++  const _ImageAttachmentRow({
++    required this.attachment,
++    required this.onEdit,
++    required this.onRemove,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final file = File(attachment.path);
++    return ListTile(
++      contentPadding: EdgeInsets.zero,
++      leading: ClipRRect(
++        borderRadius: BorderRadius.circular(6),
++        child: file.existsSync()
++            ? Image.file(
++                file,
++                width: 52,
++                height: 46,
++                fit: BoxFit.cover,
++                errorBuilder: (_, __, ___) => const SizedBox(
++                  width: 52,
++                  height: 46,
++                  child: Icon(Icons.broken_image_outlined),
++                ),
++              )
++            : const SizedBox(
++                width: 52,
++                height: 46,
++                child: Icon(Icons.broken_image_outlined),
++              ),
++      ),
++      title: Text(
++        attachment.caption.trim().isNotEmpty
++            ? attachment.caption.trim()
++            : p.basename(attachment.path),
++        maxLines: 1,
++        overflow: TextOverflow.ellipsis,
++      ),
++      subtitle: Text(
++        attachment.alternativeText.trim().isEmpty
++            ? 'No accessibility description'
++            : attachment.alternativeText.trim(),
++        maxLines: 1,
++        overflow: TextOverflow.ellipsis,
++      ),
++      trailing: Wrap(
++        spacing: 0,
++        children: [
++          IconButton(
++            tooltip: 'Edit image',
++            onPressed: onEdit,
++            icon: const Icon(Icons.edit_outlined),
++          ),
++          IconButton(
++            tooltip: 'Remove image',
++            onPressed: onRemove,
++            icon: const Icon(Icons.close_rounded),
++          ),
++        ],
++      ),
++    );
++  }
++}
++
++class _NestedQuestionRow extends StatelessWidget {
++  final String label;
++  final Question question;
++  final VoidCallback onEdit;
++  final VoidCallback onRemove;
++
++  const _NestedQuestionRow({
++    required this.label,
++    required this.question,
++    required this.onEdit,
++    required this.onRemove,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final text = question.plainTextAccessibility.trim();
++    return ListTile(
++      contentPadding: EdgeInsets.zero,
++      leading: SizedBox(
++        width: 36,
++        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
++      ),
++      title: Text(
++        text.isEmpty ? 'Math / diagram question part' : text,
++        maxLines: 2,
++        overflow: TextOverflow.ellipsis,
++      ),
++      subtitle: Text('${_marks(question.marks)} marks'),
++      trailing: Wrap(
++        spacing: 0,
++        children: [
++          IconButton(
++            tooltip: 'Edit',
++            onPressed: onEdit,
++            icon: const Icon(Icons.edit_outlined),
++          ),
++          IconButton(
++            tooltip: 'Remove',
++            onPressed: onRemove,
++            icon: const Icon(Icons.close_rounded),
++          ),
++        ],
++      ),
++    );
++  }
++
++  String _marks(double value) => value == value.roundToDouble()
++      ? value.toInt().toString()
++      : value.toStringAsFixed(1);
++}
++
++class _AnswerSpaceMiniPreview extends StatelessWidget {
++  final String style;
++  final int lines;
++
++  const _AnswerSpaceMiniPreview({required this.style, required this.lines});
++
++  @override
++  Widget build(BuildContext context) {
++    final shown = lines.clamp(1, 4).toInt();
++    if (style == 'box' || style == 'graph') {
++      return Container(
++        height: shown * 18.0,
++        decoration: BoxDecoration(border: Border.all(color: Colors.black26)),
++        alignment: Alignment.center,
++        child: style == 'graph'
++            ? const Text('Graph grid', style: TextStyle(fontSize: 11))
++            : null,
++      );
++    }
++    if (style == 'ruled') {
++      return Column(
++        children: [
++          for (var index = 0; index < shown; index++)
++            Container(
++              height: 18,
++              decoration: const BoxDecoration(
++                border: Border(bottom: BorderSide(color: Colors.black26)),
++              ),
++            ),
++        ],
++      );
++    }
++    return SizedBox(height: shown * 18);
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/question_answer_space_sheet.dart b/lib/features/paper_composer/presentation/widgets/question_answer_space_sheet.dart
+new file mode 100644
+index 0000000..15ab2a4
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/question_answer_space_sheet.dart
+@@ -0,0 +1,205 @@
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
++import 'package:flutter/material.dart';
++
++class QuestionAnswerSpaceSheet extends StatefulWidget {
++  final QuestionAnswerSpace initial;
++
++  const QuestionAnswerSpaceSheet({
++    super.key,
++    this.initial = const QuestionAnswerSpace(),
++  });
++
++  static Future<QuestionAnswerSpace?> show(
++    BuildContext context, {
++    QuestionAnswerSpace initial = const QuestionAnswerSpace(),
++  }) {
++    return showAdaptiveModalBottomSheet<QuestionAnswerSpace>(
++      context: context,
++      useSafeArea: true,
++      isScrollControlled: true,
++      builder: (context) => QuestionAnswerSpaceSheet(initial: initial),
++    );
++  }
++
++  @override
++  State<QuestionAnswerSpaceSheet> createState() =>
++      _QuestionAnswerSpaceSheetState();
++}
++
++class _QuestionAnswerSpaceSheetState extends State<QuestionAnswerSpaceSheet> {
++  late QuestionAnswerSpaceStyle _style;
++  late double _lines;
++
++  @override
++  void initState() {
++    super.initState();
++    _style = widget.initial.style == QuestionAnswerSpaceStyle.none
++        ? QuestionAnswerSpaceStyle.ruled
++        : widget.initial.style;
++    _lines = (widget.initial.lines <= 0 ? 4 : widget.initial.lines).toDouble();
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return FractionallySizedBox(
++      heightFactor: 0.66,
++      child: Column(
++        children: [
++          Padding(
++            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
++            child: Row(
++              children: [
++                Expanded(
++                  child: Text(
++                    'Answer space for this question',
++                    style: theme.textTheme.titleLarge?.copyWith(
++                      fontWeight: FontWeight.w800,
++                    ),
++                  ),
++                ),
++                IconButton(
++                  tooltip: 'Close',
++                  onPressed: () => Navigator.pop(context),
++                  icon: const Icon(Icons.close_rounded),
++                ),
++              ],
++            ),
++          ),
++          Expanded(
++            child: SingleChildScrollView(
++              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.stretch,
++                children: [
++                  Text(
++                    'This overrides the section answer-area setting only for this question. Remove it later to fall back to the section rule.',
++                    style: theme.textTheme.bodyMedium?.copyWith(
++                      color: theme.colorScheme.onSurfaceVariant,
++                    ),
++                  ),
++                  const SizedBox(height: 14),
++                  Wrap(
++                    spacing: 8,
++                    runSpacing: 8,
++                    children: QuestionAnswerSpaceStyle.values
++                        .where((style) => style != QuestionAnswerSpaceStyle.none)
++                        .map(
++                          (style) => ChoiceChip(
++                            label: Text(style.label),
++                            selected: _style == style,
++                            onSelected: (_) => setState(() => _style = style),
++                          ),
++                        )
++                        .toList(),
++                  ),
++                  const SizedBox(height: 22),
++                  Row(
++                    children: [
++                      const Expanded(
++                        child: Text(
++                          'Space size',
++                          style: TextStyle(fontWeight: FontWeight.w800),
++                        ),
++                      ),
++                      Text('${_lines.round()} lines'),
++                    ],
++                  ),
++                  Slider(
++                    value: _lines,
++                    min: 1,
++                    max: 16,
++                    divisions: 15,
++                    label: _lines.round().toString(),
++                    onChanged: (value) => setState(() => _lines = value),
++                  ),
++                  const SizedBox(height: 8),
++                  _AnswerSpaceMiniPreview(style: _style, lines: _lines.round()),
++                ],
++              ),
++            ),
++          ),
++          SafeArea(
++            top: false,
++            child: Padding(
++              padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
++              child: SizedBox(
++                width: double.infinity,
++                child: FilledButton.icon(
++                  onPressed: () => Navigator.pop(
++                    context,
++                    QuestionAnswerSpace(style: _style, lines: _lines.round()),
++                  ),
++                  icon: const Icon(Icons.check_rounded),
++                  label: const Text('Use answer space'),
++                ),
++              ),
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
++
++class _AnswerSpaceMiniPreview extends StatelessWidget {
++  final QuestionAnswerSpaceStyle style;
++  final int lines;
++
++  const _AnswerSpaceMiniPreview({required this.style, required this.lines});
++
++  @override
++  Widget build(BuildContext context) {
++    final shown = lines.clamp(1, 5).toInt();
++    if (style == QuestionAnswerSpaceStyle.box) {
++      return Container(
++        height: shown * 18.0,
++        decoration: BoxDecoration(border: Border.all(color: Colors.black26)),
++      );
++    }
++    if (style == QuestionAnswerSpaceStyle.graph) {
++      return Container(
++        height: shown * 18.0,
++        decoration: BoxDecoration(
++          border: Border.all(color: Colors.black26),
++          color: Theme.of(context).colorScheme.surfaceContainerLowest,
++        ),
++        child: CustomPaint(painter: _MiniGridPainter()),
++      );
++    }
++    if (style == QuestionAnswerSpaceStyle.ruled) {
++      return Column(
++        children: [
++          for (var index = 0; index < shown; index++)
++            Container(
++              height: 18,
++              decoration: const BoxDecoration(
++                border: Border(bottom: BorderSide(color: Colors.black26)),
++              ),
++            ),
++        ],
++      );
++    }
++    return SizedBox(height: shown * 18);
++  }
++}
++
++class _MiniGridPainter extends CustomPainter {
++  @override
++  void paint(Canvas canvas, Size size) {
++    final paint = Paint()
++      ..color = Colors.black12
++      ..strokeWidth = 0.5;
++    const step = 12.0;
++    for (var x = step; x < size.width; x += step) {
++      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
++    }
++    for (var y = step; y < size.height; y += step) {
++      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
++    }
++  }
++
++  @override
++  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/question_composer_page.dart b/lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+index ade5660..80362b5 100644
+--- a/lib/features/paper_composer/presentation/widgets/question_composer_page.dart
++++ b/lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+@@ -13,12 +13,20 @@ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_expres
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
+ import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
+ import 'package:edusheet/features/paper_composer/application/paper_composer_actions.dart';
++import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
+ import 'package:edusheet/features/paper_composer/application/question_authoring_text_tools.dart';
+ import 'package:edusheet/features/paper_composer/application/question_insertion_anchor.dart';
+ import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
+ import 'package:edusheet/features/paper_composer/application/universal_question_adapter.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_add_content_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_advanced_content_panel.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_answer_space_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_stimulus_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_word_bank_sheet.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_controls.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_more_details_sheet.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_type_picker.dart';
+@@ -79,6 +87,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+   String? _bodyError;
+   String? _marksError;
+   String? _optionsError;
++  String? _structureError;
+ 
+   @override
+   void initState() {
+@@ -310,6 +319,13 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+     );
+   }
+ 
++  bool get _hasAdvancedPaperBlocks =>
++      _draft.advancedContent.hasAny ||
++      _draft.tableData != null ||
++      _draft.attachments.isNotEmpty ||
++      _draft.subQuestions.isNotEmpty ||
++      _draft.internalChoices.isNotEmpty;
++
+   List<MathExpression> get _unplacedMathExpressions {
+     return _draft.mathExpressions
+         .where((expression) => _legacyUnplacedMathIds.contains(expression.id))
+@@ -423,6 +439,214 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+     setState(() => _draft = _draft.copyWith(details: details));
+   }
+ 
++  Future<void> _editStimulus() async {
++    final stimulus = await QuestionStimulusSheet.show(
++      context,
++      initial: _draft.advancedContent.stimulus,
++    );
++    if (stimulus == null || !mounted) return;
++    setState(() {
++      _draft = _draft.copyWith(
++        advancedContent: _draft.advancedContent.copyWith(stimulus: stimulus),
++      );
++    });
++  }
++
++  void _removeStimulus() {
++    setState(() {
++      _draft = _draft.copyWith(
++        advancedContent: _draft.advancedContent.copyWith(clearStimulus: true),
++      );
++    });
++  }
++
++  Future<void> _editWordBank() async {
++    final items = await QuestionWordBankSheet.show(
++      context,
++      initial: _draft.advancedContent.wordBank,
++    );
++    if (items == null || !mounted) return;
++    setState(() {
++      _draft = _draft.copyWith(
++        advancedContent: _draft.advancedContent.copyWith(wordBank: items),
++      );
++    });
++  }
++
++  void _removeWordBank() {
++    setState(() {
++      _draft = _draft.copyWith(
++        advancedContent: _draft.advancedContent.copyWith(wordBank: const []),
++      );
++    });
++  }
++
++  Future<void> _editTable() async {
++    final table = await QuestionTableEditorSheet.show(
++      context,
++      initial: _draft.tableData,
++    );
++    if (table == null || !mounted) return;
++    setState(() => _draft = _draft.copyWith(tableData: table));
++  }
++
++  void _removeTable() {
++    setState(() => _draft = _draft.copyWith(clearTableData: true));
++  }
++
++  Future<void> _addImage() async {
++    final attachment = await QuestionImageAttachmentSheet.show(context);
++    if (attachment == null || !mounted) return;
++    setState(() {
++      _draft = _draft.copyWith(
++        attachments: [..._draft.attachments, attachment],
++      );
++    });
++  }
++
++  Future<void> _editImage(QuestionAttachment current) async {
++    final attachment = await QuestionImageAttachmentSheet.show(
++      context,
++      initial: current,
++    );
++    if (attachment == null || !mounted) return;
++    setState(() {
++      _draft = _draft.copyWith(
++        attachments: _draft.attachments
++            .map((item) => item.id == current.id ? attachment : item)
++            .toList(),
++      );
++    });
++  }
++
++  void _removeImage(QuestionAttachment current) {
++    setState(() {
++      _draft = _draft.copyWith(
++        attachments: _draft.attachments
++            .where((item) => item.id != current.id)
++            .toList(),
++      );
++    });
++  }
++
++  Future<void> _addSubQuestion() {
++    return _openNestedQuestion(internalChoice: false);
++  }
++
++  Future<void> _editSubQuestion(int index) {
++    if (index < 0 || index >= _draft.subQuestions.length) {
++      return Future.value();
++    }
++    return _openNestedQuestion(
++      internalChoice: false,
++      index: index,
++      initial: _draft.subQuestions[index],
++    );
++  }
++
++  void _removeSubQuestion(int index) {
++    if (index < 0 || index >= _draft.subQuestions.length) return;
++    final next = [..._draft.subQuestions]..removeAt(index);
++    setState(() => _draft = _draft.copyWith(subQuestions: next));
++  }
++
++  Future<void> _addInternalChoice() {
++    return _openNestedQuestion(internalChoice: true);
++  }
++
++  Future<void> _editInternalChoice(int index) {
++    if (index < 0 || index >= _draft.internalChoices.length) {
++      return Future.value();
++    }
++    return _openNestedQuestion(
++      internalChoice: true,
++      index: index,
++      initial: _draft.internalChoices[index],
++    );
++  }
++
++  void _removeInternalChoice(int index) {
++    if (index < 0 || index >= _draft.internalChoices.length) return;
++    final next = [..._draft.internalChoices]..removeAt(index);
++    setState(() => _draft = _draft.copyWith(internalChoices: next));
++  }
++
++  Future<void> _openNestedQuestion({
++    required bool internalChoice,
++    int? index,
++    Question? initial,
++  }) async {
++    ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
++    FocusManager.instance.primaryFocus?.unfocus();
++    final currentList = internalChoice
++        ? _draft.internalChoices
++        : _draft.subQuestions;
++    final nextIndex = index ?? currentList.length;
++    final title = internalChoice
++        ? 'OR alternative ${nextIndex + 1}'
++        : 'Part ${QuestionAdvancedStructureService.partLabel(nextIndex)}';
++    final suggestedMarks = internalChoice
++        ? (_draft.internalChoices.isNotEmpty
++              ? _draft.internalChoices.first.marks
++              : _draft.marks)
++        : 1.0;
++
++    await Navigator.of(context).push<bool>(
++      MaterialPageRoute(
++        builder: (context) => QuestionComposerPage(
++          question: initial,
++          initialType: QuestionType.descriptive,
++          initialMarks: suggestedMarks,
++          onSaveQuestion: (question) async {
++            if (!mounted) return false;
++            setState(() {
++              final target = internalChoice
++                  ? [..._draft.internalChoices]
++                  : [..._draft.subQuestions];
++              if (index == null) {
++                target.add(question);
++              } else if (index >= 0 && index < target.length) {
++                target[index] = question;
++              }
++              _draft = internalChoice
++                  ? _draft.copyWith(
++                      type: QuestionType.internalChoice,
++                      internalChoices: target,
++                    )
++                  : _draft.copyWith(subQuestions: target);
++            });
++            return true;
++          },
++          pageTitle: title,
++          allowSaveAndNext: false,
++        ),
++      ),
++    );
++  }
++
++  Future<void> _editAnswerSpace() async {
++    final value = await QuestionAnswerSpaceSheet.show(
++      context,
++      initial: _draft.advancedContent.answerSpace,
++    );
++    if (value == null || !mounted) return;
++    setState(() {
++      _draft = _draft.copyWith(
++        advancedContent: _draft.advancedContent.copyWith(answerSpace: value),
++      );
++    });
++  }
++
++  void _removeAnswerSpace() {
++    setState(() {
++      _draft = _draft.copyWith(
++        advancedContent: _draft.advancedContent.copyWith(
++          answerSpace: const QuestionAnswerSpace(),
++        ),
++      );
++    });
++  }
++
+   Future<void> _insertGeometry({
+     QuestionInsertionAnchor? insertionAnchor,
+   }) async {
+@@ -644,6 +868,27 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+       case QuestionAddContentAction.answerOptions:
+         _ensureAnswerOptions();
+         break;
++      case QuestionAddContentAction.stimulus:
++        await _editStimulus();
++        break;
++      case QuestionAddContentAction.wordBank:
++        await _editWordBank();
++        break;
++      case QuestionAddContentAction.table:
++        await _editTable();
++        break;
++      case QuestionAddContentAction.image:
++        await _addImage();
++        break;
++      case QuestionAddContentAction.structuredPart:
++        await _addSubQuestion();
++        break;
++      case QuestionAddContentAction.internalChoice:
++        await _addInternalChoice();
++        break;
++      case QuestionAddContentAction.answerSpace:
++        await _editAnswerSpace();
++        break;
+       case QuestionAddContentAction.instruction:
+         _insertInstruction(insertionAnchor: insertionAnchor);
+         break;
+@@ -696,8 +941,16 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+ 
+   bool _validate() {
+     final accessibility = _codec.accessibleText(_bodyController.document);
++    final hasStructuredContent =
++        _draft.advancedContent.hasStimulus ||
++        _draft.tableData != null ||
++        _draft.attachments.isNotEmpty ||
++        _draft.subQuestions.isNotEmpty ||
++        _draft.internalChoices.isNotEmpty;
+     final hasContent =
+-        accessibility.isNotEmpty || _unplacedMathExpressions.isNotEmpty;
++        accessibility.isNotEmpty ||
++        _unplacedMathExpressions.isNotEmpty ||
++        hasStructuredContent;
+     final marks = double.tryParse(_marksController.text.trim());
+     final options = _materializedOptions();
+     final nonEmptyOptions = options
+@@ -713,8 +966,15 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+       _optionsError = _draft.options.isNotEmpty && nonEmptyOptions < 2
+           ? 'Add at least two answer options'
+           : null;
++      _structureError = _draft.internalChoices.isNotEmpty &&
++              _draft.internalChoices.length < 2
++          ? 'Add at least two alternatives for an internal OR choice.'
++          : null;
+     });
+-    return _bodyError == null && _marksError == null && _optionsError == null;
++    return _bodyError == null &&
++        _marksError == null &&
++        _optionsError == null &&
++        _structureError == null;
+   }
+ 
+   Future<void> _save({bool addAnother = false}) async {
+@@ -735,6 +995,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+     final savedMathExpressions = [...embeddedMath, ...unplacedMath];
+     final accessibility = [
+       bodyAccessibility,
++      ...QuestionAdvancedStructureService.accessibilityFragments(_draft),
+       ...unplacedMath.map((expression) {
+         final plain = expression.plainText.trim();
+         return plain.isEmpty ? expression.latex : plain;
+@@ -835,6 +1096,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+       _bodyError = null;
+       _marksError = null;
+       _optionsError = null;
++      _structureError = null;
+       _insertionAnchor.value = _anchorFromController();
+     });
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+@@ -933,6 +1195,33 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
+                           const SizedBox(height: 20),
+                           _buildOptions(context),
+                         ],
++                        if (_hasAdvancedPaperBlocks) ...[
++                          const SizedBox(height: 20),
++                          QuestionAdvancedContentPanel(
++                            draft: _draft,
++                            onEditStimulus: _editStimulus,
++                            onRemoveStimulus: _removeStimulus,
++                            onEditWordBank: _editWordBank,
++                            onRemoveWordBank: _removeWordBank,
++                            onEditTable: _editTable,
++                            onRemoveTable: _removeTable,
++                            onAddImage: _addImage,
++                            onEditImage: _editImage,
++                            onRemoveImage: _removeImage,
++                            onAddSubQuestion: _addSubQuestion,
++                            onEditSubQuestion: _editSubQuestion,
++                            onRemoveSubQuestion: _removeSubQuestion,
++                            onAddInternalChoice: _addInternalChoice,
++                            onEditInternalChoice: _editInternalChoice,
++                            onRemoveInternalChoice: _removeInternalChoice,
++                            onEditAnswerSpace: _editAnswerSpace,
++                            onRemoveAnswerSpace: _removeAnswerSpace,
++                          ),
++                          if (_structureError != null) ...[
++                            const SizedBox(height: 4),
++                            ComposerErrorText(_structureError!),
++                          ],
++                        ],
+                         const SizedBox(height: 16),
+                         SwitchListTile.adaptive(
+                           contentPadding: const EdgeInsets.symmetric(
+diff --git a/lib/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart b/lib/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart
+new file mode 100644
+index 0000000..d3a8432
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart
+@@ -0,0 +1,232 @@
++import 'dart:io';
++
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_text_field.dart';
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
++import 'package:file_picker/file_picker.dart';
++import 'package:flutter/material.dart';
++import 'package:path/path.dart' as p;
++import 'package:uuid/uuid.dart';
++
++class QuestionImageAttachmentSheet extends StatefulWidget {
++  final QuestionAttachment? initial;
++
++  const QuestionImageAttachmentSheet({super.key, this.initial});
++
++  static Future<QuestionAttachment?> show(
++    BuildContext context, {
++    QuestionAttachment? initial,
++  }) {
++    return showAdaptiveModalBottomSheet<QuestionAttachment>(
++      context: context,
++      useSafeArea: true,
++      isScrollControlled: true,
++      builder: (context) => QuestionImageAttachmentSheet(initial: initial),
++    );
++  }
++
++  @override
++  State<QuestionImageAttachmentSheet> createState() =>
++      _QuestionImageAttachmentSheetState();
++}
++
++class _QuestionImageAttachmentSheetState
++    extends State<QuestionImageAttachmentSheet> {
++  String? _path;
++  late final TextEditingController _caption;
++  late final TextEditingController _altText;
++  String? _error;
++
++  @override
++  void initState() {
++    super.initState();
++    _path = widget.initial?.path;
++    _caption = TextEditingController(text: widget.initial?.caption ?? '');
++    _altText = TextEditingController(
++      text: widget.initial?.alternativeText ?? '',
++    );
++  }
++
++  @override
++  void dispose() {
++    _caption.dispose();
++    _altText.dispose();
++    super.dispose();
++  }
++
++  Future<void> _pickImage() async {
++    final result = await FilePicker.platform.pickFiles(
++      type: FileType.custom,
++      allowedExtensions: const ['png', 'jpg', 'jpeg', 'gif'],
++      allowMultiple: false,
++    );
++    final path = result?.files.single.path;
++    if (path == null || !mounted) return;
++    setState(() {
++      _path = path;
++      _error = null;
++    });
++  }
++
++  void _save() {
++    final path = _path?.trim() ?? '';
++    if (path.isEmpty) {
++      setState(() => _error = 'Choose an image first.');
++      return;
++    }
++    Navigator.pop(
++      context,
++      QuestionAttachment(
++        id: widget.initial?.id ?? const Uuid().v4(),
++        kind: QuestionAttachmentKind.image,
++        path: path,
++        alternativeText: _altText.text.trim(),
++        caption: _caption.text.trim(),
++        mimeType: _mimeType(path),
++        width: widget.initial?.width,
++        height: widget.initial?.height,
++      ),
++    );
++  }
++
++  String? _mimeType(String path) {
++    return switch (p.extension(path).toLowerCase()) {
++      '.png' => 'image/png',
++      '.jpg' || '.jpeg' => 'image/jpeg',
++      '.gif' => 'image/gif',
++      _ => null,
++    };
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    final path = _path;
++    final exists = path != null && File(path).existsSync();
++
++    return FractionallySizedBox(
++      heightFactor: 0.82,
++      child: Column(
++        children: [
++          Padding(
++            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
++            child: Row(
++              children: [
++                Expanded(
++                  child: Text(
++                    widget.initial == null ? 'Add image' : 'Edit image',
++                    style: theme.textTheme.titleLarge?.copyWith(
++                      fontWeight: FontWeight.w800,
++                    ),
++                  ),
++                ),
++                IconButton(
++                  tooltip: 'Close',
++                  onPressed: () => Navigator.pop(context),
++                  icon: const Icon(Icons.close_rounded),
++                ),
++              ],
++            ),
++          ),
++          Expanded(
++            child: SingleChildScrollView(
++              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.stretch,
++                children: [
++                  Text(
++                    'Use this for a photo, map, chart or scanned diagram. Geometry created with EduSheet still uses the dedicated Geometry tool.',
++                    style: theme.textTheme.bodyMedium?.copyWith(
++                      color: theme.colorScheme.onSurfaceVariant,
++                    ),
++                  ),
++                  const SizedBox(height: 14),
++                  OutlinedButton.icon(
++                    onPressed: _pickImage,
++                    icon: const Icon(Icons.photo_library_outlined),
++                    label: Text(path == null ? 'Choose image' : 'Change image'),
++                  ),
++                  if (_error != null) ...[
++                    const SizedBox(height: 6),
++                    Text(
++                      _error!,
++                      style: TextStyle(color: theme.colorScheme.error),
++                    ),
++                  ],
++                  if (path != null) ...[
++                    const SizedBox(height: 12),
++                    DecoratedBox(
++                      decoration: BoxDecoration(
++                        border: Border.all(color: theme.colorScheme.outlineVariant),
++                        borderRadius: BorderRadius.circular(12),
++                      ),
++                      child: Padding(
++                        padding: const EdgeInsets.all(8),
++                        child: exists
++                            ? Image.file(
++                                File(path),
++                                height: 190,
++                                fit: BoxFit.contain,
++                                errorBuilder: (_, __, ___) => const SizedBox(
++                                  height: 120,
++                                  child: Center(child: Text('Image preview unavailable')),
++                                ),
++                              )
++                            : const SizedBox(
++                                height: 120,
++                                child: Center(child: Text('The selected image file is unavailable.')),
++                              ),
++                      ),
++                    ),
++                    const SizedBox(height: 6),
++                    Text(
++                      p.basename(path),
++                      maxLines: 1,
++                      overflow: TextOverflow.ellipsis,
++                      textAlign: TextAlign.center,
++                      style: theme.textTheme.bodySmall,
++                    ),
++                  ],
++                  const SizedBox(height: 14),
++                  QuestionMathTextField(
++                    controller: _caption,
++                    decoration: const InputDecoration(
++                      labelText: 'Caption (optional)',
++                      hintText: 'Figure 1: Observe the diagram',
++                    ),
++                  ),
++                  const SizedBox(height: 10),
++                  QuestionMathTextField(
++                    controller: _altText,
++                    minLines: 2,
++                    maxLines: 4,
++                    keyboardType: TextInputType.multiline,
++                    decoration: const InputDecoration(
++                      alignLabelWithHint: true,
++                      labelText: 'Accessibility description (optional)',
++                      hintText: 'Describe the important information in the image.',
++                    ),
++                  ),
++                ],
++              ),
++            ),
++          ),
++          SafeArea(
++            top: false,
++            child: Padding(
++              padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
++              child: SizedBox(
++                width: double.infinity,
++                child: FilledButton.icon(
++                  onPressed: _save,
++                  icon: const Icon(Icons.check_rounded),
++                  label: const Text('Use image'),
++                ),
++              ),
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/question_math_text_field.dart b/lib/features/paper_composer/presentation/widgets/question_math_text_field.dart
+new file mode 100644
+index 0000000..8bf48c8
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/question_math_text_field.dart
+@@ -0,0 +1,52 @@
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
++import 'package:flutter/material.dart';
++
++/// A normal [TextField] that can switch to EduSheet's existing custom math
++/// keyboard without creating a second keyboard/session implementation.
++///
++/// Advanced paper blocks (passages, word banks, table cells and captions) use
++/// the same controller/focus ownership contract as question options, so a
++/// teacher can enter mathematical symbols anywhere those blocks are editable.
++class QuestionMathTextField extends StatelessWidget {
++  final TextEditingController controller;
++  final InputDecoration decoration;
++  final int? minLines;
++  final int? maxLines;
++  final TextInputType keyboardType;
++  final TextInputAction? textInputAction;
++  final ValueChanged<String>? onChanged;
++  final bool enabled;
++  final bool autofocus;
++
++  const QuestionMathTextField({
++    super.key,
++    required this.controller,
++    required this.decoration,
++    this.minLines,
++    this.maxLines = 1,
++    this.keyboardType = TextInputType.text,
++    this.textInputAction,
++    this.onChanged,
++    this.enabled = true,
++    this.autofocus = false,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    return MathKeyboardField(
++      controller: controller,
++      builder: (context, focusNode, isMathActive) => TextField(
++        controller: controller,
++        focusNode: focusNode,
++        enabled: enabled,
++        autofocus: autofocus,
++        minLines: minLines,
++        maxLines: maxLines,
++        keyboardType: isMathActive ? TextInputType.none : keyboardType,
++        textInputAction: textInputAction,
++        decoration: decoration,
++        onChanged: onChanged,
++      ),
++    );
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/question_stimulus_sheet.dart b/lib/features/paper_composer/presentation/widgets/question_stimulus_sheet.dart
+new file mode 100644
+index 0000000..70b0d64
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/question_stimulus_sheet.dart
+@@ -0,0 +1,156 @@
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_text_field.dart';
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
++import 'package:flutter/material.dart';
++
++class QuestionStimulusSheet extends StatefulWidget {
++  final QuestionStimulus? initial;
++
++  const QuestionStimulusSheet({super.key, this.initial});
++
++  static Future<QuestionStimulus?> show(
++    BuildContext context, {
++    QuestionStimulus? initial,
++  }) {
++    return showAdaptiveModalBottomSheet<QuestionStimulus>(
++      context: context,
++      useSafeArea: true,
++      isScrollControlled: true,
++      builder: (context) => QuestionStimulusSheet(initial: initial),
++    );
++  }
++
++  @override
++  State<QuestionStimulusSheet> createState() => _QuestionStimulusSheetState();
++}
++
++class _QuestionStimulusSheetState extends State<QuestionStimulusSheet> {
++  late QuestionStimulusKind _kind;
++  late final TextEditingController _title;
++  late final TextEditingController _text;
++  String? _error;
++
++  @override
++  void initState() {
++    super.initState();
++    _kind = widget.initial?.kind ?? QuestionStimulusKind.passage;
++    _title = TextEditingController(text: widget.initial?.title ?? '');
++    _text = TextEditingController(text: widget.initial?.text ?? '');
++  }
++
++  @override
++  void dispose() {
++    _title.dispose();
++    _text.dispose();
++    super.dispose();
++  }
++
++  void _save() {
++    final text = _text.text.trim();
++    if (text.isEmpty) {
++      setState(() => _error = 'Add the passage, poem, case study or source text.');
++      return;
++    }
++    Navigator.pop(
++      context,
++      QuestionStimulus(
++        kind: _kind,
++        title: _title.text.trim(),
++        text: text,
++      ),
++    );
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return FractionallySizedBox(
++      heightFactor: 0.9,
++      child: Column(
++        children: [
++          Padding(
++            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
++            child: Row(
++              children: [
++                Expanded(
++                  child: Text(
++                    widget.initial == null ? 'Add reading / source block' : 'Edit reading / source block',
++                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
++                  ),
++                ),
++                IconButton(
++                  tooltip: 'Close',
++                  onPressed: () => Navigator.pop(context),
++                  icon: const Icon(Icons.close_rounded),
++                ),
++              ],
++            ),
++          ),
++          Expanded(
++            child: SingleChildScrollView(
++              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.stretch,
++                children: [
++                  Text(
++                    'Use this for a passage, poem, case study or source material that belongs with the question. The question prompt stays independently editable.',
++                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
++                  ),
++                  const SizedBox(height: 16),
++                  DropdownButtonFormField<QuestionStimulusKind>(
++                    value: _kind,
++                    decoration: const InputDecoration(labelText: 'Block type'),
++                    items: QuestionStimulusKind.values
++                        .map((kind) => DropdownMenuItem(value: kind, child: Text(kind.label)))
++                        .toList(),
++                    onChanged: (value) {
++                      if (value != null) setState(() => _kind = value);
++                    },
++                  ),
++                  const SizedBox(height: 12),
++                  QuestionMathTextField(
++                    controller: _title,
++                    decoration: const InputDecoration(
++                      labelText: 'Heading (optional)',
++                      hintText: 'Read the passage and answer the questions',
++                    ),
++                  ),
++                  const SizedBox(height: 12),
++                  QuestionMathTextField(
++                    controller: _text,
++                    minLines: 9,
++                    maxLines: 18,
++                    keyboardType: TextInputType.multiline,
++                    decoration: InputDecoration(
++                      alignLabelWithHint: true,
++                      labelText: '${_kind.label} text',
++                      hintText: 'Type or paste the source text here…',
++                      errorText: _error,
++                    ),
++                    onChanged: (_) {
++                      if (_error != null) setState(() => _error = null);
++                    },
++                  ),
++                ],
++              ),
++            ),
++          ),
++          SafeArea(
++            top: false,
++            child: Padding(
++              padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
++              child: SizedBox(
++                width: double.infinity,
++                child: FilledButton.icon(
++                  onPressed: _save,
++                  icon: const Icon(Icons.check_rounded),
++                  label: const Text('Use this block'),
++                ),
++              ),
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart b/lib/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart
+new file mode 100644
+index 0000000..9fcd15f
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart
+@@ -0,0 +1,352 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_text_field.dart';
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
++import 'package:flutter/material.dart';
++
++class QuestionTableEditorSheet extends StatefulWidget {
++  final QuestionTable? initial;
++
++  const QuestionTableEditorSheet({super.key, this.initial});
++
++  static Future<QuestionTable?> show(
++    BuildContext context, {
++    QuestionTable? initial,
++  }) {
++    return showAdaptiveModalBottomSheet<QuestionTable>(
++      context: context,
++      useSafeArea: true,
++      isScrollControlled: true,
++      builder: (context) => QuestionTableEditorSheet(initial: initial),
++    );
++  }
++
++  @override
++  State<QuestionTableEditorSheet> createState() =>
++      _QuestionTableEditorSheetState();
++}
++
++class _QuestionTableEditorSheetState extends State<QuestionTableEditorSheet> {
++  late bool _useHeader;
++  late List<TextEditingController> _headers;
++  late List<List<TextEditingController>> _rows;
++  late final TextEditingController _caption;
++  late final TextEditingController _summary;
++
++  int get _columnCount {
++    if (_headers.isNotEmpty) return _headers.length;
++    if (_rows.isNotEmpty && _rows.first.isNotEmpty) return _rows.first.length;
++    return 2;
++  }
++
++  @override
++  void initState() {
++    super.initState();
++    final initial = widget.initial;
++    _useHeader = initial?.headers.isNotEmpty == true;
++    final initialColumns = _resolveInitialColumnCount(initial);
++    _headers = List.generate(
++      initialColumns,
++      (index) => TextEditingController(
++        text: index < (initial?.headers.length ?? 0)
++            ? initial!.headers[index]
++            : '',
++      ),
++    );
++    final sourceRows = initial?.rows ?? const <List<String>>[];
++    _rows = sourceRows.isEmpty
++        ? List.generate(
++            2,
++            (_) => List.generate(
++              initialColumns,
++              (_) => TextEditingController(),
++            ),
++          )
++        : sourceRows
++              .map(
++                (row) => List.generate(
++                  initialColumns,
++                  (index) => TextEditingController(
++                    text: index < row.length ? row[index] : '',
++                  ),
++                ),
++              )
++              .toList();
++    _caption = TextEditingController(text: initial?.caption ?? '');
++    _summary = TextEditingController(
++      text: initial?.accessibilitySummary ?? '',
++    );
++  }
++
++  int _resolveInitialColumnCount(QuestionTable? table) {
++    var columns = table?.headers.length ?? 0;
++    for (final row in table?.rows ?? const <List<String>>[]) {
++      if (row.length > columns) columns = row.length;
++    }
++    return columns.clamp(2, 6).toInt();
++  }
++
++  @override
++  void dispose() {
++    for (final controller in _headers) {
++      controller.dispose();
++    }
++    for (final row in _rows) {
++      for (final controller in row) {
++        controller.dispose();
++      }
++    }
++    _caption.dispose();
++    _summary.dispose();
++    super.dispose();
++  }
++
++  void _addRow() {
++    if (_rows.length >= 12) return;
++    setState(() {
++      _rows.add(
++        List.generate(_columnCount, (_) => TextEditingController()),
++      );
++    });
++  }
++
++  void _removeRow() {
++    if (_rows.length <= 1) return;
++    setState(() {
++      final removed = _rows.removeLast();
++      for (final controller in removed) {
++        controller.dispose();
++      }
++    });
++  }
++
++  void _addColumn() {
++    if (_columnCount >= 6) return;
++    setState(() {
++      _headers.add(TextEditingController());
++      for (final row in _rows) {
++        row.add(TextEditingController());
++      }
++    });
++  }
++
++  void _removeColumn() {
++    if (_columnCount <= 2) return;
++    setState(() {
++      _headers.removeLast().dispose();
++      for (final row in _rows) {
++        row.removeLast().dispose();
++      }
++    });
++  }
++
++  void _save() {
++    final headers = _useHeader
++        ? _headers.map((controller) => controller.text.trim()).toList()
++        : <String>[];
++    final rows = _rows
++        .map((row) => row.map((controller) => controller.text.trim()).toList())
++        .toList();
++
++    Navigator.pop(
++      context,
++      QuestionTable(
++        headers: headers,
++        rows: rows,
++        caption: _caption.text.trim(),
++        accessibilitySummary: _summary.text.trim(),
++      ),
++    );
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return FractionallySizedBox(
++      heightFactor: 0.92,
++      child: Column(
++        children: [
++          Padding(
++            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
++            child: Row(
++              children: [
++                Expanded(
++                  child: Text(
++                    widget.initial == null ? 'Add table / data' : 'Edit table / data',
++                    style: theme.textTheme.titleLarge?.copyWith(
++                      fontWeight: FontWeight.w800,
++                    ),
++                  ),
++                ),
++                IconButton(
++                  tooltip: 'Close',
++                  onPressed: () => Navigator.pop(context),
++                  icon: const Icon(Icons.close_rounded),
++                ),
++              ],
++            ),
++          ),
++          Expanded(
++            child: SingleChildScrollView(
++              padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.stretch,
++                children: [
++                  Text(
++                    'Build the data visually instead of spacing text by hand. Swipe sideways when the table is wider than the phone.',
++                    style: theme.textTheme.bodyMedium?.copyWith(
++                      color: theme.colorScheme.onSurfaceVariant,
++                    ),
++                  ),
++                  const SizedBox(height: 10),
++                  SwitchListTile.adaptive(
++                    contentPadding: EdgeInsets.zero,
++                    title: const Text('Header row'),
++                    subtitle: const Text('Use the first row as column headings.'),
++                    value: _useHeader,
++                    onChanged: (value) => setState(() => _useHeader = value),
++                  ),
++                  Wrap(
++                    spacing: 8,
++                    runSpacing: 8,
++                    children: [
++                      OutlinedButton.icon(
++                        onPressed: _rows.length < 12 ? _addRow : null,
++                        icon: const Icon(Icons.add_rounded),
++                        label: const Text('Row'),
++                      ),
++                      OutlinedButton.icon(
++                        onPressed: _rows.length > 1 ? _removeRow : null,
++                        icon: const Icon(Icons.remove_rounded),
++                        label: const Text('Row'),
++                      ),
++                      OutlinedButton.icon(
++                        onPressed: _columnCount < 6 ? _addColumn : null,
++                        icon: const Icon(Icons.add_rounded),
++                        label: const Text('Column'),
++                      ),
++                      OutlinedButton.icon(
++                        onPressed: _columnCount > 2 ? _removeColumn : null,
++                        icon: const Icon(Icons.remove_rounded),
++                        label: const Text('Column'),
++                      ),
++                    ],
++                  ),
++                  const SizedBox(height: 12),
++                  DecoratedBox(
++                    decoration: BoxDecoration(
++                      border: Border.all(color: theme.colorScheme.outlineVariant),
++                      borderRadius: BorderRadius.circular(12),
++                    ),
++                    child: SingleChildScrollView(
++                      scrollDirection: Axis.horizontal,
++                      padding: const EdgeInsets.all(8),
++                      child: Column(
++                        crossAxisAlignment: CrossAxisAlignment.start,
++                        children: [
++                          if (_useHeader)
++                            _TableEditorRow(
++                              controllers: _headers,
++                              header: true,
++                            ),
++                          for (var rowIndex = 0; rowIndex < _rows.length; rowIndex++)
++                            _TableEditorRow(
++                              controllers: _rows[rowIndex],
++                              rowLabel: '${rowIndex + 1}',
++                            ),
++                        ],
++                      ),
++                    ),
++                  ),
++                  const SizedBox(height: 14),
++                  QuestionMathTextField(
++                    controller: _caption,
++                    decoration: const InputDecoration(
++                      labelText: 'Caption (optional)',
++                      hintText: 'Table 1: Observations',
++                    ),
++                  ),
++                  const SizedBox(height: 10),
++                  QuestionMathTextField(
++                    controller: _summary,
++                    minLines: 2,
++                    maxLines: 4,
++                    keyboardType: TextInputType.multiline,
++                    decoration: const InputDecoration(
++                      alignLabelWithHint: true,
++                      labelText: 'Accessibility summary (optional)',
++                      hintText: 'Briefly describe what the table shows.',
++                    ),
++                  ),
++                ],
++              ),
++            ),
++          ),
++          SafeArea(
++            top: false,
++            child: Padding(
++              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
++              child: SizedBox(
++                width: double.infinity,
++                child: FilledButton.icon(
++                  onPressed: _save,
++                  icon: const Icon(Icons.check_rounded),
++                  label: const Text('Use table'),
++                ),
++              ),
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
++
++class _TableEditorRow extends StatelessWidget {
++  final List<TextEditingController> controllers;
++  final bool header;
++  final String? rowLabel;
++
++  const _TableEditorRow({
++    required this.controllers,
++    this.header = false,
++    this.rowLabel,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    return Padding(
++      padding: const EdgeInsets.only(bottom: 6),
++      child: Row(
++        children: [
++          SizedBox(
++            width: 30,
++            child: Text(
++              header ? 'H' : (rowLabel ?? ''),
++              textAlign: TextAlign.center,
++              style: TextStyle(
++                fontWeight: FontWeight.w800,
++                color: Theme.of(context).colorScheme.onSurfaceVariant,
++              ),
++            ),
++          ),
++          for (var index = 0; index < controllers.length; index++) ...[
++            SizedBox(
++              width: 145,
++              child: QuestionMathTextField(
++                controller: controllers[index],
++                minLines: 1,
++                maxLines: 3,
++                keyboardType: TextInputType.multiline,
++                decoration: InputDecoration(
++                  isDense: true,
++                  hintText: header ? 'Heading ${index + 1}' : 'Cell',
++                ),
++              ),
++            ),
++            if (index + 1 < controllers.length) const SizedBox(width: 6),
++          ],
++        ],
++      ),
++    );
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/question_word_bank_sheet.dart b/lib/features/paper_composer/presentation/widgets/question_word_bank_sheet.dart
+new file mode 100644
+index 0000000..9fd8fc6
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/question_word_bank_sheet.dart
+@@ -0,0 +1,134 @@
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_text_field.dart';
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
++import 'package:flutter/material.dart';
++
++class QuestionWordBankSheet extends StatefulWidget {
++  final List<String> initial;
++
++  const QuestionWordBankSheet({super.key, this.initial = const []});
++
++  static Future<List<String>?> show(
++    BuildContext context, {
++    List<String> initial = const [],
++  }) {
++    return showAdaptiveModalBottomSheet<List<String>>(
++      context: context,
++      useSafeArea: true,
++      isScrollControlled: true,
++      builder: (context) => QuestionWordBankSheet(initial: initial),
++    );
++  }
++
++  @override
++  State<QuestionWordBankSheet> createState() => _QuestionWordBankSheetState();
++}
++
++class _QuestionWordBankSheetState extends State<QuestionWordBankSheet> {
++  late final TextEditingController _controller;
++
++  @override
++  void initState() {
++    super.initState();
++    _controller = TextEditingController(text: widget.initial.join('\n'));
++  }
++
++  @override
++  void dispose() {
++    _controller.dispose();
++    super.dispose();
++  }
++
++  List<String> _items() {
++    return _controller.text
++        .split(RegExp(r'[\n,]'))
++        .map((item) => item.trim())
++        .where((item) => item.isNotEmpty)
++        .toSet()
++        .toList();
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    final previewItems = _items();
++    return FractionallySizedBox(
++      heightFactor: 0.72,
++      child: Column(
++        children: [
++          Padding(
++            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
++            child: Row(
++              children: [
++                Expanded(
++                  child: Text(
++                    'Word bank',
++                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
++                  ),
++                ),
++                IconButton(
++                  tooltip: 'Close',
++                  onPressed: () => Navigator.pop(context),
++                  icon: const Icon(Icons.close_rounded),
++                ),
++              ],
++            ),
++          ),
++          Expanded(
++            child: SingleChildScrollView(
++              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.stretch,
++                children: [
++                  Text(
++                    'Enter one word or phrase per line. Commas also work. EduSheet prints the bank as a compact box, while every item stays editable.',
++                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
++                  ),
++                  const SizedBox(height: 14),
++                  QuestionMathTextField(
++                    controller: _controller,
++                    minLines: 7,
++                    maxLines: 12,
++                    keyboardType: TextInputType.multiline,
++                    decoration: const InputDecoration(
++                      alignLabelWithHint: true,
++                      labelText: 'Words / phrases',
++                      hintText: 'is\nare\nhas\nhad',
++                    ),
++                    onChanged: (_) => setState(() {}),
++                  ),
++                  if (previewItems.isNotEmpty) ...[
++                    const SizedBox(height: 14),
++                    Text(
++                      'Preview',
++                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
++                    ),
++                    const SizedBox(height: 7),
++                    Wrap(
++                      spacing: 6,
++                      runSpacing: 6,
++                      children: previewItems.map((item) => Chip(label: Text(item))).toList(),
++                    ),
++                  ],
++                ],
++              ),
++            ),
++          ),
++          SafeArea(
++            top: false,
++            child: Padding(
++              padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
++              child: SizedBox(
++                width: double.infinity,
++                child: FilledButton.icon(
++                  onPressed: () => Navigator.pop(context, _items()),
++                  icon: const Icon(Icons.check_rounded),
++                  label: const Text('Use word bank'),
++                ),
++              ),
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++}
+diff --git a/lib/features/pdf/services/question_paper_service.dart b/lib/features/pdf/services/question_paper_service.dart
+index 96d0134..0d8cd3c 100644
+--- a/lib/features/pdf/services/question_paper_service.dart
++++ b/lib/features/pdf/services/question_paper_service.dart
+@@ -6,6 +6,8 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/omr/domain/models/omr_config.dart';
++import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/omr/services/omr_widgets_builder.dart';
+ import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+@@ -122,6 +124,21 @@ class QuestionPaperService {
+       }
+     }
+ 
++    final questionImages = <String, pw.ImageProvider>{};
++    final questionImageEntries = await Future.wait(
++      _questionImagePaths(paper).map((imagePath) async {
++        final file = File(imagePath);
++        if (!await file.exists()) return null;
++        return MapEntry<String, pw.ImageProvider>(
++          imagePath,
++          pw.MemoryImage(await file.readAsBytes()),
++        );
++      }),
++    );
++    for (final entry in questionImageEntries) {
++      if (entry != null) questionImages[entry.key] = entry.value;
++    }
++
+     final headerBuilder = CustomHeaderBuilder();
+     var pageFormat = switch (config.pageSize) {
+       ExportPageSize.useTemplate => _getPageFormat(template.paperSize),
+@@ -246,7 +263,7 @@ class QuestionPaperService {
+           ...paper.sections.expand(
+             (section) => [
+               if (section.pageBreakBefore) pw.NewPage(),
+-              _buildSection(section, template, paper, config),
++              _buildSection(section, template, paper, config, questionImages),
+             ],
+           ),
+           if (paper.includeOmr)
+@@ -263,6 +280,7 @@ class QuestionPaperService {
+     PaperTemplate template,
+     Paper paper,
+     PaperExportConfig config,
++    Map<String, pw.ImageProvider> questionImages,
+   ) {
+     final answerRule = PaperStructureService.answerRuleText(section);
+     return pw.Column(
+@@ -310,7 +328,7 @@ class QuestionPaperService {
+             ),
+           ),
+         if (section.showDivider) pw.Divider(),
+-        _buildQuestionList(section, template, paper, config),
++        _buildQuestionList(section, template, paper, config, questionImages),
+       ],
+     );
+   }
+@@ -320,6 +338,7 @@ class QuestionPaperService {
+     PaperTemplate template,
+     Paper paper,
+     PaperExportConfig config,
++    Map<String, pw.ImageProvider> questionImages,
+   ) {
+     final questions = section.questions.asMap().entries.map((entry) {
+       return _buildQuestion(
+@@ -329,6 +348,7 @@ class QuestionPaperService {
+         paper,
+         section,
+         config,
++        questionImages,
+       );
+     }).toList();
+ 
+@@ -364,13 +384,15 @@ class QuestionPaperService {
+     Paper paper,
+     PaperSection section,
+     PaperExportConfig config,
++    Map<String, pw.ImageProvider> questionImages,
+   ) {
+     final label = PaperStructureService.questionLabel(index, paper, section);
+     final fontSize = template.questionFontSize * config.fontScale;
+-    final sectionDefinesAnswerSpace = section.answerSpaceLines > 0;
+-    final requestedAnswerLines = sectionDefinesAnswerSpace
+-        ? section.answerSpaceLines
+-        : (config.includesAnswerSpace ? 4 : 0);
++    final answerSpace = QuestionAdvancedStructureService.resolveAnswerSpace(
++      q,
++      section,
++      fallbackLines: config.includesAnswerSpace ? 4 : 0,
++    );
+     final correctOptions = q.options
+         .where((option) => option.isCorrect)
+         .map((option) => option.text)
+@@ -378,6 +400,7 @@ class QuestionPaperService {
+     final answer = q.correctAnswer.trim().isNotEmpty
+         ? q.correctAnswer.trim()
+         : correctOptions;
++
+     return pw.Padding(
+       padding: pw.EdgeInsets.symmetric(vertical: 8 * config.spacingScale),
+       child: pw.Column(
+@@ -397,10 +420,12 @@ class QuestionPaperService {
+                 ),
+               ),
+               pw.Expanded(
+-                child: _parseRichTextToPdf(
+-                  q.text,
++                child: _buildQuestionContent(
++                  q,
+                   fontSize,
+-                  textAlign: _pdfTextAlign(q.alignment),
++                  section,
++                  config,
++                  questionImages,
+                 ),
+               ),
+               pw.SizedBox(
+@@ -416,35 +441,6 @@ class QuestionPaperService {
+               ),
+             ],
+           ),
+-          for (final expression in MathExpression.unplacedInRichText(
+-            q.text,
+-            q.mathExpressions,
+-          ))
+-            pw.Padding(
+-              padding: const pw.EdgeInsets.only(left: 34, top: 5, bottom: 3),
+-              child: pw.Text(
+-                expression.plainText.trim().isEmpty
+-                    ? expression.latex
+-                    : expression.plainText,
+-                style: pw.TextStyle(
+-                  fontSize: fontSize,
+-                  fontStyle: pw.FontStyle.italic,
+-                ),
+-              ),
+-            ),
+-          if (q.options.isNotEmpty)
+-            pw.Padding(
+-              padding: const pw.EdgeInsets.only(left: 34, top: 4),
+-              child: _buildOptions(q, fontSize),
+-            ),
+-          if (q.type == QuestionType.fillInTheBlanks)
+-            pw.Padding(
+-              padding: const pw.EdgeInsets.only(left: 34, top: 4),
+-              child: pw.Text(
+-                'Ans: ________________________',
+-                style: pw.TextStyle(fontSize: fontSize),
+-              ),
+-            ),
+           if (config.includesAnswers)
+             pw.Container(
+               margin: const pw.EdgeInsets.only(left: 34, top: 7),
+@@ -476,19 +472,389 @@ class QuestionPaperService {
+                 ],
+               ),
+             ),
+-          if (!config.includesAnswers && requestedAnswerLines > 0)
++          if (!config.includesAnswers && answerSpace.isVisible)
++            _buildAnswerArea(answerSpace),
++        ],
++      ),
++    );
++  }
++
++  static pw.Widget _buildQuestionContent(
++    Question question,
++    double fontSize,
++    PaperSection section,
++    PaperExportConfig config,
++    Map<String, pw.ImageProvider> questionImages,
++  ) {
++    final advanced = QuestionAdvancedContent.fromQuestion(question);
++    final children = <pw.Widget>[];
++
++    children.add(
++      _parseRichTextToPdf(
++        question.text,
++        fontSize,
++        textAlign: _pdfTextAlign(question.alignment),
++      ),
++    );
++
++    if (advanced.hasStimulus) {
++      children.add(pw.SizedBox(height: 6));
++      children.add(_buildStimulus(advanced.stimulus!, fontSize));
++    }
++
++    for (final expression in MathExpression.unplacedInRichText(
++      question.text,
++      question.mathExpressions,
++    )) {
++      children.add(
++        pw.Padding(
++          padding: const pw.EdgeInsets.only(top: 5, bottom: 3),
++          child: pw.Text(
++            expression.plainText.trim().isEmpty
++                ? expression.latex
++                : expression.plainText,
++            style: pw.TextStyle(
++              fontSize: fontSize,
++              fontStyle: pw.FontStyle.italic,
++            ),
++          ),
++        ),
++      );
++    }
++
++    for (final attachment in question.attachments) {
++      final image = questionImages[attachment.path];
++      if (attachment.kind != QuestionAttachmentKind.image || image == null) {
++        continue;
++      }
++      children.add(
++        pw.Padding(
++          padding: const pw.EdgeInsets.only(top: 6),
++          child: pw.Column(
++            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
++            children: [
++              pw.Container(
++                alignment: pw.Alignment.center,
++                child: pw.Image(image, height: 180, fit: pw.BoxFit.contain),
++              ),
++              if (attachment.caption.trim().isNotEmpty)
++                pw.Padding(
++                  padding: const pw.EdgeInsets.only(top: 3),
++                  child: pw.Text(
++                    attachment.caption.trim(),
++                    textAlign: pw.TextAlign.center,
++                    style: pw.TextStyle(
++                      fontSize: fontSize * 0.86,
++                      fontStyle: pw.FontStyle.italic,
++                    ),
++                  ),
++                ),
++            ],
++          ),
++        ),
++      );
++    }
++
++    if (question.tableData != null) {
++      children.add(
++        pw.Padding(
++          padding: const pw.EdgeInsets.only(top: 7),
++          child: _buildQuestionTable(question.tableData!, fontSize),
++        ),
++      );
++    }
++
++    if (advanced.hasWordBank) {
++      children.add(
++        pw.Padding(
++          padding: const pw.EdgeInsets.only(top: 7),
++          child: _buildWordBank(advanced.wordBank, fontSize),
++        ),
++      );
++    }
++
++    if (question.options.isNotEmpty) {
++      children.add(
++        pw.Padding(
++          padding: const pw.EdgeInsets.only(top: 4),
++          child: _buildOptions(question, fontSize),
++        ),
++      );
++    }
++
++    if (question.type == QuestionType.fillInTheBlanks) {
++      children.add(
++        pw.Padding(
++          padding: const pw.EdgeInsets.only(top: 4),
++          child: pw.Text(
++            'Ans: ________________________',
++            style: pw.TextStyle(fontSize: fontSize),
++          ),
++        ),
++      );
++    }
++
++    if (question.subQuestions.isNotEmpty) {
++      children.add(pw.SizedBox(height: 7));
++      for (final entry in question.subQuestions.asMap().entries) {
++        children.add(
++          _buildNestedQuestion(
++            label: QuestionAdvancedStructureService.partLabel(entry.key),
++            question: entry.value,
++            fontSize: fontSize,
++            section: section,
++            config: config,
++            questionImages: questionImages,
++          ),
++        );
++      }
++    }
++
++    if (question.internalChoices.isNotEmpty) {
++      children.add(pw.SizedBox(height: 7));
++      for (final entry in question.internalChoices.asMap().entries) {
++        if (entry.key > 0) {
++          children.add(
++            pw.Padding(
++              padding: const pw.EdgeInsets.symmetric(vertical: 5),
++              child: pw.Align(
++                alignment: pw.Alignment.center,
++                child: pw.Text(
++                  'OR',
++                  style: pw.TextStyle(
++                    fontSize: fontSize,
++                    fontWeight: pw.FontWeight.bold,
++                  ),
++                ),
++              ),
++            ),
++          );
++        }
++        children.add(
++          _buildNestedQuestion(
++            label: '',
++            question: entry.value,
++            fontSize: fontSize,
++            section: section,
++            config: config,
++            questionImages: questionImages,
++          ),
++        );
++      }
++    }
++
++    if (question.isOptional) {
++      children.add(
++        pw.Padding(
++          padding: const pw.EdgeInsets.only(top: 3),
++          child: pw.Text(
++            '(Optional / OR choice)',
++            style: pw.TextStyle(
++              fontSize: fontSize * 0.84,
++              fontStyle: pw.FontStyle.italic,
++            ),
++          ),
++        ),
++      );
++    }
++
++    return pw.Column(
++      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
++      children: children,
++    );
++  }
++
++  static pw.Widget _buildNestedQuestion({
++    required String label,
++    required Question question,
++    required double fontSize,
++    required PaperSection section,
++    required PaperExportConfig config,
++    required Map<String, pw.ImageProvider> questionImages,
++  }) {
++    final advanced = QuestionAdvancedContent.fromQuestion(question);
++    return pw.Padding(
++      padding: const pw.EdgeInsets.only(bottom: 6),
++      child: pw.Column(
++        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
++        children: [
++          pw.Row(
++            crossAxisAlignment: pw.CrossAxisAlignment.start,
++            children: [
++              if (label.isNotEmpty)
++                pw.SizedBox(
++                  width: 30,
++                  child: pw.Text(
++                    label,
++                    style: pw.TextStyle(
++                      fontSize: fontSize,
++                      fontWeight: pw.FontWeight.bold,
++                    ),
++                  ),
++                ),
++              pw.Expanded(
++                child: _buildQuestionContent(
++                  question,
++                  fontSize,
++                  section,
++                  config,
++                  questionImages,
++                ),
++              ),
++              pw.SizedBox(width: 6),
++              pw.Text(
++                '[${PaperStructureService.marksSummary(question.marks)}]',
++                style: pw.TextStyle(
++                  fontSize: fontSize,
++                  fontWeight: pw.FontWeight.bold,
++                ),
++              ),
++            ],
++          ),
++          if (advanced.hasAnswerSpace)
+             _buildAnswerArea(
+-              requestedAnswerLines,
+-              ruled: sectionDefinesAnswerSpace
+-                  ? section.ruledAnswerArea
+-                  : true,
+-              graph: sectionDefinesAnswerSpace && section.graphAnswerArea,
++              ResolvedQuestionAnswerSpace(
++                style: advanced.answerSpace.style,
++                lines: advanced.answerSpace.lines,
++                questionOverride: true,
++              ),
++              leftMargin: label.isEmpty ? 0 : 30,
+             ),
+         ],
+       ),
+     );
+   }
+ 
++  static pw.Widget _buildStimulus(
++    QuestionStimulus stimulus,
++    double fontSize,
++  ) {
++    return pw.Container(
++      padding: const pw.EdgeInsets.all(7),
++      decoration: pw.BoxDecoration(
++        border: pw.Border.all(color: PdfColors.grey500, width: 0.5),
++      ),
++      child: pw.Column(
++        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
++        children: [
++          if (stimulus.title.trim().isNotEmpty)
++            pw.Padding(
++              padding: const pw.EdgeInsets.only(bottom: 3),
++              child: pw.Text(
++                stimulus.title.trim(),
++                style: pw.TextStyle(
++                  fontSize: fontSize,
++                  fontWeight: pw.FontWeight.bold,
++                ),
++              ),
++            ),
++          pw.Text(
++            stimulus.text,
++            style: pw.TextStyle(
++              fontSize: fontSize,
++              fontStyle: stimulus.kind == QuestionStimulusKind.poem
++                  ? pw.FontStyle.italic
++                  : null,
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++
++  static pw.Widget _buildWordBank(List<String> items, double fontSize) {
++    return pw.Container(
++      padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 5),
++      decoration: pw.BoxDecoration(
++        border: pw.Border.all(color: PdfColors.grey500, width: 0.5),
++      ),
++      child: pw.Wrap(
++        alignment: pw.WrapAlignment.center,
++        spacing: 14,
++        runSpacing: 4,
++        children: items
++            .map((item) => pw.Text(item, style: pw.TextStyle(fontSize: fontSize)))
++            .toList(),
++      ),
++    );
++  }
++
++  static pw.Widget _buildQuestionTable(QuestionTable table, double fontSize) {
++    final columnCount = table.headers.isNotEmpty
++        ? table.headers.length
++        : (table.rows.isEmpty ? 0 : table.rows.first.length);
++    if (columnCount == 0) return pw.SizedBox();
++
++    final rows = <pw.TableRow>[];
++    if (table.headers.isNotEmpty) {
++      rows.add(
++        pw.TableRow(
++          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
++          children: List.generate(
++            columnCount,
++            (index) => _pdfTableCell(
++              index < table.headers.length ? table.headers[index] : '',
++              fontSize,
++              bold: true,
++            ),
++          ),
++        ),
++      );
++    }
++    for (final row in table.rows) {
++      rows.add(
++        pw.TableRow(
++          children: List.generate(
++            columnCount,
++            (index) => _pdfTableCell(
++              index < row.length ? row[index] : '',
++              fontSize,
++            ),
++          ),
++        ),
++      );
++    }
++
++    return pw.Column(
++      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
++      children: [
++        if (table.caption.trim().isNotEmpty)
++          pw.Padding(
++            padding: const pw.EdgeInsets.only(bottom: 4),
++            child: pw.Text(
++              table.caption.trim(),
++              textAlign: pw.TextAlign.center,
++              style: pw.TextStyle(
++                fontSize: fontSize,
++                fontWeight: pw.FontWeight.bold,
++              ),
++            ),
++          ),
++        pw.Table(
++          border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
++          children: rows,
++        ),
++      ],
++    );
++  }
++
++  static pw.Widget _pdfTableCell(
++    String text,
++    double fontSize, {
++    bool bold = false,
++  }) {
++    return pw.Padding(
++      padding: const pw.EdgeInsets.all(5),
++      child: pw.Text(
++        text,
++        style: pw.TextStyle(
++          fontSize: fontSize,
++          fontWeight: bold ? pw.FontWeight.bold : null,
++        ),
++      ),
++    );
++  }
++
+   static pw.Widget _buildOptions(Question question, double fontSize) {
+     final layout = QuestionOptionLayoutCodec.fromQuestion(question);
+     final entries = question.options.asMap().entries.toList();
+@@ -559,6 +925,26 @@ class QuestionPaperService {
+     }
+   }
+ 
++  static Iterable<String> _questionImagePaths(Paper paper) sync* {
++    for (final section in paper.sections) {
++      for (final question in section.questions) {
++        yield* _questionImagePathsForQuestion(question);
++      }
++    }
++  }
++
++  static Iterable<String> _questionImagePathsForQuestion(Question question) sync* {
++    for (final attachment in question.attachments) {
++      if (attachment.kind == QuestionAttachmentKind.image &&
++          attachment.path.trim().isNotEmpty) {
++        yield attachment.path;
++      }
++    }
++    for (final child in [...question.subQuestions, ...question.internalChoices]) {
++      yield* _questionImagePathsForQuestion(child);
++    }
++  }
++
+   static pw.Widget _buildCoverPage(
+     Paper paper,
+     PaperTemplate template,
+@@ -604,26 +990,28 @@ class QuestionPaperService {
+   }
+ 
+   static pw.Widget _buildAnswerArea(
+-    int lines, {
+-    required bool ruled,
+-    required bool graph,
++    ResolvedQuestionAnswerSpace answerSpace, {
++    double leftMargin = 34,
+   }) {
+-    if (graph) {
+-      return pw.Container(
+-        margin: const pw.EdgeInsets.only(left: 34, top: 8),
+-        child: pw.Column(
+-          children: List.generate(
+-            lines,
+-            (_) => pw.Row(
+-              children: List.generate(
+-                12,
+-                (_) => pw.Expanded(
+-                  child: pw.Container(
+-                    height: 14,
+-                    decoration: pw.BoxDecoration(
+-                      border: pw.Border.all(
+-                        color: PdfColors.grey400,
+-                        width: 0.25,
++    final margin = pw.EdgeInsets.only(left: leftMargin, top: 8);
++    switch (answerSpace.style) {
++      case QuestionAnswerSpaceStyle.graph:
++        return pw.Container(
++          margin: margin,
++          child: pw.Column(
++            children: List.generate(
++              answerSpace.lines,
++              (_) => pw.Row(
++                children: List.generate(
++                  12,
++                  (_) => pw.Expanded(
++                    child: pw.Container(
++                      height: 14,
++                      decoration: pw.BoxDecoration(
++                        border: pw.Border.all(
++                          color: PdfColors.grey400,
++                          width: 0.25,
++                        ),
+                       ),
+                     ),
+                   ),
+@@ -631,31 +1019,43 @@ class QuestionPaperService {
+               ),
+             ),
+           ),
+-        ),
+-      );
+-    }
+-
+-    return pw.Container(
+-      margin: const pw.EdgeInsets.only(left: 34, top: 8),
+-      child: pw.Column(
+-        children: List.generate(
+-          lines,
+-          (_) => pw.Container(
+-            height: 18,
+-            decoration: ruled
+-                ? const pw.BoxDecoration(
+-                    border: pw.Border(
+-                      bottom: pw.BorderSide(
+-                        color: PdfColors.grey500,
+-                        width: 0.4,
+-                      ),
++        );
++      case QuestionAnswerSpaceStyle.box:
++        return pw.Container(
++          margin: margin,
++          height: answerSpace.lines * 18.0,
++          decoration: pw.BoxDecoration(
++            border: pw.Border.all(color: PdfColors.grey600, width: 0.5),
++          ),
++        );
++      case QuestionAnswerSpaceStyle.ruled:
++        return pw.Container(
++          margin: margin,
++          child: pw.Column(
++            children: List.generate(
++              answerSpace.lines,
++              (_) => pw.Container(
++                height: 18,
++                decoration: const pw.BoxDecoration(
++                  border: pw.Border(
++                    bottom: pw.BorderSide(
++                      color: PdfColors.grey500,
++                      width: 0.4,
+                     ),
+-                  )
+-                : null,
++                  ),
++                ),
++              ),
++            ),
+           ),
+-        ),
+-      ),
+-    );
++        );
++      case QuestionAnswerSpaceStyle.blank:
++        return pw.Container(
++          margin: margin,
++          height: answerSpace.lines * 18.0,
++        );
++      case QuestionAnswerSpaceStyle.none:
++        return pw.SizedBox();
++    }
+   }
+ 
+   static pw.Widget _parseRichTextToPdf(
+diff --git a/lib/features/pdf/services/word_export_service.dart b/lib/features/pdf/services/word_export_service.dart
+index 63f6a32..07c53e8 100644
+--- a/lib/features/pdf/services/word_export_service.dart
++++ b/lib/features/pdf/services/word_export_service.dart
+@@ -6,6 +6,8 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
++import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+@@ -86,6 +88,29 @@ class WordExportService {
+           fileName: 'image$relationshipIndex.$extension',
+           contentType: _imageContentType(extension),
+           bytes: await file.readAsBytes(),
++          sourcePath: logoPath,
++          headerLogo: true,
++        ),
++      );
++      relationshipIndex++;
++    }
++
++    final seenQuestionPaths = <String>{};
++    for (final attachment in _questionImageAttachments(paper)) {
++      final sourcePath = attachment.path.trim();
++      if (sourcePath.isEmpty || !seenQuestionPaths.add(sourcePath)) continue;
++      final file = File(sourcePath);
++      if (!await file.exists()) continue;
++      final extension = _imageExtension(file.path);
++      if (extension == null) continue;
++      images.add(
++        _ImagePart(
++          relationshipId: 'rId$relationshipIndex',
++          fileName: 'image$relationshipIndex.$extension',
++          contentType: _imageContentType(extension),
++          bytes: await file.readAsBytes(),
++          sourcePath: sourcePath,
++          headerLogo: false,
+         ),
+       );
+       relationshipIndex++;
+@@ -131,7 +156,7 @@ class WordExportService {
+     }
+ 
+     for (final section in paper.sections) {
+-      buffer.write(_sectionXml(section, template, paper));
++      buffer.write(_sectionXml(section, template, paper, images));
+     }
+ 
+     if (paper.includeOmr) {
+@@ -159,6 +184,7 @@ class WordExportService {
+   ) {
+     final layout = PaperHeaderLayoutFactory.resolveForPaper(template, paper);
+     final buffer = StringBuffer();
++    final logoImages = images.where((image) => image.headerLogo).toList();
+     var imageIndex = 0;
+ 
+     final elements = [...layout.elements]
+@@ -178,9 +204,9 @@ class WordExportService {
+ 
+       switch (element.type) {
+         case ElementType.logo:
+-          if (imageIndex < images.length) {
++          if (imageIndex < logoImages.length) {
+             buffer.write(
+-              _imageParagraph(images[imageIndex], alignment: alignment),
++              _imageParagraph(logoImages[imageIndex], alignment: alignment),
+             );
+             imageIndex++;
+           }
+@@ -328,6 +354,7 @@ class WordExportService {
+     PaperSection section,
+     PaperTemplate template,
+     Paper paper,
++    List<_ImagePart> images,
+   ) {
+     final buffer = StringBuffer();
+     if (section.pageBreakBefore) {
+@@ -386,6 +413,7 @@ class WordExportService {
+           template,
+           paper,
+           section,
++          images,
+         );
+         final right = index + 1 < section.questions.length
+             ? _questionXml(
+@@ -394,6 +422,7 @@ class WordExportService {
+                 template,
+                 paper,
+                 section,
++                images,
+               )
+             : _paragraph('');
+         buffer.write('<w:tr>${_tableCell(left)}${_tableCell(right)}</w:tr>');
+@@ -402,7 +431,7 @@ class WordExportService {
+     } else {
+       for (final entry in section.questions.asMap().entries) {
+         buffer.write(
+-          _questionXml(entry.key + 1, entry.value, template, paper, section),
++          _questionXml(entry.key + 1, entry.value, template, paper, section, images),
+         );
+       }
+     }
+@@ -416,21 +445,23 @@ class WordExportService {
+     PaperTemplate template,
+     Paper paper,
+     PaperSection section,
++    List<_ImagePart> images,
+   ) {
+     final buffer = StringBuffer();
+     final text = OfficeTextFormatter.questionText(question.text).trim();
+     final alignment = _wordAlignment(_flutterTextAlignName(question.alignment));
+     final label = PaperStructureService.questionLabel(index, paper, section);
++    final fontSize = template.questionFontSize;
+ 
+     buffer.write(
+       _paragraphRuns(
+         [
+-          _Run('$label. ', bold: true, fontSize: template.questionFontSize),
+-          _Run(text, fontSize: template.questionFontSize),
++          _Run('$label. ', bold: true, fontSize: fontSize),
++          _Run(text, fontSize: fontSize),
+           _Run(
+-            ' [${question.marks.toStringAsFixed(question.marks.truncateToDouble() == question.marks ? 0 : 1)}]',
++            ' [${_marks(question.marks)}]',
+             bold: true,
+-            fontSize: template.questionFontSize,
++            fontSize: fontSize,
+           ),
+         ],
+         alignment: alignment,
+@@ -439,6 +470,15 @@ class WordExportService {
+       ),
+     );
+ 
++    buffer.write(
++      _questionAdvancedBlocksXml(
++        question,
++        fontSize: fontSize,
++        images: images,
++        indentLeft: 360,
++      ),
++    );
++
+     if (question.isOptional) {
+       buffer.write(
+         _paragraph(
+@@ -460,7 +500,7 @@ class WordExportService {
+               ? expression.latex
+               : expression.plainText,
+           italic: true,
+-          fontSize: template.questionFontSize,
++          fontSize: fontSize,
+           indentLeft: 360,
+         ),
+       );
+@@ -470,7 +510,8 @@ class WordExportService {
+       buffer.write(
+         _optionsXml(
+           question,
+-          fontSize: template.questionFontSize,
++          fontSize: fontSize,
++          indentLeft: 360,
+         ),
+       );
+     }
+@@ -479,23 +520,363 @@ class WordExportService {
+       buffer.write(
+         _paragraph(
+           'Ans: ________________________',
+-          fontSize: template.questionFontSize,
++          fontSize: fontSize,
+           indentLeft: 360,
+           spacingAfter: 80,
+         ),
+       );
+     }
+ 
+-    if (section.answerSpaceLines > 0) {
+-      buffer.write(_answerSpaceXml(section, template.questionFontSize));
++    if (question.subQuestions.isNotEmpty) {
++      for (final entry in question.subQuestions.asMap().entries) {
++        buffer.write(
++          _nestedQuestionXml(
++            label: QuestionAdvancedStructureService.partLabel(entry.key),
++            question: entry.value,
++            fontSize: fontSize,
++            images: images,
++            indentLeft: 360,
++          ),
++        );
++      }
++    }
++
++    if (question.internalChoices.isNotEmpty) {
++      for (final entry in question.internalChoices.asMap().entries) {
++        if (entry.key > 0) {
++          buffer.write(
++            _paragraph(
++              'OR',
++              alignment: 'center',
++              bold: true,
++              fontSize: fontSize,
++              spacingBefore: 60,
++              spacingAfter: 60,
++            ),
++          );
++        }
++        buffer.write(
++          _nestedQuestionXml(
++            label: '',
++            question: entry.value,
++            fontSize: fontSize,
++            images: images,
++            indentLeft: 360,
++          ),
++        );
++      }
++    }
++
++    final answerSpace = QuestionAdvancedStructureService.resolveAnswerSpace(
++      question,
++      section,
++    );
++    if (answerSpace.isVisible) {
++      buffer.write(
++        _answerSpaceXml(
++          answerSpace,
++          fontSize,
++          indentLeft: 360,
++        ),
++      );
++    }
++
++    return buffer.toString();
++  }
++
++  static String _nestedQuestionXml({
++    required String label,
++    required Question question,
++    required double fontSize,
++    required List<_ImagePart> images,
++    required int indentLeft,
++  }) {
++    final buffer = StringBuffer();
++    final text = OfficeTextFormatter.questionText(question.text).trim();
++    final runs = <_Run>[
++      if (label.isNotEmpty)
++        _Run('$label ', bold: true, fontSize: fontSize),
++      _Run(text, fontSize: fontSize),
++      _Run(' [${_marks(question.marks)}]', bold: true, fontSize: fontSize),
++    ];
++    buffer.write(
++      _paragraphRuns(
++        runs,
++        indentLeft: indentLeft,
++        spacingBefore: 50,
++        spacingAfter: 60,
++      ),
++    );
++
++    buffer.write(
++      _questionAdvancedBlocksXml(
++        question,
++        fontSize: fontSize,
++        images: images,
++        indentLeft: indentLeft + 240,
++      ),
++    );
++
++    for (final expression in MathExpression.unplacedInRichText(
++      question.text,
++      question.mathExpressions,
++    )) {
++      buffer.write(
++        _paragraph(
++          expression.plainText.trim().isEmpty
++              ? expression.latex
++              : expression.plainText,
++          italic: true,
++          fontSize: fontSize,
++          indentLeft: indentLeft + 240,
++        ),
++      );
++    }
++
++    if (question.options.isNotEmpty) {
++      buffer.write(
++        _optionsXml(
++          question,
++          fontSize: fontSize,
++          indentLeft: indentLeft + 240,
++        ),
++      );
++    }
++
++    if (question.subQuestions.isNotEmpty) {
++      for (final entry in question.subQuestions.asMap().entries) {
++        buffer.write(
++          _nestedQuestionXml(
++            label: QuestionAdvancedStructureService.partLabel(entry.key),
++            question: entry.value,
++            fontSize: fontSize,
++            images: images,
++            indentLeft: indentLeft + 240,
++          ),
++        );
++      }
++    }
++
++    if (question.internalChoices.isNotEmpty) {
++      for (final entry in question.internalChoices.asMap().entries) {
++        if (entry.key > 0) {
++          buffer.write(
++            _paragraph(
++              'OR',
++              alignment: 'center',
++              bold: true,
++              fontSize: fontSize,
++              spacingBefore: 40,
++              spacingAfter: 40,
++            ),
++          );
++        }
++        buffer.write(
++          _nestedQuestionXml(
++            label: '',
++            question: entry.value,
++            fontSize: fontSize,
++            images: images,
++            indentLeft: indentLeft + 240,
++          ),
++        );
++      }
++    }
++
++    final advanced = QuestionAdvancedContent.fromQuestion(question);
++    if (advanced.hasAnswerSpace) {
++      buffer.write(
++        _answerSpaceXml(
++          ResolvedQuestionAnswerSpace(
++            style: advanced.answerSpace.style,
++            lines: advanced.answerSpace.lines,
++            questionOverride: true,
++          ),
++          fontSize,
++          indentLeft: indentLeft + 240,
++        ),
++      );
++    }
++
++    return buffer.toString();
++  }
++
++  static String _questionAdvancedBlocksXml(
++    Question question, {
++    required double fontSize,
++    required List<_ImagePart> images,
++    required int indentLeft,
++  }) {
++    final buffer = StringBuffer();
++    final advanced = QuestionAdvancedContent.fromQuestion(question);
++
++    if (advanced.hasStimulus) {
++      buffer.write(
++        _stimulusXml(
++          advanced.stimulus!,
++          fontSize: fontSize,
++          indentLeft: indentLeft,
++        ),
++      );
++    }
++
++    for (final attachment in question.attachments) {
++      if (attachment.kind != QuestionAttachmentKind.image) continue;
++      final image = _imageForSourcePath(images, attachment.path);
++      if (image == null) continue;
++      buffer.write(
++        _imageParagraph(
++          image,
++          alignment: 'center',
++          sizeEmu: 2286000,
++        ),
++      );
++      if (attachment.caption.trim().isNotEmpty) {
++        buffer.write(
++          _paragraph(
++            attachment.caption.trim(),
++            alignment: 'center',
++            italic: true,
++            fontSize: fontSize * 0.85,
++            spacingAfter: 80,
++          ),
++        );
++      }
+     }
+ 
++    if (question.tableData != null) {
++      buffer.write(
++        _questionTableXml(
++          question.tableData!,
++          fontSize: fontSize,
++        ),
++      );
++    }
++
++    if (advanced.hasWordBank) {
++      buffer.write(
++        _wordBankXml(
++          advanced.wordBank,
++          fontSize: fontSize,
++          indentLeft: indentLeft,
++        ),
++      );
++    }
++
++    return buffer.toString();
++  }
++
++  static String _stimulusXml(
++    QuestionStimulus stimulus, {
++    required double fontSize,
++    required int indentLeft,
++  }) {
++    final content = StringBuffer();
++    if (stimulus.title.trim().isNotEmpty) {
++      content.write(
++        _paragraph(
++          stimulus.title.trim(),
++          bold: true,
++          fontSize: fontSize,
++          spacingAfter: 40,
++        ),
++      );
++    }
++    for (final line in stimulus.text.split('\n')) {
++      content.write(
++        _paragraph(
++          line,
++          italic: stimulus.kind == QuestionStimulusKind.poem,
++          fontSize: fontSize,
++          spacingAfter: 25,
++        ),
++      );
++    }
++    return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
++        '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="A6A6A6"/>'
++        '<w:left w:val="single" w:sz="4" w:color="A6A6A6"/>'
++        '<w:bottom w:val="single" w:sz="4" w:color="A6A6A6"/>'
++        '<w:right w:val="single" w:sz="4" w:color="A6A6A6"/>'
++        '</w:tblBorders></w:tblPr><w:tr>${_tableCell(content.toString())}</w:tr></w:tbl>';
++  }
++
++  static String _wordBankXml(
++    List<String> items, {
++    required double fontSize,
++    required int indentLeft,
++  }) {
++    final text = items.join('     ');
++    return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
++        '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="A6A6A6"/>'
++        '<w:left w:val="single" w:sz="4" w:color="A6A6A6"/>'
++        '<w:bottom w:val="single" w:sz="4" w:color="A6A6A6"/>'
++        '<w:right w:val="single" w:sz="4" w:color="A6A6A6"/>'
++        '</w:tblBorders></w:tblPr><w:tr>${_tableCell(_paragraph(text, alignment: 'center', fontSize: fontSize, indentLeft: indentLeft, spacingAfter: 40))}</w:tr></w:tbl>';
++  }
++
++  static String _questionTableXml(
++    QuestionTable table, {
++    required double fontSize,
++  }) {
++    final columnCount = table.headers.isNotEmpty
++        ? table.headers.length
++        : (table.rows.isEmpty ? 0 : table.rows.first.length);
++    if (columnCount == 0) return '';
++
++    final buffer = StringBuffer();
++    if (table.caption.trim().isNotEmpty) {
++      buffer.write(
++        _paragraph(
++          table.caption.trim(),
++          alignment: 'center',
++          bold: true,
++          fontSize: fontSize,
++          spacingAfter: 50,
++        ),
++      );
++    }
++    buffer.write(
++      '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
++      '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="808080"/>'
++      '<w:left w:val="single" w:sz="4" w:color="808080"/>'
++      '<w:bottom w:val="single" w:sz="4" w:color="808080"/>'
++      '<w:right w:val="single" w:sz="4" w:color="808080"/>'
++      '<w:insideH w:val="single" w:sz="4" w:color="BFBFBF"/>'
++      '<w:insideV w:val="single" w:sz="4" w:color="BFBFBF"/>'
++      '</w:tblBorders></w:tblPr>',
++    );
++    if (table.headers.isNotEmpty) {
++      buffer.write('<w:tr>');
++      for (var index = 0; index < columnCount; index++) {
++        final text = index < table.headers.length ? table.headers[index] : '';
++        buffer.write(
++          _tableCell(
++            _paragraph(text, bold: true, fontSize: fontSize, spacingAfter: 30),
++          ),
++        );
++      }
++      buffer.write('</w:tr>');
++    }
++    for (final row in table.rows) {
++      buffer.write('<w:tr>');
++      for (var index = 0; index < columnCount; index++) {
++        final text = index < row.length ? row[index] : '';
++        buffer.write(
++          _tableCell(
++            _paragraph(text, fontSize: fontSize, spacingAfter: 30),
++          ),
++        );
++      }
++      buffer.write('</w:tr>');
++    }
++    buffer.write('</w:tbl>');
+     return buffer.toString();
+   }
+ 
+   static String _optionsXml(
+     Question question, {
+     required double fontSize,
++    int indentLeft = 360,
+   }) {
+     final layout = QuestionOptionLayoutCodec.fromQuestion(question);
+     final entries = question.options.asMap().entries.toList();
+@@ -511,7 +892,7 @@ class WordExportService {
+               (entry) => _paragraph(
+                 optionText(entry),
+                 fontSize: fontSize,
+-                indentLeft: 360,
++                indentLeft: indentLeft,
+                 spacingAfter: 40,
+               ),
+             )
+@@ -520,7 +901,7 @@ class WordExportService {
+         return _paragraph(
+           entries.map(optionText).join('     '),
+           fontSize: fontSize,
+-          indentLeft: 360,
++          indentLeft: indentLeft,
+           spacingAfter: 60,
+         );
+       case QuestionOptionLayout.twoColumn:
+@@ -550,44 +931,118 @@ class WordExportService {
+     }
+   }
+ 
+-  static String _answerSpaceXml(PaperSection section, double fontSize) {
+-    if (section.graphAnswerArea) {
+-      final rows = section.answerSpaceLines.clamp(1, 12).toInt();
+-      final buffer = StringBuffer()
+-        ..write(
+-          '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
+-          '<w:tblBorders>'
+-          '<w:top w:val="single" w:sz="2" w:color="BFBFBF"/>'
+-          '<w:left w:val="single" w:sz="2" w:color="BFBFBF"/>'
+-          '<w:bottom w:val="single" w:sz="2" w:color="BFBFBF"/>'
+-          '<w:right w:val="single" w:sz="2" w:color="BFBFBF"/>'
+-          '<w:insideH w:val="single" w:sz="2" w:color="D9D9D9"/>'
+-          '<w:insideV w:val="single" w:sz="2" w:color="D9D9D9"/>'
+-          '</w:tblBorders></w:tblPr>',
+-        );
+-      for (var row = 0; row < rows; row++) {
+-        buffer.write('<w:tr>');
+-        for (var column = 0; column < 8; column++) {
+-          buffer.write(_tableCell(_paragraph('', spacingAfter: 20)));
++  static String _answerSpaceXml(
++    ResolvedQuestionAnswerSpace answerSpace,
++    double fontSize, {
++    required int indentLeft,
++  }) {
++    switch (answerSpace.style) {
++      case QuestionAnswerSpaceStyle.graph:
++        final rows = answerSpace.lines.clamp(1, 16).toInt();
++        final buffer = StringBuffer()
++          ..write(
++            '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
++            '<w:tblBorders>'
++            '<w:top w:val="single" w:sz="2" w:color="BFBFBF"/>'
++            '<w:left w:val="single" w:sz="2" w:color="BFBFBF"/>'
++            '<w:bottom w:val="single" w:sz="2" w:color="BFBFBF"/>'
++            '<w:right w:val="single" w:sz="2" w:color="BFBFBF"/>'
++            '<w:insideH w:val="single" w:sz="2" w:color="D9D9D9"/>'
++            '<w:insideV w:val="single" w:sz="2" w:color="D9D9D9"/>'
++            '</w:tblBorders></w:tblPr>',
++          );
++        for (var row = 0; row < rows; row++) {
++          buffer.write('<w:tr>');
++          for (var column = 0; column < 8; column++) {
++            buffer.write(_tableCell(_paragraph('', spacingAfter: 20)));
++          }
++          buffer.write('</w:tr>');
++        }
++        buffer.write('</w:tbl>');
++        return buffer.toString();
++      case QuestionAnswerSpaceStyle.box:
++        final body = StringBuffer();
++        for (var index = 0; index < answerSpace.lines; index++) {
++          body.write(
++            _paragraph(
++              ' ',
++              fontSize: fontSize,
++              spacingAfter: 45,
++            ),
++          );
++        }
++        return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
++            '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="808080"/>'
++            '<w:left w:val="single" w:sz="4" w:color="808080"/>'
++            '<w:bottom w:val="single" w:sz="4" w:color="808080"/>'
++            '<w:right w:val="single" w:sz="4" w:color="808080"/>'
++            '</w:tblBorders></w:tblPr><w:tr>${_tableCell(body.toString())}</w:tr></w:tbl>';
++      case QuestionAnswerSpaceStyle.ruled:
++        final buffer = StringBuffer();
++        for (var index = 0; index < answerSpace.lines; index++) {
++          buffer.write(
++            _paragraph(
++              '________________________________________',
++              fontSize: fontSize,
++              indentLeft: indentLeft,
++              spacingAfter: 25,
++            ),
++          );
+         }
+-        buffer.write('</w:tr>');
++        return buffer.toString();
++      case QuestionAnswerSpaceStyle.blank:
++        final buffer = StringBuffer();
++        for (var index = 0; index < answerSpace.lines; index++) {
++          buffer.write(
++            _paragraph(
++              ' ',
++              fontSize: fontSize,
++              indentLeft: indentLeft,
++              spacingAfter: 55,
++            ),
++          );
++        }
++        return buffer.toString();
++      case QuestionAnswerSpaceStyle.none:
++        return '';
++    }
++  }
++
++  static _ImagePart? _imageForSourcePath(
++    List<_ImagePart> images,
++    String sourcePath,
++  ) {
++    for (final image in images) {
++      if (!image.headerLogo && image.sourcePath == sourcePath) return image;
++    }
++    return null;
++  }
++
++  static Iterable<QuestionAttachment> _questionImageAttachments(
++    Paper paper,
++  ) sync* {
++    for (final section in paper.sections) {
++      for (final question in section.questions) {
++        yield* _questionImageAttachmentsForQuestion(question);
+       }
+-      buffer.write('</w:tbl>');
+-      return buffer.toString();
+     }
++  }
+ 
+-    final buffer = StringBuffer();
+-    for (var index = 0; index < section.answerSpaceLines; index++) {
+-      buffer.write(
+-        _paragraph(
+-          section.ruledAnswerArea ? '________________________________________' : ' ',
+-          fontSize: fontSize,
+-          indentLeft: 360,
+-          spacingAfter: 25,
+-        ),
+-      );
++  static Iterable<QuestionAttachment> _questionImageAttachmentsForQuestion(
++    Question question,
++  ) sync* {
++    for (final attachment in question.attachments) {
++      if (attachment.kind == QuestionAttachmentKind.image) yield attachment;
+     }
+-    return buffer.toString();
++    for (final child in [...question.subQuestions, ...question.internalChoices]) {
++      yield* _questionImageAttachmentsForQuestion(child);
++    }
++  }
++
++  static String _marks(double value) {
++    return value == value.roundToDouble()
++        ? value.toInt().toString()
++        : value.toStringAsFixed(1);
+   }
+ 
+   static String _paragraph(
+@@ -654,8 +1109,8 @@ class WordExportService {
+   static String _imageParagraph(
+     _ImagePart image, {
+     String alignment = 'center',
++    int sizeEmu = 914400,
+   }) {
+-    const int sizeEmu = 914400;
+     final id = image.relationshipId.replaceAll(RegExp(r'\D'), '');
+ 
+     return '<w:p><w:pPr><w:jc w:val="$alignment"/></w:pPr><w:r><w:drawing>'
+@@ -849,12 +1304,16 @@ class _ImagePart {
+   final String fileName;
+   final String contentType;
+   final List<int> bytes;
++  final String sourcePath;
++  final bool headerLogo;
+ 
+   const _ImagePart({
+     required this.relationshipId,
+     required this.fileName,
+     required this.contentType,
+     required this.bytes,
++    required this.sourcePath,
++    required this.headerLogo,
+   });
+ }
+ 
+diff --git a/test/features/paper_composer/paper_preview_advanced_content_test.dart b/test/features/paper_composer/paper_preview_advanced_content_test.dart
+new file mode 100644
+index 0000000..0578d98
+--- /dev/null
++++ b/test/features/paper_composer/paper_preview_advanced_content_test.dart
+@@ -0,0 +1,124 @@
++import 'dart:io';
++
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_preview_page.dart';
++import 'package:edusheet/features/pdf/application/paper_style_catalog.dart';
++import 'package:edusheet/features/pdf/data/repositories/template_repository.dart';
++import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  late Directory tempDirectory;
++  late TemplateRepository templateRepository;
++
++  setUp(() async {
++    tempDirectory = await Directory.systemTemp.createTemp(
++      'edusheet_advanced_preview_',
++    );
++    templateRepository = TemplateRepository(
++      fileResolver: () async => File(
++        '${tempDirectory.path}${Platform.pathSeparator}templates.json',
++      ),
++    );
++  });
++
++  tearDown(() async {
++    if (await tempDirectory.exists()) {
++      await tempDirectory.delete(recursive: true);
++    }
++  });
++
++  testWidgets('preview renders composable advanced question blocks', (
++    tester,
++  ) async {
++    await tester.binding.setSurfaceSize(const Size(1500, 1800));
++    addTearDown(() => tester.binding.setSurfaceSize(null));
++
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          templateRepositoryProvider.overrideWithValue(templateRepository),
++        ],
++        child: MaterialApp(home: PaperPreviewPage(paper: _paper())),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    final document = find.byKey(const Key('paper-preview-document'));
++    expect(document, findsOneWidget);
++    expect(
++      find.descendant(of: document, matching: find.text('Reading source')),
++      findsOneWidget,
++    );
++    expect(
++      find.descendant(
++        of: document,
++        matching: find.text('Water boils at 100°C at standard pressure.'),
++      ),
++      findsOneWidget,
++    );
++    expect(find.descendant(of: document, matching: find.text('solid')), findsOneWidget);
++    expect(find.descendant(of: document, matching: find.text('liquid')), findsOneWidget);
++    expect(
++      find.descendant(of: document, matching: find.text('State table')),
++      findsOneWidget,
++    );
++    expect(find.descendant(of: document, matching: find.text('(a)')), findsOneWidget);
++    expect(find.descendant(of: document, matching: find.text('OR')), findsOneWidget);
++    expect(tester.takeException(), isNull);
++  });
++}
++
++Paper _paper() {
++  const advanced = QuestionAdvancedContent(
++    stimulus: QuestionStimulus(
++      kind: QuestionStimulusKind.sourceText,
++      title: 'Reading source',
++      text: 'Water boils at 100°C at standard pressure.',
++    ),
++    wordBank: ['solid', 'liquid', 'gas'],
++    answerSpace: QuestionAnswerSpace(
++      style: QuestionAnswerSpaceStyle.ruled,
++      lines: 2,
++    ),
++  );
++  return Paper(
++    id: 'preview-advanced',
++    title: 'Advanced Preview',
++    templateId: PaperStyleCatalog.defaultTemplateId,
++    createdAt: DateTime(2026, 8, 31),
++    sections: [
++      PaperSection(
++        id: 'section',
++        title: 'Science',
++        questions: [
++          Question(
++            id: 'question',
++            text: 'Read and answer.',
++            marks: 4,
++            tableData: const QuestionTable(
++              headers: ['State', 'Example'],
++              rows: [
++                ['Liquid', 'Water'],
++              ],
++              caption: 'State table',
++            ),
++            subQuestions: [
++              Question(id: 'part-a', text: 'Name the process.', marks: 2),
++            ],
++            internalChoices: [
++              Question(id: 'choice-a', text: 'Explain boiling.', marks: 2),
++              Question(id: 'choice-b', text: 'Explain melting.', marks: 2),
++            ],
++            metadata: advanced.writeToMetadata(const {}),
++          ),
++        ],
++      ),
++    ],
++  );
++}
+diff --git a/test/features/paper_composer/question_advanced_content_test.dart b/test/features/paper_composer/question_advanced_content_test.dart
+new file mode 100644
+index 0000000..13c5b2c
+--- /dev/null
++++ b/test/features/paper_composer/question_advanced_content_test.dart
+@@ -0,0 +1,137 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
++import 'package:edusheet/features/paper_composer/application/universal_question_adapter.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
++import 'package:edusheet/features/paper_composer/domain/universal_question_document.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('advanced content round-trips through existing question metadata', () {
++    const advanced = QuestionAdvancedContent(
++      stimulus: QuestionStimulus(
++        kind: QuestionStimulusKind.caseStudy,
++        title: 'Case study',
++        text: 'A shop recorded the following sales.',
++      ),
++      wordBank: ['mean', 'median', 'mode'],
++      answerSpace: QuestionAnswerSpace(
++        style: QuestionAnswerSpaceStyle.box,
++        lines: 5,
++      ),
++    );
++
++    final metadata = advanced.writeToMetadata(const {'legacy': 'keep-me'});
++    final question = Question(
++      id: 'advanced-q',
++      text: 'Answer the questions.',
++      metadata: metadata,
++    );
++    final restored = QuestionAdvancedContent.fromQuestion(question);
++
++    expect(metadata['legacy'], 'keep-me');
++    expect(restored.stimulus?.kind, QuestionStimulusKind.caseStudy);
++    expect(restored.stimulus?.title, 'Case study');
++    expect(restored.wordBank, ['mean', 'median', 'mode']);
++    expect(restored.answerSpace.style, QuestionAnswerSpaceStyle.box);
++    expect(restored.answerSpace.lines, 5);
++  });
++
++  test('draft preserves advanced blocks without adding a persistence schema', () {
++    const advanced = QuestionAdvancedContent(
++      stimulus: QuestionStimulus(text: 'Read this passage.'),
++      wordBank: ['is', 'are'],
++      answerSpace: QuestionAnswerSpace(
++        style: QuestionAnswerSpaceStyle.ruled,
++        lines: 4,
++      ),
++    );
++    final seed = Question(
++      id: 'mixed-advanced',
++      text: 'Complete the task.',
++      tableData: const QuestionTable(
++        headers: ['A', 'B'],
++        rows: [
++          ['1', '2'],
++        ],
++      ),
++      subQuestions: [Question(id: 'part-a', text: 'First part', marks: 2)],
++      internalChoices: [
++        Question(id: 'or-a', text: 'Alternative A', marks: 3),
++        Question(id: 'or-b', text: 'Alternative B', marks: 3),
++      ],
++      metadata: advanced.writeToMetadata(const {'legacy': true}),
++    );
++
++    final draft = QuestionDraft.fromQuestion(seed);
++    final saved = draft.toQuestion(plainTextAccessibility: 'Accessible task');
++    final document = UniversalQuestionAdapter.fromDraft(draft);
++
++    expect(saved.metadata['legacy'], isTrue);
++    expect(
++      QuestionAdvancedContent.fromQuestion(saved).stimulus?.text,
++      'Read this passage.',
++    );
++    expect(document.contains(UniversalQuestionBlockKind.stimulus), isTrue);
++    expect(document.contains(UniversalQuestionBlockKind.wordBank), isTrue);
++    expect(document.contains(UniversalQuestionBlockKind.table), isTrue);
++    expect(document.contains(UniversalQuestionBlockKind.subQuestions), isTrue);
++    expect(document.contains(UniversalQuestionBlockKind.internalChoice), isTrue);
++    expect(document.contains(UniversalQuestionBlockKind.answerSpace), isTrue);
++  });
++
++  test('advanced structure resolves labels, marks and answer-space precedence', () {
++    expect(QuestionAdvancedStructureService.partLabel(0), '(a)');
++    expect(QuestionAdvancedStructureService.partLabel(25), '(z)');
++    expect(QuestionAdvancedStructureService.partLabel(26), '(aa)');
++
++    final balanced = [
++      Question(id: 'a', text: 'A', marks: 4),
++      Question(id: 'b', text: 'B', marks: 4),
++    ];
++    final unbalanced = [
++      Question(id: 'a', text: 'A', marks: 4),
++      Question(id: 'b', text: 'B', marks: 3),
++    ];
++    expect(
++      QuestionAdvancedStructureService.internalChoiceMarksBalanced(balanced),
++      isTrue,
++    );
++    expect(
++      QuestionAdvancedStructureService.internalChoiceMarksBalanced(unbalanced),
++      isFalse,
++    );
++
++    final section = PaperSection(
++      id: 'section',
++      title: 'Section A',
++      answerSpaceLines: 3,
++      ruledAnswerArea: true,
++    );
++    final sectionResolved = QuestionAdvancedStructureService.resolveAnswerSpace(
++      Question(id: 'plain', text: 'Explain.'),
++      section,
++    );
++    expect(sectionResolved.style, QuestionAnswerSpaceStyle.ruled);
++    expect(sectionResolved.lines, 3);
++    expect(sectionResolved.questionOverride, isFalse);
++
++    const override = QuestionAdvancedContent(
++      answerSpace: QuestionAnswerSpace(
++        style: QuestionAnswerSpaceStyle.graph,
++        lines: 6,
++      ),
++    );
++    final overridden = QuestionAdvancedStructureService.resolveAnswerSpace(
++      Question(
++        id: 'graph',
++        text: 'Plot the graph.',
++        metadata: override.writeToMetadata(const {}),
++      ),
++      section,
++    );
++    expect(overridden.style, QuestionAnswerSpaceStyle.graph);
++    expect(overridden.lines, 6);
++    expect(overridden.questionOverride, isTrue);
++  });
++}
+diff --git a/test/features/paper_composer/question_advanced_math_keyboard_test.dart b/test/features/paper_composer/question_advanced_math_keyboard_test.dart
+new file mode 100644
+index 0000000..f4e727e
+--- /dev/null
++++ b/test/features/paper_composer/question_advanced_math_keyboard_test.dart
+@@ -0,0 +1,47 @@
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_stimulus_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_word_bank_sheet.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  testWidgets('reading and word-bank blocks use the shared math keyboard field', (
++    tester,
++  ) async {
++    await _pump(tester, const QuestionStimulusSheet());
++    expect(find.byType(MathKeyboardField), findsNWidgets(2));
++    expect(tester.takeException(), isNull);
++
++    await _pump(tester, const QuestionWordBankSheet());
++    expect(find.byType(MathKeyboardField), findsOneWidget);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('table cells and image descriptions are math-keyboard aware', (
++    tester,
++  ) async {
++    await _pump(tester, const QuestionTableEditorSheet());
++    expect(find.byType(MathKeyboardField), findsAtLeastNWidgets(6));
++    expect(tester.takeException(), isNull);
++
++    await _pump(tester, const QuestionImageAttachmentSheet());
++    expect(find.byType(MathKeyboardField), findsNWidgets(2));
++    expect(tester.takeException(), isNull);
++  });
++}
++
++Future<void> _pump(WidgetTester tester, Widget child) async {
++  await tester.pumpWidget(
++    ProviderScope(
++      child: MaterialApp(
++        builder: (context, appChild) => MathKeyboardWrapper(child: appChild!),
++        home: Scaffold(body: child),
++      ),
++    ),
++  );
++  await tester.pumpAndSettle();
++}
+diff --git a/test/features/paper_composer/question_composer_manual_first_test.dart b/test/features/paper_composer/question_composer_manual_first_test.dart
+index 6f79c0e..c41e7ae 100644
+--- a/test/features/paper_composer/question_composer_manual_first_test.dart
++++ b/test/features/paper_composer/question_composer_manual_first_test.dart
+@@ -28,6 +28,13 @@ void main() {
+     expect(find.text('Sub-question'), findsOneWidget);
+     expect(find.text('OR separator'), findsOneWidget);
+     expect(find.text('Answer options'), findsOneWidget);
++    expect(find.text('Passage / poem / case study'), findsOneWidget);
++    expect(find.text('Word bank'), findsOneWidget);
++    expect(find.text('Table / data'), findsOneWidget);
++    expect(find.text('Image / chart / map'), findsOneWidget);
++    expect(find.text('Structured question part'), findsOneWidget);
++    expect(find.text('Internal OR choice'), findsOneWidget);
++    expect(find.text('Answer space'), findsOneWidget);
+     expect(find.text('Quick start helper'), findsOneWidget);
+     expect(tester.takeException(), isNull);
+   });
+diff --git a/test/features/pdf/office_export_services_test.dart b/test/features/pdf/office_export_services_test.dart
+index 024f42b..5649a8e 100644
+--- a/test/features/pdf/office_export_services_test.dart
++++ b/test/features/pdf/office_export_services_test.dart
+@@ -4,6 +4,7 @@ import 'dart:io';
+ import 'package:archive/archive.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
++import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:edusheet/features/pdf/services/export_file_service.dart';
+@@ -178,6 +179,38 @@ void main() {
+     expect(documentXml, contains('________________________________________'));
+   });
+ 
++  test('Word export preserves advanced paper content blocks', () async {
++    final output = await WordExportService.export(
++      _advancedPaper(),
++      _sampleTemplate(),
++      fileNameBase: 'Advanced Paper Blocks',
++    );
++    final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
++    final documentXml = _archiveText(archive, 'word/document.xml');
++
++    expect(documentXml, contains('Read the source and answer.'));
++    expect(documentXml, contains('Rainfall case study'));
++    expect(documentXml, contains('Village A received 40 mm of rain.'));
++    expect(documentXml, contains('increase     decrease     unchanged'));
++    expect(documentXml, contains('Observation table'));
++    expect(documentXml, contains('(a) '));
++    expect(documentXml, contains('Calculate the difference.'));
++    expect(documentXml, contains('OR'));
++    expect(documentXml, contains('Use a bar graph.'));
++  });
++
++  test('PDF export accepts advanced paper content blocks', () async {
++    final output = await PdfService.export(
++      _advancedPaper(),
++      _sampleTemplate(),
++      fileNameBase: 'Advanced Paper Blocks PDF',
++    );
++
++    expect(output.path, endsWith('Advanced Paper Blocks PDF.pdf'));
++    expect(await output.exists(), isTrue);
++    expect(await output.length(), greaterThan(0));
++  });
++
+   test('PdfService exports a PDF file inside EduSheet folder', () async {
+     final output = await PdfService.export(
+       _samplePaper(),
+@@ -254,6 +287,68 @@ void main() {
+   );
+ }
+ 
++
++Paper _advancedPaper() {
++  const advanced = QuestionAdvancedContent(
++    stimulus: QuestionStimulus(
++      kind: QuestionStimulusKind.caseStudy,
++      title: 'Rainfall case study',
++      text: 'Village A received 40 mm of rain.',
++    ),
++    wordBank: ['increase', 'decrease', 'unchanged'],
++    answerSpace: QuestionAnswerSpace(
++      style: QuestionAnswerSpaceStyle.box,
++      lines: 3,
++    ),
++  );
++  return Paper(
++    id: 'advanced-paper',
++    title: 'Advanced Paper Blocks',
++    createdAt: DateTime(2026, 8, 31),
++    sections: [
++      PaperSection(
++        id: 'advanced-section',
++        title: 'Section A',
++        questions: [
++          Question(
++            id: 'advanced-q',
++            text: 'Read the source and answer.',
++            marks: 5,
++            tableData: const QuestionTable(
++              headers: ['Village', 'Rainfall'],
++              rows: [
++                ['A', '40 mm'],
++                ['B', '25 mm'],
++              ],
++              caption: 'Observation table',
++            ),
++            subQuestions: [
++              Question(
++                id: 'advanced-part-a',
++                text: 'Calculate the difference.',
++                marks: 2,
++              ),
++            ],
++            internalChoices: [
++              Question(
++                id: 'advanced-or-a',
++                text: 'Explain the trend.',
++                marks: 3,
++              ),
++              Question(
++                id: 'advanced-or-b',
++                text: 'Use a bar graph.',
++                marks: 3,
++              ),
++            ],
++            metadata: advanced.writeToMetadata(const {}),
++          ),
++        ],
++      ),
++    ],
++  );
++}
++
+ Paper _samplePaper() {
+   return Paper(
+     id: 'paper-1',

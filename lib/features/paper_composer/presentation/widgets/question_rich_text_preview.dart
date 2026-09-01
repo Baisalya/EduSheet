@@ -55,7 +55,8 @@ class _QuestionRichTextPreviewState extends State<QuestionRichTextPreview> {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
+    final accessibleText = _codec.accessibleText(_controller.document);
+    final editor = ConstrainedBox(
       constraints: BoxConstraints(maxHeight: widget.maxHeight),
       child: IgnorePointer(
         child: QuillEditor.basic(
@@ -69,6 +70,18 @@ class _QuestionRichTextPreviewState extends State<QuestionRichTextPreview> {
           ),
         ),
       ),
+    );
+
+    if (accessibleText.isEmpty) return editor;
+
+    // Quill paints rich text through RenderEditable rather than ordinary Text
+    // widgets. Give the read-only paper preview one stable semantic label so
+    // screen readers and release-parity tests can observe the same question
+    // wording that is exported to PDF/Word, including math embed fallbacks.
+    return Semantics(
+      container: true,
+      label: accessibleText,
+      child: ExcludeSemantics(child: editor),
     );
   }
 }

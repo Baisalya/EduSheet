@@ -1,0 +1,14 @@
+docs/UNIVERSAL_SMART_PAPER_EDITOR_ARCHITECTURE.md
+lib/features/paper_composer/application/question_authoring_text_tools.dart
+lib/features/paper_composer/application/universal_question_adapter.dart
+lib/features/paper_composer/domain/question_draft.dart
+lib/features/paper_composer/domain/universal_question_document.dart
+lib/features/paper_composer/presentation/widgets/question_add_content_sheet.dart
+lib/features/paper_composer/presentation/widgets/question_composer_controls.dart
+lib/features/paper_composer/presentation/widgets/question_composer_page.dart
+lib/features/paper_composer/presentation/widgets/question_type_picker.dart
+test/features/paper_composer/question_authoring_text_tools_test.dart
+test/features/paper_composer/question_composer_manual_first_test.dart
+test/features/paper_composer/question_draft_test.dart
+test/features/paper_composer/question_type_picker_policy_test.dart
+test/features/paper_composer/universal_question_document_test.dart

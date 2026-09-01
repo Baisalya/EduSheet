@@ -1,0 +1,25 @@
+EduSheet — Step 1: Marks / document-content boundary
+Date: 2026-08-31
+
+Implemented:
+- Removed the duplicate Assigned / Maximum row from the printable paper canvas.
+- Removed teacher mismatch text from the printable paper canvas.
+- Added a clearly separated "Teacher check • Not printed" warning above the page when marks mismatch.
+- Split teacher-only marks diagnostics from generic marks calculation.
+- Added one document-facing marks adapter shared by Flutter preview, PDF header, PDF cover and Word export.
+- Updated Paper setup and Inspector to consume teacher diagnostics.
+- Added regression tests for preview boundary, inspector diagnostics, built-in header max-mark slots, and Word printable content.
+
+QA environment note:
+- Flutter/Dart SDK is not installed in this execution container, so flutter analyze / flutter test could not be executed here.
+- All changed Dart files passed a delimiter/string/comment structural syntax sanity scan.
+- Repository-wide searches confirm teacherMessage/Assigned preview rendering is removed from document surfaces and Maximum Marks rendering is centralized.
+
+Recommended local verification:
+  flutter pub get
+  dart format lib test
+  flutter analyze
+  flutter test test/features/paper_composer/paper_marks_presentation_boundary_test.dart
+  flutter test test/features/pdf/paper_style_architecture_test.dart
+  flutter test test/features/pdf/office_export_services_test.dart
+  flutter test

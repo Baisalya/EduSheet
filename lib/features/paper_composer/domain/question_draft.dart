@@ -1,15 +1,20 @@
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
+import 'question_advanced_content.dart';
 import 'question_details_draft.dart';
 
 /// Editing model for the paper composer.
 ///
 /// The persisted [Question] remains the storage contract. This draft only owns
-/// fields that the focused question-writing workflow edits directly; every
-/// other persisted field is preserved through [_seed].
+/// fields that the focused question-writing workflow edits directly. Structural
+/// content (options, attachments, tables, sub-questions and internal choices)
+/// is owned explicitly so the Universal Smart Paper Editor can compose them
+/// independently of the legacy [QuestionType]. The persisted [Question] remains
+/// the compatibility/storage contract.
 class QuestionDraft {
   final Question _seed;
   final String text;
@@ -18,6 +23,12 @@ class QuestionDraft {
   final bool isOptional;
   final List<QuestionOption> options;
   final List<MathExpression> mathExpressions;
+  final List<QuestionAttachment> attachments;
+  final QuestionTable? tableData;
+  final List<Question> subQuestions;
+  final List<Question> internalChoices;
+  final QuestionOptionLayout optionLayout;
+  final QuestionAdvancedContent advancedContent;
   final QuestionDetailsDraft details;
 
   const QuestionDraft._({
@@ -28,6 +39,12 @@ class QuestionDraft {
     required this.isOptional,
     required this.options,
     required this.mathExpressions,
+    required this.attachments,
+    required this.tableData,
+    required this.subQuestions,
+    required this.internalChoices,
+    required this.optionLayout,
+    required this.advancedContent,
     required this.details,
   }) : _seed = seed;
 
@@ -60,6 +77,12 @@ class QuestionDraft {
       isOptional: isOptional,
       options: _defaultOptions(type),
       mathExpressions: const [],
+      attachments: const [],
+      tableData: null,
+      subQuestions: const [],
+      internalChoices: const [],
+      optionLayout: QuestionOptionLayout.vertical,
+      advancedContent: QuestionAdvancedContent.empty,
       details: const QuestionDetailsDraft(),
     );
   }
@@ -75,6 +98,12 @@ class QuestionDraft {
       mathExpressions: question.mathExpressions
           .map((item) => item.copyWith())
           .toList(),
+      attachments: question.attachments.map((item) => item.copyWith()).toList(),
+      tableData: _copyTable(question.tableData),
+      subQuestions: List<Question>.from(question.subQuestions),
+      internalChoices: List<Question>.from(question.internalChoices),
+      optionLayout: QuestionOptionLayoutCodec.fromQuestion(question),
+      advancedContent: QuestionAdvancedContent.fromQuestion(question),
       details: QuestionDetailsDraft.fromQuestion(question),
     );
   }
@@ -86,38 +115,62 @@ class QuestionDraft {
     bool? isOptional,
     List<QuestionOption>? options,
     List<MathExpression>? mathExpressions,
+    List<QuestionAttachment>? attachments,
+    QuestionTable? tableData,
+    bool clearTableData = false,
+    List<Question>? subQuestions,
+    List<Question>? internalChoices,
+    QuestionOptionLayout? optionLayout,
+    QuestionAdvancedContent? advancedContent,
     QuestionDetailsDraft? details,
   }) {
-    final nextType = type ?? this.type;
-    var nextOptions = options ?? this.options;
-    if (type != null && type != this.type) {
-      if (!nextType.usesOptions) {
-        nextOptions = const [];
-      } else if (nextType == QuestionType.trueFalse ||
-          this.type == QuestionType.trueFalse ||
-          nextOptions.isEmpty) {
-        // True/False has fixed semantic choices. Leaving it should also create
-        // fresh generic choices rather than carrying "True"/"False" into MCQ.
-        nextOptions = _defaultOptions(nextType);
-      }
-    }
-
     return QuestionDraft._(
       seed: _seed,
       text: text ?? this.text,
-      type: nextType,
+      type: type ?? this.type,
       marks: marks ?? this.marks,
       isOptional: isOptional ?? this.isOptional,
-      options: nextOptions,
+      options: options ?? this.options,
       mathExpressions: mathExpressions ?? this.mathExpressions,
+      attachments: attachments ?? this.attachments,
+      tableData: clearTableData ? null : (tableData ?? this.tableData),
+      subQuestions: subQuestions ?? this.subQuestions,
+      internalChoices: internalChoices ?? this.internalChoices,
+      optionLayout: optionLayout ?? this.optionLayout,
+      advancedContent: advancedContent ?? this.advancedContent,
       details: details ?? this.details,
     );
   }
 
+  /// Applies an optional quick-start helper without making QuestionType the
+  /// owner of document structure. Existing content is never removed.
+  QuestionDraft applyQuickStart(QuestionType nextType) {
+    var nextOptions = options;
+    if (nextType == QuestionType.trueFalse && nextOptions.isEmpty) {
+      nextOptions = _defaultOptions(nextType);
+    } else if (nextType.usesOptions && nextOptions.isEmpty) {
+      nextOptions = _defaultOptions(nextType);
+    }
+    return copyWith(type: nextType, options: nextOptions);
+  }
+
+  /// Adds structured answer choices as a convenience while keeping the paper
+  /// itself manual-first. The legacy type is updated only for answer semantics
+  /// and export compatibility.
+  QuestionDraft ensureAnswerOptions({bool multipleCorrect = false}) {
+    if (options.isNotEmpty) return this;
+    final nextType = multipleCorrect
+        ? QuestionType.multipleSelect
+        : QuestionType.mcq;
+    return copyWith(type: nextType, options: _defaultOptions(nextType));
+  }
+
   Question toQuestion({required String plainTextAccessibility}) {
     final now = DateTime.now();
-    final metadata = Map<String, dynamic>.from(_seed.metadata)
+    var metadata = Map<String, dynamic>.from(_seed.metadata)
       ..remove('paperComposerDraft');
+    metadata = QuestionOptionLayoutCodec.write(metadata, optionLayout);
+    metadata = advancedContent.writeToMetadata(metadata);
 
     return _seed.copyWith(
       text: text,
@@ -144,11 +197,25 @@ class QuestionDraft {
       instructions: details.instructions,
       sourceReference: details.sourceReference,
       mathExpressions: mathExpressions,
+      attachments: attachments,
+      tableData: tableData,
+      subQuestions: subQuestions,
+      internalChoices: internalChoices,
       modifiedAt: now,
       version: isExisting ? _seed.version + 1 : 1,
       status: QuestionStatus.complete,
       metadata: metadata,
       alignment: _seed.alignment,
+    );
+  }
+
+  static QuestionTable? _copyTable(QuestionTable? table) {
+    if (table == null) return null;
+    return QuestionTable(
+      headers: List<String>.from(table.headers),
+      rows: table.rows.map((row) => List<String>.from(row)).toList(),
+      caption: table.caption,
+      accessibilitySummary: table.accessibilitySummary,
     );
   }
 

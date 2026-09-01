@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/editor/services/paper_validator.dart';
 
 class PaperPerformanceProfile {
@@ -39,7 +40,8 @@ class PaperPerformanceProfiler {
       sectionCount: paper.sections.length,
       questionCount: paper.sections.fold(
         0,
-        (count, section) => count + section.questions.length,
+        (count, section) =>
+            count + PaperStructureService.assessmentQuestionCount(section),
       ),
       serializedBytes: serialized.length,
       validationDuration: validationWatch.elapsed,

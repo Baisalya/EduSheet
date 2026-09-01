@@ -12,7 +12,7 @@ class PdfService {
   static Future<void> generateAndPreview(
     Paper paper,
     PaperTemplate template, {
-    PaperExportConfig config = const PaperExportConfig(),
+    PaperExportConfig? config,
   }) async {
     final pdf = await QuestionPaperService.generateDocument(
       paper,
@@ -27,7 +27,7 @@ class PdfService {
     Paper paper,
     PaperTemplate template, {
     String? fileNameBase,
-    PaperExportConfig config = const PaperExportConfig(),
+    PaperExportConfig? config,
     ExportCancellationToken? cancellationToken,
     ExportProgressCallback? onProgress,
   }) async {

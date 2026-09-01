@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
@@ -12,11 +13,23 @@ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_expres
 import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
 import 'package:edusheet/features/ocr/presentation/screens/ocr_screen.dart';
 import 'package:edusheet/features/paper_composer/application/paper_composer_actions.dart';
+import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_authoring_text_tools.dart';
+import 'package:edusheet/features/paper_composer/application/question_insertion_anchor.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
+import 'package:edusheet/features/paper_composer/application/universal_question_adapter.dart';
+import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
 import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
-import 'package:edusheet/features/paper_composer/presentation/widgets/question_type_picker.dart';
-import 'package:edusheet/features/paper_composer/presentation/widgets/question_more_details_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_add_content_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_advanced_content_panel.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_answer_space_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_stimulus_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_word_bank_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_controls.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_more_details_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_type_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +41,7 @@ class QuestionComposerPage extends ConsumerStatefulWidget {
   final String? sectionId;
   final Question? question;
   final QuestionType? initialType;
+  final double? initialMarks;
   final int? insertAt;
   final QuestionSaveCallback? onSaveQuestion;
   final String? pageTitle;
@@ -39,6 +53,7 @@ class QuestionComposerPage extends ConsumerStatefulWidget {
     this.sectionId,
     this.question,
     this.initialType,
+    this.initialMarks,
     this.insertAt,
     this.onSaveQuestion,
     this.pageTitle,
@@ -64,11 +79,15 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   final ScrollController _bodyScroll = ScrollController();
   final ScrollController _pageScroll = ScrollController();
   final Map<String, TextEditingController> _optionControllers = {};
+  final GlobalKey _questionEditorKey = GlobalKey();
   late final Set<String> _legacyUnplacedMathIds;
+  late final ValueNotifier<QuestionInsertionAnchor> _insertionAnchor;
+  bool _bodyHasFocus = false;
   bool _showFormatting = false;
   String? _bodyError;
   String? _marksError;
   String? _optionsError;
+  String? _structureError;
 
   @override
   void initState() {
@@ -77,12 +96,14 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     _draft = widget.question == null
         ? QuestionDraft.create(
             type: widget.initialType ?? defaults.type,
-            marks: defaults.marks,
+            marks: widget.initialMarks ?? defaults.marks,
             isOptional: defaults.isOptional,
           )
         : QuestionDraft.fromQuestion(widget.question!);
     final bodyDocument = _codec.decodeQuestion(widget.question);
     _bodyController = _createBodyController(bodyDocument);
+    _insertionAnchor = ValueNotifier(_anchorFromController());
+    _bodyFocus.addListener(_handleBodyFocusChanged);
     final embeddedIds = _codec.embeddedMathExpressionIds(bodyDocument);
     _legacyUnplacedMathIds = _draft.mathExpressions
         .map((expression) => expression.id)
@@ -100,9 +121,12 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
 
   @override
   void dispose() {
+    _bodyController.removeListener(_handleBodyControllerChanged);
     _bodyController.dispose();
     _marksController.dispose();
+    _bodyFocus.removeListener(_handleBodyFocusChanged);
     _bodyFocus.dispose();
+    _insertionAnchor.dispose();
     _bodyScroll.dispose();
     _pageScroll.dispose();
     for (final controller in _optionControllers.values) {
@@ -134,7 +158,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _draft = _draft.copyWith(type: selected);
+      _draft = _draft.applyQuickStart(selected);
       _optionsError = null;
       _syncOptionControllers();
     });
@@ -165,23 +189,121 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   }
 
   QuillController _createBodyController(Document document) {
-    return QuillController(
+    final controller = QuillController(
       document: document,
       selection: const TextSelection.collapsed(offset: 0),
     );
+    controller.addListener(_handleBodyControllerChanged);
+    return controller;
   }
 
-  Future<void> _insertFormula({bool autoOpenMathKeyboard = true}) async {
-    final insertion = _safeSelectionRange();
+  QuestionInsertionAnchor _anchorFromController() {
+    final selection = _bodyController.selection;
+    final documentEnd = (_bodyController.document.length - 1)
+        .clamp(0, 1 << 30)
+        .toInt();
+    return QuestionInsertionAnchor.fromDocument(
+      plainText: _bodyController.document.toPlainText(),
+      documentEnd: documentEnd,
+      baseOffset: selection.baseOffset,
+      extentOffset: selection.extentOffset,
+    );
+  }
+
+  void _handleBodyControllerChanged() {
+    if (!mounted || !_bodyFocus.hasFocus) return;
+    _syncInsertionAnchorFromController();
+  }
+
+  void _syncInsertionAnchorFromController() {
+    final next = _anchorFromController();
+    if (_insertionAnchor.value != next) {
+      _insertionAnchor.value = next;
+    }
+  }
+
+  void _handleBodyFocusChanged() {
+    if (!mounted) return;
+    final focused = _bodyFocus.hasFocus;
+    if (focused) {
+      _rememberInsertionAnchor();
+    }
+    if (_bodyHasFocus != focused) {
+      setState(() => _bodyHasFocus = focused);
+    }
+  }
+
+  QuestionInsertionAnchor _rememberInsertionAnchor() {
+    _syncInsertionAnchorFromController();
+    return _insertionAnchor.value;
+  }
+
+  QuestionInsertionAnchor _toolInsertionAnchor() {
+    return _bodyFocus.hasFocus
+        ? _rememberInsertionAnchor()
+        : _insertionAnchor.value;
+  }
+
+  void _returnToInsertion(
+    QuestionInsertionAnchor anchor, {
+    bool ensureEditorVisible = true,
+  }) {
+    final documentEnd = (_bodyController.document.length - 1)
+        .clamp(0, 1 << 30)
+        .toInt();
+    final start = anchor.start.clamp(0, documentEnd).toInt();
+    final end = (start + anchor.length).clamp(start, documentEnd).toInt();
+    _bodyController.updateSelection(
+      TextSelection(baseOffset: start, extentOffset: end),
+      ChangeSource.local,
+    );
+    _insertionAnchor.value = _anchorFromController();
+    _restoreBodyFocus(ensureEditorVisible: ensureEditorVisible);
+  }
+
+  void _returnToSavedInsertion() {
+    _returnToInsertion(_insertionAnchor.value);
+  }
+
+  void _toggleFormatting() {
+    final anchor = _toolInsertionAnchor();
+    setState(() => _showFormatting = !_showFormatting);
+    _returnToInsertion(anchor);
+  }
+
+  void _undoBody() {
+    if (!_bodyController.hasUndo) return;
+    _bodyController.undo();
+    _rememberInsertionAnchor();
+    _restoreBodyFocus(ensureEditorVisible: true);
+  }
+
+  void _redoBody() {
+    if (!_bodyController.hasRedo) return;
+    _bodyController.redo();
+    _rememberInsertionAnchor();
+    _restoreBodyFocus(ensureEditorVisible: true);
+  }
+
+  Future<void> _insertFormula({
+    bool autoOpenMathKeyboard = true,
+    QuestionInsertionAnchor? insertionAnchor,
+  }) async {
+    final targetAnchor = insertionAnchor ?? _toolInsertionAnchor();
+    final insertion = _safeSelectionRange(anchor: targetAnchor);
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     FocusManager.instance.primaryFocus?.unfocus();
     final expression = await FormulaEditorSheet.show(
       context,
       autoOpenMathKeyboard: autoOpenMathKeyboard,
     );
-    if (expression == null || !mounted) return;
+    if (expression == null || !mounted) {
+      if (mounted) _returnToInsertion(targetAnchor);
+      return;
+    }
 
     _insertMathAt(expression, insertion);
+    _syncInsertionAnchorFromController();
     setState(() => _bodyError = null);
     _restoreBodyFocus();
   }
@@ -196,6 +318,13 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
       autoOpenMathKeyboard: true,
     );
   }
+
+  bool get _hasAdvancedPaperBlocks =>
+      _draft.advancedContent.hasAny ||
+      _draft.tableData != null ||
+      _draft.attachments.isNotEmpty ||
+      _draft.subQuestions.isNotEmpty ||
+      _draft.internalChoices.isNotEmpty;
 
   List<MathExpression> get _unplacedMathExpressions {
     return _draft.mathExpressions
@@ -229,8 +358,10 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   }
 
   void _placeUnplacedFormula(MathExpression expression) {
-    final insertion = _safeSelectionRange();
+    final anchor = _toolInsertionAnchor();
+    final insertion = _safeSelectionRange(anchor: anchor);
     _insertMathAt(expression, insertion);
+    _syncInsertionAnchorFromController();
     setState(() {
       _legacyUnplacedMathIds.remove(expression.id);
       _bodyError = null;
@@ -281,10 +412,21 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     );
   }
 
-  void _restoreBodyFocus() {
+  void _restoreBodyFocus({bool ensureEditorVisible = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _bodyFocus.requestFocus();
+      if (ensureEditorVisible) {
+        final editorContext = _questionEditorKey.currentContext;
+        if (editorContext != null) {
+          Scrollable.ensureVisible(
+            editorContext,
+            alignment: 0.12,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      }
     });
   }
 
@@ -297,14 +439,228 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     setState(() => _draft = _draft.copyWith(details: details));
   }
 
-  Future<void> _insertGeometry() async {
+  Future<void> _editStimulus() async {
+    final stimulus = await QuestionStimulusSheet.show(
+      context,
+      initial: _draft.advancedContent.stimulus,
+    );
+    if (stimulus == null || !mounted) return;
+    setState(() {
+      _draft = _draft.copyWith(
+        advancedContent: _draft.advancedContent.copyWith(stimulus: stimulus),
+      );
+    });
+  }
+
+  void _removeStimulus() {
+    setState(() {
+      _draft = _draft.copyWith(
+        advancedContent: _draft.advancedContent.copyWith(clearStimulus: true),
+      );
+    });
+  }
+
+  Future<void> _editWordBank() async {
+    final items = await QuestionWordBankSheet.show(
+      context,
+      initial: _draft.advancedContent.wordBank,
+    );
+    if (items == null || !mounted) return;
+    setState(() {
+      _draft = _draft.copyWith(
+        advancedContent: _draft.advancedContent.copyWith(wordBank: items),
+      );
+    });
+  }
+
+  void _removeWordBank() {
+    setState(() {
+      _draft = _draft.copyWith(
+        advancedContent: _draft.advancedContent.copyWith(wordBank: const []),
+      );
+    });
+  }
+
+  Future<void> _editTable() async {
+    final table = await QuestionTableEditorSheet.show(
+      context,
+      initial: _draft.tableData,
+    );
+    if (table == null || !mounted) return;
+    setState(() => _draft = _draft.copyWith(tableData: table));
+  }
+
+  void _removeTable() {
+    setState(() => _draft = _draft.copyWith(clearTableData: true));
+  }
+
+  Future<void> _addImage() async {
+    final attachment = await QuestionImageAttachmentSheet.show(context);
+    if (attachment == null || !mounted) return;
+    setState(() {
+      _draft = _draft.copyWith(
+        attachments: [..._draft.attachments, attachment],
+      );
+    });
+  }
+
+  Future<void> _editImage(QuestionAttachment current) async {
+    final attachment = await QuestionImageAttachmentSheet.show(
+      context,
+      initial: current,
+    );
+    if (attachment == null || !mounted) return;
+    setState(() {
+      _draft = _draft.copyWith(
+        attachments: _draft.attachments
+            .map((item) => item.id == current.id ? attachment : item)
+            .toList(),
+      );
+    });
+  }
+
+  void _removeImage(QuestionAttachment current) {
+    setState(() {
+      _draft = _draft.copyWith(
+        attachments: _draft.attachments
+            .where((item) => item.id != current.id)
+            .toList(),
+      );
+    });
+  }
+
+  Future<void> _addSubQuestion() {
+    return _openNestedQuestion(internalChoice: false);
+  }
+
+  Future<void> _editSubQuestion(int index) {
+    if (index < 0 || index >= _draft.subQuestions.length) {
+      return Future.value();
+    }
+    return _openNestedQuestion(
+      internalChoice: false,
+      index: index,
+      initial: _draft.subQuestions[index],
+    );
+  }
+
+  void _removeSubQuestion(int index) {
+    if (index < 0 || index >= _draft.subQuestions.length) return;
+    final next = [..._draft.subQuestions]..removeAt(index);
+    setState(() => _draft = _draft.copyWith(subQuestions: next));
+  }
+
+  Future<void> _addInternalChoice() {
+    return _openNestedQuestion(internalChoice: true);
+  }
+
+  Future<void> _editInternalChoice(int index) {
+    if (index < 0 || index >= _draft.internalChoices.length) {
+      return Future.value();
+    }
+    return _openNestedQuestion(
+      internalChoice: true,
+      index: index,
+      initial: _draft.internalChoices[index],
+    );
+  }
+
+  void _removeInternalChoice(int index) {
+    if (index < 0 || index >= _draft.internalChoices.length) return;
+    final next = [..._draft.internalChoices]..removeAt(index);
+    setState(() => _draft = _draft.copyWith(internalChoices: next));
+  }
+
+  Future<void> _openNestedQuestion({
+    required bool internalChoice,
+    int? index,
+    Question? initial,
+  }) async {
+    ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final currentList = internalChoice
+        ? _draft.internalChoices
+        : _draft.subQuestions;
+    final nextIndex = index ?? currentList.length;
+    final title = internalChoice
+        ? 'OR alternative ${nextIndex + 1}'
+        : 'Part ${QuestionAdvancedStructureService.partLabel(nextIndex)}';
+    final suggestedMarks = internalChoice
+        ? (_draft.internalChoices.isNotEmpty
+              ? _draft.internalChoices.first.marks
+              : _draft.marks)
+        : 1.0;
+
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => QuestionComposerPage(
+          question: initial,
+          initialType: QuestionType.descriptive,
+          initialMarks: suggestedMarks,
+          onSaveQuestion: (question) async {
+            if (!mounted) return false;
+            setState(() {
+              final target = internalChoice
+                  ? [..._draft.internalChoices]
+                  : [..._draft.subQuestions];
+              if (index == null) {
+                target.add(question);
+              } else if (index >= 0 && index < target.length) {
+                target[index] = question;
+              }
+              _draft = internalChoice
+                  ? _draft.copyWith(
+                      type: QuestionType.internalChoice,
+                      internalChoices: target,
+                    )
+                  : _draft.copyWith(subQuestions: target);
+            });
+            return true;
+          },
+          pageTitle: title,
+          allowSaveAndNext: false,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editAnswerSpace() async {
+    final value = await QuestionAnswerSpaceSheet.show(
+      context,
+      initial: _draft.advancedContent.answerSpace,
+    );
+    if (value == null || !mounted) return;
+    setState(() {
+      _draft = _draft.copyWith(
+        advancedContent: _draft.advancedContent.copyWith(answerSpace: value),
+      );
+    });
+  }
+
+  void _removeAnswerSpace() {
+    setState(() {
+      _draft = _draft.copyWith(
+        advancedContent: _draft.advancedContent.copyWith(
+          answerSpace: const QuestionAnswerSpace(),
+        ),
+      );
+    });
+  }
+
+  Future<void> _insertGeometry({
+    QuestionInsertionAnchor? insertionAnchor,
+  }) async {
     // Preserve the exact caret/range before opening the full-screen geometry
     // builder. Route/focus changes must not decide where the diagram lands.
-    final insertion = _safeSelectionRange();
+    final targetAnchor = insertionAnchor ?? _toolInsertionAnchor();
+    final insertion = _safeSelectionRange(anchor: targetAnchor);
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     FocusManager.instance.primaryFocus?.unfocus();
     final diagram = await GeometryBuilderScreen.show(context);
-    if (diagram == null || !mounted) return;
+    if (diagram == null || !mounted) {
+      if (mounted) _returnToInsertion(targetAnchor);
+      return;
+    }
 
     GeometryDiagramRegistry.instance.save(diagram);
     final data = jsonEncode({
@@ -315,6 +671,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
       'diagram': diagram.toJson(),
     });
     _insertGeometryAt(data, insertion);
+    _syncInsertionAnchorFromController();
     setState(() => _bodyError = null);
     _restoreBodyFocus();
   }
@@ -354,47 +711,195 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     );
   }
 
-  Future<void> _scanQuestionText() async {
-    final insertion = _safeSelectionRange();
+  Future<void> _scanQuestionText({
+    QuestionInsertionAnchor? insertionAnchor,
+  }) async {
+    final targetAnchor = insertionAnchor ?? _toolInsertionAnchor();
+    final insertion = _safeSelectionRange(anchor: targetAnchor);
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     FocusManager.instance.primaryFocus?.unfocus();
     final scanned = await Navigator.of(
       context,
     ).push<String>(MaterialPageRoute(builder: (context) => const OCRScreen()));
-    if (scanned == null || scanned.trim().isEmpty || !mounted) return;
+    if (scanned == null || scanned.trim().isEmpty || !mounted) {
+      if (mounted) _returnToInsertion(targetAnchor);
+      return;
+    }
     final text = scanned.trim();
     _bodyController.replaceText(insertion.$1, insertion.$2, text, null);
     _bodyController.updateSelection(
       TextSelection.collapsed(offset: insertion.$1 + text.length),
       ChangeSource.local,
     );
+    _syncInsertionAnchorFromController();
     setState(() => _bodyError = null);
     _restoreBodyFocus();
   }
 
-  (int, int) _safeSelectionRange() {
-    final selection = _bodyController.selection;
+  (int, int) _safeSelectionRange({QuestionInsertionAnchor? anchor}) {
+    final target = anchor ?? _toolInsertionAnchor();
     final documentEnd = (_bodyController.document.length - 1)
         .clamp(0, 1 << 30)
         .toInt();
-    final rawBase = selection.baseOffset < 0
-        ? documentEnd
-        : selection.baseOffset.clamp(0, documentEnd).toInt();
-    final rawExtent = selection.extentOffset < 0
-        ? rawBase
-        : selection.extentOffset.clamp(0, documentEnd).toInt();
-    final start = rawBase <= rawExtent ? rawBase : rawExtent;
-    return (start, (rawExtent - rawBase).abs());
+    final start = target.start.clamp(0, documentEnd).toInt();
+    final length = target.length.clamp(0, documentEnd - start).toInt();
+    return (start, length);
   }
 
   void _insertPrompt(String value) {
-    final selection = _safeSelectionRange();
+    final anchor = _toolInsertionAnchor();
+    final selection = _safeSelectionRange(anchor: anchor);
     _bodyController.replaceText(selection.$1, selection.$2, value, null);
     _bodyController.updateSelection(
       TextSelection.collapsed(offset: selection.$1 + value.length),
       ChangeSource.local,
     );
+    _syncInsertionAnchorFromController();
     _bodyFocus.requestFocus();
+  }
+
+  void _insertEditableText(
+    String value, {
+    QuestionInsertionAnchor? insertionAnchor,
+  }) {
+    final selection = _safeSelectionRange(anchor: insertionAnchor);
+    _bodyController.replaceText(selection.$1, selection.$2, value, null);
+    _bodyController.updateSelection(
+      TextSelection.collapsed(offset: selection.$1 + value.length),
+      ChangeSource.local,
+    );
+    _syncInsertionAnchorFromController();
+    setState(() => _bodyError = null);
+    _restoreBodyFocus();
+  }
+
+  void _insertBlank({QuestionInsertionAnchor? insertionAnchor}) {
+    _insertEditableText(
+      QuestionAuthoringTextTools.blank(),
+      insertionAnchor: insertionAnchor,
+    );
+  }
+
+  void _insertSubQuestion({QuestionInsertionAnchor? insertionAnchor}) {
+    final target = insertionAnchor ?? _toolInsertionAnchor();
+    final plainText = _bodyController.document.toPlainText();
+    final before = plainText.substring(
+      0,
+      target.start.clamp(0, plainText.length).toInt(),
+    );
+    _insertEditableText(
+      QuestionAuthoringTextTools.nextSubQuestionInsertion(
+        plainText,
+        textBeforeInsertion: before,
+      ),
+      insertionAnchor: target,
+    );
+  }
+
+  void _insertOrDivider({QuestionInsertionAnchor? insertionAnchor}) {
+    final target = insertionAnchor ?? _toolInsertionAnchor();
+    final plainText = _bodyController.document.toPlainText();
+    final before = plainText.substring(
+      0,
+      target.start.clamp(0, plainText.length).toInt(),
+    );
+    _insertEditableText(
+      QuestionAuthoringTextTools.orDividerInsertion(
+        plainText,
+        textBeforeInsertion: before,
+      ),
+      insertionAnchor: target,
+    );
+  }
+
+  void _insertInstruction({QuestionInsertionAnchor? insertionAnchor}) {
+    final target = insertionAnchor ?? _toolInsertionAnchor();
+    final plainText = _bodyController.document.toPlainText();
+    final before = plainText.substring(
+      0,
+      target.start.clamp(0, plainText.length).toInt(),
+    );
+    _insertEditableText(
+      QuestionAuthoringTextTools.instructionInsertion(
+        plainText,
+        textBeforeInsertion: before,
+      ),
+      insertionAnchor: target,
+    );
+  }
+
+  void _ensureAnswerOptions() {
+    setState(() {
+      _draft = _draft.ensureAnswerOptions();
+      _optionsError = null;
+      _syncOptionControllers();
+    });
+  }
+
+  Future<void> _showAddContent() async {
+    // Capture before the sheet opens. Bottom sheets and routes can temporarily
+    // move focus away from Quill; the teacher's chosen insertion point must
+    // survive that transition unchanged.
+    final insertionAnchor = _toolInsertionAnchor();
+    final action = await QuestionAddContentSheet.show(
+      context,
+      insertionAnchor: insertionAnchor,
+    );
+    if (action == null || !mounted) {
+      if (mounted) _returnToInsertion(insertionAnchor);
+      return;
+    }
+    switch (action) {
+      case QuestionAddContentAction.math:
+        await _insertFormula(insertionAnchor: insertionAnchor);
+        break;
+      case QuestionAddContentAction.geometry:
+        await _insertGeometry(insertionAnchor: insertionAnchor);
+        break;
+      case QuestionAddContentAction.blank:
+        _insertBlank(insertionAnchor: insertionAnchor);
+        break;
+      case QuestionAddContentAction.subQuestion:
+        _insertSubQuestion(insertionAnchor: insertionAnchor);
+        break;
+      case QuestionAddContentAction.orDivider:
+        _insertOrDivider(insertionAnchor: insertionAnchor);
+        break;
+      case QuestionAddContentAction.answerOptions:
+        _ensureAnswerOptions();
+        break;
+      case QuestionAddContentAction.stimulus:
+        await _editStimulus();
+        break;
+      case QuestionAddContentAction.wordBank:
+        await _editWordBank();
+        break;
+      case QuestionAddContentAction.table:
+        await _editTable();
+        break;
+      case QuestionAddContentAction.image:
+        await _addImage();
+        break;
+      case QuestionAddContentAction.structuredPart:
+        await _addSubQuestion();
+        break;
+      case QuestionAddContentAction.internalChoice:
+        await _addInternalChoice();
+        break;
+      case QuestionAddContentAction.answerSpace:
+        await _editAnswerSpace();
+        break;
+      case QuestionAddContentAction.instruction:
+        _insertInstruction(insertionAnchor: insertionAnchor);
+        break;
+      case QuestionAddContentAction.scanText:
+        await _scanQuestionText(insertionAnchor: insertionAnchor);
+        break;
+      case QuestionAddContentAction.quickStart:
+        await _chooseType();
+        if (mounted) _returnToInsertion(insertionAnchor);
+        break;
+    }
   }
 
   void _addOption() {
@@ -436,8 +941,16 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
 
   bool _validate() {
     final accessibility = _codec.accessibleText(_bodyController.document);
+    final hasStructuredContent =
+        _draft.advancedContent.hasStimulus ||
+        _draft.tableData != null ||
+        _draft.attachments.isNotEmpty ||
+        _draft.subQuestions.isNotEmpty ||
+        _draft.internalChoices.isNotEmpty;
     final hasContent =
-        accessibility.isNotEmpty || _unplacedMathExpressions.isNotEmpty;
+        accessibility.isNotEmpty ||
+        _unplacedMathExpressions.isNotEmpty ||
+        hasStructuredContent;
     final marks = double.tryParse(_marksController.text.trim());
     final options = _materializedOptions();
     final nonEmptyOptions = options
@@ -450,11 +963,18 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
           ? null
           : 'Write the question or add a formula/diagram';
       _marksError = validMarks ? null : 'Enter marks above 0';
-      _optionsError = _draft.type.usesOptions && nonEmptyOptions < 2
+      _optionsError = _draft.options.isNotEmpty && nonEmptyOptions < 2
           ? 'Add at least two answer options'
           : null;
+      _structureError =
+          _draft.internalChoices.isNotEmpty && _draft.internalChoices.length < 2
+          ? 'Add at least two alternatives for an internal OR choice.'
+          : null;
     });
-    return _bodyError == null && _marksError == null && _optionsError == null;
+    return _bodyError == null &&
+        _marksError == null &&
+        _optionsError == null &&
+        _structureError == null;
   }
 
   Future<void> _save({bool addAnother = false}) async {
@@ -475,12 +995,13 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     final savedMathExpressions = [...embeddedMath, ...unplacedMath];
     final accessibility = [
       bodyAccessibility,
+      ...QuestionAdvancedStructureService.accessibilityFragments(_draft),
       ...unplacedMath.map((expression) {
         final plain = expression.plainText.trim();
         return plain.isEmpty ? expression.latex : plain;
       }),
     ].where((item) => item.trim().isNotEmpty).join(' ');
-    final options = _draft.type.usesOptions
+    final options = _draft.options.isNotEmpty
         ? _materializedOptions()
               .where((item) => item.text.trim().isNotEmpty)
               .map((item) => item.copyWith(text: item.text.trim()))
@@ -554,6 +1075,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   void _resetForNext(QuestionDraft previous) {
     ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
     final oldBody = _bodyController;
+    oldBody.removeListener(_handleBodyControllerChanged);
     final oldOptionControllers = Map<String, TextEditingController>.from(
       _optionControllers,
     );
@@ -574,6 +1096,8 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
       _bodyError = null;
       _marksError = null;
       _optionsError = null;
+      _structureError = null;
+      _insertionAnchor.value = _anchorFromController();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Dispose only after QuillEditor has rebuilt around
@@ -609,7 +1133,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                   (widget.question == null ? 'New question' : 'Edit question'),
             ),
             Text(
-              '${_draft.type.label} · ${_formatMarks(_draft.marks)} marks',
+              '${UniversalQuestionAdapter.authoringSummary(_draft)} · ${_formatMarks(_draft.marks)} marks',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -659,14 +1183,44 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                           ComposerErrorText(_bodyError!),
                         ],
                         const SizedBox(height: 12),
-                        _buildInsertBar(context),
+                        if (compact)
+                          _buildMobileWritingShortcuts(context)
+                        else
+                          _buildInsertBar(context),
                         if (_unplacedMathExpressions.isNotEmpty) ...[
                           const SizedBox(height: 16),
                           _buildLegacyFormulaTray(context),
                         ],
-                        if (_draft.type.usesOptions) ...[
+                        if (_draft.options.isNotEmpty) ...[
                           const SizedBox(height: 20),
                           _buildOptions(context),
+                        ],
+                        if (_hasAdvancedPaperBlocks) ...[
+                          const SizedBox(height: 20),
+                          QuestionAdvancedContentPanel(
+                            draft: _draft,
+                            onEditStimulus: _editStimulus,
+                            onRemoveStimulus: _removeStimulus,
+                            onEditWordBank: _editWordBank,
+                            onRemoveWordBank: _removeWordBank,
+                            onEditTable: _editTable,
+                            onRemoveTable: _removeTable,
+                            onAddImage: _addImage,
+                            onEditImage: _editImage,
+                            onRemoveImage: _removeImage,
+                            onAddSubQuestion: _addSubQuestion,
+                            onEditSubQuestion: _editSubQuestion,
+                            onRemoveSubQuestion: _removeSubQuestion,
+                            onAddInternalChoice: _addInternalChoice,
+                            onEditInternalChoice: _editInternalChoice,
+                            onRemoveInternalChoice: _removeInternalChoice,
+                            onEditAnswerSpace: _editAnswerSpace,
+                            onRemoveAnswerSpace: _removeAnswerSpace,
+                          ),
+                          if (_structureError != null) ...[
+                            const SizedBox(height: 4),
+                            ComposerErrorText(_structureError!),
+                          ],
                         ],
                         const SizedBox(height: 16),
                         SwitchListTile.adaptive(
@@ -719,8 +1273,30 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
         padding: const EdgeInsets.all(12),
         child: compact
             ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  QuestionTypeControl(type: _draft.type, onTap: _chooseType),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Write freely',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _chooseType,
+                        icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                        label: const Text('Quick start'),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    'Quick start is optional. It adds helpers but never locks your paper format.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  _buildCurrentQuickStart(context),
                   const SizedBox(height: 10),
                   QuestionMarksControl(
                     controller: _marksController,
@@ -734,9 +1310,34 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
             : Row(
                 children: [
                   Expanded(
-                    child: QuestionTypeControl(
-                      type: _draft.type,
-                      onTap: _chooseType,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'Write freely',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton.icon(
+                              onPressed: _chooseType,
+                              icon: const Icon(
+                                Icons.auto_awesome_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Quick start'),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          'Type the paper exactly as you want. Add helpers only when useful.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        _buildCurrentQuickStart(context),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -756,9 +1357,34 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     );
   }
 
+  Widget _buildCurrentQuickStart(BuildContext context) {
+    final theme = Theme.of(context);
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 4,
+      children: [
+        Text(
+          'Current helper:',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        TextButton(
+          onPressed: _chooseType,
+          style: TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+          ),
+          child: Text(_draft.type.label),
+        ),
+      ],
+    );
+  }
+
   Widget _buildQuestionEditor(BuildContext context, bool compact) {
     final theme = Theme.of(context);
     return Container(
+      key: _questionEditorKey,
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
@@ -772,30 +1398,57 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(Icons.edit_note_rounded, size: 20),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Question',
-                    style: TextStyle(fontWeight: FontWeight.w800),
+                Row(
+                  children: [
+                    const Icon(Icons.edit_note_rounded, size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Question',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    if (!compact)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: _showFormatting
+                            ? 'Hide formatting'
+                            : 'Text formatting',
+                        onPressed: _toggleFormatting,
+                        icon: Icon(
+                          _showFormatting
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.format_bold_rounded,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ValueListenableBuilder<QuestionInsertionAnchor>(
+                  valueListenable: _insertionAnchor,
+                  builder: (context, anchor, _) => Align(
+                    alignment: Alignment.centerLeft,
+                    child: QuestionInsertionStatus(
+                      anchor: anchor,
+                      isFocused: _bodyHasFocus,
+                      compact: compact,
+                      onTap: _returnToSavedInsertion,
+                    ),
                   ),
                 ),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: _showFormatting
-                      ? 'Hide formatting'
-                      : 'Text formatting',
-                  onPressed: () =>
-                      setState(() => _showFormatting = !_showFormatting),
-                  icon: Icon(
-                    _showFormatting
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.format_bold_rounded,
+                if (compact) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    'Tap in the question to move the cursor. Add, Math and Geometry below will use that exact position.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -861,6 +1514,74 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     );
   }
 
+  Widget _buildMobileWritingShortcuts(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInsertionGuidance(context),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 34,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final prompt in const [
+                ('Solve', 'Solve: '),
+                ('Find', 'Find the value of '),
+                ('Calculate', 'Calculate '),
+                ('Prove', 'Prove that '),
+                ('Given', 'Given that '),
+                ('Draw', 'Draw a neat labelled diagram of '),
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ActionChip(
+                    label: Text(prompt.$1),
+                    onPressed: () => _insertPrompt(prompt.$2),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInsertionGuidance(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          Icons.touch_app_outlined,
+          size: 15,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Math and diagrams are inserted exactly at the question cursor. Tap where they should appear first.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'The cursor position is saved while Add, Math, Scan or Geometry opens, so a helper cannot jump to the end by accident.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildInsertBar(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -870,42 +1591,24 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
           runSpacing: 8,
           children: [
             QuestionInsertAction(
+              icon: Icons.add_rounded,
+              label: 'Add',
+              onTap: _showAddContent,
+            ),
+            QuestionInsertAction(
               icon: Icons.functions_rounded,
               label: 'Math',
-              onTap: _insertFormula,
+              onTap: () => _insertFormula(),
             ),
             QuestionInsertAction(
               icon: Icons.category_outlined,
               label: 'Geometry',
-              onTap: _insertGeometry,
-            ),
-            QuestionInsertAction(
-              icon: Icons.document_scanner_outlined,
-              label: 'Scan text',
-              onTap: _scanQuestionText,
+              onTap: () => _insertGeometry(),
             ),
           ],
         ),
         const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.touch_app_outlined,
-              size: 15,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 5),
-            Expanded(
-              child: Text(
-                'Math and diagrams are inserted exactly at the question cursor. Tap where they should appear first.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
-        ),
+        _buildInsertionGuidance(context),
         const SizedBox(height: 8),
         SizedBox(
           height: 34,
@@ -992,11 +1695,20 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     );
   }
 
+  void _setOptionLayout(QuestionOptionLayout layout) {
+    if (_draft.optionLayout == layout) return;
+    setState(() => _draft = _draft.copyWith(optionLayout: layout));
+  }
+
   Widget _buildOptions(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
           children: [
             Text(
               'Answer options',
@@ -1004,7 +1716,6 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const Spacer(),
             TextButton.icon(
               onPressed: _addOption,
               icon: const Icon(Icons.add_rounded),
@@ -1019,6 +1730,29 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'Paper layout',
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 7,
+          runSpacing: 7,
+          children: QuestionOptionLayout.values
+              .map(
+                (layout) => ChoiceChip(
+                  key: ValueKey('question-option-layout-${layout.name}'),
+                  label: Text(layout.label),
+                  selected: _draft.optionLayout == layout,
+                  onSelected: (_) => _setOptionLayout(layout),
+                  tooltip: layout.shortDescription,
+                ),
+              )
+              .toList(),
         ),
         const SizedBox(height: 8),
         for (final entry in _draft.options.asMap().entries)
@@ -1049,48 +1783,84 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
         child: SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(12, 7, 12, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                if (mathVisible)
-                  IconButton.filledTonal(
-                    tooltip: 'Close math keyboard',
-                    onPressed: () => ref
-                        .read(mathKeyboardControllerProvider.notifier)
-                        .hideKeyboard(),
-                    icon: const Icon(Icons.keyboard_hide_rounded),
-                  ),
-                if (mathVisible) const SizedBox(width: 8),
-                if (widget.question == null && widget.allowSaveAndNext)
-                  Expanded(
-                    child: compact
-                        ? OutlinedButton(
-                            onPressed: () => _save(addAnother: true),
-                            child: const Text('Save & next'),
-                          )
-                        : OutlinedButton.icon(
-                            onPressed: () => _save(addAnother: true),
-                            icon: const Icon(Icons.add_rounded),
-                            label: const Text('Save and add next'),
-                          ),
-                  ),
-                if (widget.question == null && widget.allowSaveAndNext)
-                  const SizedBox(width: 8),
-                Expanded(
-                  child: compact
-                      ? FilledButton(
-                          onPressed: () => _save(),
-                          child: const Text('Save'),
-                        )
-                      : FilledButton.icon(
-                          onPressed: () => _save(),
-                          icon: const Icon(Icons.check_rounded),
-                          label: Text(
-                            widget.question == null
-                                ? 'Save question'
-                                : 'Save changes',
-                          ),
+                if (compact && !mathVisible)
+                  AnimatedBuilder(
+                    animation: _bodyController,
+                    builder: (context, _) =>
+                        ValueListenableBuilder<QuestionInsertionAnchor>(
+                          valueListenable: _insertionAnchor,
+                          builder: (context, anchor, _) =>
+                              QuestionMobileAuthoringToolbar(
+                                anchor: anchor,
+                                formattingActive: _showFormatting,
+                                canUndo: _bodyController.hasUndo,
+                                canRedo: _bodyController.hasRedo,
+                                onReturnToCursor: _returnToSavedInsertion,
+                                onAdd: _showAddContent,
+                                onMath: () => _insertFormula(
+                                  insertionAnchor: _toolInsertionAnchor(),
+                                ),
+                                onGeometry: () => _insertGeometry(
+                                  insertionAnchor: _toolInsertionAnchor(),
+                                ),
+                                onFormat: _toggleFormatting,
+                                onUndo: _undoBody,
+                                onRedo: _redoBody,
+                              ),
                         ),
+                  ),
+                if (compact && !mathVisible) ...[
+                  const SizedBox(height: 6),
+                  const Divider(height: 1),
+                  const SizedBox(height: 7),
+                ],
+                Row(
+                  children: [
+                    if (mathVisible)
+                      IconButton.filledTonal(
+                        tooltip: 'Close math keyboard',
+                        onPressed: () => ref
+                            .read(mathKeyboardControllerProvider.notifier)
+                            .hideKeyboard(),
+                        icon: const Icon(Icons.keyboard_hide_rounded),
+                      ),
+                    if (mathVisible) const SizedBox(width: 8),
+                    if (widget.question == null && widget.allowSaveAndNext)
+                      Expanded(
+                        child: compact
+                            ? OutlinedButton(
+                                onPressed: () => _save(addAnother: true),
+                                child: const Text('Save & next'),
+                              )
+                            : OutlinedButton.icon(
+                                onPressed: () => _save(addAnother: true),
+                                icon: const Icon(Icons.add_rounded),
+                                label: const Text('Save and add next'),
+                              ),
+                      ),
+                    if (widget.question == null && widget.allowSaveAndNext)
+                      const SizedBox(width: 8),
+                    Expanded(
+                      child: compact
+                          ? FilledButton(
+                              onPressed: () => _save(),
+                              child: const Text('Save'),
+                            )
+                          : FilledButton.icon(
+                              onPressed: () => _save(),
+                              icon: const Icon(Icons.check_rounded),
+                              label: Text(
+                                widget.question == null
+                                    ? 'Save question'
+                                    : 'Save changes',
+                              ),
+                            ),
+                    ),
+                  ],
                 ),
               ],
             ),

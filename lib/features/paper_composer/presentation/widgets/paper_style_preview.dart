@@ -1,6 +1,6 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
-import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
+import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:flutter/material.dart';
@@ -192,7 +192,7 @@ class _PreviewElement extends StatelessWidget {
           height,
           alignment,
           Text(
-            'Maximum Marks: $_marks',
+            _maximumMarksLabel,
             maxLines: 1,
             textAlign: textAlign,
             style: style,
@@ -260,12 +260,9 @@ class _PreviewElement extends StatelessWidget {
     return paper!.title.trim();
   }
 
-  String get _marks {
-    final value = paper == null
-        ? 80.0
-        : PaperMarksResolver.effectiveMaximumMarks(paper!);
-    return PaperMarksResolver.format(value);
-  }
+  String get _maximumMarksLabel => paper == null
+      ? 'Maximum Marks: 80'
+      : PaperDocumentMarks.maximumMarksLabel(paper!);
 
   String _headerFields(TemplateElement element) {
     if (paper == null || paper!.headerFields.isEmpty) {

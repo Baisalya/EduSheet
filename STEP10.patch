@@ -1,0 +1,2003 @@
+diff --git a/STEP10_SAFE_WORD_ROUND_TRIP.md b/STEP10_SAFE_WORD_ROUND_TRIP.md
+new file mode 100644
+index 0000000..d37559a
+--- /dev/null
++++ b/STEP10_SAFE_WORD_ROUND_TRIP.md
+@@ -0,0 +1,74 @@
++# Step 10 — Safe Smart ↔ Word Round-Trip & Export Parity
++
++## Goal
++
++Keep `Paper` as EduSheet's single source of truth while allowing an EduSheet-exported DOCX to be reopened safely after supported Word edits.
++
++## What Step 10 adds
++
++- DOCX custom XML envelope (`customXml/edusheet-smart-paper.xml`) containing the exact canonical `Paper.toJson()` snapshot.
++- Versioned round-trip metadata (v2) with body, header/footer and style fingerprints.
++- Invisible Word content-control tags (`w:sdt`) around supported editable fields:
++  - paper instruction, school name and paper title when rendered by the template;
++  - section title and section instruction;
++  - question / Word-paragraph text;
++  - question marks;
++  - answer-option text;
++  - nested sub-question and internal-choice text/marks/options.
++- A structural skeleton fingerprint that ignores only EduSheet-tagged editable content. This allows text edits inside supported fields while detecting unsupported structural edits.
++- Per-editable-field baseline fingerprints so a Word file that was merely rewritten does not flatten EduSheet's richer canonical content.
++- Safe merge of supported external Word edits back into the canonical `Paper`.
++- Basic Word run formatting import for rich question / Word-paragraph text: bold, italic, underline, strike, superscript and subscript.
++- Exact preservation of all untouched Smart Paper structures through the embedded canonical snapshot, including:
++  - Math/Geometry metadata;
++  - passage/case-study advanced content;
++  - tables;
++  - images/attachments;
++  - sub-questions and OR choices;
++  - custom Word blocks;
++  - marks/numbering semantics;
++  - page size/orientation/margins;
++  - headers/footers/page numbers;
++  - legacy/custom metadata.
++- Non-destructive refusal when Word changes unsupported structure, page styles/header/footer parts, table/image structure, or question text containing an inline Math/Geometry embed whose position cannot be reconstructed safely.
++- Compatibility with unchanged Step-10 DOCX and unchanged legacy v1 EduSheet round-trip files.
++- Word Mode `Import Word` entry point on Android and Windows responsive surfaces.
++
++## Safety contract
++
++Step 10 never treats a DOCX as a second canonical document model.
++
++1. **Unchanged EduSheet DOCX** → exact canonical restore.
++2. **Only supported tagged Word fields changed** → safe merge into canonical Smart Paper.
++3. **Unsupported/structural external edit** → current paper is not replaced.
++4. **Ordinary non-EduSheet DOCX** → no lossy conversion is attempted.
++
++This is intentionally conservative. Losing a Word-only edit is preferable to silently corrupting a structured question paper, so unsupported edits are surfaced rather than guessed.
++
++## QA coverage added
++
++- exact canonical Paper JSON DOCX restore;
++- supported question text + basic rich-format merge;
++- marks and MCQ option merge;
++- custom Word block preservation;
++- page-layout and metadata preservation;
++- structural external edit rejection;
++- style/header/footer companion-part protection;
++- Math/Geometry embed non-flattening protection;
++- ordinary external DOCX rejection;
++- actual `WordExportService` package integration;
++- Step-10 release-gate exact round-trip, safe merge and destructive-edit refusal;
++- responsive Word Mode import control presence.
++
++## Runtime verification
++
++The model environment used to prepare this phase does not contain Flutter/Dart, so run on the project workstation:
++
++```powershell
++dart format .
++flutter analyze
++flutter test test/features/paper_composer/smart_paper_docx_round_trip_service_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
+diff --git a/lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart b/lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart
+index 6eb7211..acd0537 100644
+--- a/lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart
++++ b/lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart
+@@ -5,10 +5,21 @@ import 'package:archive/archive.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:xml/xml.dart' as xml;
+ 
+-/// Result of inspecting a Word package for EduSheet round-trip metadata.
++/// Result of inspecting/importing a Word package for EduSheet round-trip data.
+ enum SmartPaperDocxImportStatus {
++  /// The package is byte-for-byte equivalent (for EduSheet-owned parts) to the
++  /// file we exported, so the canonical snapshot can be restored directly.
+   exactEduSheetRoundTrip,
++
++  /// The Word body changed only inside EduSheet-tagged editable regions and
++  /// those edits were merged back into the canonical Paper model.
++  safeMergedEduSheetRoundTrip,
++
++  /// The package was exported by EduSheet but changed in an area that EduSheet
++  /// cannot map back without risking data loss.
+   modifiedOutsideEduSheet,
++
++  /// The package is not a supported EduSheet round-trip document.
+   unsupportedExternalDocument,
+ }
+ 
+@@ -16,47 +27,98 @@ class SmartPaperDocxImportResult {
+   final SmartPaperDocxImportStatus status;
+   final Paper? paper;
+   final String message;
++  final int mergedFieldCount;
+ 
+   const SmartPaperDocxImportResult({
+     required this.status,
+     required this.message,
+     this.paper,
++    this.mergedFieldCount = 0,
+   });
+ 
+   bool get canRestoreExactly =>
+       status == SmartPaperDocxImportStatus.exactEduSheetRoundTrip &&
+       paper != null;
++
++  bool get canApplySafely =>
++      (status == SmartPaperDocxImportStatus.exactEduSheetRoundTrip ||
++          status == SmartPaperDocxImportStatus.safeMergedEduSheetRoundTrip) &&
++      paper != null;
+ }
+ 
+ /// Lossless bridge between EduSheet's canonical [Paper] and exported DOCX.
+ ///
+-/// Step 10 deliberately keeps DOCX as an interoperability format rather than
+-/// a second source of truth. EduSheet-generated Word files carry a compact
+-/// custom XML envelope containing the exact canonical paper JSON plus a
+-/// fingerprint of `word/document.xml`.
++/// DOCX stays an interoperability format, never a second source of truth.
++/// EduSheet-generated files contain an exact canonical Paper snapshot plus
++/// integrity fingerprints. Editable Word runs are wrapped in invisible
++/// WordprocessingML content controls (`w:sdt`) carrying deterministic EduSheet
++/// tags. When a user edits only those supported regions in Word, the service
++/// can merge the changed text/formatting back into the canonical model while
++/// preserving marks semantics, math/geometry metadata, tables, images, page
++/// layout and every unsupported field from the snapshot.
+ ///
+-/// If the Word document has not been edited outside EduSheet, the snapshot can
+-/// be restored bit-for-bit at the paper-model level. If the visible DOCX body
+-/// changed, the service refuses to silently restore the stale snapshot; later
+-/// Step-10 merge/import work can safely handle the edited external document.
++/// If the Word package changes outside tagged regions (table structure, image
++/// relationships, page layout, arbitrary new paragraphs, etc.), import is
++/// deliberately refused instead of silently producing a lossy conversion.
+ class SmartPaperDocxRoundTripService {
+   const SmartPaperDocxRoundTripService._();
+ 
+   static const customXmlPartName = 'customXml/edusheet-smart-paper.xml';
+   static const relationshipType =
+       'https://edusheet.app/relationships/smart-paper-roundtrip';
+-  static const namespace = 'https://edusheet.app/smart-paper/roundtrip/v1';
+-  static const envelopeVersion = 1;
++  static const namespace = 'https://edusheet.app/smart-paper/roundtrip/v2';
++  static const envelopeVersion = 2;
++
++  static const _editableTagPrefix = 'es:';
++  static const _questionTextPrefix = 'es:q:';
++  static const _questionMarksPrefix = 'es:m:';
++  static const _optionPrefix = 'es:o:';
++  static const _sectionTitlePrefix = 'es:st:';
++  static const _sectionInstructionPrefix = 'es:si:';
++  static const paperInstructionTag = 'es:paper:instruction';
++  static const paperTitleTag = 'es:paper:title';
++  static const schoolNameTag = 'es:paper:school';
++
++  /// Deterministic short tag suitable for Word's content-control tag value.
++  static String questionTextTag(String questionId) =>
++      '$_questionTextPrefix${documentFingerprint(questionId)}';
++
++  static String questionMarksTag(String questionId) =>
++      '$_questionMarksPrefix${documentFingerprint(questionId)}';
++
++  static String questionOptionTag(String questionId, String optionId) =>
++      '$_optionPrefix${documentFingerprint('$questionId\u0000$optionId')}';
++
++  static String sectionTitleTag(String sectionId) =>
++      '$_sectionTitlePrefix${documentFingerprint(sectionId)}';
++
++  static String sectionInstructionTag(String sectionId) =>
++      '$_sectionInstructionPrefix${documentFingerprint(sectionId)}';
+ 
+   static String buildEnvelopeXml({
+     required Paper paper,
+     required String documentXml,
++    String? headerXml,
++    String? footerXml,
++    String? stylesXml,
+   }) {
+     final encodedPaper = base64Encode(utf8.encode(jsonEncode(paper.toJson())));
+-    final fingerprint = documentFingerprint(documentXml);
++    final documentHash = documentFingerprint(documentXml);
++    final skeletonHash = editableSkeletonFingerprint(documentXml);
++    final headerHash = headerXml == null ? '' : _xmlPartFingerprint(headerXml);
++    final footerHash = footerXml == null ? '' : _xmlPartFingerprint(footerXml);
++    final stylesHash = stylesXml == null ? '' : _xmlPartFingerprint(stylesXml);
++    final editableManifest = base64Encode(
++      utf8.encode(jsonEncode(_editableManifest(documentXml))),
++    );
+     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+         '<edusheet:smartPaper xmlns:edusheet="$namespace" version="$envelopeVersion">'
+-        '<edusheet:documentFingerprint>$fingerprint</edusheet:documentFingerprint>'
++        '<edusheet:documentFingerprint>$documentHash</edusheet:documentFingerprint>'
++        '<edusheet:editableSkeletonFingerprint>$skeletonHash</edusheet:editableSkeletonFingerprint>'
++        '<edusheet:headerFingerprint>$headerHash</edusheet:headerFingerprint>'
++        '<edusheet:footerFingerprint>$footerHash</edusheet:footerFingerprint>'
++        '<edusheet:stylesFingerprint>$stylesHash</edusheet:stylesFingerprint>'
++        '<edusheet:editableManifestBase64>$editableManifest</edusheet:editableManifestBase64>'
+         '<edusheet:paperJsonBase64>$encodedPaper</edusheet:paperJsonBase64>'
+         '</edusheet:smartPaper>';
+   }
+@@ -98,7 +160,7 @@ class SmartPaperDocxRoundTripService {
+       final envelope = xml.XmlDocument.parse(utf8.decode(_bytes(envelopePart)));
+       final root = envelope.rootElement;
+       final version = int.tryParse(root.getAttribute('version') ?? '');
+-      if (version != envelopeVersion) {
++      if (version != 1 && version != envelopeVersion) {
+         return SmartPaperDocxImportResult(
+           status: SmartPaperDocxImportStatus.unsupportedExternalDocument,
+           message: 'Unsupported EduSheet Word round-trip version: $version.',
+@@ -114,24 +176,79 @@ class SmartPaperDocxRoundTripService {
+         );
+       }
+ 
+-      final actualFingerprint = documentFingerprint(documentXml);
+-      if (actualFingerprint != expectedFingerprint) {
++      final paper = _decodePaper(encodedPaper);
++      final bodyExact = documentFingerprint(documentXml) == expectedFingerprint;
++      final companionExact = _companionPartsStillMatch(archive, root);
++
++      if (bodyExact && companionExact) {
++        return SmartPaperDocxImportResult(
++          status: SmartPaperDocxImportStatus.exactEduSheetRoundTrip,
++          paper: paper,
++          message: 'Restored the exact EduSheet Smart Paper from Word.',
++        );
++      }
++
++      // V1 files had no tagged editable skeleton. They remain exact-restorable,
++      // but edited V1 files cannot be merged safely.
++      if (version == 1) {
+         return const SmartPaperDocxImportResult(
+           status: SmartPaperDocxImportStatus.modifiedOutsideEduSheet,
+           message:
+-              'This EduSheet Word file was edited outside EduSheet. The embedded Smart Paper snapshot is intentionally not restored because it may be stale.',
++              'This older EduSheet Word file was edited outside EduSheet. Its embedded snapshot may be stale, so EduSheet will not replace the current paper.',
+         );
+       }
+ 
+-      final decoded = jsonDecode(utf8.decode(base64Decode(encodedPaper)));
+-      if (decoded is! Map) {
+-        throw const FormatException('Invalid embedded paper JSON.');
++      if (!companionExact) {
++        return const SmartPaperDocxImportResult(
++          status: SmartPaperDocxImportStatus.modifiedOutsideEduSheet,
++          message:
++              'This Word file changed page styles or header/footer content outside EduSheet. Those edits cannot be merged safely without risking document loss.',
++        );
++      }
++
++      final expectedSkeleton = _firstText(root, 'editableSkeletonFingerprint');
++      if (expectedSkeleton == null || expectedSkeleton.isEmpty) {
++        return const SmartPaperDocxImportResult(
++          status: SmartPaperDocxImportStatus.modifiedOutsideEduSheet,
++          message:
++              'This EduSheet Word file changed outside EduSheet and has no safe-edit manifest.',
++        );
+       }
+-      final paper = Paper.fromJson(Map<String, dynamic>.from(decoded));
++
++      final actualSkeleton = editableSkeletonFingerprint(documentXml);
++      if (actualSkeleton != expectedSkeleton) {
++        return const SmartPaperDocxImportResult(
++          status: SmartPaperDocxImportStatus.modifiedOutsideEduSheet,
++          message:
++              'Word changed content or layout outside EduSheet-tagged editable fields. EduSheet kept the current paper unchanged rather than performing a lossy import.',
++        );
++      }
++
++      final baselineManifest = _decodeEditableManifest(
++        _firstText(root, 'editableManifestBase64'),
++      );
++      if (baselineManifest == null) {
++        return const SmartPaperDocxImportResult(
++          status: SmartPaperDocxImportStatus.modifiedOutsideEduSheet,
++          message:
++              'This EduSheet Word file has no editable-field baseline, so external edits cannot be merged safely.',
++        );
++      }
++      final merged = _mergeTaggedEdits(paper, documentXml, baselineManifest);
++      if (!merged.safe) {
++        return SmartPaperDocxImportResult(
++          status: SmartPaperDocxImportStatus.modifiedOutsideEduSheet,
++          message: merged.message,
++        );
++      }
++
+       return SmartPaperDocxImportResult(
+-        status: SmartPaperDocxImportStatus.exactEduSheetRoundTrip,
+-        paper: paper,
+-        message: 'Restored the exact EduSheet Smart Paper from Word.',
++        status: SmartPaperDocxImportStatus.safeMergedEduSheetRoundTrip,
++        paper: merged.paper,
++        mergedFieldCount: merged.changedFields,
++        message: merged.changedFields == 0
++            ? 'The Word package was rewritten, but no supported EduSheet content changed. The canonical Smart Paper is safe to restore.'
++            : 'Safely merged ${merged.changedFields} Word edit${merged.changedFields == 1 ? '' : 's'} into the Smart Paper.',
+       );
+     } catch (_) {
+       return const SmartPaperDocxImportResult(
+@@ -141,15 +258,538 @@ class SmartPaperDocxRoundTripService {
+     }
+   }
+ 
+-  /// Stable, dependency-free 64-bit FNV-1a fingerprint for the DOCX body XML.
+-  ///
++  static Paper _decodePaper(String encodedPaper) {
++    final decoded = jsonDecode(utf8.decode(base64Decode(encodedPaper)));
++    if (decoded is! Map) {
++      throw const FormatException('Invalid embedded paper JSON.');
++    }
++    return Paper.fromJson(Map<String, dynamic>.from(decoded));
++  }
++
++  static bool _companionPartsStillMatch(Archive archive, xml.XmlElement root) {
++    final checks = <(String, String)>[
++      ('headerFingerprint', 'word/header1.xml'),
++      ('footerFingerprint', 'word/footer1.xml'),
++      ('stylesFingerprint', 'word/styles.xml'),
++    ];
++    for (final check in checks) {
++      final expected = _firstText(root, check.$1) ?? '';
++      if (expected.isEmpty) continue;
++      final part = _entry(archive, check.$2);
++      if (part == null) return false;
++      final actual = _xmlPartFingerprint(utf8.decode(_bytes(part)));
++      if (actual != expected) return false;
++    }
++    return true;
++  }
++
++  static Map<String, String> _editableManifest(String documentXml) {
++    final document = xml.XmlDocument.parse(documentXml);
++    final result = <String, String>{};
++    for (final sdt in document.descendants.whereType<xml.XmlElement>()) {
++      if (sdt.name.local != 'sdt') continue;
++      final tag = _contentControlTag(sdt);
++      if (tag == null || !tag.startsWith(_editableTagPrefix)) continue;
++      result[tag] = _editableContentFingerprint(sdt);
++    }
++    return result;
++  }
++
++  static Map<String, String>? _decodeEditableManifest(String? encoded) {
++    if (encoded == null || encoded.isEmpty) return null;
++    try {
++      final decoded = jsonDecode(utf8.decode(base64Decode(encoded)));
++      if (decoded is! Map) return null;
++      return decoded.map(
++        (key, value) => MapEntry(key.toString(), value.toString()),
++      );
++    } catch (_) {
++      return null;
++    }
++  }
++
++  static String _editableContentFingerprint(xml.XmlElement sdt) {
++    final content = _sdtContent(sdt);
++    if (content == null) return documentFingerprint('');
++    final buffer = StringBuffer();
++
++    void visit(xml.XmlNode node) {
++      if (node is xml.XmlText) {
++        buffer.write(node.value);
++        return;
++      }
++      if (node is! xml.XmlElement) return;
++      final local = node.name.local;
++      if (local == 'proofErr' || local == 'bookmarkStart' || local == 'bookmarkEnd') {
++        return;
++      }
++      buffer.write('<$local');
++      final attrs = node.attributes
++          .where((attribute) {
++            final name = attribute.name.local;
++            final prefix = attribute.name.prefix;
++            return prefix != 'xmlns' &&
++                name != 'xmlns' &&
++                !name.startsWith('rsid') &&
++                name != 'paraId' &&
++                name != 'textId';
++          })
++          .map((attribute) => '${attribute.name.local}=${attribute.value}')
++          .toList()
++        ..sort();
++      for (final attr in attrs) buffer.write('|$attr');
++      buffer.write('>');
++      for (final child in node.children) visit(child);
++      buffer.write('</$local>');
++    }
++
++    visit(content);
++    return documentFingerprint(buffer.toString());
++  }
++
++  static _MergeResult _mergeTaggedEdits(
++    Paper paper,
++    String documentXml,
++    Map<String, String> baselineManifest,
++  ) {
++    final document = xml.XmlDocument.parse(documentXml);
++    final tagged = <String, xml.XmlElement>{};
++    for (final sdt in document.descendants.whereType<xml.XmlElement>()) {
++      if (sdt.name.local != 'sdt') continue;
++      final tag = _contentControlTag(sdt);
++      if (tag == null || !tag.startsWith(_editableTagPrefix)) continue;
++      if (tagged.containsKey(tag)) {
++        return _MergeResult.unsafe(
++          'The Word file contains duplicate EduSheet editable fields. Import was cancelled to avoid ambiguous changes.',
++        );
++      }
++      tagged[tag] = sdt;
++    }
++
++    bool changedControl(String tag, xml.XmlElement? control) {
++      if (control == null) return false;
++      final baseline = baselineManifest[tag];
++      if (baseline == null) return true;
++      return _editableContentFingerprint(control) != baseline;
++    }
++
++    var changed = 0;
++    var nextPaper = paper;
++
++    final paperInstruction = tagged[paperInstructionTag];
++    if (changedControl(paperInstructionTag, paperInstruction)) {
++      final value = _plainTextOfSdt(paperInstruction!).trim();
++      if (value != nextPaper.instruction.trim()) {
++        nextPaper = nextPaper.copyWith(instruction: value);
++        changed++;
++      } else {
++        return _MergeResult.unsafe(
++          'Word formatting changed the paper instruction, but that field has no rich-text model in EduSheet. Import was cancelled rather than discarding the formatting edit.',
++        );
++      }
++    }
++
++    final paperTitle = tagged[paperTitleTag];
++    if (changedControl(paperTitleTag, paperTitle)) {
++      final value = _plainTextOfSdt(paperTitle!).trim();
++      if (value.isEmpty) {
++        return _MergeResult.unsafe('The paper title cannot be empty.');
++      }
++      if (value != nextPaper.title.trim()) {
++        nextPaper = nextPaper.copyWith(title: value);
++        changed++;
++      } else {
++        return _MergeResult.unsafe(
++          'Word formatting changed the paper title, but title formatting is controlled by the EduSheet template. Import was cancelled rather than silently ignoring the change.',
++        );
++      }
++    }
++
++    final school = tagged[schoolNameTag];
++    if (changedControl(schoolNameTag, school)) {
++      final value = _plainTextOfSdt(school!).trim();
++      if (value != nextPaper.schoolName.trim()) {
++        nextPaper = nextPaper.copyWith(schoolName: value);
++        changed++;
++      } else {
++        return _MergeResult.unsafe(
++          'Word formatting changed the school name, but school-name formatting is controlled by the EduSheet template.',
++        );
++      }
++    }
++
++    final newSections = <PaperSection>[];
++    for (final section in nextPaper.sections) {
++      var nextSection = section;
++      final titleTag = sectionTitleTag(section.id);
++      final titleControl = tagged[titleTag];
++      if (changedControl(titleTag, titleControl)) {
++        final value = _plainTextOfSdt(titleControl!).trim();
++        if (value.isEmpty) {
++          return _MergeResult.unsafe('A section title cannot be empty.');
++        }
++        if (value != section.title.trim()) {
++          nextSection = nextSection.copyWith(title: value);
++          changed++;
++        } else {
++          return _MergeResult.unsafe(
++            'Word formatting changed a section title, but section-title formatting is controlled by EduSheet.',
++          );
++        }
++      }
++
++      final instructionTag = sectionInstructionTag(section.id);
++      final instructionControl = tagged[instructionTag];
++      if (changedControl(instructionTag, instructionControl)) {
++        final value = _plainTextOfSdt(instructionControl!).trim();
++        if (value != (section.instruction ?? '').trim()) {
++          nextSection = nextSection.copyWith(instruction: value);
++          changed++;
++        } else {
++          return _MergeResult.unsafe(
++            'Word formatting changed a section instruction, but that field has no rich-text model in EduSheet.',
++          );
++        }
++      }
++
++      final questions = <Question>[];
++      for (final question in nextSection.questions) {
++        final merged = _mergeQuestion(
++          question,
++          tagged,
++          baselineManifest,
++        );
++        if (!merged.safe) return _MergeResult.unsafe(merged.message);
++        questions.add(merged.paperQuestion!);
++        changed += merged.changedFields;
++      }
++      newSections.add(nextSection.copyWith(questions: questions));
++    }
++
++    nextPaper = nextPaper.copyWith(sections: newSections);
++    return _MergeResult.safe(nextPaper, changed);
++  }
++
++  static _QuestionMergeResult _mergeQuestion(
++    Question question,
++    Map<String, xml.XmlElement> tagged,
++    Map<String, String> baselineManifest,
++  ) {
++    bool changedControl(String tag, xml.XmlElement? control) {
++      if (control == null) return false;
++      final baseline = baselineManifest[tag];
++      if (baseline == null) return true;
++      return _editableContentFingerprint(control) != baseline;
++    }
++
++    var changed = 0;
++    var nextQuestion = question;
++    final textTag = questionTextTag(question.id);
++    final textControl = tagged[textTag];
++    if (changedControl(textTag, textControl)) {
++      final importedPlain = _plainTextOfSdt(textControl!).trim();
++      final importedRich = _quillDeltaFromSdt(textControl);
++      if (_containsNonTextEmbed(question.text)) {
++        return _QuestionMergeResult.unsafe(
++          'A Word edit touched question text that contains an EduSheet Math/Geometry embed. Re-open that question in EduSheet so the embed position is not lost.',
++        );
++      }
++      if (importedRich == null) {
++        return _QuestionMergeResult.unsafe(
++          'EduSheet could not safely decode an edited Word question field.',
++        );
++      }
++      nextQuestion = nextQuestion.copyWith(
++        text: importedRich,
++        plainTextAccessibility: importedPlain,
++      );
++      changed++;
++    }
++
++    final marksTag = questionMarksTag(question.id);
++    final marksControl = tagged[marksTag];
++    if (!question.isWordContentBlock && changedControl(marksTag, marksControl)) {
++      final raw = _plainTextOfSdt(marksControl!)
++          .replaceAll('[', '')
++          .replaceAll(']', '')
++          .trim();
++      final value = double.tryParse(raw);
++      if (value == null || value < 0) {
++        return _QuestionMergeResult.unsafe(
++          'A question mark value in Word is not a valid non-negative number. Import was cancelled.',
++        );
++      }
++      if (value != nextQuestion.marks) {
++        nextQuestion = nextQuestion.copyWith(marks: value);
++        changed++;
++      }
++    }
++
++    if (nextQuestion.options.isNotEmpty) {
++      final options = <QuestionOption>[];
++      var optionChanges = 0;
++      for (final option in nextQuestion.options) {
++        final tag = questionOptionTag(question.id, option.id);
++        final control = tagged[tag];
++        if (!changedControl(tag, control)) {
++          options.add(option);
++          continue;
++        }
++        final visible = _plainTextOfSdt(control!).trim();
++        if (visible == option.text.trim()) {
++          return _QuestionMergeResult.unsafe(
++            'Word formatting changed an answer option, but option formatting is not represented by EduSheet yet.',
++          );
++        }
++        options.add(option.copyWith(text: visible));
++        optionChanges++;
++      }
++      if (optionChanges > 0) {
++        nextQuestion = nextQuestion.copyWith(options: options);
++        changed += optionChanges;
++      }
++    }
++
++    final subQuestions = <Question>[];
++    var nestedChanges = 0;
++    for (final child in nextQuestion.subQuestions) {
++      final merged = _mergeQuestion(child, tagged, baselineManifest);
++      if (!merged.safe) return merged;
++      subQuestions.add(merged.paperQuestion!);
++      nestedChanges += merged.changedFields;
++    }
++
++    final choices = <Question>[];
++    for (final child in nextQuestion.internalChoices) {
++      final merged = _mergeQuestion(child, tagged, baselineManifest);
++      if (!merged.safe) return merged;
++      choices.add(merged.paperQuestion!);
++      nestedChanges += merged.changedFields;
++    }
++
++    if (nestedChanges > 0) {
++      nextQuestion = nextQuestion.copyWith(
++        subQuestions: subQuestions,
++        internalChoices: choices,
++      );
++      changed += nestedChanges;
++    }
++    return _QuestionMergeResult.safe(nextQuestion, changed);
++  }
++
++  static bool _containsNonTextEmbed(String persistedRichText) {
++    try {
++      final decoded = jsonDecode(persistedRichText);
++      if (decoded is! List) return false;
++      for (final operation in decoded.whereType<Map>()) {
++        if (operation['insert'] is Map) return true;
++      }
++    } catch (_) {
++      // Legacy plain text has no structured embeds.
++    }
++    return false;
++  }
++
++  /// Converts the tagged Word runs into EduSheet's persisted Quill delta.
++  /// Basic Word run formatting is retained; unsupported Word run properties
++  /// remain safely outside EduSheet's merge surface.
++  static String? _quillDeltaFromSdt(xml.XmlElement sdt) {
++    final content = _sdtContent(sdt);
++    if (content == null) return null;
++    final operations = <Map<String, dynamic>>[];
++
++    for (final run in content.descendants.whereType<xml.XmlElement>()) {
++      if (run.name.local != 'r') continue;
++      final text = StringBuffer();
++      for (final node in run.descendants.whereType<xml.XmlElement>()) {
++        if (node.name.local == 't') text.write(node.innerText);
++        if (node.name.local == 'tab') text.write('\t');
++        if (node.name.local == 'br') text.write('\n');
++      }
++      if (text.isEmpty) continue;
++
++      final attributes = <String, dynamic>{};
++      final rPr = run.children
++          .whereType<xml.XmlElement>()
++          .where((element) => element.name.local == 'rPr')
++          .firstOrNull;
++      if (rPr != null) {
++        if (_hasOnProperty(rPr, 'b')) attributes['bold'] = true;
++        if (_hasOnProperty(rPr, 'i')) attributes['italic'] = true;
++        final underline = _child(rPr, 'u');
++        if (underline != null && _attr(underline, 'val') != 'none') {
++          attributes['underline'] = true;
++        }
++        if (_hasOnProperty(rPr, 'strike')) attributes['strike'] = true;
++        final vert = _child(rPr, 'vertAlign');
++        final vertValue = vert == null ? null : _attr(vert, 'val');
++        if (vertValue == 'superscript') attributes['script'] = 'super';
++        if (vertValue == 'subscript') attributes['script'] = 'sub';
++      }
++
++      final operation = <String, dynamic>{'insert': text.toString()};
++      if (attributes.isNotEmpty) operation['attributes'] = attributes;
++      operations.add(operation);
++    }
++
++    if (operations.isEmpty) operations.add({'insert': ''});
++    final lastInsert = operations.last['insert']?.toString() ?? '';
++    if (!lastInsert.endsWith('\n')) operations.add({'insert': '\n'});
++    return jsonEncode(operations);
++  }
++
++  static bool _hasOnProperty(xml.XmlElement parent, String localName) {
++    final node = _child(parent, localName);
++    if (node == null) return false;
++    final value = _attr(node, 'val');
++    return value == null || value != '0' && value != 'false' && value != 'off';
++  }
++
++  static xml.XmlElement? _child(xml.XmlElement parent, String localName) {
++    for (final child in parent.children.whereType<xml.XmlElement>()) {
++      if (child.name.local == localName) return child;
++    }
++    return null;
++  }
++
++  static String? _attr(xml.XmlElement element, String localName) {
++    for (final attribute in element.attributes) {
++      if (attribute.name.local == localName) return attribute.value;
++    }
++    return null;
++  }
++
++  static String _plainTextOfSdt(xml.XmlElement sdt) {
++    final content = _sdtContent(sdt);
++    if (content == null) return '';
++    final buffer = StringBuffer();
++    for (final element in content.descendants.whereType<xml.XmlElement>()) {
++      if (element.name.local == 't') buffer.write(element.innerText);
++      if (element.name.local == 'tab') buffer.write('\t');
++      if (element.name.local == 'br') buffer.write('\n');
++    }
++    return buffer.toString();
++  }
++
++  static xml.XmlElement? _sdtContent(xml.XmlElement sdt) {
++    for (final child in sdt.children.whereType<xml.XmlElement>()) {
++      if (child.name.local == 'sdtContent') return child;
++    }
++    return null;
++  }
++
++  static String? _contentControlTag(xml.XmlElement sdt) {
++    for (final element in sdt.descendants.whereType<xml.XmlElement>()) {
++      if (element.name.local != 'tag') continue;
++      return _attr(element, 'val');
++    }
++    return null;
++  }
++
++  static String _xmlPartFingerprint(String source) {
++    final document = xml.XmlDocument.parse(source);
++    final buffer = StringBuffer();
++
++    void visit(xml.XmlNode node) {
++      if (node is xml.XmlText) {
++        final value = node.value.replaceAll(RegExp(r'\s+'), ' ').trim();
++        if (value.isNotEmpty) buffer.write('#$value');
++        return;
++      }
++      if (node is! xml.XmlElement) return;
++      final local = node.name.local;
++      if (local == 'proofErr' || local == 'bookmarkStart' || local == 'bookmarkEnd') {
++        return;
++      }
++      buffer.write('<$local');
++      final attrs = node.attributes
++          .where((attribute) {
++            final name = attribute.name.local;
++            final prefix = attribute.name.prefix;
++            return prefix != 'xmlns' &&
++                name != 'xmlns' &&
++                !name.startsWith('rsid') &&
++                name != 'paraId' &&
++                name != 'textId' &&
++                name != 'Ignorable';
++          })
++          .map((attribute) => '${attribute.name.local}=${attribute.value}')
++          .toList()
++        ..sort();
++      for (final attr in attrs) buffer.write('|$attr');
++      buffer.write('>');
++      for (final child in node.children) visit(child);
++      buffer.write('</$local>');
++    }
++
++    visit(document.rootElement);
++    return documentFingerprint(buffer.toString());
++  }
++
++  /// Structural signature used to decide whether external edits are confined
++  /// to EduSheet's tagged merge surface. The contents of EduSheet `w:sdt`
++  /// controls are replaced by a stable placeholder while the rest of the Word
++  /// body remains part of the signature.
++  static String editableSkeletonFingerprint(String documentXml) {
++    final document = xml.XmlDocument.parse(documentXml);
++    final buffer = StringBuffer();
++
++    void visit(xml.XmlNode node) {
++      if (node is xml.XmlText) {
++        final normalized = node.value.replaceAll(RegExp(r'\s+'), ' ').trim();
++        if (normalized.isNotEmpty) buffer.write('#$normalized');
++        return;
++      }
++      if (node is! xml.XmlElement) return;
++
++      final local = node.name.local;
++      if (local == 'proofErr' || local == 'bookmarkStart' || local == 'bookmarkEnd') {
++        return;
++      }
++
++      if (local == 'sdt') {
++        final tag = _contentControlTag(node);
++        if (tag != null && tag.startsWith(_editableTagPrefix)) {
++          buffer.write('<sdt:$tag/>');
++          return;
++        }
++      }
++
++      buffer.write('<$local');
++      final attributes = node.attributes
++          .where((attribute) {
++            final name = attribute.name.local;
++            final prefix = attribute.name.prefix;
++            return prefix != 'xmlns' &&
++                name != 'xmlns' &&
++                !name.startsWith('rsid') &&
++                name != 'paraId' &&
++                name != 'textId' &&
++                name != 'Ignorable';
++          })
++          .map((attribute) => '${attribute.name.local}=${attribute.value}')
++          .toList()
++        ..sort();
++      for (final attribute in attributes) {
++        buffer.write('|$attribute');
++      }
++      buffer.write('>');
++      for (final child in node.children) visit(child);
++      buffer.write('</$local>');
++    }
++
++    visit(document.rootElement);
++    return documentFingerprint(buffer.toString());
++  }
++
++  /// Stable, dependency-free 64-bit FNV-1a fingerprint.
+   /// This is an integrity/change detector, not a cryptographic signature.
+-  static String documentFingerprint(String documentXml) {
++  static String documentFingerprint(String value) {
+     const offsetBasis = 0xcbf29ce484222325;
+     const prime = 0x100000001b3;
+     const mask = 0xffffffffffffffff;
+     var hash = offsetBasis;
+-    for (final byte in utf8.encode(documentXml)) {
++    for (final byte in utf8.encode(value)) {
+       hash ^= byte;
+       hash = (hash * prime) & mask;
+     }
+@@ -176,3 +816,64 @@ class SmartPaperDocxRoundTripService {
+     return null;
+   }
+ }
++
++class _MergeResult {
++  final bool safe;
++  final Paper? paper;
++  final int changedFields;
++  final String message;
++
++  const _MergeResult._({
++    required this.safe,
++    required this.paper,
++    required this.changedFields,
++    required this.message,
++  });
++
++  factory _MergeResult.safe(Paper paper, int changedFields) => _MergeResult._(
++        safe: true,
++        paper: paper,
++        changedFields: changedFields,
++        message: '',
++      );
++
++  factory _MergeResult.unsafe(String message) => _MergeResult._(
++        safe: false,
++        paper: null,
++        changedFields: 0,
++        message: message,
++      );
++}
++
++class _QuestionMergeResult {
++  final bool safe;
++  final Question? paperQuestion;
++  final int changedFields;
++  final String message;
++
++  const _QuestionMergeResult._({
++    required this.safe,
++    required this.paperQuestion,
++    required this.changedFields,
++    required this.message,
++  });
++
++  factory _QuestionMergeResult.safe(Question question, int changedFields) =>
++      _QuestionMergeResult._(
++        safe: true,
++        paperQuestion: question,
++        changedFields: changedFields,
++        message: '',
++      );
++
++  factory _QuestionMergeResult.unsafe(String message) => _QuestionMergeResult._(
++        safe: false,
++        paperQuestion: null,
++        changedFields: 0,
++        message: message,
++      );
++}
++
++extension _FirstOrNullExtension<T> on Iterable<T> {
++  T? get firstOrNull => isEmpty ? null : first;
++}
+diff --git a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+index 812bd74..8b53846 100644
+--- a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
++++ b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+@@ -1,8 +1,11 @@
++import 'dart:io';
++
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+ import 'package:edusheet/features/editor/services/autosave_coordinator.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/paper_composer/application/paper_composer_actions.dart';
++import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
+ import 'package:edusheet/features/paper_composer/presentation/responsive/paper_composer_breakpoints.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_details_sheet.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_inspector_panel.dart';
+@@ -22,6 +25,7 @@ import 'package:edusheet/features/question_bank/presentation/widgets/question_ba
+ import 'package:edusheet/features/question_bank/presentation/widgets/save_to_question_bank_sheet.dart';
+ import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
+ import 'package:edusheet/shared/services/review_service.dart';
++import 'package:file_picker/file_picker.dart';
+ import 'package:open_filex/open_filex.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+@@ -459,6 +463,83 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+     });
+   }
+ 
++  Future<void> _importEduSheetWordRoundTrip() async {
++    final picked = await FilePicker.platform.pickFiles(
++      type: FileType.custom,
++      allowedExtensions: const ['docx'],
++      allowMultiple: false,
++    );
++    final path = picked?.files.single.path;
++    if (path == null || !mounted) return;
++
++    final result = await SmartPaperDocxRoundTripService.importFromFile(
++      File(path),
++    );
++    if (!mounted) return;
++
++    if (!result.canApplySafely) {
++      await showDialog<void>(
++        context: context,
++        builder: (context) => AlertDialog(
++          title: const Text('Word file needs safe import'),
++          content: Text(
++            '${result.message}\n\n'
++            'EduSheet will not replace the current Smart Paper with a stale or lossy conversion.',
++          ),
++          actions: [
++            FilledButton(
++              onPressed: () => Navigator.pop(context),
++              child: const Text('OK'),
++            ),
++          ],
++        ),
++      );
++      return;
++    }
++
++    final confirmed =
++        await showDialog<bool>(
++          context: context,
++          builder: (context) => AlertDialog(
++            title: Text(
++              result.canRestoreExactly
++                  ? 'Restore this EduSheet Word file?'
++                  : 'Apply safe Word edits?',
++            ),
++            content: Text(
++              result.canRestoreExactly
++                  ? 'The embedded Smart Paper matches the visible Word document. Restoring it will replace the paper currently open in the editor.'
++                  : '${result.message}\n\nOnly changes inside EduSheet-tagged editable Word fields were accepted. Structured Math/Geometry, tables, images and page layout remain anchored to the canonical Smart Paper.',
++            ),
++            actions: [
++              TextButton(
++                onPressed: () => Navigator.pop(context, false),
++                child: const Text('Cancel'),
++              ),
++              FilledButton(
++                onPressed: () => Navigator.pop(context, true),
++                child: Text(result.canRestoreExactly ? 'Restore' : 'Apply edits'),
++              ),
++            ],
++          ),
++        ) ??
++        false;
++    if (!confirmed || !mounted) return;
++
++    ref.read(editorStateProvider.notifier).loadPaper(result.paper!);
++    setState(() => _editingMode = _PaperEditingMode.word);
++    ScaffoldMessenger.of(context).showSnackBar(
++      SnackBar(
++        content: Text(
++          result.canRestoreExactly
++              ? 'Exact Smart Paper restored from Word'
++              : 'Safe Word edits merged into Smart Paper',
++        ),
++        behavior: SnackBarBehavior.floating,
++      ),
++    );
++  }
++
+   Future<void> _openPreview(Paper paper) async {
+     await Navigator.of(context).push<void>(
+       MaterialPageRoute(builder: (context) => PaperPreviewPage(paper: paper)),
+@@ -630,6 +711,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                                 _actions.deleteQuestion(sectionId, questionId),
+                             onAddSection: _addSection,
+                             onAddQuestion: (sectionId) => _openQuestion(sectionId),
++                            onImportWord: _importEduSheetWordRoundTrip,
+                             onApplyPageLayout:
+                                 (layout, headerText, footerText, showPageNumbers) =>
+                                     editor.applyPageLayout(
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index 1aad62d..6738b71 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -40,6 +40,7 @@ class WordPaperEditor extends StatefulWidget {
+   final void Function(String sectionId, String questionId) onDeleteQuestion;
+   final VoidCallback onAddSection;
+   final ValueChanged<String> onAddQuestion;
++  final Future<void> Function() onImportWord;
+   final void Function(
+     PaperPageLayout layout,
+     String headerText,
+@@ -64,6 +65,7 @@ class WordPaperEditor extends StatefulWidget {
+     required this.onDeleteQuestion,
+     required this.onAddSection,
+     required this.onAddQuestion,
++    required this.onImportWord,
+     required this.onApplyPageLayout,
+   });
+ 
+@@ -265,6 +267,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+             onInsertImage: _insertImage,
+             onInsertQuestion: _insertQuestion,
+             onInsertPageBreak: _insertPageBreak,
++            onImportWord: widget.onImportWord,
+             onPageLayout: _openPageLayout,
+           ),
+           const Divider(height: 1),
+@@ -591,6 +594,7 @@ class _WordEditorRibbon extends StatelessWidget {
+   final Future<void> Function() onInsertImage;
+   final VoidCallback onInsertQuestion;
+   final VoidCallback onInsertPageBreak;
++  final Future<void> Function() onImportWord;
+   final Future<void> Function() onPageLayout;
+ 
+   const _WordEditorRibbon({
+@@ -602,6 +606,7 @@ class _WordEditorRibbon extends StatelessWidget {
+     required this.onInsertImage,
+     required this.onInsertQuestion,
+     required this.onInsertPageBreak,
++    required this.onImportWord,
+     required this.onPageLayout,
+   });
+ 
+@@ -635,6 +640,7 @@ class _WordEditorRibbon extends StatelessWidget {
+                         onInsertImage: onInsertImage,
+                         onInsertQuestion: onInsertQuestion,
+                         onInsertPageBreak: onInsertPageBreak,
++                        onImportWord: onImportWord,
+                         onPageLayout: onPageLayout,
+                       ),
+                       if (controller != null) ...[
+@@ -685,6 +691,7 @@ class _WordEditorRibbon extends StatelessWidget {
+                         onInsertImage: onInsertImage,
+                         onInsertQuestion: onInsertQuestion,
+                         onInsertPageBreak: onInsertPageBreak,
++                        onImportWord: onImportWord,
+                         onPageLayout: onPageLayout,
+                       ),
+                       const VerticalDivider(width: 20),
+@@ -769,6 +776,7 @@ class _InsertActions extends StatelessWidget {
+   final Future<void> Function() onInsertImage;
+   final VoidCallback onInsertQuestion;
+   final VoidCallback onInsertPageBreak;
++  final Future<void> Function() onImportWord;
+   final Future<void> Function() onPageLayout;
+ 
+   const _InsertActions({
+@@ -780,12 +788,20 @@ class _InsertActions extends StatelessWidget {
+     required this.onInsertImage,
+     required this.onInsertQuestion,
+     required this.onInsertPageBreak,
++    required this.onImportWord,
+     required this.onPageLayout,
+   });
+ 
+   @override
+   Widget build(BuildContext context) {
+     final actions = <Widget>[
++      _RibbonAction(
++        key: const Key('word-ribbon-import'),
++        icon: Icons.file_open_outlined,
++        label: 'Import Word',
++        enabled: true,
++        onTap: onImportWord,
++      ),
+       _RibbonAction(
+         key: const Key('word-ribbon-math'),
+         icon: Icons.functions_rounded,
+diff --git a/lib/features/pdf/services/word_export_service.dart b/lib/features/pdf/services/word_export_service.dart
+index 4dad76f..db46a8e 100644
+--- a/lib/features/pdf/services/word_export_service.dart
++++ b/lib/features/pdf/services/word_export_service.dart
+@@ -8,6 +8,7 @@ import 'package:edusheet/features/editor/domain/models/question_option_layout.da
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+ import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
++import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
+ import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+@@ -70,6 +71,18 @@ class WordExportService {
+         : null;
+     final stylesRelId =
+         'rId${relationshipBase + (hasHeader ? 1 : 0) + (hasFooter ? 1 : 0)}';
++    final roundTripRelId =
++        'rId${relationshipBase + (hasHeader ? 1 : 0) + (hasFooter ? 1 : 0) + 1}';
++    final documentXml = _documentXml(
++      paper,
++      template,
++      imageParts,
++      headerRelId: headerRelId,
++      footerRelId: footerRelId,
++    );
++    final stylesXml = _stylesXml(paper.pageLayout);
++    final headerXml = hasHeader ? _headerPartXml(paper) : null;
++    final footerXml = hasFooter ? _footerPartXml(paper) : null;
+ 
+     addString(
+       '[Content_Types].xml',
+@@ -77,6 +90,7 @@ class WordExportService {
+         imageParts,
+         hasHeader: hasHeader,
+         hasFooter: hasFooter,
++        includeRoundTripMetadata: true,
+       ),
+     );
+     addString('_rels/.rels', _rootRelsXml());
+@@ -89,23 +103,25 @@ class WordExportService {
+         headerRelId: headerRelId,
+         footerRelId: footerRelId,
+         stylesRelId: stylesRelId,
++        roundTripRelId: roundTripRelId,
+       ),
+     );
+-    addString('word/styles.xml', _stylesXml(paper.pageLayout));
+-    if (hasHeader) {
+-      addString('word/header1.xml', _headerPartXml(paper));
++    addString('word/styles.xml', stylesXml);
++    if (headerXml != null) {
++      addString('word/header1.xml', headerXml);
+     }
+-    if (hasFooter) {
+-      addString('word/footer1.xml', _footerPartXml(paper));
++    if (footerXml != null) {
++      addString('word/footer1.xml', footerXml);
+     }
++    addString('word/document.xml', documentXml);
+     addString(
+-      'word/document.xml',
+-      _documentXml(
+-        paper,
+-        template,
+-        imageParts,
+-        headerRelId: headerRelId,
+-        footerRelId: footerRelId,
++      SmartPaperDocxRoundTripService.customXmlPartName,
++      SmartPaperDocxRoundTripService.buildEnvelopeXml(
++        paper: paper,
++        documentXml: documentXml,
++        headerXml: headerXml,
++        footerXml: footerXml,
++        stylesXml: stylesXml,
+       ),
+     );
+ 
+@@ -197,6 +213,7 @@ class WordExportService {
+       buffer.write(
+         _paragraph(
+           paper.instruction.trim(),
++          editableTag: SmartPaperDocxRoundTripService.paperInstructionTag,
+           alignment: 'center',
+           bold: true,
+           italic: true,
+@@ -273,6 +290,7 @@ class WordExportService {
+           buffer.write(
+             _paragraph(
+               paper.schoolName,
++              editableTag: SmartPaperDocxRoundTripService.schoolNameTag,
+               alignment: alignment,
+               bold: bold,
+               italic: italic,
+@@ -285,6 +303,7 @@ class WordExportService {
+           buffer.write(
+             _paragraph(
+               paper.title,
++              editableTag: SmartPaperDocxRoundTripService.paperTitleTag,
+               alignment: alignment,
+               bold: bold,
+               italic: italic,
+@@ -420,11 +439,29 @@ class WordExportService {
+     }
+ 
+     if (section.showTitle || section.prefix.isNotEmpty) {
++      final headingRuns = <_Run>[];
++      if (section.prefix.trim().isNotEmpty) {
++        headingRuns.add(
++          _Run(
++            section.showTitle ? '${section.prefix.trim()} ' : section.prefix.trim(),
++            bold: true,
++            fontSize: 16,
++          ),
++        );
++      }
++      if (section.showTitle) {
++        headingRuns.add(
++          _Run(
++            section.title,
++            bold: true,
++            fontSize: 16,
++            editableTag: SmartPaperDocxRoundTripService.sectionTitleTag(section.id),
++          ),
++        );
++      }
+       buffer.write(
+-        _paragraph(
+-          '${section.prefix} ${section.showTitle ? section.title : ""}'.trim(),
+-          bold: true,
+-          fontSize: 16,
++        _paragraphRuns(
++          headingRuns,
+           spacingBefore: 240,
+           spacingAfter: 80,
+         ),
+@@ -433,10 +470,18 @@ class WordExportService {
+ 
+     if (section.instruction?.trim().isNotEmpty == true) {
+       buffer.write(
+-        _paragraph(
+-          'Instruction: ${section.instruction!.trim()}',
+-          italic: true,
+-          fontSize: 11,
++        _paragraphRuns(
++          [
++            const _Run('Instruction: ', italic: true, fontSize: 11),
++            _Run(
++              section.instruction!.trim(),
++              italic: true,
++              fontSize: 11,
++              editableTag: SmartPaperDocxRoundTripService.sectionInstructionTag(
++                section.id,
++              ),
++            ),
++          ],
+           spacingAfter: 80,
+         ),
+       );
+@@ -541,6 +586,7 @@ class WordExportService {
+         buffer.write(
+           _paragraph(
+             text,
++            editableTag: SmartPaperDocxRoundTripService.questionTextTag(question.id),
+             alignment: alignment,
+             fontSize: fontSize,
+             spacingBefore: 40,
+@@ -564,11 +610,16 @@ class WordExportService {
+       _paragraphRuns(
+         [
+           _Run('$label. ', bold: true, fontSize: fontSize),
+-          _Run(text, fontSize: fontSize),
++          _Run(
++            text,
++            fontSize: fontSize,
++            editableTag: SmartPaperDocxRoundTripService.questionTextTag(question.id),
++          ),
+           _Run(
+             ' [${_marks(question.marks)}]',
+             bold: true,
+             fontSize: fontSize,
++            editableTag: SmartPaperDocxRoundTripService.questionMarksTag(question.id),
+           ),
+         ],
+         alignment: alignment,
+@@ -703,8 +754,17 @@ class WordExportService {
+     final runs = <_Run>[
+       if (label.isNotEmpty)
+         _Run('$label ', bold: true, fontSize: fontSize),
+-      _Run(text, fontSize: fontSize),
+-      _Run(' [${_marks(question.marks)}]', bold: true, fontSize: fontSize),
++      _Run(
++        text,
++        fontSize: fontSize,
++        editableTag: SmartPaperDocxRoundTripService.questionTextTag(question.id),
++      ),
++      _Run(
++        ' [${_marks(question.marks)}]',
++        bold: true,
++        fontSize: fontSize,
++        editableTag: SmartPaperDocxRoundTripService.questionMarksTag(question.id),
++      ),
+     ];
+     buffer.write(
+       _paragraphRuns(
+@@ -988,26 +1048,39 @@ class WordExportService {
+     final layout = QuestionOptionLayoutCodec.fromQuestion(question);
+     final entries = question.options.asMap().entries.toList();
+ 
+-    String optionText(MapEntry<int, QuestionOption> entry) {
+-      return '${String.fromCharCode(65 + entry.key)}) ${entry.value.text}';
++    List<_Run> optionRuns(MapEntry<int, QuestionOption> entry) {
++      return [
++        _Run('${String.fromCharCode(65 + entry.key)}) ', fontSize: fontSize),
++        _Run(
++          entry.value.text,
++          fontSize: fontSize,
++          editableTag: SmartPaperDocxRoundTripService.questionOptionTag(
++            question.id,
++            entry.value.id,
++          ),
++        ),
++      ];
+     }
+ 
+     switch (layout) {
+       case QuestionOptionLayout.vertical:
+         return entries
+             .map(
+-              (entry) => _paragraph(
+-                optionText(entry),
+-                fontSize: fontSize,
++              (entry) => _paragraphRuns(
++                optionRuns(entry),
+                 indentLeft: indentLeft,
+                 spacingAfter: 40,
+               ),
+             )
+             .join();
+       case QuestionOptionLayout.inline:
+-        return _paragraph(
+-          entries.map(optionText).join('     '),
+-          fontSize: fontSize,
++        final runs = <_Run>[];
++        for (var index = 0; index < entries.length; index++) {
++          if (index > 0) runs.add(_Run('     ', fontSize: fontSize));
++          runs.addAll(optionRuns(entries[index]));
++        }
++        return _paragraphRuns(
++          runs,
+           indentLeft: indentLeft,
+           spacingAfter: 60,
+         );
+@@ -1019,15 +1092,13 @@ class WordExportService {
+             '<w:left w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr>',
+           );
+         for (var index = 0; index < entries.length; index += 2) {
+-          final left = _paragraph(
+-            optionText(entries[index]),
+-            fontSize: fontSize,
++          final left = _paragraphRuns(
++            optionRuns(entries[index]),
+             spacingAfter: 30,
+           );
+           final right = index + 1 < entries.length
+-              ? _paragraph(
+-                  optionText(entries[index + 1]),
+-                  fontSize: fontSize,
++              ? _paragraphRuns(
++                  optionRuns(entries[index + 1]),
+                   spacingAfter: 30,
+                 )
+               : _paragraph('');
+@@ -1154,6 +1225,7 @@ class WordExportService {
+ 
+   static String _paragraph(
+     String text, {
++    String? editableTag,
+     String alignment = 'left',
+     bool bold = false,
+     bool italic = false,
+@@ -1171,6 +1243,7 @@ class WordExportService {
+           italic: italic,
+           underline: underline,
+           fontSize: fontSize,
++          editableTag: editableTag,
+         ),
+       ],
+       alignment: alignment,
+@@ -1210,7 +1283,12 @@ class WordExportService {
+       ..write('<w:szCs w:val="$halfPoints"/>')
+       ..write('</w:rPr>');
+ 
+-    return '<w:r>$properties<w:t xml:space="preserve">${_xml(run.text)}</w:t></w:r>';
++    final runXml =
++        '<w:r>$properties<w:t xml:space="preserve">${_xml(run.text)}</w:t></w:r>';
++    if (run.editableTag == null || run.editableTag!.isEmpty) return runXml;
++    return '<w:sdt><w:sdtPr><w:tag w:val="${_xml(run.editableTag!)}"/>'
++        '<w:alias w:val="EduSheet editable content"/></w:sdtPr>'
++        '<w:sdtContent>$runXml</w:sdtContent></w:sdt>';
+   }
+ 
+   static String _imageParagraph(
+@@ -1328,6 +1406,7 @@ class WordExportService {
+     required String? headerRelId,
+     required String? footerRelId,
+     required String stylesRelId,
++    required String roundTripRelId,
+   }) {
+     final rels = StringBuffer();
+     for (final image in images) {
+@@ -1356,6 +1435,11 @@ class WordExportService {
+       'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+       'Target="styles.xml"/>',
+     );
++    rels.write(
++      '<Relationship Id="$roundTripRelId" '
++      'Type="${SmartPaperDocxRoundTripService.relationshipType}" '
++      'Target="../${SmartPaperDocxRoundTripService.customXmlPartName}"/>',
++    );
+ 
+     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+@@ -1366,6 +1450,7 @@ class WordExportService {
+     List<_ImagePart> images, {
+     required bool hasHeader,
+     required bool hasFooter,
++    required bool includeRoundTripMetadata,
+   }) {
+     final imageDefaults = images
+         .map(
+@@ -1389,6 +1474,7 @@ class WordExportService {
+         '$imageDefaults'
+         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+         '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
++        '${includeRoundTripMetadata ? '<Override PartName="/${SmartPaperDocxRoundTripService.customXmlPartName}" ContentType="application/xml"/>' : ''}'
+         '$headerOverride$footerOverride'
+         '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+         '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
+@@ -1605,6 +1691,7 @@ class _Run {
+   final bool italic;
+   final bool underline;
+   final double fontSize;
++  final String? editableTag;
+ 
+   const _Run(
+     this.text, {
+@@ -1612,6 +1699,7 @@ class _Run {
+     this.italic = false,
+     this.underline = false,
+     this.fontSize = 12,
++    this.editableTag,
+   });
+ }
+ 
+diff --git a/test/features/paper_composer/dual_editor_mode_test.dart b/test/features/paper_composer/dual_editor_mode_test.dart
+index bed5f6c..49bcf2c 100644
+--- a/test/features/paper_composer/dual_editor_mode_test.dart
++++ b/test/features/paper_composer/dual_editor_mode_test.dart
+@@ -137,6 +137,7 @@ void main() {
+ 
+     expect(find.byKey(const Key('word-paper-editor-scroll')), findsOneWidget);
+     expect(find.byKey(const Key('word-paper-document')), findsOneWidget);
++    expect(find.byKey(const Key('word-ribbon-import')), findsOneWidget);
+     expect(find.text('Add section'), findsOneWidget);
+     expect(tester.takeException(), isNull);
+   });
+diff --git a/test/features/paper_composer/smart_paper_docx_round_trip_service_test.dart b/test/features/paper_composer/smart_paper_docx_round_trip_service_test.dart
+index a827430..bd1d0c9 100644
+--- a/test/features/paper_composer/smart_paper_docx_round_trip_service_test.dart
++++ b/test/features/paper_composer/smart_paper_docx_round_trip_service_test.dart
+@@ -1,6 +1,7 @@
+ import 'dart:convert';
+ 
+ import 'package:archive/archive.dart';
++import 'package:edusheet/features/editor/domain/models/math_expression.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
+@@ -10,13 +11,14 @@ import 'package:flutter_test/flutter_test.dart';
+ void main() {
+   test('exact EduSheet DOCX snapshot restores canonical Paper JSON', () {
+     final paper = _paper();
+-    const documentXml =
+-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Visible paper</w:t></w:r></w:p></w:body></w:document>';
++    final documentXml = _documentXml(paper, questionText: 'Solve x + 1');
+     final bytes = _docxBytes(
+       documentXml: documentXml,
++      stylesXml: _stylesXml,
+       envelopeXml: SmartPaperDocxRoundTripService.buildEnvelopeXml(
+         paper: paper,
+         documentXml: documentXml,
++        stylesXml: _stylesXml,
+       ),
+     );
+ 
+@@ -27,17 +29,120 @@ void main() {
+     expect(jsonEncode(result.paper!.toJson()), jsonEncode(paper.toJson()));
+   });
+ 
+-  test('edited DOCX body never restores a stale embedded paper snapshot', () {
++  test('Word text and basic rich formatting safely merge by EduSheet tag', () {
++    final paper = _paper();
++    final exported = _documentXml(paper, questionText: 'Solve x + 1');
++    final edited = _documentXml(
++      paper,
++      questionText: 'Solve x + 2',
++      questionBold: true,
++    );
++    final bytes = _docxBytes(
++      documentXml: edited,
++      stylesXml: _stylesXml,
++      envelopeXml: SmartPaperDocxRoundTripService.buildEnvelopeXml(
++        paper: paper,
++        documentXml: exported,
++        stylesXml: _stylesXml,
++      ),
++    );
++
++    final result = SmartPaperDocxRoundTripService.importFromBytes(bytes);
++
++    expect(
++      result.status,
++      SmartPaperDocxImportStatus.safeMergedEduSheetRoundTrip,
++    );
++    expect(result.canApplySafely, isTrue);
++    expect(result.mergedFieldCount, 1);
++    final merged = result.paper!;
++    expect(merged.sections.single.questions.first.plainTextAccessibility,
++        'Solve x + 2');
++    expect(merged.sections.single.questions.first.text, contains('"bold":true'));
++    // Everything outside the supported Word edit remains canonical.
++    expect(merged.pageLayout.toJson(), paper.pageLayout.toJson());
++    expect(
++      merged.sections.single.questions.first.metadata,
++      paper.sections.single.questions.first.metadata,
++    );
++    expect(merged.sections.single.questions.last.isWordContentBlock, isTrue);
++    expect(
++      merged.sections.single.questions.last.plainTextAccessibility,
++      'Teacher free paragraph',
++    );
++  });
++
++  test('marks and answer option edits merge without flattening question data', () {
++    final paper = _paper(withOptions: true);
++    final exported = _documentXml(
++      paper,
++      questionText: 'Solve x + 1',
++      marks: '5',
++      optionText: 'One',
++    );
++    final edited = _documentXml(
++      paper,
++      questionText: 'Solve x + 1',
++      marks: '7',
++      optionText: 'First',
++    );
++    final bytes = _docxBytes(
++      documentXml: edited,
++      stylesXml: _stylesXml,
++      envelopeXml: SmartPaperDocxRoundTripService.buildEnvelopeXml(
++        paper: paper,
++        documentXml: exported,
++        stylesXml: _stylesXml,
++      ),
++    );
++
++    final result = SmartPaperDocxRoundTripService.importFromBytes(bytes);
++
++    expect(
++      result.status,
++      SmartPaperDocxImportStatus.safeMergedEduSheetRoundTrip,
++    );
++    final question = result.paper!.sections.single.questions.first;
++    expect(question.marks, 7);
++    expect(question.options.first.text, 'First');
++    expect(question.options.first.isCorrect, isTrue);
++    expect(question.metadata['custom'], 'preserve-me');
++  });
++
++  test('unsupported structural Word edits never restore a stale snapshot', () {
+     final paper = _paper();
+-    const exportedXml =
+-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Original</w:t></w:r></w:p></w:body></w:document>';
+-    const editedXml =
+-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Edited in Word</w:t></w:r></w:p></w:body></w:document>';
++    final exported = _documentXml(paper, questionText: 'Solve x + 1');
++    final edited = exported.replaceFirst(
++      '<w:body>',
++      '<w:body><w:p><w:r><w:t>Unsupported new paragraph</w:t></w:r></w:p>',
++    );
++    final bytes = _docxBytes(
++      documentXml: edited,
++      stylesXml: _stylesXml,
++      envelopeXml: SmartPaperDocxRoundTripService.buildEnvelopeXml(
++        paper: paper,
++        documentXml: exported,
++        stylesXml: _stylesXml,
++      ),
++    );
++
++    final result = SmartPaperDocxRoundTripService.importFromBytes(bytes);
++
++    expect(result.status, SmartPaperDocxImportStatus.modifiedOutsideEduSheet);
++    expect(result.paper, isNull);
++    expect(result.canApplySafely, isFalse);
++  });
++
++  test('style/page companion changes are refused as non-lossless imports', () {
++    final paper = _paper();
++    final documentXml = _documentXml(paper, questionText: 'Solve x + 1');
+     final bytes = _docxBytes(
+-      documentXml: editedXml,
++      documentXml: documentXml,
++      stylesXml: '<w:styles xmlns:w="$_w"><w:style w:type="paragraph"/></w:styles>',
+       envelopeXml: SmartPaperDocxRoundTripService.buildEnvelopeXml(
+         paper: paper,
+-        documentXml: exportedXml,
++        documentXml: documentXml,
++        stylesXml: _stylesXml,
+       ),
+     );
+ 
+@@ -47,12 +152,33 @@ void main() {
+     expect(result.paper, isNull);
+   });
+ 
++  test('question text with Math/Geometry embed is never flattened by Word merge', () {
++    final paper = _paper(withEmbed: true);
++    final exported = _documentXml(paper, questionText: 'Solve formula');
++    final edited = _documentXml(paper, questionText: 'Changed formula question');
++    final bytes = _docxBytes(
++      documentXml: edited,
++      stylesXml: _stylesXml,
++      envelopeXml: SmartPaperDocxRoundTripService.buildEnvelopeXml(
++        paper: paper,
++        documentXml: exported,
++        stylesXml: _stylesXml,
++      ),
++    );
++
++    final result = SmartPaperDocxRoundTripService.importFromBytes(bytes);
++
++    expect(result.status, SmartPaperDocxImportStatus.modifiedOutsideEduSheet);
++    expect(result.paper, isNull);
++    expect(result.message, contains('Math/Geometry'));
++  });
++
+   test('ordinary external DOCX is identified without lossy conversion', () {
+     const documentXml =
+-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>External document</w:t></w:r></w:p></w:body></w:document>';
++        '<w:document xmlns:w="$_w"><w:body><w:p><w:r><w:t>External document</w:t></w:r></w:p></w:body></w:document>';
+ 
+     final result = SmartPaperDocxRoundTripService.importFromBytes(
+-      _docxBytes(documentXml: documentXml),
++      _docxBytes(documentXml: documentXml, stylesXml: _stylesXml),
+     );
+ 
+     expect(
+@@ -63,12 +189,56 @@ void main() {
+   });
+ }
+ 
++const _w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
++const _stylesXml = '<w:styles xmlns:w="$_w"></w:styles>';
++
++String _documentXml(
++  Paper paper, {
++  required String questionText,
++  bool questionBold = false,
++  String marks = '5',
++  String? optionText,
++}) {
++  final question = paper.sections.single.questions.first;
++  final questionTag = SmartPaperDocxRoundTripService.questionTextTag(question.id);
++  final marksTag = SmartPaperDocxRoundTripService.questionMarksTag(question.id);
++  final option = question.options.isEmpty ? null : question.options.first;
++  final optionTag = option == null
++      ? null
++      : SmartPaperDocxRoundTripService.questionOptionTag(
++          question.id,
++          option.id,
++        );
++  final marksXml = _sdt(marksTag, ' [$marks]');
++  final optionXml = option == null
++      ? ''
++      : '<w:p><w:r><w:t>A) </w:t></w:r>'
++            '${_sdt(optionTag!, optionText ?? option.text)}</w:p>';
++  return '<w:document xmlns:w="$_w"><w:body>'
++      '<w:p><w:r><w:t>1. </w:t></w:r>'
++      '${_sdt(questionTag, questionText, bold: questionBold)}'
++      '$marksXml'
++      '</w:p>'
++      '$optionXml'
++      '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>'
++      '</w:body></w:document>';
++}
++
++String _sdt(String tag, String text, {bool bold = false}) {
++  return '<w:sdt><w:sdtPr><w:tag w:val="$tag"/></w:sdtPr><w:sdtContent>'
++      '<w:r><w:rPr>${bold ? '<w:b/>' : ''}<w:sz w:val="24"/></w:rPr>'
++      '<w:t xml:space="preserve">$text</w:t></w:r>'
++      '</w:sdtContent></w:sdt>';
++}
++
+ List<int> _docxBytes({
+   required String documentXml,
++  required String stylesXml,
+   String? envelopeXml,
+ }) {
+   final archive = Archive()
+-    ..addFile(ArchiveFile.string('word/document.xml', documentXml));
++    ..addFile(ArchiveFile.string('word/document.xml', documentXml))
++    ..addFile(ArchiveFile.string('word/styles.xml', stylesXml));
+   if (envelopeXml != null) {
+     archive.addFile(
+       ArchiveFile.string(
+@@ -80,10 +250,24 @@ List<int> _docxBytes({
+   return ZipEncoder().encode(archive);
+ }
+ 
+-Paper _paper() {
++Paper _paper({bool withOptions = false, bool withEmbed = false}) {
+   final paragraph = WordContentBlockService.paragraph(
+     text: 'Teacher free paragraph',
+   );
++  final expression = MathExpression(
++    id: 'math-1',
++    latex: r'x^2',
++    plainText: 'x²',
++  );
++  final questionText = withEmbed
++      ? jsonEncode([
++          {'insert': 'Solve '},
++          {'insert': {MathExpression.quillEmbedKey: expression.toQuillEmbedData()}},
++          {'insert': '\n'},
++        ])
++      : jsonEncode([
++          {'insert': 'Solve x + 1\n'},
++        ]);
+   return Paper(
+     id: 'round-trip-paper',
+     title: 'Round Trip Algebra',
+@@ -114,15 +298,16 @@ Paper _paper() {
+         questions: [
+           Question(
+             id: 'q1',
+-            text: jsonEncode([
+-              {'insert': 'Solve '},
+-              {
+-                'insert': 'x² + 2x + 1',
+-                'attributes': {'bold': true},
+-              },
+-              {'insert': '\n'},
+-            ]),
++            text: questionText,
++            plainTextAccessibility: withEmbed ? 'Solve x²' : 'Solve x + 1',
+             marks: 5,
++            mathExpressions: withEmbed ? [expression] : const [],
++            options: withOptions
++                ? [
++                    QuestionOption(id: 'o1', text: 'One', isCorrect: true),
++                    QuestionOption(id: 'o2', text: 'Two'),
++                  ]
++                : const [],
+             metadata: const {'custom': 'preserve-me'},
+           ),
+           paragraph,
+diff --git a/test/features/pdf/office_export_services_test.dart b/test/features/pdf/office_export_services_test.dart
+index 0ab76c0..208e4b4 100644
+--- a/test/features/pdf/office_export_services_test.dart
++++ b/test/features/pdf/office_export_services_test.dart
+@@ -6,6 +6,7 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
+ import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+ import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+@@ -104,6 +105,68 @@ void main() {
+     );
+   });
+ 
++  test('Word export embeds an exact EduSheet Smart Paper round-trip envelope', () async {
++    final paper = _samplePaper();
++    final output = await WordExportService.export(paper, _sampleTemplate());
++    final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
++
++    expect(
++      archive.files.any(
++        (entry) =>
++            entry.name == SmartPaperDocxRoundTripService.customXmlPartName,
++      ),
++      isTrue,
++    );
++
++    final restored = await SmartPaperDocxRoundTripService.importFromFile(output);
++    expect(restored.canRestoreExactly, isTrue);
++    expect(
++      jsonEncode(restored.paper!.toJson()),
++      jsonEncode(paper.toJson()),
++    );
++  });
++
++  test('Word export tags supported edits and safely merges them back', () async {
++    final paper = _samplePaper();
++    final output = await WordExportService.export(paper, _sampleTemplate());
++    final sourceArchive = ZipDecoder().decodeBytes(await output.readAsBytes());
++    final documentXml = _archiveText(sourceArchive, 'word/document.xml');
++    final questionTag = SmartPaperDocxRoundTripService.questionTextTag('q1');
++
++    expect(documentXml, contains('w:tag w:val="$questionTag"'));
++    expect(documentXml, contains('Solve x + 2 = 5'));
++
++    final editedDocumentXml = documentXml.replaceFirst(
++      'Solve x + 2 = 5',
++      'Solve x + 4 = 9',
++    );
++    final editedArchive = Archive();
++    for (final entry in sourceArchive.files) {
++      final bytes = List<int>.from(entry.content as List<int>);
++      if (entry.name == 'word/document.xml') {
++        editedArchive.addFile(
++          ArchiveFile.string('word/document.xml', editedDocumentXml),
++        );
++      } else {
++        editedArchive.addFile(ArchiveFile.bytes(entry.name, bytes));
++      }
++    }
++
++    final result = SmartPaperDocxRoundTripService.importFromBytes(
++      ZipEncoder().encode(editedArchive),
++    );
++    expect(
++      result.status,
++      SmartPaperDocxImportStatus.safeMergedEduSheetRoundTrip,
++    );
++    expect(
++      result.paper!.sections.single.questions.single.plainTextAccessibility,
++      'Solve x + 4 = 9',
++    );
++    expect(result.paper!.sections.single.questions.single.marks, 2);
++    expect(result.paper!.pageLayout.toJson(), paper.pageLayout.toJson());
++  });
++
+   test(
+     'WordExportService saves custom file names inside EduSheet folder',
+     () async {
+diff --git a/test/release/smart_paper_word_round_trip_gate_test.dart b/test/release/smart_paper_word_round_trip_gate_test.dart
+new file mode 100644
+index 0000000..3552c98
+--- /dev/null
++++ b/test/release/smart_paper_word_round_trip_gate_test.dart
+@@ -0,0 +1,118 @@
++import 'dart:convert';
++
++import 'package:archive/archive.dart';
++import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
++import 'package:edusheet/features/pdf/services/word_export_service.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++import '../support/smart_paper_release_fixture.dart';
++
++void main() {
++  test('Step 10 Word export restores the exact canonical Smart Paper', () async {
++    final paper = SmartPaperReleaseFixture.paper();
++    final output = await WordExportService.export(
++      paper,
++      SmartPaperReleaseFixture.template,
++    );
++
++    final result = await SmartPaperDocxRoundTripService.importFromFile(output);
++
++    expect(result.canRestoreExactly, isTrue);
++    expect(jsonEncode(result.paper!.toJson()), jsonEncode(paper.toJson()));
++  });
++
++  test('Step 10 safely merges supported Word edits without losing structure', () async {
++    final paper = SmartPaperReleaseFixture.paper();
++    final output = await WordExportService.export(
++      paper,
++      SmartPaperReleaseFixture.template,
++    );
++    final source = ZipDecoder().decodeBytes(await output.readAsBytes());
++    final document = _archiveText(source, 'word/document.xml');
++
++    expect(
++      document,
++      contains(
++        SmartPaperDocxRoundTripService.questionTextTag('release-mcq'),
++      ),
++    );
++    expect(
++      document,
++      contains(
++        SmartPaperDocxRoundTripService.questionOptionTag(
++          'release-mcq',
++          'mcq-b',
++        ),
++      ),
++    );
++
++    final edited = document
++        .replaceFirst(
++          'Which expression is equal to 12?',
++          'Which expression is equal to 18?',
++        )
++        .replaceFirst('2 × 5', '3 × 6');
++    final bytes = _replaceDocument(source, edited);
++
++    final result = SmartPaperDocxRoundTripService.importFromBytes(bytes);
++
++    expect(
++      result.status,
++      SmartPaperDocxImportStatus.safeMergedEduSheetRoundTrip,
++    );
++    final restored = result.paper!;
++    final advanced = restored.sections.single.questions.first;
++    final mcq = restored.sections.single.questions.last;
++    expect(mcq.plainTextAccessibility, 'Which expression is equal to 18?');
++    expect(mcq.options[1].text, '3 × 6');
++
++    // Advanced content that Word did not edit remains canonical and structured.
++    expect(advanced.tableData?.rows.length, 2);
++    expect(advanced.subQuestions.length, 2);
++    expect(advanced.internalChoices.length, 2);
++    expect(advanced.metadata, paper.sections.single.questions.first.metadata);
++    expect(restored.pageLayout.toJson(), paper.pageLayout.toJson());
++    expect(restored.maximumMarks, paper.maximumMarks);
++  });
++
++  test('Step 10 refuses structural external edits rather than flattening them', () async {
++    final paper = SmartPaperReleaseFixture.paper();
++    final output = await WordExportService.export(
++      paper,
++      SmartPaperReleaseFixture.template,
++    );
++    final source = ZipDecoder().decodeBytes(await output.readAsBytes());
++    final document = _archiveText(source, 'word/document.xml');
++    final edited = document.replaceFirst(
++      '<w:body>',
++      '<w:body><w:p><w:r><w:t>External unsupported block</w:t></w:r></w:p>',
++    );
++
++    final result = SmartPaperDocxRoundTripService.importFromBytes(
++      _replaceDocument(source, edited),
++    );
++
++    expect(result.status, SmartPaperDocxImportStatus.modifiedOutsideEduSheet);
++    expect(result.paper, isNull);
++    expect(result.canApplySafely, isFalse);
++  });
++}
++
++String _archiveText(Archive archive, String name) {
++  final entry = archive.files.firstWhere((file) => file.name == name);
++  return utf8.decode(entry.content as List<int>);
++}
++
++List<int> _replaceDocument(Archive source, String documentXml) {
++  final target = Archive();
++  for (final entry in source.files) {
++    if (entry.name == 'word/document.xml') {
++      target.addFile(ArchiveFile.string(entry.name, documentXml));
++    } else {
++      target.addFile(
++        ArchiveFile.bytes(entry.name, List<int>.from(entry.content as List<int>)),
++      );
++    }
++  }
++  return ZipEncoder().encode(target);
++}

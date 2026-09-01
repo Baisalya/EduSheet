@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'math_expression.dart';
+import 'paper_page_layout.dart';
 
 /// Values 0-2 are persisted by legacy releases. Never reorder them.
 enum QuestionType {
@@ -133,6 +134,7 @@ class Paper {
   final String headerText;
   final String footerText;
   final bool showPageNumbers;
+  final PaperPageLayout pageLayout;
 
   Paper({
     required this.id,
@@ -152,6 +154,7 @@ class Paper {
     this.headerText = '',
     this.footerText = '',
     this.showPageNumbers = true,
+    this.pageLayout = PaperPageLayout.defaults,
     required this.createdAt,
   });
 
@@ -174,6 +177,7 @@ class Paper {
     String? headerText,
     String? footerText,
     bool? showPageNumbers,
+    PaperPageLayout? pageLayout,
     DateTime? createdAt,
   }) {
     return Paper(
@@ -197,6 +201,7 @@ class Paper {
       headerText: headerText ?? this.headerText,
       footerText: footerText ?? this.footerText,
       showPageNumbers: showPageNumbers ?? this.showPageNumbers,
+      pageLayout: pageLayout ?? this.pageLayout,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -224,6 +229,7 @@ class Paper {
       'headerText': headerText,
       'footerText': footerText,
       'showPageNumbers': showPageNumbers,
+      'pageLayout': pageLayout.toJson(),
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -269,6 +275,11 @@ class Paper {
       headerText: json['headerText']?.toString() ?? '',
       footerText: json['footerText']?.toString() ?? '',
       showPageNumbers: json['showPageNumbers'] != false,
+      pageLayout: json['pageLayout'] is Map
+          ? PaperPageLayout.fromJson(
+              Map<String, dynamic>.from(json['pageLayout'] as Map),
+            )
+          : PaperPageLayout.defaults,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'])
           : DateTime.now(),
@@ -406,7 +417,9 @@ class PaperSection {
     if (questions.isEmpty) return 0.0;
 
     // Filter out questions explicitly marked as optional
-    final nonOptionalQuestions = questions.where((q) => !q.isOptional).toList();
+    final nonOptionalQuestions = questions
+        .where((q) => !q.isOptional && !q.isWordContentBlock)
+        .toList();
 
     if (requiredCount == null ||
         requiredCount! >= nonOptionalQuestions.length) {
@@ -694,6 +707,24 @@ class Question {
            : _plainTextFromRich(text),
        createdAt = createdAt ?? DateTime.now(),
        modifiedAt = modifiedAt ?? createdAt ?? DateTime.now();
+
+  static const String wordContentBlockKindMetadataKey =
+      'edusheet.wordContentBlockKind';
+  static const String wordContentBlockVersionMetadataKey =
+      'edusheet.wordContentBlockVersion';
+
+  /// Word Mode can persist free-form paragraphs/tables/images without
+  /// introducing a second paper schema by storing them as non-assessment
+  /// custom content blocks. Smart Mode, preview and exporters use this marker
+  /// to preserve the block while excluding it from numbering and marks.
+  bool get isWordContentBlock =>
+      metadata[wordContentBlockKindMetadataKey]?.toString().trim().isNotEmpty ==
+      true;
+
+  String? get wordContentBlockKind {
+    final value = metadata[wordContentBlockKindMetadataKey]?.toString().trim();
+    return value == null || value.isEmpty ? null : value;
+  }
 
   Question copyWith({
     String? id,

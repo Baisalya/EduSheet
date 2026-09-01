@@ -1,0 +1,13 @@
+lib/features/paper_composer/application/paper_marks_teacher_diagnostics.dart
+lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+lib/features/paper_composer/presentation/widgets/paper_inspector_panel.dart
+lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+lib/features/paper_composer/presentation/widgets/paper_style_preview.dart
+lib/features/pdf/application/paper_document_marks.dart
+lib/features/pdf/application/paper_marks_resolver.dart
+lib/features/pdf/services/builders/header_builders.dart
+lib/features/pdf/services/question_paper_service.dart
+lib/features/pdf/services/word_export_service.dart
+test/features/paper_composer/paper_marks_presentation_boundary_test.dart
+test/features/pdf/office_export_services_test.dart
+test/features/pdf/paper_style_architecture_test.dart

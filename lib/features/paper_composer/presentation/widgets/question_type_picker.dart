@@ -14,8 +14,10 @@ class QuestionTypePicker {
     QuestionType.numerical,
   ];
 
-  /// Types the focused composer can create without losing required structure.
-  /// Existing papers may still contain every persisted [QuestionType].
+  /// Optional quick-start helpers the focused composer can safely apply.
+  /// Structural compositions such as tables/sub-questions are not represented
+  /// here as mutually-exclusive choices. Existing papers may still contain
+  /// every persisted [QuestionType].
   static const authorable = <QuestionType>[
     QuestionType.mcq,
     QuestionType.descriptive,
@@ -26,10 +28,6 @@ class QuestionTypePicker {
     QuestionType.shortAnswer,
     QuestionType.longAnswer,
     QuestionType.numerical,
-    QuestionType.mathematicalExpression,
-    QuestionType.assertionReason,
-    QuestionType.imageOrDiagram,
-    QuestionType.custom,
   ];
 
   static Future<QuestionType?> show(
@@ -65,13 +63,13 @@ class QuestionTypePicker {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Question type',
+                        'Quick start helper',
                         style: Theme.of(context).textTheme.headlineSmall
                             ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Focused types only. Existing advanced question structures remain compatible.',
+                        'Optional starting helpers only. They never lock the paper layout; you can type and add content manually.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -83,7 +81,7 @@ class QuestionTypePicker {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: TextField(
                     decoration: const InputDecoration(
-                      hintText: 'Search types',
+                      hintText: 'Search quick starts',
                       prefixIcon: Icon(Icons.search_rounded),
                     ),
                     onChanged: (value) => setSheetState(() => query = value),

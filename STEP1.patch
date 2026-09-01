@@ -1,0 +1,738 @@
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/application/paper_marks_teacher_diagnostics.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/application/paper_marks_teacher_diagnostics.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/application/paper_marks_teacher_diagnostics.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/application/paper_marks_teacher_diagnostics.dart	2026-08-31 07:47:41.584456498 +0000
+@@ -0,0 +1,42 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
++
++/// Teacher-workspace-only interpretation of [PaperMarksSummary].
++///
++/// This keeps validation language out of the printable paper model. A paper
++/// may be under/over assigned while it is being authored, but that information
++/// belongs in setup/inspection UI rather than in the student-facing document.
++class PaperMarksTeacherDiagnostics {
++  final PaperMarksSummary summary;
++
++  const PaperMarksTeacherDiagnostics(this.summary);
++
++  factory PaperMarksTeacherDiagnostics.fromPaper(Paper paper) =>
++      PaperMarksTeacherDiagnostics(PaperMarksResolver.summarize(paper));
++
++  bool get hasMismatch => summary.hasMismatch;
++
++  String? get mismatchMessage {
++    switch (summary.balance) {
++      case PaperMarksBalance.automatic:
++      case PaperMarksBalance.balanced:
++        return null;
++      case PaperMarksBalance.underAssigned:
++        return '${PaperMarksResolver.format(summary.difference)} marks are not assigned yet.';
++      case PaperMarksBalance.overAssigned:
++        return 'Question marks exceed maximum marks by ${PaperMarksResolver.format(summary.difference)}.';
++    }
++  }
++
++  String get inspectorStatus => mismatchMessage ?? 'Marks balanced';
++
++  String get setupStatus {
++    final mismatch = mismatchMessage;
++    if (mismatch != null) return mismatch;
++    if (summary.declaredMaximumMarks == null) {
++      return 'Maximum marks will follow the current question total '
++          '(${PaperMarksResolver.format(summary.assignedMarks)}).';
++    }
++    return 'Question marks match the declared maximum.';
++  }
++}
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart	2026-08-31 07:52:55.641823926 +0000
+@@ -1,4 +1,5 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
+ import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_profile.dart';
+ import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
+@@ -611,7 +612,8 @@
+   @override
+   Widget build(BuildContext context) {
+     final theme = Theme.of(context);
+-    final message = summary.teacherMessage;
++    final diagnostics = PaperMarksTeacherDiagnostics(summary);
++    final message = diagnostics.mismatchMessage;
+     if (message == null) {
+       return Row(
+         children: [
+@@ -623,9 +625,7 @@
+           const SizedBox(width: 7),
+           Expanded(
+             child: Text(
+-              summary.declaredMaximumMarks == null
+-                  ? 'Maximum marks will follow the current question total (${_format(summary.assignedMarks)}).'
+-                  : 'Question marks match the declared maximum.',
++              diagnostics.setupStatus,
+               style: theme.textTheme.bodySmall,
+             ),
+           ),
+@@ -647,10 +647,6 @@
+       ),
+     );
+   }
+-
+-  static String _format(double value) => value == value.roundToDouble()
+-      ? value.toInt().toString()
+-      : value.toStringAsFixed(1);
+ }
+ 
+ class _LogoControl extends StatelessWidget {
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_inspector_panel.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_inspector_panel.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_inspector_panel.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_inspector_panel.dart	2026-08-31 07:47:43.868094006 +0000
+@@ -1,4 +1,5 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
+ import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
+ import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+@@ -32,6 +33,7 @@
+       (sum, section) => sum + section.questions.length,
+     );
+     final marks = PaperMarksResolver.summarize(paper);
++    final marksDiagnostics = PaperMarksTeacherDiagnostics(marks);
+     final template = PaperTemplateResolver.resolve(
+       paper.templateId,
+       ref.watch(templateProvider).all,
+@@ -74,8 +76,8 @@
+                 : 'Paper setup needs details',
+           ),
+           _StatusLine(
+-            ok: !marks.hasMismatch,
+-            text: marks.teacherMessage ?? 'Marks balanced',
++            ok: !marksDiagnostics.hasMismatch,
++            text: marksDiagnostics.inspectorStatus,
+           ),
+           const SizedBox(height: 14),
+           Container(
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart	2026-08-31 07:52:55.641716521 +0000
+@@ -1,5 +1,6 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
++import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
+ import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
+@@ -26,8 +27,8 @@
+       paper.templateId,
+       ref.watch(templateProvider).all,
+     );
+-    final marksSummary = PaperMarksResolver.summarize(paper);
+     final pageWidth = _previewPageWidth(template.paperSize);
++    final marksDiagnostics = PaperMarksTeacherDiagnostics.fromPaper(paper);
+ 
+     return Scaffold(
+       appBar: AppBar(title: const Text('Paper preview')),
+@@ -35,79 +36,81 @@
+       body: SingleChildScrollView(
+         padding: const EdgeInsets.all(16),
+         child: Center(
+-          child: ConstrainedBox(
+-            constraints: BoxConstraints(maxWidth: pageWidth, minHeight: 900),
+-            child: Container(
+-              padding: const EdgeInsets.fromLTRB(34, 38, 34, 48),
+-              decoration: BoxDecoration(
+-                color: Colors.white,
+-                borderRadius: BorderRadius.circular(8),
+-                border: template.hasBorder
+-                    ? Border.all(
+-                        color: Color(template.primaryColor.toInt()),
+-                        width: 1.5,
+-                      )
+-                    : null,
+-                boxShadow: [
+-                  BoxShadow(
+-                    color: Colors.black.withValues(alpha: 0.08),
+-                    blurRadius: 24,
+-                    offset: const Offset(0, 8),
++          child: Column(
++            mainAxisSize: MainAxisSize.min,
++            children: [
++              if (marksDiagnostics.hasMismatch) ...[
++                ConstrainedBox(
++                  constraints: BoxConstraints(maxWidth: pageWidth),
++                  child: _TeacherMarksNotice(
++                    message: marksDiagnostics.mismatchMessage!,
+                   ),
+-                ],
+-              ),
+-              child: Theme(
+-                data: ThemeData.light(useMaterial3: true),
+-                child: DefaultTextStyle(
+-                  style: TextStyle(
+-                    color: Colors.black,
+-                    fontSize: template.questionFontSize,
++                ),
++                const SizedBox(height: 12),
++              ],
++              ConstrainedBox(
++                key: const Key('paper-preview-document'),
++                constraints: BoxConstraints(
++                  maxWidth: pageWidth,
++                  minHeight: 900,
++                ),
++                child: Container(
++                  padding: const EdgeInsets.fromLTRB(34, 38, 34, 48),
++                  decoration: BoxDecoration(
++                    color: Colors.white,
++                    borderRadius: BorderRadius.circular(8),
++                    border: template.hasBorder
++                        ? Border.all(
++                            color: Color(template.primaryColor.toInt()),
++                            width: 1.5,
++                          )
++                        : null,
++                    boxShadow: [
++                      BoxShadow(
++                        color: Colors.black.withValues(alpha: 0.08),
++                        blurRadius: 24,
++                        offset: const Offset(0, 8),
++                      ),
++                    ],
+                   ),
+-                  child: Column(
+-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+-                    children: [
+-                      PaperHeaderLayoutPreview(
+-                        template: template,
+-                        paper: paper,
+-                        height: 220,
++                  child: Theme(
++                    data: ThemeData.light(useMaterial3: true),
++                    child: DefaultTextStyle(
++                      style: TextStyle(
++                        color: Colors.black,
++                        fontSize: template.questionFontSize,
+                       ),
+-                      const SizedBox(height: 10),
+-                      Row(
++                      child: Column(
++                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                         children: [
+-                          Text(
+-                            'Assigned: ${PaperMarksResolver.format(marksSummary.assignedMarks)} marks',
+-                          ),
+-                          const Spacer(),
+-                          Text(
+-                            'Maximum: ${PaperMarksResolver.format(marksSummary.effectiveMaximumMarks)}',
++                          PaperHeaderLayoutPreview(
++                            template: template,
++                            paper: paper,
++                            height: 220,
+                           ),
++                          const SizedBox(height: 10),
++                          if (paper.instruction.trim().isNotEmpty) ...[
++                            const Divider(height: 28),
++                            Text(
++                              paper.instruction.trim(),
++                              style: const TextStyle(
++                                fontStyle: FontStyle.italic,
++                              ),
++                            ),
++                          ],
++                          const Divider(height: 30),
++                          for (final section in paper.sections)
++                            _PreviewSection(
++                              section: section,
++                              template: template,
++                            ),
+                         ],
+                       ),
+-                      if (marksSummary.teacherMessage != null) ...[
+-                        const SizedBox(height: 6),
+-                        Text(
+-                          marksSummary.teacherMessage!,
+-                          style: const TextStyle(
+-                            color: Colors.deepOrange,
+-                            fontWeight: FontWeight.w700,
+-                          ),
+-                        ),
+-                      ],
+-                      if (paper.instruction.trim().isNotEmpty) ...[
+-                        const Divider(height: 28),
+-                        Text(
+-                          paper.instruction.trim(),
+-                          style: const TextStyle(fontStyle: FontStyle.italic),
+-                        ),
+-                      ],
+-                      const Divider(height: 30),
+-                      for (final section in paper.sections)
+-                        _PreviewSection(section: section, template: template),
+-                    ],
++                    ),
+                   ),
+                 ),
+               ),
+-            ),
++            ],
+           ),
+         ),
+       ),
+@@ -129,6 +132,57 @@
+   }
+ }
+ 
++class _TeacherMarksNotice extends StatelessWidget {
++  final String message;
++
++  const _TeacherMarksNotice({required this.message});
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Material(
++      key: const Key('paper-preview-teacher-diagnostics'),
++      color: theme.colorScheme.errorContainer,
++      borderRadius: BorderRadius.circular(12),
++      child: Padding(
++        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
++        child: Row(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            Icon(
++              Icons.info_outline_rounded,
++              size: 19,
++              color: theme.colorScheme.onErrorContainer,
++            ),
++            const SizedBox(width: 9),
++            Expanded(
++              child: Column(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  Text(
++                    'Teacher check • Not printed',
++                    style: theme.textTheme.labelMedium?.copyWith(
++                      color: theme.colorScheme.onErrorContainer,
++                      fontWeight: FontWeight.w800,
++                    ),
++                  ),
++                  const SizedBox(height: 2),
++                  Text(
++                    message,
++                    style: theme.textTheme.bodySmall?.copyWith(
++                      color: theme.colorScheme.onErrorContainer,
++                    ),
++                  ),
++                ],
++              ),
++            ),
++          ],
++        ),
++      ),
++    );
++  }
++}
++
+ class _PreviewSection extends StatelessWidget {
+   final PaperSection section;
+   final PaperTemplate template;
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_style_preview.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_style_preview.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_style_preview.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/paper_composer/presentation/widgets/paper_style_preview.dart	2026-08-31 07:47:45.357407517 +0000
+@@ -1,6 +1,6 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+-import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
++import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:flutter/material.dart';
+@@ -192,7 +192,7 @@
+           height,
+           alignment,
+           Text(
+-            'Maximum Marks: $_marks',
++            _maximumMarksLabel,
+             maxLines: 1,
+             textAlign: textAlign,
+             style: style,
+@@ -260,12 +260,9 @@
+     return paper!.title.trim();
+   }
+ 
+-  String get _marks {
+-    final value = paper == null
+-        ? 80.0
+-        : PaperMarksResolver.effectiveMaximumMarks(paper!);
+-    return PaperMarksResolver.format(value);
+-  }
++  String get _maximumMarksLabel => paper == null
++      ? 'Maximum Marks: 80'
++      : PaperDocumentMarks.maximumMarksLabel(paper!);
+ 
+   String _headerFields(TemplateElement element) {
+     if (paper == null || paper!.headerFields.isEmpty) {
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/application/paper_document_marks.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/application/paper_document_marks.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/application/paper_document_marks.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/application/paper_document_marks.dart	2026-08-31 07:47:41.583998362 +0000
+@@ -0,0 +1,19 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
++
++/// Student/print-facing marks presentation.
++///
++/// Document surfaces (Flutter preview, PDF and Word) should use this adapter
++/// instead of rebuilding marks labels independently. Teacher-only diagnostics
++/// such as assigned-vs-declared mismatches deliberately live outside this
++/// layer in the paper-composer application package.
++abstract final class PaperDocumentMarks {
++  static double maximumMarks(Paper paper) =>
++      PaperMarksResolver.effectiveMaximumMarks(paper);
++
++  static String maximumMarksValue(Paper paper) =>
++      PaperMarksResolver.format(maximumMarks(paper));
++
++  static String maximumMarksLabel(Paper paper) =>
++      'Maximum Marks: ${maximumMarksValue(paper)}';
++}
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/application/paper_marks_resolver.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/application/paper_marks_resolver.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/application/paper_marks_resolver.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/application/paper_marks_resolver.dart	2026-08-31 07:52:55.641472877 +0000
+@@ -20,18 +20,6 @@
+   bool get hasMismatch =>
+       balance == PaperMarksBalance.underAssigned ||
+       balance == PaperMarksBalance.overAssigned;
+-
+-  String? get teacherMessage {
+-    switch (balance) {
+-      case PaperMarksBalance.automatic:
+-      case PaperMarksBalance.balanced:
+-        return null;
+-      case PaperMarksBalance.underAssigned:
+-        return '${PaperMarksResolver.format(difference)} marks are not assigned yet.';
+-      case PaperMarksBalance.overAssigned:
+-        return 'Question marks exceed maximum marks by ${PaperMarksResolver.format(difference)}.';
+-    }
+-  }
+ }
+ 
+ class PaperMarksResolver {
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/services/builders/header_builders.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/services/builders/header_builders.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/services/builders/header_builders.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/services/builders/header_builders.dart	2026-08-31 07:47:45.357703360 +0000
+@@ -1,6 +1,6 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+-import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
++import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:pdf/pdf.dart';
+@@ -103,7 +103,7 @@
+           element,
+           scale,
+           alignment,
+-          'Maximum Marks: ${PaperMarksResolver.format(PaperMarksResolver.effectiveMaximumMarks(paper))}',
++          PaperDocumentMarks.maximumMarksLabel(paper),
+           style,
+         );
+       case ElementType.headerFieldsBlock:
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/services/question_paper_service.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/services/question_paper_service.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/services/question_paper_service.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/services/question_paper_service.dart	2026-08-31 07:47:45.358231314 +0000
+@@ -7,7 +7,7 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/services/question_numbering_service.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+-import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
++import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+@@ -532,7 +532,7 @@
+           ],
+           pw.SizedBox(height: 36),
+           pw.Text(
+-            'Maximum marks: ${PaperMarksResolver.format(PaperMarksResolver.effectiveMaximumMarks(paper))}',
++            PaperDocumentMarks.maximumMarksLabel(paper),
+           ),
+         ],
+       ),
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/services/word_export_service.dart /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/services/word_export_service.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/lib/features/pdf/services/word_export_service.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/lib/features/pdf/services/word_export_service.dart	2026-08-31 07:47:45.357901443 +0000
+@@ -5,7 +5,7 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/services/question_numbering_service.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+-import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
++import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:edusheet/features/pdf/services/export_file_service.dart';
+@@ -211,7 +211,7 @@
+         case ElementType.maxMarks:
+           buffer.write(
+             _paragraph(
+-              'Maximum Marks: ${PaperMarksResolver.format(PaperMarksResolver.effectiveMaximumMarks(paper))}',
++              PaperDocumentMarks.maximumMarksLabel(paper),
+               alignment: alignment,
+               bold: true,
+               fontSize: fontSize,
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/test/features/paper_composer/paper_marks_presentation_boundary_test.dart /mnt/data/edusheet_step1/EduSheet-master/test/features/paper_composer/paper_marks_presentation_boundary_test.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/test/features/paper_composer/paper_marks_presentation_boundary_test.dart	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/test/features/paper_composer/paper_marks_presentation_boundary_test.dart	2026-08-31 07:52:00.631828677 +0000
+@@ -0,0 +1,148 @@
++import 'dart:io';
++
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_inspector_panel.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_preview_page.dart';
++import 'package:edusheet/features/pdf/application/paper_style_catalog.dart';
++import 'package:edusheet/features/pdf/data/repositories/template_repository.dart';
++import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  late Directory tempDirectory;
++  late TemplateRepository templateRepository;
++
++  setUp(() async {
++    tempDirectory = await Directory.systemTemp.createTemp(
++      'edusheet_marks_boundary_',
++    );
++    templateRepository = TemplateRepository(
++      fileResolver: () async => File(
++        '${tempDirectory.path}${Platform.pathSeparator}templates.json',
++      ),
++    );
++  });
++
++  tearDown(() async {
++    if (await tempDirectory.exists()) {
++      await tempDirectory.delete(recursive: true);
++    }
++  });
++
++  testWidgets(
++    'student paper preview renders maximum marks once and hides diagnostics',
++    (tester) async {
++      await tester.binding.setSurfaceSize(const Size(1400, 1200));
++      addTearDown(() => tester.binding.setSurfaceSize(null));
++
++      await tester.pumpWidget(
++        ProviderScope(
++          overrides: [
++            templateRepositoryProvider.overrideWithValue(templateRepository),
++          ],
++          child: MaterialApp(home: PaperPreviewPage(paper: _paper())),
++        ),
++      );
++      await tester.pumpAndSettle();
++
++      final document = find.byKey(const Key('paper-preview-document'));
++      expect(document, findsOneWidget);
++      expect(
++        find.descendant(
++          of: document,
++          matching: find.text('Maximum Marks: 60'),
++        ),
++        findsOneWidget,
++      );
++      expect(
++        find.descendant(
++          of: document,
++          matching: find.textContaining('Assigned:'),
++        ),
++        findsNothing,
++      );
++      expect(
++        find.descendant(
++          of: document,
++          matching: find.textContaining('marks are not assigned yet'),
++        ),
++        findsNothing,
++      );
++
++      expect(
++        find.byKey(const Key('paper-preview-teacher-diagnostics')),
++        findsOneWidget,
++      );
++      expect(find.text('Teacher check • Not printed'), findsOneWidget);
++      expect(find.text('40 marks are not assigned yet.'), findsOneWidget);
++    },
++  );
++
++  testWidgets('teacher inspector keeps assigned/max mismatch diagnostics', (
++    tester,
++  ) async {
++    await tester.binding.setSurfaceSize(const Size(700, 900));
++    addTearDown(() => tester.binding.setSurfaceSize(null));
++
++    await tester.pumpWidget(
++      ProviderScope(
++        overrides: [
++          templateRepositoryProvider.overrideWithValue(templateRepository),
++        ],
++        child: MaterialApp(
++          home: Scaffold(
++            body: SizedBox(
++              width: 420,
++              child: PaperInspectorPanel(
++                paper: _paper(),
++                onEditDetails: _noop,
++                onChooseStyle: _noop,
++                onPreview: _noop,
++                onExportPdf: _noop,
++                onExportWord: _noop,
++              ),
++            ),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.text('Assigned marks'), findsOneWidget);
++    expect(find.text('Maximum marks'), findsOneWidget);
++    expect(find.text('20'), findsOneWidget);
++    expect(find.text('60'), findsOneWidget);
++    expect(find.text('40 marks are not assigned yet.'), findsOneWidget);
++  });
++}
++
++void _noop() {}
++
++Paper _paper() {
++  return Paper(
++    id: 'paper-marks-boundary',
++    title: 'Unit Test',
++    schoolName: 'Sample School',
++    templateId: PaperStyleCatalog.defaultTemplateId,
++    maximumMarks: 60,
++    createdAt: DateTime(2026, 8, 31),
++    headerFields: [
++      PaperHeaderField(id: 'subject', label: 'Subject', value: 'Mathematics'),
++      PaperHeaderField(id: 'class', label: 'Class', value: '10'),
++      PaperHeaderField(id: 'time', label: 'Time', value: '2 Hours'),
++    ],
++    sections: [
++      PaperSection(
++        id: 'section-1',
++        title: 'Section 1',
++        questions: [
++          Question(id: 'q1', text: 'Question one', marks: 20),
++        ],
++      ),
++    ],
++  );
++}
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/test/features/pdf/office_export_services_test.dart /mnt/data/edusheet_step1/EduSheet-master/test/features/pdf/office_export_services_test.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/test/features/pdf/office_export_services_test.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/test/features/pdf/office_export_services_test.dart	2026-08-31 07:52:55.641899065 +0000
+@@ -118,6 +118,21 @@
+     },
+   );
+ 
++  test(
++    'Word student document keeps marks diagnostics out of printable content',
++    () async {
++      final paper = _samplePaper().copyWith(maximumMarks: 10);
++      final output = await WordExportService.export(paper, _sampleTemplate());
++      final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
++      final documentXml = _archiveText(archive, 'word/document.xml');
++
++      expect(documentXml, contains('Maximum Marks: 10'));
++      expect(_occurrences(documentXml, 'Maximum Marks:'), 1);
++      expect(documentXml, isNot(contains('Assigned marks')));
++      expect(documentXml, isNot(contains('marks are not assigned yet')));
++    },
++  );
++
+   test('PdfService exports a PDF file inside EduSheet folder', () async {
+     final output = await PdfService.export(
+       _samplePaper(),
+@@ -242,3 +257,15 @@
+   final file = archive.files.firstWhere((entry) => entry.name == name);
+   return utf8.decode(file.content as List<int>);
+ }
++
++int _occurrences(String source, String pattern) {
++  if (pattern.isEmpty) return 0;
++  var count = 0;
++  var offset = 0;
++  while (true) {
++    final index = source.indexOf(pattern, offset);
++    if (index < 0) return count;
++    count++;
++    offset = index + pattern.length;
++  }
++}
+diff -ruN /mnt/data/edusheet_baseline/EduSheet-master/test/features/pdf/paper_style_architecture_test.dart /mnt/data/edusheet_step1/EduSheet-master/test/features/pdf/paper_style_architecture_test.dart
+--- /mnt/data/edusheet_baseline/EduSheet-master/test/features/pdf/paper_style_architecture_test.dart	2026-08-31 07:27:52.000000000 +0000
++++ /mnt/data/edusheet_step1/EduSheet-master/test/features/pdf/paper_style_architecture_test.dart	2026-08-31 07:48:27.028014011 +0000
+@@ -1,6 +1,8 @@
+ import 'dart:io';
+ 
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
++import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+ import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
+ import 'package:edusheet/features/pdf/application/paper_style_catalog.dart';
+@@ -141,7 +143,7 @@
+     expect(resolved.id, PaperStyleCatalog.defaultTemplateId);
+   });
+ 
+-  test('marks resolver explains under and over assignment', () {
++  test('marks calculation stays separate from teacher diagnostics', () {
+     final section = PaperSection(
+       id: 's1',
+       title: 'Section A',
+@@ -159,19 +161,34 @@
+     );
+     final over = under.copyWith(maximumMarks: 40);
+ 
++    final underSummary = PaperMarksResolver.summarize(under);
++    final overSummary = PaperMarksResolver.summarize(over);
++
++    expect(underSummary.balance, PaperMarksBalance.underAssigned);
++    expect(overSummary.balance, PaperMarksBalance.overAssigned);
+     expect(
+-      PaperMarksResolver.summarize(under).balance,
+-      PaperMarksBalance.underAssigned,
+-    );
+-    expect(
+-      PaperMarksResolver.summarize(under).teacherMessage,
++      PaperMarksTeacherDiagnostics(underSummary).mismatchMessage,
+       contains('10 marks'),
+     );
+     expect(
+-      PaperMarksResolver.summarize(over).balance,
+-      PaperMarksBalance.overAssigned,
++      PaperMarksTeacherDiagnostics(overSummary).mismatchMessage,
++      contains('10'),
+     );
+-    expect(PaperMarksResolver.summarize(over).teacherMessage, contains('10'));
++    expect(PaperDocumentMarks.maximumMarksLabel(under), 'Maximum Marks: 60');
++  });
++
++  test('every built-in paper header owns at most one maximum-marks slot', () {
++    for (final template in PaperStyleCatalog.allBuiltInTemplates) {
++      final layout = PaperHeaderLayoutFactory.resolve(template);
++      final marksSlots = layout.elements
++          .where((element) => element.type == ElementType.maxMarks)
++          .length;
++      expect(
++        marksSlots,
++        lessThanOrEqualTo(1),
++        reason: '${template.id} renders maximum marks more than once',
++      );
++    }
+   });
+ 
+   test('custom clone preserves page size', () async {

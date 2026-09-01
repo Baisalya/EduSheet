@@ -1,0 +1,13 @@
+diff --git a/test/features/paper_composer/dual_editor_mode_test.dart b/test/features/paper_composer/dual_editor_mode_test.dart
+index d268e98..bed5f6c 100644
+--- a/test/features/paper_composer/dual_editor_mode_test.dart
++++ b/test/features/paper_composer/dual_editor_mode_test.dart
+@@ -113,7 +113,7 @@ void main() {
+     await tester.pumpAndSettle();
+ 
+     expect(find.text('Custom notice'), findsOneWidget);
+-    expect(find.textContaining('0 questions'), findsOneWidget);
++    expect(find.text('0 questions · 0 marks'), findsOneWidget);
+ 
+     await tester.tap(find.text('Word'));
+     await tester.pumpAndSettle();
