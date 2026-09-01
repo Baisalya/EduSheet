@@ -216,7 +216,7 @@ class WordExportService {
         _paragraph(
           paper.instruction.trim(),
           editableTag: SmartPaperDocxRoundTripService.paperInstructionTag,
-          alignment: 'center',
+          alignment: _wordAlignment(paper.instructionAlignment.name),
           bold: true,
           italic: true,
           fontSize: template.questionFontSize,
@@ -371,29 +371,7 @@ class WordExportService {
     double fontSize,
     String alignment,
   ) {
-    final requestedLabels =
-        (element.properties['fieldLabels'] as List?)
-            ?.map((value) => value.toString().trim())
-            .where((value) => value.isNotEmpty)
-            .toList(growable: false) ??
-        const <String>[];
-
-    final fields = requestedLabels.isEmpty
-        ? paper.headerFields
-        : requestedLabels
-              .map((label) {
-                for (final field in paper.headerFields) {
-                  if (field.label.toLowerCase() == label.toLowerCase()) {
-                    return field;
-                  }
-                }
-                return PaperHeaderField(
-                  id: '',
-                  label: label,
-                  isPlaceholder: true,
-                );
-              })
-              .toList(growable: false);
+    final fields = PaperHeaderLayoutFactory.resolveHeaderFields(element, paper);
     if (fields.isEmpty) return '';
 
     final rows = StringBuffer();
@@ -440,61 +418,109 @@ class WordExportService {
       buffer.write('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
     }
 
+    final keepNext = section.keepTogether && section.questions.isNotEmpty;
+    final headingFontSize = 16 * section.headingSize.exportScale;
+    final sectionMarksText = section.sectionMarksText;
+    final rightTabPosition = _contentWidthTwips(template, paper);
+
+    if (section.showTopDivider) {
+      buffer.write(_divider(keepNext: keepNext));
+    }
+
     if (section.showTitle || section.prefix.isNotEmpty) {
-      final headingRuns = <_Run>[];
-      if (section.prefix.trim().isNotEmpty) {
-        headingRuns.add(
+      final headingRuns = <_Run>[
+        if (section.prefix.trim().isNotEmpty)
           _Run(
             section.showTitle
                 ? '${section.prefix.trim()} '
                 : section.prefix.trim(),
-            bold: true,
-            fontSize: 16,
+            bold: section.headingBold,
+            allCaps: section.headingUppercase,
+            fontSize: headingFontSize,
           ),
-        );
-      }
-      if (section.showTitle) {
-        headingRuns.add(
+        if (section.showTitle)
           _Run(
             section.title,
-            bold: true,
-            fontSize: 16,
+            bold: section.headingBold,
+            allCaps: section.headingUppercase,
+            fontSize: headingFontSize,
             editableTag: SmartPaperDocxRoundTripService.sectionTitleTag(
               section.id,
             ),
           ),
-        );
-      }
+        if (section.sectionMarksDisplay == SectionMarksDisplay.inline &&
+            sectionMarksText != null)
+          _Run(' ($sectionMarksText)', bold: true, fontSize: 11),
+        if (section.sectionMarksDisplay == SectionMarksDisplay.right &&
+            sectionMarksText != null) ...[
+          const _Run('\t'),
+          _Run(sectionMarksText, bold: true, fontSize: 11),
+        ],
+      ];
       buffer.write(
-        _paragraphRuns(headingRuns, spacingBefore: 240, spacingAfter: 80),
+        _paragraphRuns(
+          headingRuns,
+          alignment: _wordAlignment(section.headingAlignment.name),
+          spacingBefore: _pointsToTwips(section.spacing.beforePoints),
+          spacingAfter: 80,
+          rightTabPosition:
+              section.sectionMarksDisplay == SectionMarksDisplay.right
+              ? rightTabPosition
+              : null,
+          keepNext: keepNext,
+          boxed: section.headingBoxed,
+        ),
       );
     }
 
     if (section.instruction?.trim().isNotEmpty == true) {
       buffer.write(
-        _paragraphRuns([
-          const _Run('Instruction: ', italic: true, fontSize: 11),
-          _Run(
-            section.instruction!.trim(),
-            italic: true,
-            fontSize: 11,
-            editableTag: SmartPaperDocxRoundTripService.sectionInstructionTag(
-              section.id,
+        _paragraphRuns(
+          [
+            if (section.showInstructionLabel)
+              const _Run('Instruction: ', italic: true, fontSize: 11),
+            _Run(
+              section.instruction!.trim(),
+              italic: true,
+              fontSize: 11,
+              editableTag: SmartPaperDocxRoundTripService.sectionInstructionTag(
+                section.id,
+              ),
             ),
-          ),
-        ], spacingAfter: 80),
+          ],
+          alignment: _wordAlignment(section.instructionAlignment.name),
+          spacingAfter: 80,
+          keepNext: keepNext,
+        ),
       );
     }
 
     final answerRule = PaperStructureService.answerRuleText(section);
     if (answerRule != null) {
       buffer.write(
-        _paragraph(answerRule, bold: true, fontSize: 10, spacingAfter: 80),
+        _paragraph(
+          answerRule,
+          bold: true,
+          fontSize: 10,
+          alignment: _wordAlignment(section.answerRuleAlignment.name),
+          spacingAfter: 80,
+          keepNext: keepNext,
+        ),
       );
     }
 
-    if (section.showDivider) {
-      buffer.write(_divider());
+    if (section.showBottomDivider) {
+      buffer.write(_divider(keepNext: keepNext));
+    }
+
+    if (section.spacing.afterPoints > 0) {
+      buffer.write(
+        _paragraph(
+          '',
+          spacingAfter: _pointsToTwips(section.spacing.afterPoints),
+          keepNext: keepNext,
+        ),
+      );
     }
 
     final hasManualPageBreak = section.questions.any(
@@ -603,6 +629,19 @@ class WordExportService {
     }
 
     final label = PaperStructureService.questionLabel(index, paper, section);
+    if (question.instructions.trim().isNotEmpty) {
+      buffer.write(
+        _paragraph(
+          question.instructions.trim(),
+          alignment: _wordAlignment(question.instructionAlignment.name),
+          italic: true,
+          bold: true,
+          fontSize: fontSize * 0.9,
+          indentLeft: 360,
+          spacingAfter: 50,
+        ),
+      );
+    }
     buffer.write(
       _paragraphRuns(
         [
@@ -614,18 +653,34 @@ class WordExportService {
               question.id,
             ),
           ),
-          _Run(
-            ' [${_marks(question.marks)}]',
-            bold: true,
-            fontSize: fontSize,
-            editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
-              question.id,
+          if (section.questionMarksPlacement == QuestionMarksPlacement.inline)
+            _Run(
+              ' [${_marks(question.marks)}]',
+              bold: true,
+              fontSize: fontSize,
+              editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
+                question.id,
+              ),
+            )
+          else ...[
+            const _Run('\t'),
+            _Run(
+              '[${_marks(question.marks)}]',
+              bold: true,
+              fontSize: fontSize,
+              editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
+                question.id,
+              ),
             ),
-          ),
+          ],
         ],
         alignment: alignment,
         spacingBefore: 80,
         spacingAfter: paragraphSpacing,
+        rightTabPosition:
+            section.questionMarksPlacement == QuestionMarksPlacement.rightEdge
+            ? _contentWidthTwips(template, paper)
+            : null,
       ),
     );
 
@@ -689,6 +744,8 @@ class WordExportService {
             fontSize: fontSize,
             images: images,
             indentLeft: 360,
+            marksPlacement: section.questionMarksPlacement,
+            rightTabPosition: _contentWidthTwips(template, paper),
           ),
         );
       }
@@ -715,6 +772,8 @@ class WordExportService {
             fontSize: fontSize,
             images: images,
             indentLeft: 360,
+            marksPlacement: section.questionMarksPlacement,
+            rightTabPosition: _contentWidthTwips(template, paper),
           ),
         );
       }
@@ -737,9 +796,24 @@ class WordExportService {
     required double fontSize,
     required List<_ImagePart> images,
     required int indentLeft,
+    required QuestionMarksPlacement marksPlacement,
+    required int rightTabPosition,
   }) {
     final buffer = StringBuffer();
     final text = OfficeTextFormatter.questionText(question.text).trim();
+    if (question.instructions.trim().isNotEmpty) {
+      buffer.write(
+        _paragraph(
+          question.instructions.trim(),
+          alignment: _wordAlignment(question.instructionAlignment.name),
+          italic: true,
+          bold: true,
+          fontSize: fontSize * 0.9,
+          indentLeft: indentLeft,
+          spacingAfter: 40,
+        ),
+      );
+    }
     final runs = <_Run>[
       if (label.isNotEmpty) _Run('$label ', bold: true, fontSize: fontSize),
       _Run(
@@ -749,14 +823,26 @@ class WordExportService {
           question.id,
         ),
       ),
-      _Run(
-        ' [${_marks(question.marks)}]',
-        bold: true,
-        fontSize: fontSize,
-        editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
-          question.id,
+      if (marksPlacement == QuestionMarksPlacement.inline)
+        _Run(
+          ' [${_marks(question.marks)}]',
+          bold: true,
+          fontSize: fontSize,
+          editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
+            question.id,
+          ),
+        )
+      else ...[
+        const _Run('\t'),
+        _Run(
+          '[${_marks(question.marks)}]',
+          bold: true,
+          fontSize: fontSize,
+          editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
+            question.id,
+          ),
         ),
-      ),
+      ],
     ];
     buffer.write(
       _paragraphRuns(
@@ -764,6 +850,9 @@ class WordExportService {
         indentLeft: indentLeft,
         spacingBefore: 50,
         spacingAfter: 60,
+        rightTabPosition: marksPlacement == QuestionMarksPlacement.rightEdge
+            ? rightTabPosition
+            : null,
       ),
     );
 
@@ -807,6 +896,8 @@ class WordExportService {
             fontSize: fontSize,
             images: images,
             indentLeft: indentLeft + 240,
+            marksPlacement: marksPlacement,
+            rightTabPosition: rightTabPosition,
           ),
         );
       }
@@ -833,6 +924,8 @@ class WordExportService {
             fontSize: fontSize,
             images: images,
             indentLeft: indentLeft + 240,
+            marksPlacement: marksPlacement,
+            rightTabPosition: rightTabPosition,
           ),
         );
       }
@@ -1201,6 +1294,9 @@ class WordExportService {
     int spacingBefore = 0,
     int spacingAfter = 120,
     int indentLeft = 0,
+    int? rightTabPosition,
+    bool keepNext = false,
+    bool boxed = false,
   }) {
     return _paragraphRuns(
       [
@@ -1217,6 +1313,9 @@ class WordExportService {
       spacingBefore: spacingBefore,
       spacingAfter: spacingAfter,
       indentLeft: indentLeft,
+      rightTabPosition: rightTabPosition,
+      keepNext: keepNext,
+      boxed: boxed,
     );
   }
 
@@ -1226,11 +1325,30 @@ class WordExportService {
     int spacingBefore = 0,
     int spacingAfter = 120,
     int indentLeft = 0,
+    int? rightTabPosition,
+    bool keepNext = false,
+    bool boxed = false,
   }) {
     final paragraphProperties = StringBuffer()
       ..write('<w:pPr>')
       ..write('<w:jc w:val="$alignment"/>')
       ..write('<w:spacing w:before="$spacingBefore" w:after="$spacingAfter"/>');
+    if (keepNext) {
+      paragraphProperties.write('<w:keepNext/>');
+    }
+    if (rightTabPosition != null) {
+      paragraphProperties.write(
+        '<w:tabs><w:tab w:val="right" w:pos="$rightTabPosition"/></w:tabs>',
+      );
+    }
+    if (boxed) {
+      paragraphProperties.write(
+        '<w:pBdr><w:top w:val="single" w:sz="6" w:space="3" w:color="666666"/>'
+        '<w:left w:val="single" w:sz="6" w:space="3" w:color="666666"/>'
+        '<w:bottom w:val="single" w:sz="6" w:space="3" w:color="666666"/>'
+        '<w:right w:val="single" w:sz="6" w:space="3" w:color="666666"/></w:pBdr>',
+      );
+    }
     if (indentLeft > 0) {
       paragraphProperties.write('<w:ind w:left="$indentLeft"/>');
     }
@@ -1240,10 +1358,12 @@ class WordExportService {
   }
 
   static String _runXml(_Run run) {
+    if (run.text == '\t') return '<w:r><w:tab/></w:r>';
     final halfPoints = (run.fontSize * 2).round();
     final properties = StringBuffer()
       ..write('<w:rPr>')
       ..write(run.bold ? '<w:b/>' : '')
+      ..write(run.allCaps ? '<w:caps/>' : '')
       ..write(run.italic ? '<w:i/>' : '')
       ..write(run.underline ? '<w:u w:val="single"/>' : '')
       ..write('<w:sz w:val="$halfPoints"/>')
@@ -1280,8 +1400,9 @@ class WordExportService {
         '</w:drawing></w:r></w:p>';
   }
 
-  static String _divider() {
-    return '<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" '
+  static String _divider({bool keepNext = false}) {
+    final keep = keepNext ? '<w:keepNext/>' : '';
+    return '<w:p><w:pPr>$keep<w:pBdr><w:bottom w:val="single" w:sz="6" '
         'w:space="1" w:color="000000"/></w:pBdr>'
         '<w:spacing w:after="120"/></w:pPr></w:p>';
   }
@@ -1363,6 +1484,16 @@ class WordExportService {
   }
 
   static int _pointsToTwips(double points) => (points * 20).round();
+
+  static int _contentWidthTwips(PaperTemplate template, Paper paper) {
+    final page = _resolvedPageSizeTwips(template, paper.pageLayout);
+    final margins = paper.pageLayout.margins;
+    final width =
+        page.width -
+        _pointsToTwips(margins.leftPoints) -
+        _pointsToTwips(margins.rightPoints);
+    return width.clamp(2400, 18000).toInt();
+  }
 
   static String _manualPageBreakParagraph() {
     return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
@@ -1660,6 +1791,7 @@ class _Run {
   final String text;
   final bool bold;
   final bool italic;
+  final bool allCaps;
   final bool underline;
   final double fontSize;
   final String? editableTag;
@@ -1668,6 +1800,7 @@ class _Run {
     this.text, {
     this.bold = false,
     this.italic = false,
+    this.allCaps = false,
     this.underline = false,
     this.fontSize = 12,
     this.editableTag,

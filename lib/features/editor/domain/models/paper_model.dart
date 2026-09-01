@@ -99,6 +99,57 @@ enum CognitiveLevel {
 
 enum QuestionStatus { draft, complete }
 
+enum PaperTextAlignment { left, center, right }
+
+enum SectionHeadingSize { small, normal, large }
+
+enum SectionSpacing { compact, normal, spacious }
+
+enum SectionMarksDisplay { hidden, inline, right }
+
+enum QuestionMarksPlacement { inline, rightEdge }
+
+extension SectionHeadingSizeProperties on SectionHeadingSize {
+  double get previewFontSize => switch (this) {
+    SectionHeadingSize.small => 14,
+    SectionHeadingSize.normal => 17,
+    SectionHeadingSize.large => 21,
+  };
+
+  double get exportScale => switch (this) {
+    SectionHeadingSize.small => 0.82,
+    SectionHeadingSize.normal => 1.0,
+    SectionHeadingSize.large => 1.18,
+  };
+}
+
+extension SectionSpacingProperties on SectionSpacing {
+  double get beforePoints => switch (this) {
+    SectionSpacing.compact => 8,
+    SectionSpacing.normal => 20,
+    SectionSpacing.spacious => 32,
+  };
+
+  double get afterPoints => switch (this) {
+    SectionSpacing.compact => 6,
+    SectionSpacing.normal => 12,
+    SectionSpacing.spacious => 20,
+  };
+}
+
+extension PaperTextAlignmentProperties on PaperTextAlignment {
+  TextAlign get textAlign {
+    switch (this) {
+      case PaperTextAlignment.left:
+        return TextAlign.left;
+      case PaperTextAlignment.center:
+        return TextAlign.center;
+      case PaperTextAlignment.right:
+        return TextAlign.right;
+    }
+  }
+}
+
 enum QuestionAttachmentKind { image, diagram, file }
 
 enum QuestionNumberStyle {
@@ -120,6 +171,7 @@ class Paper {
   final String title;
   final String schoolName;
   final String instruction;
+  final PaperTextAlignment instructionAlignment;
   final List<String> logos;
   final List<PaperHeaderField> headerFields;
   final Map<String, String> customHeaderValues;
@@ -141,6 +193,7 @@ class Paper {
     required this.title,
     this.schoolName = 'My School',
     this.instruction = '',
+    this.instructionAlignment = PaperTextAlignment.left,
     this.logos = const [],
     this.headerFields = const [],
     this.customHeaderValues = const {},
@@ -163,6 +216,7 @@ class Paper {
     String? title,
     String? schoolName,
     String? instruction,
+    PaperTextAlignment? instructionAlignment,
     List<String>? logos,
     List<PaperHeaderField>? headerFields,
     Map<String, String>? customHeaderValues,
@@ -185,6 +239,7 @@ class Paper {
       title: title ?? this.title,
       schoolName: schoolName ?? this.schoolName,
       instruction: instruction ?? this.instruction,
+      instructionAlignment: instructionAlignment ?? this.instructionAlignment,
       logos: logos ?? this.logos,
       headerFields: headerFields ?? this.headerFields,
       customHeaderValues: customHeaderValues ?? this.customHeaderValues,
@@ -216,6 +271,7 @@ class Paper {
       'title': title,
       'schoolName': schoolName,
       'instruction': instruction,
+      'instructionAlignment': instructionAlignment.name,
       'logos': logos,
       'headerFields': headerFields.map((f) => f.toJson()).toList(),
       'customHeaderValues': customHeaderValues,
@@ -241,6 +297,11 @@ class Paper {
       title: json['title'],
       schoolName: json['schoolName'] ?? 'My School',
       instruction: json['instruction'] ?? '',
+      instructionAlignment: _enumByName(
+        PaperTextAlignment.values,
+        json['instructionAlignment'],
+        PaperTextAlignment.left,
+      ),
       logos: (json['logos'] as List?)?.cast<String>() ?? [],
       headerFields:
           (json['headerFields'] as List?)
@@ -342,6 +403,19 @@ class PaperSection {
   final int? requiredCount;
   final bool showTitle;
   final bool showDivider;
+  final bool showTopDivider;
+  final bool showBottomDivider;
+  final PaperTextAlignment headingAlignment;
+  final PaperTextAlignment instructionAlignment;
+  final PaperTextAlignment answerRuleAlignment;
+  final bool showInstructionLabel;
+  final bool headingBold;
+  final bool headingUppercase;
+  final bool headingBoxed;
+  final SectionHeadingSize headingSize;
+  final SectionSpacing spacing;
+  final SectionMarksDisplay sectionMarksDisplay;
+  final QuestionMarksPlacement questionMarksPlacement;
   final QuestionNumberStyle? numberingStyle;
   final double? defaultMarks;
   final bool pageBreakBefore;
@@ -358,7 +432,20 @@ class PaperSection {
     this.questions = const [],
     this.requiredCount,
     this.showTitle = true,
-    this.showDivider = true,
+    bool? showDivider,
+    this.showTopDivider = false,
+    bool? showBottomDivider,
+    this.headingAlignment = PaperTextAlignment.center,
+    this.instructionAlignment = PaperTextAlignment.center,
+    this.answerRuleAlignment = PaperTextAlignment.center,
+    this.showInstructionLabel = false,
+    this.headingBold = true,
+    this.headingUppercase = false,
+    this.headingBoxed = false,
+    this.headingSize = SectionHeadingSize.normal,
+    this.spacing = SectionSpacing.normal,
+    this.sectionMarksDisplay = SectionMarksDisplay.hidden,
+    this.questionMarksPlacement = QuestionMarksPlacement.rightEdge,
     this.numberingStyle,
     this.defaultMarks,
     this.pageBreakBefore = false,
@@ -366,7 +453,8 @@ class PaperSection {
     this.answerSpaceLines = 0,
     this.ruledAnswerArea = false,
     this.graphAnswerArea = false,
-  });
+  }) : showBottomDivider = showBottomDivider ?? showDivider ?? true,
+       showDivider = showBottomDivider ?? showDivider ?? true;
 
   PaperSection copyWith({
     String? id,
@@ -378,6 +466,19 @@ class PaperSection {
     bool clearRequiredCount = false,
     bool? showTitle,
     bool? showDivider,
+    bool? showTopDivider,
+    bool? showBottomDivider,
+    PaperTextAlignment? headingAlignment,
+    PaperTextAlignment? instructionAlignment,
+    PaperTextAlignment? answerRuleAlignment,
+    bool? showInstructionLabel,
+    bool? headingBold,
+    bool? headingUppercase,
+    bool? headingBoxed,
+    SectionHeadingSize? headingSize,
+    SectionSpacing? spacing,
+    SectionMarksDisplay? sectionMarksDisplay,
+    QuestionMarksPlacement? questionMarksPlacement,
     QuestionNumberStyle? numberingStyle,
     bool clearNumberingStyle = false,
     double? defaultMarks,
@@ -398,7 +499,22 @@ class PaperSection {
           ? null
           : (requiredCount ?? this.requiredCount),
       showTitle: showTitle ?? this.showTitle,
-      showDivider: showDivider ?? this.showDivider,
+      showDivider: showBottomDivider ?? showDivider ?? this.showBottomDivider,
+      showTopDivider: showTopDivider ?? this.showTopDivider,
+      showBottomDivider:
+          showBottomDivider ?? showDivider ?? this.showBottomDivider,
+      headingAlignment: headingAlignment ?? this.headingAlignment,
+      instructionAlignment: instructionAlignment ?? this.instructionAlignment,
+      answerRuleAlignment: answerRuleAlignment ?? this.answerRuleAlignment,
+      showInstructionLabel: showInstructionLabel ?? this.showInstructionLabel,
+      headingBold: headingBold ?? this.headingBold,
+      headingUppercase: headingUppercase ?? this.headingUppercase,
+      headingBoxed: headingBoxed ?? this.headingBoxed,
+      headingSize: headingSize ?? this.headingSize,
+      spacing: spacing ?? this.spacing,
+      sectionMarksDisplay: sectionMarksDisplay ?? this.sectionMarksDisplay,
+      questionMarksPlacement:
+          questionMarksPlacement ?? this.questionMarksPlacement,
       numberingStyle: clearNumberingStyle
           ? null
           : (numberingStyle ?? this.numberingStyle),
@@ -411,6 +527,21 @@ class PaperSection {
       ruledAnswerArea: ruledAnswerArea ?? this.ruledAnswerArea,
       graphAnswerArea: graphAnswerArea ?? this.graphAnswerArea,
     );
+  }
+
+  String get formattedHeadingText {
+    final value = '$prefix ${showTitle ? title : ''}'.trim();
+    return headingUppercase ? value.toUpperCase() : value;
+  }
+
+  String? get sectionMarksText {
+    if (sectionMarksDisplay == SectionMarksDisplay.hidden) {
+      return null;
+    }
+    final value = totalMarks == totalMarks.roundToDouble()
+        ? totalMarks.toInt().toString()
+        : totalMarks.toStringAsFixed(1);
+    return '$value ${value == '1' ? 'Mark' : 'Marks'}';
   }
 
   double get totalMarks {
@@ -442,7 +573,20 @@ class PaperSection {
       'questions': questions.map((q) => q.toJson()).toList(),
       'requiredCount': requiredCount,
       'showTitle': showTitle,
-      'showDivider': showDivider,
+      'showDivider': showBottomDivider,
+      'showTopDivider': showTopDivider,
+      'showBottomDivider': showBottomDivider,
+      'headingAlignment': headingAlignment.name,
+      'instructionAlignment': instructionAlignment.name,
+      'answerRuleAlignment': answerRuleAlignment.name,
+      'showInstructionLabel': showInstructionLabel,
+      'headingBold': headingBold,
+      'headingUppercase': headingUppercase,
+      'headingBoxed': headingBoxed,
+      'headingSize': headingSize.name,
+      'spacing': spacing.name,
+      'sectionMarksDisplay': sectionMarksDisplay.name,
+      'questionMarksPlacement': questionMarksPlacement.name,
       'numberingStyle': numberingStyle?.name,
       'defaultMarks': defaultMarks,
       'pageBreakBefore': pageBreakBefore,
@@ -466,7 +610,49 @@ class PaperSection {
           [],
       requiredCount: json['requiredCount'],
       showTitle: json['showTitle'] ?? true,
-      showDivider: json['showDivider'] ?? true,
+      showDivider: json['showBottomDivider'] ?? json['showDivider'] ?? true,
+      showTopDivider: json['showTopDivider'] == true,
+      showBottomDivider:
+          json['showBottomDivider'] ?? json['showDivider'] ?? true,
+      headingAlignment: _enumByName(
+        PaperTextAlignment.values,
+        json['headingAlignment'],
+        PaperTextAlignment.center,
+      ),
+      instructionAlignment: _enumByName(
+        PaperTextAlignment.values,
+        json['instructionAlignment'],
+        PaperTextAlignment.center,
+      ),
+      answerRuleAlignment: _enumByName(
+        PaperTextAlignment.values,
+        json['answerRuleAlignment'],
+        PaperTextAlignment.center,
+      ),
+      showInstructionLabel: json['showInstructionLabel'] == true,
+      headingBold: json['headingBold'] ?? true,
+      headingUppercase: json['headingUppercase'] == true,
+      headingBoxed: json['headingBoxed'] == true,
+      headingSize: _enumByName(
+        SectionHeadingSize.values,
+        json['headingSize'],
+        SectionHeadingSize.normal,
+      ),
+      spacing: _enumByName(
+        SectionSpacing.values,
+        json['spacing'],
+        SectionSpacing.normal,
+      ),
+      sectionMarksDisplay: _enumByName(
+        SectionMarksDisplay.values,
+        json['sectionMarksDisplay'],
+        SectionMarksDisplay.hidden,
+      ),
+      questionMarksPlacement: _enumByName(
+        QuestionMarksPlacement.values,
+        json['questionMarksPlacement'],
+        QuestionMarksPlacement.rightEdge,
+      ),
       numberingStyle: json['numberingStyle'] == null
           ? null
           : _enumByName(
@@ -653,6 +839,7 @@ class Question {
   final List<String> tags;
   final String language;
   final String instructions;
+  final PaperTextAlignment instructionAlignment;
   final String sourceReference;
   final List<MathExpression> mathExpressions;
   final List<QuestionAttachment> attachments;
@@ -690,6 +877,7 @@ class Question {
     this.tags = const [],
     this.language = 'en',
     this.instructions = '',
+    this.instructionAlignment = PaperTextAlignment.left,
     this.sourceReference = '',
     this.mathExpressions = const [],
     this.attachments = const [],
@@ -753,6 +941,7 @@ class Question {
     List<String>? tags,
     String? language,
     String? instructions,
+    PaperTextAlignment? instructionAlignment,
     String? sourceReference,
     List<MathExpression>? mathExpressions,
     List<QuestionAttachment>? attachments,
@@ -795,6 +984,7 @@ class Question {
       tags: tags ?? this.tags,
       language: language ?? this.language,
       instructions: instructions ?? this.instructions,
+      instructionAlignment: instructionAlignment ?? this.instructionAlignment,
       sourceReference: sourceReference ?? this.sourceReference,
       mathExpressions: mathExpressions ?? this.mathExpressions,
       attachments: attachments ?? this.attachments,
@@ -836,6 +1026,7 @@ class Question {
       'tags': tags,
       'language': language,
       'instructions': instructions,
+      'instructionAlignment': instructionAlignment.name,
       'sourceReference': sourceReference,
       'mathExpressions': mathExpressions.map((item) => item.toJson()).toList(),
       'attachments': attachments.map((item) => item.toJson()).toList(),
@@ -897,6 +1088,11 @@ class Question {
       tags: _stringList(json['tags']),
       language: json['language']?.toString() ?? 'en',
       instructions: json['instructions']?.toString() ?? '',
+      instructionAlignment: _enumByName(
+        PaperTextAlignment.values,
+        json['instructionAlignment'],
+        PaperTextAlignment.left,
+      ),
       sourceReference: json['sourceReference']?.toString() ?? '',
       mathExpressions: _modelList(
         json['mathExpressions'],

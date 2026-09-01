@@ -33,8 +33,9 @@ class PaperHeaderLayoutFactory {
   }
 
   /// Adapts the resolved layout to real paper metadata without changing the
-  /// persisted template. Built-in headers reserve two two-column metadata rows;
-  /// extra teacher fields expand the header and move following elements down.
+  /// persisted template. Built-in headers reserve the rows required by their
+  /// curated metadata order; extra teacher fields expand the header and move
+  /// following elements down.
   static CustomLayout resolveForPaper(PaperTemplate template, Paper paper) {
     final base = resolve(template);
     if (template.headerLayout == HeaderLayout.custom) return base;
@@ -49,16 +50,15 @@ class PaperHeaderLayoutFactory {
     if (fieldsBlock == null) return base;
     final block = fieldsBlock;
 
-    final requestedLabels =
+    final fieldCount = resolveHeaderFields(block, paper).length;
+    final rows = (fieldCount / 2).ceil();
+    final requestedCount =
         (block.properties['fieldLabels'] as List?)
             ?.where((value) => value.toString().trim().isNotEmpty)
             .length ??
         0;
-    final fieldCount = requestedLabels > 0
-        ? requestedLabels
-        : paper.headerFields.length;
-    final rows = (fieldCount / 2).ceil();
-    final extraRows = rows > 2 ? rows - 2 : 0;
+    final reservedRows = (requestedCount / 2).ceil().clamp(2, 20).toInt();
+    final extraRows = rows > reservedRows ? rows - reservedRows : 0;
     if (extraRows == 0) return base;
 
     final extraHeight = extraRows * 18.0;
@@ -84,10 +84,52 @@ class PaperHeaderLayoutFactory {
 
   static const double _w = CustomLayout.designWidth;
 
+  /// Resolves template-preferred metadata slots without hiding teacher-added
+  /// fields. Preferred labels stay first; any extra paper fields follow.
+  static List<PaperHeaderField> resolveHeaderFields(
+    TemplateElement element,
+    Paper paper,
+  ) {
+    final requestedLabels =
+        (element.properties['fieldLabels'] as List?)
+            ?.map((value) => value.toString().trim())
+            .where((value) => value.isNotEmpty)
+            .toList(growable: false) ??
+        const <String>[];
+    if (requestedLabels.isEmpty) {
+      return List<PaperHeaderField>.unmodifiable(paper.headerFields);
+    }
+
+    final requestedKeys = requestedLabels
+        .map((label) => label.toLowerCase())
+        .toSet();
+    final fields = <PaperHeaderField>[];
+    for (final label in requestedLabels) {
+      PaperHeaderField? match;
+      for (final field in paper.headerFields) {
+        if (field.label.trim().toLowerCase() == label.toLowerCase()) {
+          match = field;
+          break;
+        }
+      }
+      if (match != null) {
+        fields.add(match);
+      } else if (element.properties['hideMissingFields'] != true) {
+        fields.add(PaperHeaderField(id: '', label: label, isPlaceholder: true));
+      }
+    }
+    fields.addAll(
+      paper.headerFields.where(
+        (field) => !requestedKeys.contains(field.label.trim().toLowerCase()),
+      ),
+    );
+    return List<PaperHeaderField>.unmodifiable(fields);
+  }
+
   static CustomLayout _centered(PaperTemplate template) {
     final headingAlignment = template.centeredHeader ? 'center' : 'left';
     return CustomLayout(
-      canvasHeight: 122,
+      canvasHeight: 152,
       elements: [
         _el(
           'school',
@@ -95,13 +137,13 @@ class PaperHeaderLayoutFactory {
           0,
           0,
           width: _w,
-          properties: _text(16, bold: true, alignment: headingAlignment),
+          properties: _text(16.5, bold: true, alignment: headingAlignment),
         ),
         _el(
           'title',
           ElementType.paperTitle,
           0,
-          25,
+          26,
           width: _w,
           properties: _text(
             template.headerFontSize,
@@ -109,23 +151,27 @@ class PaperHeaderLayoutFactory {
             alignment: headingAlignment,
           ),
         ),
+        _line('dividerTop', 57, template, thickness: 0.8),
         _el(
           'fields',
           ElementType.headerFieldsBlock,
           0,
-          57,
+          71,
           width: _w,
-          properties: _text(10.5, alignment: 'center'),
+          properties: _fieldText(
+            10.5,
+            labels: const ['Subject', 'Class', 'Time', 'Date'],
+          ),
         ),
         _el(
           'marks',
           ElementType.maxMarks,
           0,
-          91,
+          116,
           width: _w,
           properties: _text(10.5, bold: true, alignment: 'right'),
         ),
-        _line('divider', 116, template),
+        _line('dividerBottom', 145, template),
       ],
     );
   }
@@ -134,19 +180,19 @@ class PaperHeaderLayoutFactory {
     PaperTemplate template, {
     required bool logoLeft,
   }) {
-    final logoX = logoLeft ? 0.0 : _w - 52;
-    final textX = logoLeft ? 68.0 : 0.0;
-    final textWidth = _w - 68;
+    final logoX = logoLeft ? 0.0 : _w - 50;
+    final textX = logoLeft ? 64.0 : 0.0;
+    final textWidth = _w - 64;
     final alignment = logoLeft ? 'left' : 'right';
     return CustomLayout(
-      canvasHeight: 142,
+      canvasHeight: 162,
       elements: [
-        _el('logo', ElementType.logo, logoX, 5, width: 52, height: 52),
+        _el('logo', ElementType.logo, logoX, 4, width: 50, height: 50),
         _el(
           'school',
           ElementType.schoolName,
           textX,
-          7,
+          5,
           width: textWidth,
           properties: _text(16, bold: true, alignment: alignment),
         ),
@@ -154,7 +200,7 @@ class PaperHeaderLayoutFactory {
           'title',
           ElementType.paperTitle,
           textX,
-          32,
+          31,
           width: textWidth,
           properties: _text(
             template.headerFontSize,
@@ -162,28 +208,35 @@ class PaperHeaderLayoutFactory {
             alignment: alignment,
           ),
         ),
+        _line('dividerTop', 66, template, thickness: 0.8),
         _el(
           'fields',
           ElementType.headerFieldsBlock,
           0,
-          78,
+          82,
           width: _w,
-          properties: _text(10.5),
+          properties: _fieldText(
+            10.5,
+            labels: const ['Subject', 'Class', 'Time', 'Date'],
+          ),
         ),
         _el(
           'marks',
           ElementType.maxMarks,
           0,
-          111,
+          126,
           width: _w,
           properties: _text(10.5, bold: true, alignment: 'right'),
         ),
-        _line('divider', 136, template),
+        _line('dividerBottom', 155, template),
       ],
     );
   }
 
   static CustomLayout _modern(PaperTemplate template) {
+    final fieldLabels = template.type == TemplateType.college
+        ? const ['Semester', 'Course Code', 'Paper Code', 'Time']
+        : const ['Batch', 'Set', 'Subject', 'Time'];
     return CustomLayout(
       canvasHeight: 132,
       elements: [
@@ -215,7 +268,7 @@ class PaperHeaderLayoutFactory {
           0,
           79,
           width: _w,
-          properties: _text(10.5),
+          properties: _fieldText(10.5, labels: fieldLabels),
         ),
         _el(
           'marks',
@@ -225,6 +278,7 @@ class PaperHeaderLayoutFactory {
           width: _w,
           properties: _text(10.5, bold: true, alignment: 'right'),
         ),
+        _line('dividerBottom', 129, template, thickness: 0.7),
       ],
     );
   }
@@ -263,7 +317,10 @@ class PaperHeaderLayoutFactory {
           0,
           58,
           width: _w,
-          properties: _text(10),
+          properties: _fieldText(
+            10,
+            labels: const ['Subject', 'Class', 'Time', 'Set'],
+          ),
         ),
         _line('divider', 101, template, thickness: 0.7),
       ],
@@ -274,22 +331,26 @@ class PaperHeaderLayoutFactory {
     return CustomLayout(
       canvasHeight: 166,
       elements: [
-        _el('logo', ElementType.logo, 0, 3, width: 48, height: 48),
+        _el('logo', ElementType.logo, 0, 5, width: 44, height: 44),
         _el(
           'school',
           ElementType.schoolName,
-          62,
-          5,
-          width: _w - 62,
-          properties: _text(16.5, bold: true),
+          58,
+          4,
+          width: _w - 58,
+          properties: _text(16.5, bold: true, alignment: 'center'),
         ),
         _el(
           'title',
           ElementType.paperTitle,
-          62,
+          58,
           31,
-          width: _w - 62,
-          properties: _text(template.headerFontSize, bold: true),
+          width: _w - 58,
+          properties: _text(
+            template.headerFontSize,
+            bold: true,
+            alignment: 'center',
+          ),
         ),
         _line('dividerTop', 67, template),
         _el(
@@ -298,7 +359,10 @@ class PaperHeaderLayoutFactory {
           0,
           82,
           width: _w,
-          properties: _text(10.5),
+          properties: _fieldText(
+            10.5,
+            labels: const ['Semester', 'Course Code', 'Paper Code', 'Time'],
+          ),
         ),
         _el(
           'marks',
@@ -345,7 +409,10 @@ class PaperHeaderLayoutFactory {
           12,
           84,
           width: _w - 24,
-          properties: _text(10.5),
+          properties: _fieldText(
+            10.5,
+            labels: const ['Subject', 'Class', 'Time', 'Set'],
+          ),
         ),
         _el(
           'marks',
@@ -392,7 +459,17 @@ class PaperHeaderLayoutFactory {
           8,
           80,
           width: _w - 16,
-          properties: _text(10.5),
+          properties: _fieldText(
+            10.5,
+            labels: const [
+              'Subject',
+              'Class',
+              'Time',
+              'Paper Code',
+              'Set',
+              'Roll No',
+            ],
+          ),
         ),
         _el(
           'marks',
@@ -437,6 +514,21 @@ class PaperHeaderLayoutFactory {
       'bold': bold,
       'alignment': alignment,
       'color': ?color,
+    };
+  }
+
+  static Map<String, dynamic> _fieldText(
+    double size, {
+    required List<String> labels,
+    String alignment = 'left',
+  }) {
+    return {
+      ..._text(size, alignment: alignment),
+      'fieldLabels': labels,
+      // Built-in styles order real teacher metadata without inventing fields.
+      // Custom/legacy layouts that omit this flag keep their old placeholder
+      // behavior.
+      'hideMissingFields': true,
     };
   }
 

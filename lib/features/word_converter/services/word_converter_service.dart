@@ -3,12 +3,12 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/core/services/ocr_service.dart';
+import 'package:edusheet/features/pdf/services/pdf_export_theme_service.dart';
 import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
 import 'package:xml/xml.dart' as xml;
 
@@ -26,11 +26,7 @@ class WordConverterService {
     }
 
     final output = await _outputFile(docxPath, '.pdf');
-    final font = await PdfGoogleFonts.notoSansRegular();
-    final boldFont = await PdfGoogleFonts.notoSansBold();
-    final pdf = pw.Document(
-      theme: pw.ThemeData.withFont(base: font, bold: boldFont),
-    );
+    final pdf = pw.Document(theme: await PdfExportThemeService.loadTheme());
 
     pdf.addPage(
       pw.MultiPage(

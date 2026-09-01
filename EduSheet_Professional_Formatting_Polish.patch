@@ -1,0 +1,1274 @@
+diff --git a/PROFESSIONAL_FORMATTING_POLISH.md b/PROFESSIONAL_FORMATTING_POLISH.md
+new file mode 100644
+index 0000000..abd9967
+--- /dev/null
++++ b/PROFESSIONAL_FORMATTING_POLISH.md
+@@ -0,0 +1,51 @@
++# Professional Paper Formatting Polish
++
++Baseline: RC Candidate 1 QA Fix / Step 10 locked architecture.
++
++This pass adds teacher-facing printed-paper formatting controls without changing
++the editor architecture, database, dependencies, or assessment semantics.
++
++## Implemented
++
++- General instructions can be aligned Left / Center / Right.
++- Section heading can be aligned Left / Center / Right.
++- Section instruction can be aligned Left / Center / Right.
++- Auto-generated answer rule can be aligned Left / Center / Right.
++- Section rule above the heading and rule below the heading are independent.
++- Optional `Instruction:` label for section instructions. Off prints exactly what
++  the teacher typed.
++- Question-specific instructions are now actually rendered in Word Mode,
++  Preview, PDF and DOCX.
++- Question-specific instructions have an independent Left / Center / Right
++  alignment in Advanced question details.
++- Preview, Word Mode, PDF and DOCX read the same canonical formatting fields.
++- Legacy `showDivider` is retained as a compatibility alias for the lower rule;
++  old saved papers continue to deserialize without migration.
++- Existing papers receive safe defaults: general instruction left; section
++  heading/instruction/answer rule center; top rule off; lower rule follows the
++  legacy divider value.
++
++## Intentionally not included in this pass
++
++- database/schema migration
++- dependency changes
++- new editor mode
++- arbitrary fonts/colors
++- question numbering/marks behavior changes
++
++## QA
++
++Run on the Windows release workstation:
++
++```powershell
++dart format .
++flutter analyze
++flutter test test/features/editor/professional_paper_formatting_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
++
++Then visually smoke-test one paper with left/center/right section headings,
++both rule toggles, aligned general/section/question instructions, and PDF/DOCX
++exports.
+diff --git a/lib/features/editor/domain/models/paper_model.dart b/lib/features/editor/domain/models/paper_model.dart
+index a819aa0..286123c 100644
+--- a/lib/features/editor/domain/models/paper_model.dart
++++ b/lib/features/editor/domain/models/paper_model.dart
+@@ -99,6 +99,21 @@ enum CognitiveLevel {
+ 
+ enum QuestionStatus { draft, complete }
+ 
++enum PaperTextAlignment { left, center, right }
++
++extension PaperTextAlignmentProperties on PaperTextAlignment {
++  TextAlign get textAlign {
++    switch (this) {
++      case PaperTextAlignment.left:
++        return TextAlign.left;
++      case PaperTextAlignment.center:
++        return TextAlign.center;
++      case PaperTextAlignment.right:
++        return TextAlign.right;
++    }
++  }
++}
++
+ enum QuestionAttachmentKind { image, diagram, file }
+ 
+ enum QuestionNumberStyle {
+@@ -120,6 +135,7 @@ class Paper {
+   final String title;
+   final String schoolName;
+   final String instruction;
++  final PaperTextAlignment instructionAlignment;
+   final List<String> logos;
+   final List<PaperHeaderField> headerFields;
+   final Map<String, String> customHeaderValues;
+@@ -141,6 +157,7 @@ class Paper {
+     required this.title,
+     this.schoolName = 'My School',
+     this.instruction = '',
++    this.instructionAlignment = PaperTextAlignment.left,
+     this.logos = const [],
+     this.headerFields = const [],
+     this.customHeaderValues = const {},
+@@ -163,6 +180,7 @@ class Paper {
+     String? title,
+     String? schoolName,
+     String? instruction,
++    PaperTextAlignment? instructionAlignment,
+     List<String>? logos,
+     List<PaperHeaderField>? headerFields,
+     Map<String, String>? customHeaderValues,
+@@ -185,6 +203,7 @@ class Paper {
+       title: title ?? this.title,
+       schoolName: schoolName ?? this.schoolName,
+       instruction: instruction ?? this.instruction,
++      instructionAlignment: instructionAlignment ?? this.instructionAlignment,
+       logos: logos ?? this.logos,
+       headerFields: headerFields ?? this.headerFields,
+       customHeaderValues: customHeaderValues ?? this.customHeaderValues,
+@@ -216,6 +235,7 @@ class Paper {
+       'title': title,
+       'schoolName': schoolName,
+       'instruction': instruction,
++      'instructionAlignment': instructionAlignment.name,
+       'logos': logos,
+       'headerFields': headerFields.map((f) => f.toJson()).toList(),
+       'customHeaderValues': customHeaderValues,
+@@ -241,6 +261,11 @@ class Paper {
+       title: json['title'],
+       schoolName: json['schoolName'] ?? 'My School',
+       instruction: json['instruction'] ?? '',
++      instructionAlignment: _enumByName(
++        PaperTextAlignment.values,
++        json['instructionAlignment'],
++        PaperTextAlignment.left,
++      ),
+       logos: (json['logos'] as List?)?.cast<String>() ?? [],
+       headerFields:
+           (json['headerFields'] as List?)
+@@ -342,6 +367,12 @@ class PaperSection {
+   final int? requiredCount;
+   final bool showTitle;
+   final bool showDivider;
++  final bool showTopDivider;
++  final bool showBottomDivider;
++  final PaperTextAlignment headingAlignment;
++  final PaperTextAlignment instructionAlignment;
++  final PaperTextAlignment answerRuleAlignment;
++  final bool showInstructionLabel;
+   final QuestionNumberStyle? numberingStyle;
+   final double? defaultMarks;
+   final bool pageBreakBefore;
+@@ -358,7 +389,13 @@ class PaperSection {
+     this.questions = const [],
+     this.requiredCount,
+     this.showTitle = true,
+-    this.showDivider = true,
++    bool? showDivider,
++    this.showTopDivider = false,
++    bool? showBottomDivider,
++    this.headingAlignment = PaperTextAlignment.center,
++    this.instructionAlignment = PaperTextAlignment.center,
++    this.answerRuleAlignment = PaperTextAlignment.center,
++    this.showInstructionLabel = false,
+     this.numberingStyle,
+     this.defaultMarks,
+     this.pageBreakBefore = false,
+@@ -366,7 +403,8 @@ class PaperSection {
+     this.answerSpaceLines = 0,
+     this.ruledAnswerArea = false,
+     this.graphAnswerArea = false,
+-  });
++  }) : showBottomDivider = showBottomDivider ?? showDivider ?? true,
++       showDivider = showBottomDivider ?? showDivider ?? true;
+ 
+   PaperSection copyWith({
+     String? id,
+@@ -378,6 +416,12 @@ class PaperSection {
+     bool clearRequiredCount = false,
+     bool? showTitle,
+     bool? showDivider,
++    bool? showTopDivider,
++    bool? showBottomDivider,
++    PaperTextAlignment? headingAlignment,
++    PaperTextAlignment? instructionAlignment,
++    PaperTextAlignment? answerRuleAlignment,
++    bool? showInstructionLabel,
+     QuestionNumberStyle? numberingStyle,
+     bool clearNumberingStyle = false,
+     double? defaultMarks,
+@@ -398,7 +442,13 @@ class PaperSection {
+           ? null
+           : (requiredCount ?? this.requiredCount),
+       showTitle: showTitle ?? this.showTitle,
+-      showDivider: showDivider ?? this.showDivider,
++      showDivider: showBottomDivider ?? showDivider ?? this.showBottomDivider,
++      showTopDivider: showTopDivider ?? this.showTopDivider,
++      showBottomDivider: showBottomDivider ?? showDivider ?? this.showBottomDivider,
++      headingAlignment: headingAlignment ?? this.headingAlignment,
++      instructionAlignment: instructionAlignment ?? this.instructionAlignment,
++      answerRuleAlignment: answerRuleAlignment ?? this.answerRuleAlignment,
++      showInstructionLabel: showInstructionLabel ?? this.showInstructionLabel,
+       numberingStyle: clearNumberingStyle
+           ? null
+           : (numberingStyle ?? this.numberingStyle),
+@@ -442,7 +492,13 @@ class PaperSection {
+       'questions': questions.map((q) => q.toJson()).toList(),
+       'requiredCount': requiredCount,
+       'showTitle': showTitle,
+-      'showDivider': showDivider,
++      'showDivider': showBottomDivider,
++      'showTopDivider': showTopDivider,
++      'showBottomDivider': showBottomDivider,
++      'headingAlignment': headingAlignment.name,
++      'instructionAlignment': instructionAlignment.name,
++      'answerRuleAlignment': answerRuleAlignment.name,
++      'showInstructionLabel': showInstructionLabel,
+       'numberingStyle': numberingStyle?.name,
+       'defaultMarks': defaultMarks,
+       'pageBreakBefore': pageBreakBefore,
+@@ -466,7 +522,26 @@ class PaperSection {
+           [],
+       requiredCount: json['requiredCount'],
+       showTitle: json['showTitle'] ?? true,
+-      showDivider: json['showDivider'] ?? true,
++      showDivider: json['showBottomDivider'] ?? json['showDivider'] ?? true,
++      showTopDivider: json['showTopDivider'] == true,
++      showBottomDivider:
++          json['showBottomDivider'] ?? json['showDivider'] ?? true,
++      headingAlignment: _enumByName(
++        PaperTextAlignment.values,
++        json['headingAlignment'],
++        PaperTextAlignment.center,
++      ),
++      instructionAlignment: _enumByName(
++        PaperTextAlignment.values,
++        json['instructionAlignment'],
++        PaperTextAlignment.center,
++      ),
++      answerRuleAlignment: _enumByName(
++        PaperTextAlignment.values,
++        json['answerRuleAlignment'],
++        PaperTextAlignment.center,
++      ),
++      showInstructionLabel: json['showInstructionLabel'] == true,
+       numberingStyle: json['numberingStyle'] == null
+           ? null
+           : _enumByName(
+@@ -653,6 +728,7 @@ class Question {
+   final List<String> tags;
+   final String language;
+   final String instructions;
++  final PaperTextAlignment instructionAlignment;
+   final String sourceReference;
+   final List<MathExpression> mathExpressions;
+   final List<QuestionAttachment> attachments;
+@@ -690,6 +766,7 @@ class Question {
+     this.tags = const [],
+     this.language = 'en',
+     this.instructions = '',
++    this.instructionAlignment = PaperTextAlignment.left,
+     this.sourceReference = '',
+     this.mathExpressions = const [],
+     this.attachments = const [],
+@@ -753,6 +830,7 @@ class Question {
+     List<String>? tags,
+     String? language,
+     String? instructions,
++    PaperTextAlignment? instructionAlignment,
+     String? sourceReference,
+     List<MathExpression>? mathExpressions,
+     List<QuestionAttachment>? attachments,
+@@ -795,6 +873,8 @@ class Question {
+       tags: tags ?? this.tags,
+       language: language ?? this.language,
+       instructions: instructions ?? this.instructions,
++      instructionAlignment:
++          instructionAlignment ?? this.instructionAlignment,
+       sourceReference: sourceReference ?? this.sourceReference,
+       mathExpressions: mathExpressions ?? this.mathExpressions,
+       attachments: attachments ?? this.attachments,
+@@ -836,6 +916,7 @@ class Question {
+       'tags': tags,
+       'language': language,
+       'instructions': instructions,
++      'instructionAlignment': instructionAlignment.name,
+       'sourceReference': sourceReference,
+       'mathExpressions': mathExpressions.map((item) => item.toJson()).toList(),
+       'attachments': attachments.map((item) => item.toJson()).toList(),
+@@ -897,6 +978,11 @@ class Question {
+       tags: _stringList(json['tags']),
+       language: json['language']?.toString() ?? 'en',
+       instructions: json['instructions']?.toString() ?? '',
++      instructionAlignment: _enumByName(
++        PaperTextAlignment.values,
++        json['instructionAlignment'],
++        PaperTextAlignment.left,
++      ),
+       sourceReference: json['sourceReference']?.toString() ?? '',
+       mathExpressions: _modelList(
+         json['mathExpressions'],
+diff --git a/lib/features/editor/presentation/providers/editor_provider.dart b/lib/features/editor/presentation/providers/editor_provider.dart
+index a7ee465..8ccb9a3 100644
+--- a/lib/features/editor/presentation/providers/editor_provider.dart
++++ b/lib/features/editor/presentation/providers/editor_provider.dart
+@@ -187,6 +187,7 @@ class EditorState extends _$EditorState {
+     required String title,
+     required String schoolName,
+     required String instruction,
++    PaperTextAlignment? instructionAlignment,
+     required List<String> logos,
+     required List<PaperHeaderField> headerFields,
+     double? maximumMarks,
+@@ -203,6 +204,7 @@ class EditorState extends _$EditorState {
+       title: title,
+       schoolName: schoolName,
+       instruction: instruction,
++      instructionAlignment: instructionAlignment ?? state.instructionAlignment,
+       logos: List<String>.unmodifiable(logos),
+       headerFields: normalizedFields,
+       maximumMarks: maximumMarks,
+@@ -348,7 +350,12 @@ class EditorState extends _$EditorState {
+       questions: source.questions.map(_cloneQuestion).toList(),
+       requiredCount: source.requiredCount,
+       showTitle: source.showTitle,
+-      showDivider: source.showDivider,
++      showTopDivider: source.showTopDivider,
++      showBottomDivider: source.showBottomDivider,
++      headingAlignment: source.headingAlignment,
++      instructionAlignment: source.instructionAlignment,
++      answerRuleAlignment: source.answerRuleAlignment,
++      showInstructionLabel: source.showInstructionLabel,
+       numberingStyle: source.numberingStyle,
+       defaultMarks: source.defaultMarks,
+       pageBreakBefore: source.pageBreakBefore,
+@@ -369,6 +376,12 @@ class EditorState extends _$EditorState {
+     bool clearRequiredCount = false,
+     bool? showTitle,
+     bool? showDivider,
++    bool? showTopDivider,
++    bool? showBottomDivider,
++    PaperTextAlignment? headingAlignment,
++    PaperTextAlignment? instructionAlignment,
++    PaperTextAlignment? answerRuleAlignment,
++    bool? showInstructionLabel,
+     QuestionNumberStyle? numberingStyle,
+     bool clearNumberingStyle = false,
+     double? defaultMarks,
+@@ -389,7 +402,17 @@ class EditorState extends _$EditorState {
+             requiredCount: requiredCount ?? s.requiredCount,
+             clearRequiredCount: clearRequiredCount,
+             showTitle: showTitle ?? s.showTitle,
+-            showDivider: showDivider ?? s.showDivider,
++            showDivider: showBottomDivider ?? showDivider ?? s.showBottomDivider,
++            showTopDivider: showTopDivider ?? s.showTopDivider,
++            showBottomDivider:
++                showBottomDivider ?? showDivider ?? s.showBottomDivider,
++            headingAlignment: headingAlignment ?? s.headingAlignment,
++            instructionAlignment:
++                instructionAlignment ?? s.instructionAlignment,
++            answerRuleAlignment:
++                answerRuleAlignment ?? s.answerRuleAlignment,
++            showInstructionLabel:
++                showInstructionLabel ?? s.showInstructionLabel,
+             numberingStyle: numberingStyle ?? s.numberingStyle,
+             clearNumberingStyle: clearNumberingStyle,
+             defaultMarks: defaultMarks ?? s.defaultMarks,
+@@ -497,7 +520,12 @@ class EditorState extends _$EditorState {
+       questions: source.questions.map(_cloneQuestion).toList(),
+       requiredCount: source.requiredCount,
+       showTitle: source.showTitle,
+-      showDivider: source.showDivider,
++      showTopDivider: source.showTopDivider,
++      showBottomDivider: source.showBottomDivider,
++      headingAlignment: source.headingAlignment,
++      instructionAlignment: source.instructionAlignment,
++      answerRuleAlignment: source.answerRuleAlignment,
++      showInstructionLabel: source.showInstructionLabel,
+       numberingStyle: source.numberingStyle,
+       defaultMarks: source.defaultMarks,
+       pageBreakBefore: source.pageBreakBefore,
+diff --git a/lib/features/paper_composer/application/paper_composer_actions.dart b/lib/features/paper_composer/application/paper_composer_actions.dart
+index 27f2d7d..2a022c8 100644
+--- a/lib/features/paper_composer/application/paper_composer_actions.dart
++++ b/lib/features/paper_composer/application/paper_composer_actions.dart
+@@ -26,7 +26,12 @@ class PaperComposerActions {
+     required QuestionNumberStyle? numberingStyle,
+     required double? defaultMarks,
+     required bool showTitle,
+-    required bool showDivider,
++    required bool showTopDivider,
++    required bool showBottomDivider,
++    required PaperTextAlignment headingAlignment,
++    required PaperTextAlignment instructionAlignment,
++    required PaperTextAlignment answerRuleAlignment,
++    required bool showInstructionLabel,
+     required bool pageBreakBefore,
+     required int answerSpaceLines,
+     required bool ruledAnswerArea,
+@@ -42,7 +47,12 @@ class PaperComposerActions {
+       defaultMarks: defaultMarks,
+       clearDefaultMarks: defaultMarks == null,
+       showTitle: showTitle,
+-      showDivider: showDivider,
++      showTopDivider: showTopDivider,
++      showBottomDivider: showBottomDivider,
++      headingAlignment: headingAlignment,
++      instructionAlignment: instructionAlignment,
++      answerRuleAlignment: answerRuleAlignment,
++      showInstructionLabel: showInstructionLabel,
+       pageBreakBefore: pageBreakBefore,
+       answerSpaceLines: answerSpaceLines,
+       ruledAnswerArea: ruledAnswerArea,
+diff --git a/lib/features/paper_composer/domain/question_details_draft.dart b/lib/features/paper_composer/domain/question_details_draft.dart
+index 224eebf..93c375e 100644
+--- a/lib/features/paper_composer/domain/question_details_draft.dart
++++ b/lib/features/paper_composer/domain/question_details_draft.dart
+@@ -20,6 +20,7 @@ class QuestionDetailsDraft {
+   final List<String> tags;
+   final String language;
+   final String instructions;
++  final PaperTextAlignment instructionAlignment;
+   final String sourceReference;
+ 
+   const QuestionDetailsDraft({
+@@ -37,6 +38,7 @@ class QuestionDetailsDraft {
+     this.tags = const [],
+     this.language = 'en',
+     this.instructions = '',
++    this.instructionAlignment = PaperTextAlignment.left,
+     this.sourceReference = '',
+   });
+ 
+@@ -56,6 +58,7 @@ class QuestionDetailsDraft {
+       tags: List<String>.from(question.tags),
+       language: question.language,
+       instructions: question.instructions,
++      instructionAlignment: question.instructionAlignment,
+       sourceReference: question.sourceReference,
+     );
+   }
+@@ -76,6 +79,7 @@ class QuestionDetailsDraft {
+     List<String>? tags,
+     String? language,
+     String? instructions,
++    PaperTextAlignment? instructionAlignment,
+     String? sourceReference,
+   }) {
+     return QuestionDetailsDraft(
+@@ -95,6 +99,8 @@ class QuestionDetailsDraft {
+       tags: tags ?? this.tags,
+       language: language ?? this.language,
+       instructions: instructions ?? this.instructions,
++      instructionAlignment:
++          instructionAlignment ?? this.instructionAlignment,
+       sourceReference: sourceReference ?? this.sourceReference,
+     );
+   }
+diff --git a/lib/features/paper_composer/domain/question_draft.dart b/lib/features/paper_composer/domain/question_draft.dart
+index 86e293c..c2fb948 100644
+--- a/lib/features/paper_composer/domain/question_draft.dart
++++ b/lib/features/paper_composer/domain/question_draft.dart
+@@ -200,6 +200,7 @@ class QuestionDraft {
+       tags: details.tags,
+       language: details.language,
+       instructions: details.instructions,
++      instructionAlignment: details.instructionAlignment,
+       sourceReference: details.sourceReference,
+       mathExpressions: mathExpressions,
+       attachments: attachments,
+diff --git a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+index 8b53846..3bf53f5 100644
+--- a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
++++ b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+@@ -326,7 +326,12 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+       numberingStyle: draft.numberingStyle,
+       defaultMarks: draft.defaultMarks,
+       showTitle: draft.showTitle,
+-      showDivider: draft.showDivider,
++      showTopDivider: draft.showTopDivider,
++      showBottomDivider: draft.showBottomDivider,
++      headingAlignment: draft.headingAlignment,
++      instructionAlignment: draft.instructionAlignment,
++      answerRuleAlignment: draft.answerRuleAlignment,
++      showInstructionLabel: draft.showInstructionLabel,
+       pageBreakBefore: draft.pageBreakBefore,
+       answerSpaceLines: draft.answerSpaceLines,
+       ruledAnswerArea: draft.ruledAnswerArea,
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart b/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+index 5399c26..8206e1d 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+@@ -52,6 +52,7 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
+   late bool _showDate;
+   late bool _showStudentName;
+   late bool _showRollNo;
++  late PaperTextAlignment _instructionAlignment;
+   late String _logoPath;
+   late List<_CustomFieldDraft> _customFields;
+   String? _maximumMarksError;
+@@ -76,6 +77,7 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
+     _showDate = _hasHeader('Date');
+     _showStudentName = _hasHeader('Student Name');
+     _showRollNo = _hasHeader('Roll No');
++    _instructionAlignment = widget.paper.instructionAlignment;
+     _logoPath = widget.paper.logos.isEmpty ? '' : widget.paper.logos.first;
+     _customFields = widget.paper.headerFields
+         .where(
+@@ -136,6 +138,7 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
+           title: _title.text.trim().isEmpty ? 'New Paper' : _title.text.trim(),
+           schoolName: _school.text.trim(),
+           instruction: _instruction.text.trim(),
++          instructionAlignment: _instructionAlignment,
+           logos: _resolvedLogos(),
+           headerFields: _resolvedHeaderFields(),
+           maximumMarks: parsed,
+@@ -529,11 +532,44 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
+                       controller: _instruction,
+                       minLines: 3,
+                       maxLines: 8,
++                      textAlign: _instructionAlignment.textAlign,
+                       decoration: const InputDecoration(
+                         labelText: 'Instructions',
+                         alignLabelWithHint: true,
+                       ),
+                     ),
++                    const SizedBox(height: 10),
++                    Align(
++                      alignment: Alignment.centerLeft,
++                      child: Text(
++                        'Instruction alignment',
++                        style: theme.textTheme.labelLarge,
++                      ),
++                    ),
++                    const SizedBox(height: 7),
++                    SegmentedButton<PaperTextAlignment>(
++                      segments: const [
++                        ButtonSegment(
++                          value: PaperTextAlignment.left,
++                          icon: Icon(Icons.format_align_left_rounded),
++                          label: Text('Left'),
++                        ),
++                        ButtonSegment(
++                          value: PaperTextAlignment.center,
++                          icon: Icon(Icons.format_align_center_rounded),
++                          label: Text('Center'),
++                        ),
++                        ButtonSegment(
++                          value: PaperTextAlignment.right,
++                          icon: Icon(Icons.format_align_right_rounded),
++                          label: Text('Right'),
++                        ),
++                      ],
++                      selected: {_instructionAlignment},
++                      onSelectionChanged: (selection) => setState(
++                        () => _instructionAlignment = selection.first,
++                      ),
++                    ),
+                     const SizedBox(height: 20),
+                     FilledButton.icon(
+                       onPressed: _save,
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart b/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+index cb7575d..9dee43a 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+@@ -118,6 +118,7 @@ class PaperPreviewPage extends ConsumerWidget {
+                             const Divider(height: 28),
+                             Text(
+                               paper.instruction.trim(),
++                              textAlign: paper.instructionAlignment.textAlign,
+                               style: const TextStyle(
+                                 fontStyle: FontStyle.italic,
+                               ),
+@@ -310,19 +311,20 @@ class _PreviewSection extends StatelessWidget {
+         children: [
+           if (section.pageBreakBefore)
+             const _PreviewPageBreak(label: 'Section starts on a new page'),
++          if (section.showTopDivider) const Divider(height: 18),
+           if (section.showTitle || section.prefix.trim().isNotEmpty)
+             Text(
+               '${section.prefix} ${section.showTitle ? section.title : ''}'
+                   .trim(),
+-              textAlign: TextAlign.center,
++              textAlign: section.headingAlignment.textAlign,
+               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+             ),
+           if (section.instruction?.trim().isNotEmpty == true)
+             Padding(
+               padding: const EdgeInsets.only(top: 5),
+               child: Text(
+-                section.instruction!.trim(),
+-                textAlign: TextAlign.center,
++                '${section.showInstructionLabel ? 'Instruction: ' : ''}${section.instruction!.trim()}',
++                textAlign: section.instructionAlignment.textAlign,
+                 style: const TextStyle(fontStyle: FontStyle.italic),
+               ),
+             ),
+@@ -331,11 +333,11 @@ class _PreviewSection extends StatelessWidget {
+               padding: const EdgeInsets.only(top: 5),
+               child: Text(
+                 answerRule,
+-                textAlign: TextAlign.center,
++                textAlign: section.answerRuleAlignment.textAlign,
+                 style: const TextStyle(fontWeight: FontWeight.w700),
+               ),
+             ),
+-          if (section.showDivider) const Divider(height: 22),
++          if (section.showBottomDivider) const Divider(height: 22),
+           const SizedBox(height: 4),
+           if (template.paperLayout == PaperLayout.twoColumn && !hasManualPageBreak)
+             for (var index = 0; index < questions.length; index += 2)
+@@ -531,6 +533,18 @@ class _PreviewQuestionContent extends StatelessWidget {
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.stretch,
+       children: [
++        if (question.instructions.trim().isNotEmpty) ...[
++          Text(
++            question.instructions.trim(),
++            textAlign: question.instructionAlignment.textAlign,
++            style: const TextStyle(
++              fontSize: 12,
++              fontStyle: FontStyle.italic,
++              fontWeight: FontWeight.w600,
++            ),
++          ),
++          const SizedBox(height: 5),
++        ],
+         QuestionRichTextPreview(question: question, maxHeight: 220),
+         if (advanced.hasStimulus) ...[
+           const SizedBox(height: 7),
+diff --git a/lib/features/paper_composer/presentation/widgets/question_more_details_sheet.dart b/lib/features/paper_composer/presentation/widgets/question_more_details_sheet.dart
+index 59a4399..7156892 100644
+--- a/lib/features/paper_composer/presentation/widgets/question_more_details_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/question_more_details_sheet.dart
+@@ -44,6 +44,7 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
+   late final TextEditingController _source;
+   late QuestionDifficulty _difficulty;
+   late CognitiveLevel _cognitiveLevel;
++  late PaperTextAlignment _instructionAlignment;
+   String? _negativeMarksError;
+   String? _minutesError;
+ 
+@@ -70,6 +71,7 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
+     _source = TextEditingController(text: value.sourceReference);
+     _difficulty = value.difficulty;
+     _cognitiveLevel = value.cognitiveLevel;
++    _instructionAlignment = value.instructionAlignment;
+   }
+ 
+   @override
+@@ -132,6 +134,7 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
+       tags: tags,
+       language: _language.text.trim().isEmpty ? 'en' : _language.text.trim(),
+       instructions: _instructions.text.trim(),
++      instructionAlignment: _instructionAlignment,
+       sourceReference: _source.text.trim(),
+     );
+     Navigator.pop(context, details);
+@@ -355,11 +358,44 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
+                       controller: _instructions,
+                       minLines: 2,
+                       maxLines: 5,
++                      textAlign: _instructionAlignment.textAlign,
+                       decoration: const InputDecoration(
+                         labelText: 'Question-specific instruction',
+                         alignLabelWithHint: true,
+                       ),
+                     ),
++                    const SizedBox(height: 10),
++                    Align(
++                      alignment: Alignment.centerLeft,
++                      child: Text(
++                        'Instruction alignment',
++                        style: theme.textTheme.labelLarge,
++                      ),
++                    ),
++                    const SizedBox(height: 7),
++                    SegmentedButton<PaperTextAlignment>(
++                      segments: const [
++                        ButtonSegment(
++                          value: PaperTextAlignment.left,
++                          icon: Icon(Icons.format_align_left_rounded),
++                          label: Text('Left'),
++                        ),
++                        ButtonSegment(
++                          value: PaperTextAlignment.center,
++                          icon: Icon(Icons.format_align_center_rounded),
++                          label: Text('Center'),
++                        ),
++                        ButtonSegment(
++                          value: PaperTextAlignment.right,
++                          icon: Icon(Icons.format_align_right_rounded),
++                          label: Text('Right'),
++                        ),
++                      ],
++                      selected: {_instructionAlignment},
++                      onSelectionChanged: (selection) => setState(
++                        () => _instructionAlignment = selection.first,
++                      ),
++                    ),
+                     const SizedBox(height: 22),
+                     FilledButton.icon(
+                       onPressed: _save,
+diff --git a/lib/features/paper_composer/presentation/widgets/section_format_sheet.dart b/lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
+index 3c33d29..97948a2 100644
+--- a/lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
+@@ -9,7 +9,12 @@ class SectionFormatDraft {
+   final QuestionNumberStyle? numberingStyle;
+   final double? defaultMarks;
+   final bool showTitle;
+-  final bool showDivider;
++  final bool showTopDivider;
++  final bool showBottomDivider;
++  final PaperTextAlignment headingAlignment;
++  final PaperTextAlignment instructionAlignment;
++  final PaperTextAlignment answerRuleAlignment;
++  final bool showInstructionLabel;
+   final bool pageBreakBefore;
+   final int answerSpaceLines;
+   final bool ruledAnswerArea;
+@@ -21,7 +26,12 @@ class SectionFormatDraft {
+     required this.numberingStyle,
+     required this.defaultMarks,
+     required this.showTitle,
+-    required this.showDivider,
++    required this.showTopDivider,
++    required this.showBottomDivider,
++    required this.headingAlignment,
++    required this.instructionAlignment,
++    required this.answerRuleAlignment,
++    required this.showInstructionLabel,
+     required this.pageBreakBefore,
+     required this.answerSpaceLines,
+     required this.ruledAnswerArea,
+@@ -66,7 +76,12 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+   late bool _answerAll;
+   late String _numberingKey;
+   late bool _showTitle;
+-  late bool _showDivider;
++  late bool _showTopDivider;
++  late bool _showBottomDivider;
++  late PaperTextAlignment _headingAlignment;
++  late PaperTextAlignment _instructionAlignment;
++  late PaperTextAlignment _answerRuleAlignment;
++  late bool _showInstructionLabel;
+   late bool _pageBreakBefore;
+   late int _answerSpaceLines;
+   late _AnswerAreaKind _answerArea;
+@@ -89,7 +104,12 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+     _answerAll = section.requiredCount == null;
+     _numberingKey = section.numberingStyle?.name ?? '_paper';
+     _showTitle = section.showTitle;
+-    _showDivider = section.showDivider;
++    _showTopDivider = section.showTopDivider;
++    _showBottomDivider = section.showBottomDivider;
++    _headingAlignment = section.headingAlignment;
++    _instructionAlignment = section.instructionAlignment;
++    _answerRuleAlignment = section.answerRuleAlignment;
++    _showInstructionLabel = section.showInstructionLabel;
+     _pageBreakBefore = section.pageBreakBefore;
+     _answerSpaceLines = section.answerSpaceLines.clamp(0, 12).toInt();
+     _answerArea = section.graphAnswerArea
+@@ -233,11 +253,46 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+               value: _showTitle,
+               onChanged: (value) => setState(() => _showTitle = value),
+             ),
++            const SizedBox(height: 8),
++            _AlignmentPicker(
++              label: 'Section heading alignment',
++              value: _headingAlignment,
++              onChanged: (value) => setState(() => _headingAlignment = value),
++            ),
++            const SizedBox(height: 14),
++            _AlignmentPicker(
++              label: 'Section instruction alignment',
++              value: _instructionAlignment,
++              onChanged: (value) =>
++                  setState(() => _instructionAlignment = value),
++            ),
++            SwitchListTile.adaptive(
++              contentPadding: EdgeInsets.zero,
++              title: const Text('Show “Instruction:” label'),
++              subtitle: const Text('Off prints exactly what the teacher typed.'),
++              value: _showInstructionLabel,
++              onChanged: (value) =>
++                  setState(() => _showInstructionLabel = value),
++            ),
++            const SizedBox(height: 6),
++            _AlignmentPicker(
++              label: 'Answer-rule alignment',
++              value: _answerRuleAlignment,
++              onChanged: (value) =>
++                  setState(() => _answerRuleAlignment = value),
++            ),
++            const SizedBox(height: 8),
+             SwitchListTile.adaptive(
+               contentPadding: EdgeInsets.zero,
+-              title: const Text('Show divider'),
+-              value: _showDivider,
+-              onChanged: (value) => setState(() => _showDivider = value),
++              title: const Text('Line above section heading'),
++              value: _showTopDivider,
++              onChanged: (value) => setState(() => _showTopDivider = value),
++            ),
++            SwitchListTile.adaptive(
++              contentPadding: EdgeInsets.zero,
++              title: const Text('Line below section heading'),
++              value: _showBottomDivider,
++              onChanged: (value) => setState(() => _showBottomDivider = value),
+             ),
+             SwitchListTile.adaptive(
+               contentPadding: EdgeInsets.zero,
+@@ -344,7 +399,12 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+               ),
+         defaultMarks: defaultMarks,
+         showTitle: _showTitle,
+-        showDivider: _showDivider,
++        showTopDivider: _showTopDivider,
++        showBottomDivider: _showBottomDivider,
++        headingAlignment: _headingAlignment,
++        instructionAlignment: _instructionAlignment,
++        answerRuleAlignment: _answerRuleAlignment,
++        showInstructionLabel: _showInstructionLabel,
+         pageBreakBefore: _pageBreakBefore,
+         answerSpaceLines: _answerSpaceLines,
+         ruledAnswerArea:
+@@ -362,6 +422,50 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+   }
+ }
+ 
++class _AlignmentPicker extends StatelessWidget {
++  final String label;
++  final PaperTextAlignment value;
++  final ValueChanged<PaperTextAlignment> onChanged;
++
++  const _AlignmentPicker({
++    required this.label,
++    required this.value,
++    required this.onChanged,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.start,
++      children: [
++        Text(label, style: Theme.of(context).textTheme.labelLarge),
++        const SizedBox(height: 7),
++        SegmentedButton<PaperTextAlignment>(
++          segments: const [
++            ButtonSegment(
++              value: PaperTextAlignment.left,
++              icon: Icon(Icons.format_align_left_rounded),
++              label: Text('Left'),
++            ),
++            ButtonSegment(
++              value: PaperTextAlignment.center,
++              icon: Icon(Icons.format_align_center_rounded),
++              label: Text('Center'),
++            ),
++            ButtonSegment(
++              value: PaperTextAlignment.right,
++              icon: Icon(Icons.format_align_right_rounded),
++              label: Text('Right'),
++            ),
++          ],
++          selected: {value},
++          onSelectionChanged: (selection) => onChanged(selection.first),
++        ),
++      ],
++    );
++  }
++}
++
+ enum _AnswerAreaKind { plain, ruled, graph }
+ 
+ class _SectionHeading extends StatelessWidget {
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index 4325483..16e9ad1 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -319,6 +319,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                                         hintText: 'General instructions',
+                                         minLines: 1,
+                                         maxLines: 6,
++                                        textAlign: widget.paper.instructionAlignment.textAlign,
+                                         textStyle: const TextStyle(
+                                           fontStyle: FontStyle.italic,
+                                         ),
+@@ -471,9 +472,14 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.stretch,
+       children: [
++        if (section.showTopDivider) const Divider(height: 18),
+         if (section.showTitle || section.title.trim().isNotEmpty)
+           Row(
+-            mainAxisAlignment: MainAxisAlignment.center,
++            mainAxisAlignment: switch (section.headingAlignment) {
++              PaperTextAlignment.left => MainAxisAlignment.start,
++              PaperTextAlignment.center => MainAxisAlignment.center,
++              PaperTextAlignment.right => MainAxisAlignment.end,
++            },
+             children: [
+               if (section.prefix.trim().isNotEmpty) ...[
+                 Text(
+@@ -490,7 +496,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                   key: Key('word-section-title-${section.id}'),
+                   initialValue: section.title,
+                   hintText: 'Section title',
+-                  textAlign: TextAlign.center,
++                  textAlign: section.headingAlignment.textAlign,
+                   textStyle: const TextStyle(
+                     fontSize: 17,
+                     fontWeight: FontWeight.w800,
+@@ -501,11 +507,18 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+               ),
+             ],
+           ),
++        if (section.showInstructionLabel &&
++            section.instruction?.trim().isNotEmpty == true)
++          Text(
++            'Instruction:',
++            textAlign: section.instructionAlignment.textAlign,
++            style: const TextStyle(fontStyle: FontStyle.italic),
++          ),
+         _InlineDocumentField(
+           key: Key('word-section-instruction-${section.id}'),
+           initialValue: section.instruction ?? '',
+           hintText: 'Section instruction (optional)',
+-          textAlign: TextAlign.center,
++          textAlign: section.instructionAlignment.textAlign,
+           minLines: 1,
+           maxLines: 4,
+           textStyle: const TextStyle(fontStyle: FontStyle.italic),
+@@ -517,11 +530,11 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+             padding: const EdgeInsets.only(top: 4),
+             child: Text(
+               answerRule,
+-              textAlign: TextAlign.center,
++              textAlign: section.answerRuleAlignment.textAlign,
+               style: const TextStyle(fontWeight: FontWeight.w700),
+             ),
+           ),
+-        if (section.showDivider) const Divider(height: 24),
++        if (section.showBottomDivider) const Divider(height: 24),
+         for (var rawIndex = 0;
+             rawIndex < section.questions.length;
+             rawIndex++)
+@@ -1175,6 +1188,18 @@ class _WordQuestionBlock extends StatelessWidget {
+                 child: Column(
+                   crossAxisAlignment: CrossAxisAlignment.stretch,
+                   children: [
++                    if (question.instructions.trim().isNotEmpty) ...[
++                      Text(
++                        question.instructions.trim(),
++                        textAlign: question.instructionAlignment.textAlign,
++                        style: const TextStyle(
++                          fontSize: 12,
++                          fontStyle: FontStyle.italic,
++                          fontWeight: FontWeight.w600,
++                        ),
++                      ),
++                      const SizedBox(height: 5),
++                    ],
+                     WordRichTextEditor(
+                       question: question,
+                       compact: compact,
+@@ -1686,7 +1711,24 @@ class _NestedQuestionLine extends StatelessWidget {
+             ),
+           ],
+           Expanded(
+-            child: QuestionRichTextPreview(question: question, maxHeight: 220),
++            child: Column(
++              crossAxisAlignment: CrossAxisAlignment.stretch,
++              children: [
++                if (question.instructions.trim().isNotEmpty) ...[
++                  Text(
++                    question.instructions.trim(),
++                    textAlign: question.instructionAlignment.textAlign,
++                    style: const TextStyle(
++                      fontSize: 12,
++                      fontStyle: FontStyle.italic,
++                      fontWeight: FontWeight.w600,
++                    ),
++                  ),
++                  const SizedBox(height: 4),
++                ],
++                QuestionRichTextPreview(question: question, maxHeight: 220),
++              ],
++            ),
+           ),
+           const SizedBox(width: 8),
+           Text(
+diff --git a/lib/features/pdf/services/question_paper_service.dart b/lib/features/pdf/services/question_paper_service.dart
+index a8e372e..b535241 100644
+--- a/lib/features/pdf/services/question_paper_service.dart
++++ b/lib/features/pdf/services/question_paper_service.dart
+@@ -281,7 +281,7 @@ class QuestionPaperService {
+                   fontStyle: pw.FontStyle.italic,
+                   fontWeight: pw.FontWeight.bold,
+                 ),
+-                textAlign: pw.TextAlign.center,
++                textAlign: _pdfTextAlign(paper.instructionAlignment),
+               ),
+             ),
+           ...paper.sections.expand(
+@@ -367,8 +367,10 @@ class QuestionPaperService {
+         pw.SizedBox(
+           height: (showHeading ? 20 : 8) * config.spacingScale,
+         ),
++        if (showHeading && section.showTopDivider) pw.Divider(),
+         if (showHeading && (section.showTitle || section.prefix.isNotEmpty))
+           pw.Container(
++            width: double.infinity,
+             padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+             decoration: template.type == TemplateType.coaching
+                 ? pw.BoxDecoration(color: template.secondaryColor)
+@@ -376,6 +378,7 @@ class QuestionPaperService {
+             child: pw.Text(
+               '${section.prefix} ${section.showTitle ? section.title : ""}'
+                   .trim(),
++              textAlign: _pdfTextAlign(section.headingAlignment),
+               style: pw.TextStyle(
+                 fontSize: 18 * config.fontScale,
+                 fontWeight: pw.FontWeight.bold,
+@@ -395,7 +398,8 @@ class QuestionPaperService {
+                   .toDouble(),
+             ),
+             child: pw.Text(
+-              'Instruction: ${section.instruction}',
++              '${section.showInstructionLabel ? 'Instruction: ' : ''}${section.instruction}',
++              textAlign: _pdfTextAlign(section.instructionAlignment),
+               style: pw.TextStyle(
+                 fontStyle: pw.FontStyle.italic,
+                 fontSize: 12 * config.fontScale,
+@@ -411,13 +415,14 @@ class QuestionPaperService {
+             ),
+             child: pw.Text(
+               answerRule,
++              textAlign: _pdfTextAlign(section.answerRuleAlignment),
+               style: pw.TextStyle(
+                 fontSize: 11 * config.fontScale,
+                 fontWeight: pw.FontWeight.bold,
+               ),
+             ),
+           ),
+-        if (showHeading && section.showDivider) pw.Divider(),
++        if (showHeading && section.showBottomDivider) pw.Divider(),
+         _buildQuestionEntries(
+           section,
+           entries,
+@@ -599,6 +604,23 @@ class QuestionPaperService {
+     final advanced = QuestionAdvancedContent.fromQuestion(question);
+     final children = <pw.Widget>[];
+ 
++    if (question.instructions.trim().isNotEmpty) {
++      children.add(
++        pw.Padding(
++          padding: const pw.EdgeInsets.only(bottom: 5),
++          child: pw.Text(
++            question.instructions.trim(),
++            textAlign: _pdfTextAlign(question.instructionAlignment),
++            style: pw.TextStyle(
++              fontSize: fontSize * 0.9,
++              fontStyle: pw.FontStyle.italic,
++              fontWeight: pw.FontWeight.bold,
++            ),
++          ),
++        ),
++      );
++    }
++
+     children.add(
+       _parseRichTextToPdf(
+         question.text,
+diff --git a/lib/features/pdf/services/word_export_service.dart b/lib/features/pdf/services/word_export_service.dart
+index db46a8e..ce045ab 100644
+--- a/lib/features/pdf/services/word_export_service.dart
++++ b/lib/features/pdf/services/word_export_service.dart
+@@ -214,7 +214,7 @@ class WordExportService {
+         _paragraph(
+           paper.instruction.trim(),
+           editableTag: SmartPaperDocxRoundTripService.paperInstructionTag,
+-          alignment: 'center',
++          alignment: _wordAlignment(paper.instructionAlignment.name),
+           bold: true,
+           italic: true,
+           fontSize: template.questionFontSize,
+@@ -438,6 +438,10 @@ class WordExportService {
+       buffer.write('<w:p><w:r><w:br w:type="page"/></w:r></w:p>');
+     }
+ 
++    if (section.showTopDivider) {
++      buffer.write(_divider());
++    }
++
+     if (section.showTitle || section.prefix.isNotEmpty) {
+       final headingRuns = <_Run>[];
+       if (section.prefix.trim().isNotEmpty) {
+@@ -462,6 +466,7 @@ class WordExportService {
+       buffer.write(
+         _paragraphRuns(
+           headingRuns,
++          alignment: _wordAlignment(section.headingAlignment.name),
+           spacingBefore: 240,
+           spacingAfter: 80,
+         ),
+@@ -472,7 +477,8 @@ class WordExportService {
+       buffer.write(
+         _paragraphRuns(
+           [
+-            const _Run('Instruction: ', italic: true, fontSize: 11),
++            if (section.showInstructionLabel)
++              const _Run('Instruction: ', italic: true, fontSize: 11),
+             _Run(
+               section.instruction!.trim(),
+               italic: true,
+@@ -482,6 +488,7 @@ class WordExportService {
+               ),
+             ),
+           ],
++          alignment: _wordAlignment(section.instructionAlignment.name),
+           spacingAfter: 80,
+         ),
+       );
+@@ -494,12 +501,13 @@ class WordExportService {
+           answerRule,
+           bold: true,
+           fontSize: 10,
++          alignment: _wordAlignment(section.answerRuleAlignment.name),
+           spacingAfter: 80,
+         ),
+       );
+     }
+ 
+-    if (section.showDivider) {
++    if (section.showBottomDivider) {
+       buffer.write(_divider());
+     }
+ 
+@@ -606,6 +614,19 @@ class WordExportService {
+     }
+ 
+     final label = PaperStructureService.questionLabel(index, paper, section);
++    if (question.instructions.trim().isNotEmpty) {
++      buffer.write(
++        _paragraph(
++          question.instructions.trim(),
++          alignment: _wordAlignment(question.instructionAlignment.name),
++          italic: true,
++          bold: true,
++          fontSize: fontSize * 0.9,
++          indentLeft: 360,
++          spacingAfter: 50,
++        ),
++      );
++    }
+     buffer.write(
+       _paragraphRuns(
+         [
+@@ -751,6 +772,19 @@ class WordExportService {
+   }) {
+     final buffer = StringBuffer();
+     final text = OfficeTextFormatter.questionText(question.text).trim();
++    if (question.instructions.trim().isNotEmpty) {
++      buffer.write(
++        _paragraph(
++          question.instructions.trim(),
++          alignment: _wordAlignment(question.instructionAlignment.name),
++          italic: true,
++          bold: true,
++          fontSize: fontSize * 0.9,
++          indentLeft: indentLeft,
++          spacingAfter: 40,
++        ),
++      );
++    }
+     final runs = <_Run>[
+       if (label.isNotEmpty)
+         _Run('$label ', bold: true, fontSize: fontSize),
+diff --git a/test/features/editor/professional_paper_formatting_test.dart b/test/features/editor/professional_paper_formatting_test.dart
+new file mode 100644
+index 0000000..0790801
+--- /dev/null
++++ b/test/features/editor/professional_paper_formatting_test.dart
+@@ -0,0 +1,91 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('legacy paper receives professional-formatting compatibility defaults', () {
++    final paper = Paper.fromJson({
++      'id': 'legacy',
++      'title': 'Legacy',
++      'createdAt': '2026-09-01T00:00:00.000',
++      'sections': [
++        {
++          'id': 'section-a',
++          'title': 'Section A',
++          'showDivider': true,
++          'questions': const [],
++        },
++      ],
++    });
++
++    expect(paper.instructionAlignment, PaperTextAlignment.left);
++    final section = paper.sections.single;
++    expect(section.headingAlignment, PaperTextAlignment.center);
++    expect(section.instructionAlignment, PaperTextAlignment.center);
++    expect(section.answerRuleAlignment, PaperTextAlignment.center);
++    expect(section.showTopDivider, isFalse);
++    expect(section.showBottomDivider, isTrue);
++    expect(section.showDivider, isTrue);
++    expect(section.showInstructionLabel, isFalse);
++  });
++
++  test('professional section and instruction formatting survives JSON round-trip', () {
++    final original = Paper(
++      id: 'professional',
++      title: 'Professional',
++      instruction: 'Read carefully.',
++      instructionAlignment: PaperTextAlignment.right,
++      createdAt: DateTime.utc(2026, 9, 1),
++      sections: [
++        PaperSection(
++          id: 'section-a',
++          title: 'Section A',
++          instruction: 'Answer briefly.',
++          headingAlignment: PaperTextAlignment.left,
++          instructionAlignment: PaperTextAlignment.right,
++          answerRuleAlignment: PaperTextAlignment.left,
++          showInstructionLabel: true,
++          showTopDivider: true,
++          showBottomDivider: false,
++          questions: [
++            Question(
++              id: 'q1',
++              text: 'Explain gravity.',
++              instructions: 'Use one sentence.',
++              instructionAlignment: PaperTextAlignment.center,
++            ),
++          ],
++        ),
++      ],
++    );
++
++    final restored = Paper.fromJson(original.toJson());
++
++    expect(restored.instructionAlignment, PaperTextAlignment.right);
++    final section = restored.sections.single;
++    expect(section.headingAlignment, PaperTextAlignment.left);
++    expect(section.instructionAlignment, PaperTextAlignment.right);
++    expect(section.answerRuleAlignment, PaperTextAlignment.left);
++    expect(section.showInstructionLabel, isTrue);
++    expect(section.showTopDivider, isTrue);
++    expect(section.showBottomDivider, isFalse);
++    expect(section.showDivider, isFalse);
++    expect(
++      section.questions.single.instructionAlignment,
++      PaperTextAlignment.center,
++    );
++  });
++
++  test('legacy divider alias continues to map to the lower section rule', () {
++    final section = PaperSection(
++      id: 'section-a',
++      title: 'Section A',
++      showDivider: false,
++    );
++
++    expect(section.showBottomDivider, isFalse);
++    expect(section.showDivider, isFalse);
++    final restored = PaperSection.fromJson(section.toJson());
++    expect(restored.showBottomDivider, isFalse);
++    expect(restored.showDivider, isFalse);
++  });
++}

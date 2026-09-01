@@ -44,6 +44,7 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
   late final TextEditingController _source;
   late QuestionDifficulty _difficulty;
   late CognitiveLevel _cognitiveLevel;
+  late PaperTextAlignment _instructionAlignment;
   String? _negativeMarksError;
   String? _minutesError;
 
@@ -70,6 +71,7 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
     _source = TextEditingController(text: value.sourceReference);
     _difficulty = value.difficulty;
     _cognitiveLevel = value.cognitiveLevel;
+    _instructionAlignment = value.instructionAlignment;
   }
 
   @override
@@ -132,6 +134,7 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
       tags: tags,
       language: _language.text.trim().isEmpty ? 'en' : _language.text.trim(),
       instructions: _instructions.text.trim(),
+      instructionAlignment: _instructionAlignment,
       sourceReference: _source.text.trim(),
     );
     Navigator.pop(context, details);
@@ -355,9 +358,42 @@ class _QuestionMoreDetailsSheetState extends State<QuestionMoreDetailsSheet> {
                       controller: _instructions,
                       minLines: 2,
                       maxLines: 5,
+                      textAlign: _instructionAlignment.textAlign,
                       decoration: const InputDecoration(
                         labelText: 'Question-specific instruction',
                         alignLabelWithHint: true,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Instruction alignment',
+                        style: theme.textTheme.labelLarge,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    SegmentedButton<PaperTextAlignment>(
+                      segments: const [
+                        ButtonSegment(
+                          value: PaperTextAlignment.left,
+                          icon: Icon(Icons.format_align_left_rounded),
+                          label: Text('Left'),
+                        ),
+                        ButtonSegment(
+                          value: PaperTextAlignment.center,
+                          icon: Icon(Icons.format_align_center_rounded),
+                          label: Text('Center'),
+                        ),
+                        ButtonSegment(
+                          value: PaperTextAlignment.right,
+                          icon: Icon(Icons.format_align_right_rounded),
+                          label: Text('Right'),
+                        ),
+                      ],
+                      selected: {_instructionAlignment},
+                      onSelectionChanged: (selection) => setState(
+                        () => _instructionAlignment = selection.first,
                       ),
                     ),
                     const SizedBox(height: 22),

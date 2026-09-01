@@ -181,29 +181,7 @@ class CustomHeaderBuilder {
     pw.TextStyle style,
     double scale,
   ) {
-    final requestedLabels =
-        (element.properties['fieldLabels'] as List?)
-            ?.map((value) => value.toString().trim())
-            .where((value) => value.isNotEmpty)
-            .toList(growable: false) ??
-        const <String>[];
-
-    final fields = requestedLabels.isEmpty
-        ? paper.headerFields
-        : requestedLabels
-              .map((label) {
-                for (final field in paper.headerFields) {
-                  if (field.label.trim().toLowerCase() == label.toLowerCase()) {
-                    return field;
-                  }
-                }
-                return PaperHeaderField(
-                  id: '',
-                  label: label,
-                  isPlaceholder: true,
-                );
-              })
-              .toList(growable: false);
+    final fields = PaperHeaderLayoutFactory.resolveHeaderFields(element, paper);
 
     if (fields.isEmpty) return pw.SizedBox();
 

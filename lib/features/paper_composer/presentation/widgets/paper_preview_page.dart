@@ -10,6 +10,7 @@ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
 import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
@@ -35,29 +36,14 @@ class PaperPreviewPage extends ConsumerWidget {
       paper.templateId,
       ref.watch(templateProvider).all,
     );
-    final pagePoints = _resolvedPagePoints(
-      paper.pageLayout,
-      template.paperSize,
+    final pageMetrics = PaperPageCanvasMetrics.resolve(
+      layout: paper.pageLayout,
+      templatePageSize: template.paperSize,
+      viewportWidth: MediaQuery.sizeOf(context).width,
     );
-    final pageWidth = _previewPageWidth(pagePoints.width);
-    final pageScale = pageWidth / pagePoints.width;
-    final previewPadding = EdgeInsets.fromLTRB(
-      (paper.pageLayout.margins.leftPoints * pageScale)
-          .clamp(18, 120)
-          .toDouble(),
-      (paper.pageLayout.margins.topPoints * pageScale)
-          .clamp(20, 140)
-          .toDouble(),
-      (paper.pageLayout.margins.rightPoints * pageScale)
-          .clamp(18, 120)
-          .toDouble(),
-      (paper.pageLayout.margins.bottomPoints * pageScale)
-          .clamp(24, 160)
-          .toDouble(),
-    );
-    final pageMinHeight = (pagePoints.height * pageScale)
-        .clamp(700, 1500)
-        .toDouble();
+    final pageWidth = pageMetrics.pageWidth;
+    final previewPadding = pageMetrics.pagePadding;
+    final pageMinHeight = pageMetrics.pageMinHeight;
     final marksDiagnostics = PaperMarksTeacherDiagnostics.fromPaper(paper);
 
     return Scaffold(
@@ -124,13 +110,14 @@ class PaperPreviewPage extends ConsumerWidget {
                           PaperHeaderLayoutPreview(
                             template: template,
                             paper: paper,
-                            height: 220,
+                            fitToWidth: true,
                           ),
                           const SizedBox(height: 10),
                           if (paper.instruction.trim().isNotEmpty) ...[
                             const Divider(height: 28),
                             Text(
                               paper.instruction.trim(),
+                              textAlign: paper.instructionAlignment.textAlign,
                               style: const TextStyle(
                                 fontStyle: FontStyle.italic,
                               ),
@@ -162,29 +149,6 @@ class PaperPreviewPage extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  static ({double width, double height}) _resolvedPagePoints(
-    PaperPageLayout layout,
-    PaperSize templateSize,
-  ) {
-    final explicit = layout.explicitPageSizePoints;
-    if (explicit != null) return explicit;
-    final portrait = switch (templateSize) {
-      PaperSize.a4 => (width: 595.28, height: 841.89),
-      PaperSize.a5 => (width: 419.53, height: 595.28),
-      PaperSize.a3 => (width: 841.89, height: 1190.55),
-      PaperSize.letter => (width: 612.0, height: 792.0),
-      PaperSize.legal => (width: 612.0, height: 1008.0),
-    };
-    if (layout.orientation == PaperPageOrientation.landscape) {
-      return (width: portrait.height, height: portrait.width);
-    }
-    return portrait;
-  }
-
-  static double _previewPageWidth(double widthPoints) {
-    return (820 * widthPoints / 595.28).clamp(620, 980).toDouble();
   }
 }
 
@@ -318,25 +282,68 @@ class _PreviewSection extends StatelessWidget {
     );
     final answerRule = PaperStructureService.answerRuleText(section);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: EdgeInsets.only(bottom: section.spacing.afterPoints),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (section.pageBreakBefore)
             const _PreviewPageBreak(label: 'Section starts on a new page'),
+          SizedBox(height: section.spacing.beforePoints),
+          if (section.showTopDivider) const Divider(height: 18),
           if (section.showTitle || section.prefix.trim().isNotEmpty)
-            Text(
-              '${section.prefix} ${section.showTitle ? section.title : ''}'
-                  .trim(),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            Container(
+              width: double.infinity,
+              padding: section.headingBoxed
+                  ? const EdgeInsets.symmetric(horizontal: 8, vertical: 6)
+                  : EdgeInsets.zero,
+              decoration: section.headingBoxed
+                  ? BoxDecoration(border: Border.all(color: Colors.black54))
+                  : null,
+              child: section.sectionMarksDisplay == SectionMarksDisplay.right
+                  ? Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            section.formattedHeadingText,
+                            textAlign: section.headingAlignment.textAlign,
+                            style: TextStyle(
+                              fontSize: section.headingSize.previewFontSize,
+                              fontWeight: section.headingBold
+                                  ? FontWeight.w800
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        if (section.sectionMarksText != null) ...[
+                          const SizedBox(width: 12),
+                          Text(
+                            section.sectionMarksText!,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ],
+                    )
+                  : Text(
+                      section.sectionMarksDisplay ==
+                                  SectionMarksDisplay.inline &&
+                              section.sectionMarksText != null
+                          ? '${section.formattedHeadingText} (${section.sectionMarksText})'
+                          : section.formattedHeadingText,
+                      textAlign: section.headingAlignment.textAlign,
+                      style: TextStyle(
+                        fontSize: section.headingSize.previewFontSize,
+                        fontWeight: section.headingBold
+                            ? FontWeight.w800
+                            : FontWeight.w400,
+                      ),
+                    ),
             ),
           if (section.instruction?.trim().isNotEmpty == true)
             Padding(
               padding: const EdgeInsets.only(top: 5),
               child: Text(
-                section.instruction!.trim(),
-                textAlign: TextAlign.center,
+                '${section.showInstructionLabel ? 'Instruction: ' : ''}${section.instruction!.trim()}',
+                textAlign: section.instructionAlignment.textAlign,
                 style: const TextStyle(fontStyle: FontStyle.italic),
               ),
             ),
@@ -345,12 +352,12 @@ class _PreviewSection extends StatelessWidget {
               padding: const EdgeInsets.only(top: 5),
               child: Text(
                 answerRule,
-                textAlign: TextAlign.center,
+                textAlign: section.answerRuleAlignment.textAlign,
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
-          if (section.showDivider) const Divider(height: 22),
-          const SizedBox(height: 4),
+          if (section.showBottomDivider) const Divider(height: 22),
+          SizedBox(height: section.spacing.afterPoints),
           if (template.paperLayout == PaperLayout.twoColumn &&
               !hasManualPageBreak)
             for (var index = 0; index < questions.length; index += 2)
@@ -476,13 +483,19 @@ class _PreviewQuestion extends StatelessWidget {
                 child: _PreviewQuestionContent(
                   question: question,
                   section: section,
+                  inlineMarks:
+                      section.questionMarksPlacement ==
+                      QuestionMarksPlacement.inline,
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                '[${PaperMarksResolver.format(question.marks)}]',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
+              if (section.questionMarksPlacement ==
+                  QuestionMarksPlacement.rightEdge) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '[${PaperMarksResolver.format(question.marks)}]',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ],
             ],
           ),
           if (answerSpace.isVisible)
@@ -536,10 +549,12 @@ class _PreviewQuestionContent extends StatelessWidget {
 
   final Question question;
   final PaperSection section;
+  final bool inlineMarks;
 
   const _PreviewQuestionContent({
     required this.question,
     required this.section,
+    this.inlineMarks = false,
   });
 
   @override
@@ -548,7 +563,37 @@ class _PreviewQuestionContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        QuestionRichTextPreview(question: question, maxHeight: 220),
+        if (question.instructions.trim().isNotEmpty) ...[
+          Text(
+            question.instructions.trim(),
+            textAlign: question.instructionAlignment.textAlign,
+            style: const TextStyle(
+              fontSize: 12,
+              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 5),
+        ],
+        if (inlineMarks)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: QuestionRichTextPreview(
+                  question: question,
+                  maxHeight: 220,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '[${PaperMarksResolver.format(question.marks)}]',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
+          )
+        else
+          QuestionRichTextPreview(question: question, maxHeight: 220),
         if (advanced.hasStimulus) ...[
           const SizedBox(height: 7),
           _PreviewStimulus(stimulus: advanced.stimulus!),
@@ -654,13 +699,19 @@ class _PreviewNestedQuestion extends StatelessWidget {
                 child: _PreviewQuestionContent(
                   question: question,
                   section: section,
+                  inlineMarks:
+                      section.questionMarksPlacement ==
+                      QuestionMarksPlacement.inline,
                 ),
               ),
-              const SizedBox(width: 6),
-              Text(
-                '[${PaperMarksResolver.format(question.marks)}]',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
+              if (section.questionMarksPlacement ==
+                  QuestionMarksPlacement.rightEdge) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '[${PaperMarksResolver.format(question.marks)}]',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
             ],
           ),
           if (answerSpace.questionOverride && answerSpace.isVisible)

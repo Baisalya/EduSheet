@@ -1,0 +1,15 @@
+PROFESSIONAL_FORMATTING_POLISH.md
+lib/features/editor/domain/models/paper_model.dart
+lib/features/editor/presentation/providers/editor_provider.dart
+lib/features/paper_composer/application/paper_composer_actions.dart
+lib/features/paper_composer/domain/question_details_draft.dart
+lib/features/paper_composer/domain/question_draft.dart
+lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+lib/features/paper_composer/presentation/widgets/question_more_details_sheet.dart
+lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
+lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+lib/features/pdf/services/question_paper_service.dart
+lib/features/pdf/services/word_export_service.dart
+test/features/editor/professional_paper_formatting_test.dart

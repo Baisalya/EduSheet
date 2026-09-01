@@ -195,6 +195,7 @@ class QuestionDraft {
       tags: details.tags,
       language: details.language,
       instructions: details.instructions,
+      instructionAlignment: details.instructionAlignment,
       sourceReference: details.sourceReference,
       mathExpressions: mathExpressions,
       attachments: attachments,

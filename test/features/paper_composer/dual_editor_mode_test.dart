@@ -52,7 +52,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('word-paper-document')), findsOneWidget);
+    expect(find.byKey(const Key('word-wysiwyg-header-canvas')), findsOneWidget);
     expect(find.byKey(const Key('word-paper-title')), findsOneWidget);
+    expect(find.byKey(const Key('word-ribbon-header-layout')), findsOneWidget);
 
     final titleEditor = find.descendant(
       of: find.byKey(const Key('word-paper-title')),
@@ -95,7 +97,13 @@ void main() {
       await tester.tap(find.text('Word'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('word-mode-add-section')));
+      final addSection = find.byKey(const Key('word-mode-add-section'));
+      expect(addSection, findsOneWidget);
+      final addSectionRect = tester.getRect(addSection);
+      expect(addSectionRect.top, greaterThanOrEqualTo(0));
+      expect(addSectionRect.bottom, lessThanOrEqualTo(900));
+
+      await tester.tap(addSection);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('word-ribbon-paragraph')), findsOneWidget);
 

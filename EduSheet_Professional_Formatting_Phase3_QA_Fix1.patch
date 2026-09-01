@@ -1,0 +1,192 @@
+diff --git a/PHASE3_QA_FIX1_NOTES.md b/PHASE3_QA_FIX1_NOTES.md
+new file mode 100644
+index 0000000..e39dbf9
+--- /dev/null
++++ b/PHASE3_QA_FIX1_NOTES.md
+@@ -0,0 +1,43 @@
++# EduSheet — Professional Formatting Phase 3 QA Fix 1
++
++Baseline: Professional Formatting Phase 3 implementation package.
++
++## Windows QA findings fixed
++
++1. `flutter analyze` reported two `use_build_context_synchronously` infos in the
++   header arrange/save callback. The callback now guards the exact captured
++   `BuildContext` with `context.mounted` after each async gap.
++2. On compact Word Mode the only `Add section` control sat below the full WYSIWYG
++   paper canvas. On 430x900 and 360x760 viewports it was physically off-screen,
++   so automated taps missed it and the following Paragraph action had no section
++   to target. That cascaded into missing Quill editors.
++3. Compact Word Mode now keeps one `Add section` action directly below the ribbon,
++   outside the scrolling paper canvas. Desktop/non-compact Word Mode retains the
++   bottom-of-document action.
++4. Regression tests now assert that the compact `Add section` control is inside
++   the viewport before tapping it.
++
++## Scope safety
++
++- No document model/schema migration.
++- No dependency changes.
++- No Phase 3 WYSIWYG/header architecture rollback.
++- No Smart/Word canonical paper split.
++- No test-only workaround such as scrolling the old off-screen button into view;
++  the actual compact UX is fixed.
++
++## Windows re-run
++
++```powershell
++dart format .
++flutter analyze
++flutter test test/features/paper_composer/wysiwyg_header_phase3_test.dart
++flutter test test/features/paper_composer/dual_editor_mode_test.dart
++flutter test test/release/professional_formatting_phase3_gate_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
++
++Do not lock Phase 3 until analyzer, focused tests, release tests and the full
++suite are green on the Windows release workstation.
+diff --git a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+index 935af46..46322a8 100644
+--- a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
++++ b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+@@ -735,7 +735,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                                     paper: paper,
+                                     template: template,
+                                   );
+-                              if (layout == null || !mounted) {
++                              if (layout == null || !context.mounted) {
+                                 return;
+                               }
+ 
+@@ -756,7 +756,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                                 await ref
+                                     .read(templateProvider.notifier)
+                                     .saveTemplate(custom);
+-                                if (!mounted) {
++                                if (!context.mounted) {
+                                   return;
+                                 }
+                                 editor.updateTemplate(custom.id);
+@@ -770,7 +770,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                                   ),
+                                 );
+                               } catch (error) {
+-                                if (!mounted) {
++                                if (!context.mounted) {
+                                   return;
+                                 }
+                                 ScaffoldMessenger.of(context).showSnackBar(
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index c89dbe6..4ef45f3 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -247,6 +247,8 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+             onArrangeHeader: widget.onArrangeHeader,
+             onPageLayout: _openPageLayout,
+           ),
++          if (widget.compact)
++            _CompactWordSectionAction(onAddSection: widget.onAddSection),
+           const Divider(height: 1),
+           Expanded(
+             child: SingleChildScrollView(
+@@ -366,16 +368,18 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                           ),
+                         ),
+                       ),
+-                      const SizedBox(height: 14),
+-                      Align(
+-                        alignment: Alignment.center,
+-                        child: OutlinedButton.icon(
+-                          key: const Key('word-mode-add-section'),
+-                          onPressed: widget.onAddSection,
+-                          icon: const Icon(Icons.add_rounded),
+-                          label: const Text('Add section'),
++                      if (!widget.compact) ...[
++                        const SizedBox(height: 14),
++                        Align(
++                          alignment: Alignment.center,
++                          child: OutlinedButton.icon(
++                            key: const Key('word-mode-add-section'),
++                            onPressed: widget.onAddSection,
++                            icon: const Icon(Icons.add_rounded),
++                            label: const Text('Add section'),
++                          ),
+                         ),
+-                      ),
++                      ],
+                     ],
+                   ),
+                 ),
+@@ -828,6 +832,31 @@ class _WordEditorRibbon extends StatelessWidget {
+   );
+ }
+ 
++class _CompactWordSectionAction extends StatelessWidget {
++  final VoidCallback onAddSection;
++
++  const _CompactWordSectionAction({required this.onAddSection});
++
++  @override
++  Widget build(BuildContext context) {
++    return Material(
++      color: Theme.of(context).colorScheme.surface,
++      child: Padding(
++        padding: const EdgeInsets.fromLTRB(12, 6, 12, 5),
++        child: Align(
++          alignment: Alignment.centerRight,
++          child: OutlinedButton.icon(
++            key: const Key('word-mode-add-section'),
++            onPressed: onAddSection,
++            icon: const Icon(Icons.add_rounded, size: 18),
++            label: const Text('Add section'),
++          ),
++        ),
++      ),
++    );
++  }
++}
++
+ class _InsertActions extends StatelessWidget {
+   final bool compact;
+   final bool enabled;
+diff --git a/test/features/paper_composer/dual_editor_mode_test.dart b/test/features/paper_composer/dual_editor_mode_test.dart
+index b7533ee..6216b55 100644
+--- a/test/features/paper_composer/dual_editor_mode_test.dart
++++ b/test/features/paper_composer/dual_editor_mode_test.dart
+@@ -97,7 +97,13 @@ void main() {
+     await tester.tap(find.text('Word'));
+     await tester.pumpAndSettle();
+ 
+-    await tester.tap(find.byKey(const Key('word-mode-add-section')));
++    final addSection = find.byKey(const Key('word-mode-add-section'));
++    expect(addSection, findsOneWidget);
++    final addSectionRect = tester.getRect(addSection);
++    expect(addSectionRect.top, greaterThanOrEqualTo(0));
++    expect(addSectionRect.bottom, lessThanOrEqualTo(900));
++
++    await tester.tap(addSection);
+     await tester.pumpAndSettle();
+     expect(find.byKey(const Key('word-ribbon-paragraph')), findsOneWidget);
+ 
+diff --git a/test/release/rc_candidate_1_production_gate_test.dart b/test/release/rc_candidate_1_production_gate_test.dart
+index 2a3f693..2ca4441 100644
+--- a/test/release/rc_candidate_1_production_gate_test.dart
++++ b/test/release/rc_candidate_1_production_gate_test.dart
+@@ -50,7 +50,14 @@ void main() {
+ 
+     await tester.tap(find.text('Word'));
+     await tester.pumpAndSettle();
+-    await tester.tap(find.byKey(const Key('word-mode-add-section')));
++
++    final addSection = find.byKey(const Key('word-mode-add-section'));
++    expect(addSection, findsOneWidget);
++    final addSectionRect = tester.getRect(addSection);
++    expect(addSectionRect.top, greaterThanOrEqualTo(0));
++    expect(addSectionRect.bottom, lessThanOrEqualTo(760));
++
++    await tester.tap(addSection);
+     await tester.pumpAndSettle();
+ 
+     final paragraph = find.byKey(const Key('word-ribbon-paragraph'));

@@ -1,0 +1,3339 @@
+diff --git a/PROFESSIONAL_FORMATTING_POLISH_PHASE3.md b/PROFESSIONAL_FORMATTING_POLISH_PHASE3.md
+new file mode 100644
+index 0000000..7b61ac9
+--- /dev/null
++++ b/PROFESSIONAL_FORMATTING_POLISH_PHASE3.md
+@@ -0,0 +1,101 @@
++# Professional Formatting Polish — Phase 3
++
++Baseline: Professional Formatting Phase 2 QA Fix 1, user-verified on Windows
++with analyzer clean, focused formatting/export/release gates green, and full
++regression `+321`.
++
++## Goal
++
++Make Create Paper templates more professional and make Word Mode a practical
++WYSIWYG authoring surface without splitting the canonical `Paper` model or
++turning long exam papers into unsafe absolute-position documents.
++
++## Completed
++
++### Shared WYSIWYG page geometry
++
++- Added `PaperPageCanvasMetrics` as the shared page geometry contract used by
++  Preview and Word Mode.
++- Both surfaces now resolve the same page size, orientation, margins, page
++  width scaling, and minimum paper height.
++- Word Mode receives the resolved `PaperTemplate`, not only a page-size enum.
++
++### Shared header renderer
++
++- Added `PaperHeaderLayoutCanvas`.
++- Preview and Word Mode now render the same canonical header geometry from
++  `PaperHeaderLayoutFactory` / `CustomLayout`.
++- Word Mode swaps editable nodes into the shared canvas for school name, paper
++  title, and editable metadata fields; the layout geometry itself remains the
++  same as Preview.
++
++### Professional built-in headers
++
++Built-in layouts were refined around real academic hierarchies instead of
++brand-specific decoration:
++
++- Centered formal
++- Identity/logo left
++- Identity/logo right
++- Modern compact/coaching
++- Minimal
++- Academic/university
++- Structured formal
++- Board classic
++
++Curated metadata ordering now supports common fields such as Subject, Class,
++Time, Date, Batch, Set, Semester, Course Code, Paper Code and Roll No while
++still preserving teacher-added custom header fields.
++
++### Header Arrange — safe free placement
++
++Word Mode now exposes `Arrange header`.
++
++The header designer supports:
++
++- drag positioning
++- 6-point snap grid on/off
++- X/Y controls
++- width and supported height controls
++- left/center/right alignment
++- font size and bold controls
++- add text
++- add horizontal line
++- add logo slot
++- canvas height
++- reset
++- save/apply as a custom header template
++
++Built-in styles are never overwritten: arranging a built-in header creates and
++applies a custom template. Editing an existing custom header updates that
++custom template.
++
++The body intentionally remains flow-based. This preserves long-paper
++pagination, Smart Mode semantics, Question Bank insertion, Math/Geometry
++content, and safe PDF/DOCX export.
++
++### Preview / Word body parity
++
++- Word Mode now mirrors template border, question font size, line spacing and
++  page margins from the same page geometry used by Preview.
++- Two-column templates render two-column question flow in both Preview and
++  Word Mode when no manual page-break block requires safe single-column flow.
++- Existing Phase-1/2 section formatting remains canonical in both surfaces.
++
++### Export alignment
++
++- PDF header rendering continues to use exact canonical `CustomLayout` x/y
++  geometry.
++- DOCX and PDF now share the same header metadata-field resolver, preventing
++  template field order from drifting between exporters.
++- DOCX remains a flow-oriented Word format; absolute header x/y geometry is
++  not falsely represented as pixel-identical Word drawing objects.
++
++## Safety / compatibility
++
++- no DB/schema migration
++- no dependency upgrades
++- no second Word document model
++- no change to question/marks calculation
++- no change to Step-10 safe DOCX round-trip contract
++- no unsafe absolute positioning for questions
+diff --git a/PROFESSIONAL_FORMATTING_POLISH_PHASE3_NOTES.md b/PROFESSIONAL_FORMATTING_POLISH_PHASE3_NOTES.md
+new file mode 100644
+index 0000000..cc1cf29
+--- /dev/null
++++ b/PROFESSIONAL_FORMATTING_POLISH_PHASE3_NOTES.md
+@@ -0,0 +1,62 @@
++# EduSheet — Professional Formatting Polish Phase 3 QA Notes
++
++## Baseline
++
++Professional Formatting Phase 2 QA Fix 1 was user-verified on Windows:
++
++- `flutter analyze` — no issues
++- professional formatting tests — `+4`
++- office/export tests — `+17`
++- release tests — `+15`
++- full suite — `+321`
++
++## Phase 3 changed areas
++
++- shared Preview/Word page-canvas metrics
++- shared editable/read-only header renderer
++- professional built-in header geometry and metadata ordering
++- Word Mode header arrangement designer
++- custom-template save/apply flow
++- Word Mode template border/font/two-column parity
++- PDF/DOCX shared header-field resolution
++- Phase-3 WYSIWYG tests and release gate
++
++## Static QA completed in assistant environment
++
++- changed `package:edusheet/...` imports resolve
++- changed Dart files pass delimiter/string/comment structural scan
++- no merge-conflict markers
++- clean patch generated from the Phase-2 QA Fix 1 baseline
++- patch apply-check performed against a fresh baseline copy
++- modified/full ZIP archive integrity verified
++
++Flutter/Dart executables are not available in the assistant container, so no
++analyzer/runtime pass is claimed for Phase 3 until the Windows run confirms it.
++
++## Windows QA
++
++```powershell
++dart format .
++flutter analyze
++
++flutter test test/features/paper_composer/wysiwyg_header_phase3_test.dart
++flutter test test/features/paper_composer/dual_editor_mode_test.dart
++flutter test test/release/professional_formatting_phase3_gate_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
++
++## Manual WYSIWYG smoke test
++
++1. Choose Centered formal, Board classic, Academic and Modern compact styles.
++2. Compare Word Mode and Preview at A4 portrait, A4 landscape and Letter.
++3. Change margins and verify Word/Preview page padding changes together.
++4. Edit School, Exam title and header metadata directly in Word Mode.
++5. Open `Arrange header`, drag/resize an element, save, and verify Preview and
++   PDF reflect the custom geometry.
++6. Use a two-column template and verify Preview and Word Mode show the same
++   two-column question flow.
++7. Insert a manual page break and verify the section safely falls back to
++   single-column flow rather than breaking the document structure.
++8. Export PDF and DOCX; confirm metadata order/content is preserved.
+diff --git a/lib/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart b/lib/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart
+new file mode 100644
+index 0000000..b4ac078
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart
+@@ -0,0 +1,75 @@
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
++import 'package:flutter/widgets.dart';
++
++/// Shared page geometry for the read-only Preview and editable Word Mode.
++///
++/// Keeping this math in one place is the Phase-3 WYSIWYG contract: both
++/// surfaces use the same page width, scale, margins and minimum paper height.
++class PaperPageCanvasMetrics {
++  final double pageWidth;
++  final double pageScale;
++  final double pageMinHeight;
++  final EdgeInsets pagePadding;
++  final ({double width, double height}) pagePoints;
++
++  const PaperPageCanvasMetrics({
++    required this.pageWidth,
++    required this.pageScale,
++    required this.pageMinHeight,
++    required this.pagePadding,
++    required this.pagePoints,
++  });
++
++  static PaperPageCanvasMetrics resolve({
++    required PaperPageLayout layout,
++    required PaperSize templatePageSize,
++    required double viewportWidth,
++  }) {
++    final points = _resolvedPagePoints(layout, templatePageSize);
++    final preferredWidth = (820 * points.width / 595.28)
++        .clamp(620, 980)
++        .toDouble();
++    final availableWidth = (viewportWidth - 32).clamp(280, 980).toDouble();
++    final pageWidth = preferredWidth < availableWidth
++        ? preferredWidth
++        : availableWidth;
++    final scale = pageWidth / points.width;
++    final margins = layout.margins;
++
++    return PaperPageCanvasMetrics(
++      pageWidth: pageWidth,
++      pageScale: scale,
++      pageMinHeight: (points.height * scale).clamp(700, 1500).toDouble(),
++      pagePadding: EdgeInsets.fromLTRB(
++        (margins.leftPoints * scale).clamp(18, 120).toDouble(),
++        (margins.topPoints * scale).clamp(20, 140).toDouble(),
++        (margins.rightPoints * scale).clamp(18, 120).toDouble(),
++        (margins.bottomPoints * scale).clamp(24, 160).toDouble(),
++      ),
++      pagePoints: points,
++    );
++  }
++
++  static ({double width, double height}) _resolvedPagePoints(
++    PaperPageLayout layout,
++    PaperSize templatePageSize,
++  ) {
++    final explicit = layout.explicitPageSizePoints;
++    if (explicit != null) {
++      return explicit;
++    }
++
++    final portrait = switch (templatePageSize) {
++      PaperSize.a4 => (width: 595.28, height: 841.89),
++      PaperSize.a5 => (width: 419.53, height: 595.28),
++      PaperSize.a3 => (width: 841.89, height: 1190.55),
++      PaperSize.letter => (width: 612.0, height: 792.0),
++      PaperSize.legal => (width: 612.0, height: 1008.0),
++    };
++    if (layout.orientation == PaperPageOrientation.landscape) {
++      return (width: portrait.height, height: portrait.width);
++    }
++    return portrait;
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+index 0cce344..935af46 100644
+--- a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
++++ b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+@@ -14,10 +14,12 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_prev
+ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_section_card.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_sheet.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/section_format_sheet.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/word_header_layout_editor_sheet.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/word_paper_editor.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_page.dart';
+ import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
+ import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
+ import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
+ import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
+@@ -30,6 +32,7 @@ import 'package:open_filex/open_filex.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:uuid/uuid.dart';
+ 
+ enum _PaperEditingMode { smart, word }
+ 
+@@ -691,7 +694,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                         ? WordPaperEditor(
+                             paper: paper,
+                             compact: compact,
+-                            templatePageSize: template.paperSize,
++                            template: template,
+                             onTitleChanged: editor.updateTitle,
+                             onSchoolNameChanged: (value) =>
+                                 editor.updateBranding(schoolName: value),
+@@ -725,6 +728,60 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                             onAddSection: _addSection,
+                             onAddQuestion: (sectionId) => _openQuestion(sectionId),
+                             onImportWord: _importEduSheetWordRoundTrip,
++                            onArrangeHeader: () async {
++                              final layout =
++                                  await WordHeaderLayoutEditorSheet.show(
++                                    context,
++                                    paper: paper,
++                                    template: template,
++                                  );
++                              if (layout == null || !mounted) {
++                                return;
++                              }
++
++                              final editingExistingCustom =
++                                  template.headerLayout == HeaderLayout.custom &&
++                                  template.customLayout != null;
++                              final custom = template.copyWith(
++                                id: editingExistingCustom
++                                    ? template.id
++                                    : const Uuid().v4(),
++                                name: editingExistingCustom
++                                    ? template.name
++                                    : '${template.name} Custom Header',
++                                headerLayout: HeaderLayout.custom,
++                                customLayout: layout,
++                              );
++                              try {
++                                await ref
++                                    .read(templateProvider.notifier)
++                                    .saveTemplate(custom);
++                                if (!mounted) {
++                                  return;
++                                }
++                                editor.updateTemplate(custom.id);
++                                ScaffoldMessenger.of(context).showSnackBar(
++                                  SnackBar(
++                                    content: Text(
++                                      editingExistingCustom
++                                          ? 'Header layout updated.'
++                                          : 'Custom header saved and applied.',
++                                    ),
++                                  ),
++                                );
++                              } catch (error) {
++                                if (!mounted) {
++                                  return;
++                                }
++                                ScaffoldMessenger.of(context).showSnackBar(
++                                  SnackBar(
++                                    content: Text(
++                                      'Unable to save header layout: $error',
++                                    ),
++                                  ),
++                                );
++                              }
++                            },
+                             onApplyPageLayout:
+                                 (layout, headerText, footerText, showPageNumbers) =>
+                                     editor.applyPageLayout(
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart b/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+new file mode 100644
+index 0000000..8a5263b
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+@@ -0,0 +1,536 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
++import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
++import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
++import 'package:flutter/material.dart';
++
++/// Shared Flutter renderer for the canonical paper header geometry.
++///
++/// Preview and Word Mode both use this canvas. Word Mode only swaps the text
++/// nodes for borderless inline editors, so the teacher edits the same x/y/width
++/// geometry that Preview/PDF resolve from [PaperHeaderLayoutFactory].
++class PaperHeaderLayoutCanvas extends StatelessWidget {
++  final PaperTemplate template;
++  final Paper? paper;
++  final double? height;
++  final bool editable;
++  final ValueChanged<String>? onSchoolNameChanged;
++  final ValueChanged<String>? onTitleChanged;
++  final void Function(String fieldId, String value)? onHeaderFieldChanged;
++
++  const PaperHeaderLayoutCanvas({
++    super.key,
++    required this.template,
++    this.paper,
++    this.height,
++    this.editable = false,
++    this.onSchoolNameChanged,
++    this.onTitleChanged,
++    this.onHeaderFieldChanged,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final layout = paper == null
++        ? PaperHeaderLayoutFactory.resolve(template)
++        : PaperHeaderLayoutFactory.resolveForPaper(template, paper!);
++    final design = SizedBox(
++      width: CustomLayout.designWidth,
++      height: layout.canvasHeight,
++      child: Stack(
++        clipBehavior: Clip.none,
++        children: [
++          for (final element in layout.elements)
++            Positioned(
++              left: element.x,
++              top: element.y,
++              child: PaperHeaderElementView(
++                element: element,
++                paper: paper,
++                template: template,
++                editable: editable,
++                onSchoolNameChanged: onSchoolNameChanged,
++                onTitleChanged: onTitleChanged,
++                onHeaderFieldChanged: onHeaderFieldChanged,
++              ),
++            ),
++        ],
++      ),
++    );
++
++    if (height != null) {
++      return SizedBox(
++        height: height,
++        child: ClipRect(
++          child: FittedBox(
++            fit: BoxFit.contain,
++            alignment: Alignment.topCenter,
++            child: design,
++          ),
++        ),
++      );
++    }
++
++    // Width-driven mode is the WYSIWYG path used by Preview and Word Mode.
++    // The aspect ratio guarantees that both surfaces scale the same geometry.
++    return AspectRatio(
++      aspectRatio: CustomLayout.designWidth / layout.canvasHeight,
++      child: FittedBox(
++        fit: BoxFit.fill,
++        alignment: Alignment.topLeft,
++        child: design,
++      ),
++    );
++  }
++}
++
++/// Public element renderer reused by the header arrangement surface.
++class PaperHeaderElementView extends StatelessWidget {
++  final TemplateElement element;
++  final Paper? paper;
++  final PaperTemplate template;
++  final bool editable;
++  final ValueChanged<String>? onSchoolNameChanged;
++  final ValueChanged<String>? onTitleChanged;
++  final void Function(String fieldId, String value)? onHeaderFieldChanged;
++
++  const PaperHeaderElementView({
++    super.key,
++    required this.element,
++    required this.paper,
++    required this.template,
++    this.editable = false,
++    this.onSchoolNameChanged,
++    this.onTitleChanged,
++    this.onHeaderFieldChanged,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final width = element.width;
++    final height = element.height;
++    final fontSize = _number(element.properties['fontSize'], 12);
++    final color = element.properties['color'] is num
++        ? Color((element.properties['color'] as num).toInt())
++        : Colors.black;
++    final style = TextStyle(
++      color: color,
++      fontSize: fontSize,
++      fontWeight: element.properties['bold'] == true
++          ? FontWeight.w700
++          : FontWeight.w400,
++      fontStyle: element.properties['italic'] == true
++          ? FontStyle.italic
++          : FontStyle.normal,
++      decoration: element.properties['decoration'] == 'underline'
++          ? TextDecoration.underline
++          : TextDecoration.none,
++      height: 1.05,
++    );
++    final alignment = _alignment(element.properties['alignment']?.toString());
++    final textAlign = _textAlign(element.properties['alignment']?.toString());
++
++    switch (element.type) {
++      case ElementType.logo:
++        final hasActualLogo =
++            paper == null || paper!.logos.any((path) => path.trim().isNotEmpty);
++        if (!hasActualLogo) {
++          return SizedBox(width: width ?? 48, height: height ?? 48);
++        }
++        return Container(
++          width: width ?? 48,
++          height: height ?? 48,
++          decoration: BoxDecoration(
++            borderRadius: BorderRadius.circular(4),
++            border: Border.all(color: Colors.black26),
++          ),
++          alignment: Alignment.center,
++          child: const Icon(
++            Icons.school_outlined,
++            size: 24,
++            color: Colors.black45,
++          ),
++        );
++      case ElementType.schoolName:
++        return _box(
++          width,
++          height,
++          alignment,
++          editable && paper != null && onSchoolNameChanged != null
++              ? _HeaderInlineField(
++                  key: const Key('word-paper-school-name'),
++                  initialValue: paper!.schoolName,
++                  hintText: 'School / institution',
++                  style: style,
++                  textAlign: textAlign,
++                  maxLines: 2,
++                  onChanged: onSchoolNameChanged!,
++                )
++              : Text(
++                  _schoolName,
++                  maxLines: 2,
++                  overflow: TextOverflow.ellipsis,
++                  textAlign: textAlign,
++                  style: style,
++                ),
++        );
++      case ElementType.paperTitle:
++        return _box(
++          width,
++          height,
++          alignment,
++          editable && paper != null && onTitleChanged != null
++              ? _HeaderInlineField(
++                  key: const Key('word-paper-title'),
++                  initialValue: paper!.title,
++                  hintText: 'Examination title',
++                  style: style,
++                  textAlign: textAlign,
++                  maxLines: 2,
++                  onChanged: onTitleChanged!,
++                )
++              : Text(
++                  _paperTitle,
++                  maxLines: 2,
++                  overflow: TextOverflow.ellipsis,
++                  textAlign: textAlign,
++                  style: style,
++                ),
++        );
++      case ElementType.maxMarks:
++        return _box(
++          width,
++          height,
++          alignment,
++          Text(
++            _maximumMarksLabel,
++            maxLines: 1,
++            textAlign: textAlign,
++            style: style,
++          ),
++        );
++      case ElementType.headerFieldsBlock:
++        return _buildHeaderFields(element, style);
++      case ElementType.staticText:
++        final text =
++            paper?.customHeaderValues[element.paperBindingKey] ?? element.content;
++        return _box(
++          width,
++          height,
++          alignment,
++          Text(
++            text,
++            maxLines: 2,
++            overflow: TextOverflow.ellipsis,
++            textAlign: textAlign,
++            style: style,
++          ),
++          border: element.properties['border'] == true,
++        );
++      case ElementType.horizontalLine:
++        return Container(
++          width: width ?? 100,
++          height: _number(element.properties['thickness'], 1),
++          color: color == Colors.black
++              ? Color(template.primaryColor.toInt())
++              : color,
++        );
++      case ElementType.rectangular:
++        return Container(
++          width: width,
++          height: height,
++          alignment: alignment,
++          decoration: BoxDecoration(
++            color: element.properties['fillColor'] is num
++                ? Color((element.properties['fillColor'] as num).toInt())
++                : null,
++            border: Border.all(
++              color: element.properties['borderColor'] is num
++                  ? Color((element.properties['borderColor'] as num).toInt())
++                  : Colors.black54,
++              width: _number(element.properties['borderWidth'], 1),
++            ),
++            borderRadius: element.properties['borderRadius'] == null
++                ? null
++                : BorderRadius.circular(
++                    _number(element.properties['borderRadius'], 0),
++                  ),
++          ),
++          child: element.content.isEmpty
++              ? null
++              : Text(element.content, style: style, textAlign: textAlign),
++        );
++    }
++  }
++
++  Widget _buildHeaderFields(TemplateElement element, TextStyle style) {
++    final fields = _resolvedHeaderFields(element);
++    if (fields.isEmpty) {
++      return SizedBox(width: element.width ?? 300, height: element.height);
++    }
++    final fieldStyle = style.copyWith(fontSize: (style.fontSize ?? 12) * 0.88);
++    final rows = <Widget>[];
++    for (var index = 0; index < fields.length; index += 2) {
++      final rowFields = fields.sublist(
++        index,
++        (index + 2).clamp(0, fields.length).toInt(),
++      );
++      rows.add(
++        Row(
++          crossAxisAlignment: CrossAxisAlignment.start,
++          children: [
++            for (var cellIndex = 0; cellIndex < 2; cellIndex++) ...[
++              if (cellIndex > 0) const SizedBox(width: 18),
++              Expanded(
++                child: cellIndex < rowFields.length
++                    ? _HeaderFieldCell(
++                        field: rowFields[cellIndex],
++                        style: fieldStyle,
++                        editable: editable && paper != null,
++                        onChanged: onHeaderFieldChanged,
++                      )
++                    : const SizedBox(),
++              ),
++            ],
++          ],
++        ),
++      );
++      if (index + 2 < fields.length) {
++        rows.add(const SizedBox(height: 5));
++      }
++    }
++    return SizedBox(
++      width: element.width ?? 300,
++      height: element.height,
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.stretch,
++        children: rows,
++      ),
++    );
++  }
++
++  List<PaperHeaderField> _resolvedHeaderFields(TemplateElement element) {
++    if (paper == null) {
++      final requestedLabels =
++          (element.properties['fieldLabels'] as List?)
++              ?.map((value) => value.toString().trim())
++              .where((value) => value.isNotEmpty)
++              .toList(growable: false) ??
++          const <String>[];
++      final labels = requestedLabels.isEmpty
++          ? const ['Subject', 'Class', 'Time', 'Date']
++          : requestedLabels;
++      return [
++        for (var i = 0; i < labels.length; i++)
++          PaperHeaderField(
++            id: 'preview-$i',
++            label: labels[i],
++            isPlaceholder: true,
++          ),
++      ];
++    }
++    return PaperHeaderLayoutFactory.resolveHeaderFields(element, paper!);
++  }
++
++  String get _schoolName {
++    if (paper == null) {
++      return 'SCHOOL / INSTITUTION';
++    }
++    return paper!.schoolName.trim();
++  }
++
++  String get _paperTitle {
++    if (paper == null) {
++      return 'EXAMINATION';
++    }
++    return paper!.title.trim();
++  }
++
++  String get _maximumMarksLabel => paper == null
++      ? 'Maximum Marks: 80'
++      : PaperDocumentMarks.maximumMarksLabel(paper!);
++
++  static Widget _box(
++    double? width,
++    double? height,
++    Alignment alignment,
++    Widget child, {
++    bool border = false,
++  }) {
++    return Container(
++      width: width,
++      height: height,
++      padding: border
++          ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
++          : null,
++      alignment: alignment,
++      decoration: border
++          ? BoxDecoration(border: Border.all(color: Colors.black54))
++          : null,
++      child: child,
++    );
++  }
++
++  static double _number(Object? value, double fallback) =>
++      value is num ? value.toDouble() : fallback;
++
++  static Alignment _alignment(String? value) {
++    switch (value) {
++      case 'center':
++        return Alignment.center;
++      case 'right':
++        return Alignment.centerRight;
++      default:
++        return Alignment.centerLeft;
++    }
++  }
++
++  static TextAlign _textAlign(String? value) {
++    switch (value) {
++      case 'center':
++        return TextAlign.center;
++      case 'right':
++        return TextAlign.right;
++      default:
++        return TextAlign.left;
++    }
++  }
++}
++
++class _HeaderFieldCell extends StatelessWidget {
++  final PaperHeaderField field;
++  final TextStyle style;
++  final bool editable;
++  final void Function(String fieldId, String value)? onChanged;
++
++  const _HeaderFieldCell({
++    required this.field,
++    required this.style,
++    required this.editable,
++    required this.onChanged,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final value = field.value.trim();
++    final content = field.isPlaceholder || value.isEmpty
++        ? '________________'
++        : value;
++    if (!editable || field.id.isEmpty || onChanged == null) {
++      return Text.rich(
++        TextSpan(
++          children: [
++            TextSpan(
++              text: '${field.label}: ',
++              style: style.copyWith(fontWeight: FontWeight.w700),
++            ),
++            TextSpan(text: content, style: style),
++          ],
++        ),
++        maxLines: 1,
++        overflow: TextOverflow.ellipsis,
++      );
++    }
++
++    return Row(
++      crossAxisAlignment: CrossAxisAlignment.center,
++      children: [
++        Text(
++          '${field.label}: ',
++          style: style.copyWith(fontWeight: FontWeight.w700),
++        ),
++        Expanded(
++          child: _HeaderInlineField(
++            key: ValueKey('wysiwyg-header-field-${field.id}'),
++            initialValue: field.isPlaceholder ? '' : field.value,
++            hintText: '________',
++            style: style,
++            textAlign: TextAlign.left,
++            maxLines: 1,
++            onChanged: (value) => onChanged!(field.id, value),
++          ),
++        ),
++      ],
++    );
++  }
++}
++
++class _HeaderInlineField extends StatefulWidget {
++  final String initialValue;
++  final String hintText;
++  final TextStyle style;
++  final TextAlign textAlign;
++  final int maxLines;
++  final ValueChanged<String> onChanged;
++
++  const _HeaderInlineField({
++    super.key,
++    required this.initialValue,
++    required this.hintText,
++    required this.style,
++    required this.textAlign,
++    required this.maxLines,
++    required this.onChanged,
++  });
++
++  @override
++  State<_HeaderInlineField> createState() => _HeaderInlineFieldState();
++}
++
++class _HeaderInlineFieldState extends State<_HeaderInlineField> {
++  late final TextEditingController _controller;
++  late final FocusNode _focusNode;
++
++  @override
++  void initState() {
++    super.initState();
++    _controller = TextEditingController(text: widget.initialValue);
++    _focusNode = FocusNode();
++  }
++
++  @override
++  void didUpdateWidget(covariant _HeaderInlineField oldWidget) {
++    super.didUpdateWidget(oldWidget);
++    if (!_focusNode.hasFocus && widget.initialValue != _controller.text) {
++      _controller.value = TextEditingValue(
++        text: widget.initialValue,
++        selection: TextSelection.collapsed(offset: widget.initialValue.length),
++      );
++    }
++  }
++
++  @override
++  void dispose() {
++    _controller.dispose();
++    _focusNode.dispose();
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    return TextField(
++      controller: _controller,
++      focusNode: _focusNode,
++      maxLines: widget.maxLines,
++      minLines: 1,
++      textAlign: widget.textAlign,
++      style: widget.style,
++      onChanged: widget.onChanged,
++      decoration: InputDecoration(
++        isDense: true,
++        border: InputBorder.none,
++        enabledBorder: InputBorder.none,
++        focusedBorder: UnderlineInputBorder(
++          borderSide: BorderSide(
++            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.6),
++            width: 0.8,
++          ),
++        ),
++        hintText: widget.hintText,
++        hintStyle: widget.style.copyWith(color: Colors.black38),
++        contentPadding: EdgeInsets.zero,
++      ),
++    );
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart b/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+index 3d4aa91..441694a 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+@@ -10,6 +10,7 @@ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
++import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
+ import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
+@@ -35,16 +36,14 @@ class PaperPreviewPage extends ConsumerWidget {
+       paper.templateId,
+       ref.watch(templateProvider).all,
+     );
+-    final pagePoints = _resolvedPagePoints(paper.pageLayout, template.paperSize);
+-    final pageWidth = _previewPageWidth(pagePoints.width);
+-    final pageScale = pageWidth / pagePoints.width;
+-    final previewPadding = EdgeInsets.fromLTRB(
+-      (paper.pageLayout.margins.leftPoints * pageScale).clamp(18, 120).toDouble(),
+-      (paper.pageLayout.margins.topPoints * pageScale).clamp(20, 140).toDouble(),
+-      (paper.pageLayout.margins.rightPoints * pageScale).clamp(18, 120).toDouble(),
+-      (paper.pageLayout.margins.bottomPoints * pageScale).clamp(24, 160).toDouble(),
++    final pageMetrics = PaperPageCanvasMetrics.resolve(
++      layout: paper.pageLayout,
++      templatePageSize: template.paperSize,
++      viewportWidth: MediaQuery.sizeOf(context).width,
+     );
+-    final pageMinHeight = (pagePoints.height * pageScale).clamp(700, 1500).toDouble();
++    final pageWidth = pageMetrics.pageWidth;
++    final previewPadding = pageMetrics.pagePadding;
++    final pageMinHeight = pageMetrics.pageMinHeight;
+     final marksDiagnostics = PaperMarksTeacherDiagnostics.fromPaper(paper);
+ 
+     return Scaffold(
+@@ -111,7 +110,7 @@ class PaperPreviewPage extends ConsumerWidget {
+                           PaperHeaderLayoutPreview(
+                             template: template,
+                             paper: paper,
+-                            height: 220,
++                            fitToWidth: true,
+                           ),
+                           const SizedBox(height: 10),
+                           if (paper.instruction.trim().isNotEmpty) ...[
+@@ -152,28 +151,6 @@ class PaperPreviewPage extends ConsumerWidget {
+     );
+   }
+ 
+-  static ({double width, double height}) _resolvedPagePoints(
+-    PaperPageLayout layout,
+-    PaperSize templateSize,
+-  ) {
+-    final explicit = layout.explicitPageSizePoints;
+-    if (explicit != null) return explicit;
+-    final portrait = switch (templateSize) {
+-      PaperSize.a4 => (width: 595.28, height: 841.89),
+-      PaperSize.a5 => (width: 419.53, height: 595.28),
+-      PaperSize.a3 => (width: 841.89, height: 1190.55),
+-      PaperSize.letter => (width: 612.0, height: 792.0),
+-      PaperSize.legal => (width: 612.0, height: 1008.0),
+-    };
+-    if (layout.orientation == PaperPageOrientation.landscape) {
+-      return (width: portrait.height, height: portrait.width);
+-    }
+-    return portrait;
+-  }
+-
+-  static double _previewPageWidth(double widthPoints) {
+-    return (820 * widthPoints / 595.28).clamp(620, 980).toDouble();
+-  }
+ }
+ 
+ class _PreviewRunningHeader extends StatelessWidget {
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_style_editor_sheet.dart b/lib/features/paper_composer/presentation/widgets/paper_style_editor_sheet.dart
+index 44b37d4..e330e4b 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_style_editor_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_style_editor_sheet.dart
+@@ -254,7 +254,7 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
+               decoration: const InputDecoration(
+                 labelText: 'Header',
+                 helperText:
+-                    'Choose the overall arrangement, not individual coordinates.',
++                    'Choose a professional starting arrangement; Word Mode can fine-tune header positions.',
+               ),
+               items: [
+                 for (final layout in allowedHeaders)
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_style_preview.dart b/lib/features/paper_composer/presentation/widgets/paper_style_preview.dart
+index 5f8370a..562e28b 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_style_preview.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_style_preview.dart
+@@ -1,54 +1,32 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+-import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+-import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+-import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:flutter/material.dart';
+ 
+-/// Flutter preview of the same resolved header layout used by PDF and Word.
++/// Read-only wrapper retained for style chooser and existing call sites.
++///
++/// Phase 3 moves the actual header rendering into [PaperHeaderLayoutCanvas] so
++/// the chooser, paper preview and Word Mode cannot drift into separate layouts.
+ class PaperHeaderLayoutPreview extends StatelessWidget {
+   final PaperTemplate template;
+   final Paper? paper;
+-  final double height;
++  final double? height;
++  final bool fitToWidth;
+ 
+   const PaperHeaderLayoutPreview({
+     super.key,
+     required this.template,
+     this.paper,
+     this.height = 120,
++    this.fitToWidth = false,
+   });
+ 
+   @override
+   Widget build(BuildContext context) {
+-    final layout = paper == null
+-        ? PaperHeaderLayoutFactory.resolve(template)
+-        : PaperHeaderLayoutFactory.resolveForPaper(template, paper!);
+-    return SizedBox(
+-      height: height,
+-      child: ClipRect(
+-        child: FittedBox(
+-          fit: BoxFit.contain,
+-          alignment: Alignment.topCenter,
+-          child: SizedBox(
+-            width: CustomLayout.designWidth,
+-            height: layout.canvasHeight,
+-            child: Stack(
+-              children: [
+-                for (final element in layout.elements)
+-                  Positioned(
+-                    left: element.x,
+-                    top: element.y,
+-                    child: _PreviewElement(
+-                      element: element,
+-                      paper: paper,
+-                      template: template,
+-                    ),
+-                  ),
+-              ],
+-            ),
+-          ),
+-        ),
+-      ),
++    return PaperHeaderLayoutCanvas(
++      template: template,
++      paper: paper,
++      height: fitToWidth ? null : height,
+     );
+   }
+ }
+@@ -103,238 +81,6 @@ class PaperStylePreview extends StatelessWidget {
+   }
+ }
+ 
+-class _PreviewElement extends StatelessWidget {
+-  final TemplateElement element;
+-  final Paper? paper;
+-  final PaperTemplate template;
+-
+-  const _PreviewElement({
+-    required this.element,
+-    required this.paper,
+-    required this.template,
+-  });
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    final width = element.width;
+-    final height = element.height;
+-    final fontSize = _number(element.properties['fontSize'], 12);
+-    final color = element.properties['color'] is num
+-        ? Color((element.properties['color'] as num).toInt())
+-        : Colors.black;
+-    final style = TextStyle(
+-      color: color,
+-      fontSize: fontSize,
+-      fontWeight: element.properties['bold'] == true
+-          ? FontWeight.w700
+-          : FontWeight.w400,
+-      fontStyle: element.properties['italic'] == true
+-          ? FontStyle.italic
+-          : FontStyle.normal,
+-      decoration: element.properties['decoration'] == 'underline'
+-          ? TextDecoration.underline
+-          : TextDecoration.none,
+-      height: 1.05,
+-    );
+-    final alignment = _alignment(element.properties['alignment']?.toString());
+-    final textAlign = _textAlign(element.properties['alignment']?.toString());
+-
+-    switch (element.type) {
+-      case ElementType.logo:
+-        final hasActualLogo =
+-            paper == null || paper!.logos.any((path) => path.trim().isNotEmpty);
+-        if (!hasActualLogo) {
+-          return SizedBox(width: width ?? 48, height: height ?? 48);
+-        }
+-        return Container(
+-          width: width ?? 48,
+-          height: height ?? 48,
+-          decoration: BoxDecoration(
+-            borderRadius: BorderRadius.circular(4),
+-            border: Border.all(color: Colors.black26),
+-          ),
+-          alignment: Alignment.center,
+-          child: const Icon(
+-            Icons.school_outlined,
+-            size: 24,
+-            color: Colors.black45,
+-          ),
+-        );
+-      case ElementType.schoolName:
+-        return _box(
+-          width,
+-          height,
+-          alignment,
+-          Text(
+-            _schoolName,
+-            maxLines: 2,
+-            overflow: TextOverflow.ellipsis,
+-            textAlign: textAlign,
+-            style: style,
+-          ),
+-        );
+-      case ElementType.paperTitle:
+-        return _box(
+-          width,
+-          height,
+-          alignment,
+-          Text(
+-            _paperTitle,
+-            maxLines: 2,
+-            overflow: TextOverflow.ellipsis,
+-            textAlign: textAlign,
+-            style: style,
+-          ),
+-        );
+-      case ElementType.maxMarks:
+-        return _box(
+-          width,
+-          height,
+-          alignment,
+-          Text(
+-            _maximumMarksLabel,
+-            maxLines: 1,
+-            textAlign: textAlign,
+-            style: style,
+-          ),
+-        );
+-      case ElementType.headerFieldsBlock:
+-        final fields = _headerFields(element);
+-        return _box(
+-          width,
+-          height,
+-          alignment,
+-          Text(
+-            fields,
+-            maxLines: 3,
+-            overflow: TextOverflow.ellipsis,
+-            textAlign: textAlign,
+-            style: style,
+-          ),
+-        );
+-      case ElementType.staticText:
+-        final text =
+-            paper?.customHeaderValues[element.paperBindingKey] ??
+-            element.content;
+-        return _box(
+-          width,
+-          height,
+-          alignment,
+-          Text(
+-            text,
+-            maxLines: 2,
+-            overflow: TextOverflow.ellipsis,
+-            textAlign: textAlign,
+-            style: style,
+-          ),
+-          border: element.properties['border'] == true,
+-        );
+-      case ElementType.horizontalLine:
+-        return Container(
+-          width: width ?? 100,
+-          height: _number(element.properties['thickness'], 1),
+-          color: color == Colors.black
+-              ? Color(template.primaryColor.toInt())
+-              : color,
+-        );
+-      case ElementType.rectangular:
+-        return Container(
+-          width: width,
+-          height: height,
+-          alignment: alignment,
+-          decoration: BoxDecoration(border: Border.all(color: Colors.black54)),
+-          child: element.content.isEmpty
+-              ? null
+-              : Text(element.content, style: style, textAlign: textAlign),
+-        );
+-    }
+-  }
+-
+-  String get _schoolName {
+-    if (paper == null) return 'SCHOOL / INSTITUTION';
+-    return paper!.schoolName.trim();
+-  }
+-
+-  String get _paperTitle {
+-    if (paper == null) return 'EXAMINATION';
+-    return paper!.title.trim();
+-  }
+-
+-  String get _maximumMarksLabel => paper == null
+-      ? 'Maximum Marks: 80'
+-      : PaperDocumentMarks.maximumMarksLabel(paper!);
+-
+-  String _headerFields(TemplateElement element) {
+-    if (paper == null || paper!.headerFields.isEmpty) {
+-      return 'Subject: __________   Class: ______   Time: ______';
+-    }
+-    final requested =
+-        (element.properties['fieldLabels'] as List?)
+-            ?.map((value) => value.toString().trim().toLowerCase())
+-            .where((value) => value.isNotEmpty)
+-            .toSet() ??
+-        const <String>{};
+-    final fields = requested.isEmpty
+-        ? paper!.headerFields
+-        : paper!.headerFields
+-              .where((field) => requested.contains(field.label.toLowerCase()))
+-              .toList(growable: false);
+-    return fields
+-        .take(6)
+-        .map((field) {
+-          final value = field.value.trim();
+-          return '${field.label}: ${field.isPlaceholder || value.isEmpty ? '________' : value}';
+-        })
+-        .join('   ');
+-  }
+-
+-  static Widget _box(
+-    double? width,
+-    double? height,
+-    Alignment alignment,
+-    Widget child, {
+-    bool border = false,
+-  }) {
+-    return Container(
+-      width: width,
+-      height: height,
+-      padding: border
+-          ? const EdgeInsets.symmetric(horizontal: 3, vertical: 2)
+-          : null,
+-      alignment: alignment,
+-      decoration: border
+-          ? BoxDecoration(border: Border.all(color: Colors.black54))
+-          : null,
+-      child: child,
+-    );
+-  }
+-
+-  static double _number(Object? value, double fallback) =>
+-      value is num ? value.toDouble() : fallback;
+-
+-  static Alignment _alignment(String? value) {
+-    switch (value) {
+-      case 'center':
+-        return Alignment.center;
+-      case 'right':
+-        return Alignment.centerRight;
+-      default:
+-        return Alignment.centerLeft;
+-    }
+-  }
+-
+-  static TextAlign _textAlign(String? value) {
+-    switch (value) {
+-      case 'center':
+-        return TextAlign.center;
+-      case 'right':
+-        return TextAlign.right;
+-      default:
+-        return TextAlign.left;
+-    }
+-  }
+-}
+-
+ class _QuestionSkeleton extends StatelessWidget {
+   final bool twoColumn;
+ 
+diff --git a/lib/features/paper_composer/presentation/widgets/word_header_layout_editor_sheet.dart b/lib/features/paper_composer/presentation/widgets/word_header_layout_editor_sheet.dart
+new file mode 100644
+index 0000000..0f8db56
+--- /dev/null
++++ b/lib/features/paper_composer/presentation/widgets/word_header_layout_editor_sheet.dart
+@@ -0,0 +1,796 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart';
++import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
++import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
++import 'package:flutter/material.dart';
++
++/// Header-only free-placement editor.
++///
++/// The body remains flow based and safe for long papers. Header elements can be
++/// dragged, resized and aligned because that area is finite and is already
++/// represented by [CustomLayout] in the export architecture.
++class WordHeaderLayoutEditorSheet extends StatefulWidget {
++  final Paper paper;
++  final PaperTemplate template;
++
++  const WordHeaderLayoutEditorSheet({
++    super.key,
++    required this.paper,
++    required this.template,
++  });
++
++  static Future<CustomLayout?> show(
++    BuildContext context, {
++    required Paper paper,
++    required PaperTemplate template,
++  }) {
++    return showAdaptiveModalBottomSheet<CustomLayout>(
++      context: context,
++      useSafeArea: true,
++      isScrollControlled: true,
++      builder: (context) => FractionallySizedBox(
++        heightFactor: 0.96,
++        child: WordHeaderLayoutEditorSheet(paper: paper, template: template),
++      ),
++    );
++  }
++
++  @override
++  State<WordHeaderLayoutEditorSheet> createState() =>
++      _WordHeaderLayoutEditorSheetState();
++}
++
++class _WordHeaderLayoutEditorSheetState
++    extends State<WordHeaderLayoutEditorSheet> {
++  static const _grid = 6.0;
++
++  late CustomLayout _base;
++  late List<TemplateElement> _elements;
++  late double _canvasHeight;
++  bool _snap = true;
++  String? _selectedId;
++  Offset? _dragStartGlobal;
++  double? _dragStartX;
++  double? _dragStartY;
++
++  @override
++  void initState() {
++    super.initState();
++    _base = PaperHeaderLayoutFactory.resolveForPaper(
++      widget.template,
++      widget.paper,
++    );
++    _elements = [..._base.elements];
++    _canvasHeight = _base.canvasHeight;
++  }
++
++  TemplateElement? get _selected {
++    final id = _selectedId;
++    if (id == null) {
++      return null;
++    }
++    for (final element in _elements) {
++      if (element.id == id) {
++        return element;
++      }
++    }
++    return null;
++  }
++
++  double _snapValue(double value) {
++    if (!_snap) {
++      return value;
++    }
++    return (value / _grid).roundToDouble() * _grid;
++  }
++
++
++  String _newElementId(String prefix) {
++    var index = _elements.length + 1;
++    while (_elements.any((element) => element.id == '$prefix-$index')) {
++      index++;
++    }
++    return '$prefix-$index';
++  }
++
++  void _replace(TemplateElement element) {
++    final index = _elements.indexWhere((item) => item.id == element.id);
++    if (index < 0) {
++      return;
++    }
++    setState(() => _elements[index] = element);
++  }
++
++  void _startDrag(TemplateElement element, Offset globalPosition) {
++    setState(() {
++      _selectedId = element.id;
++      _dragStartGlobal = globalPosition;
++      _dragStartX = element.x;
++      _dragStartY = element.y;
++    });
++  }
++
++  void _drag(TemplateElement element, Offset globalPosition, double scale) {
++    final start = _dragStartGlobal;
++    final startX = _dragStartX;
++    final startY = _dragStartY;
++    if (start == null || startX == null || startY == null || scale <= 0) {
++      return;
++    }
++    final delta = (globalPosition - start) / scale;
++    final maxX = (CustomLayout.designWidth - (element.width ?? 24))
++        .clamp(0, CustomLayout.designWidth)
++        .toDouble();
++    final maxY = (_canvasHeight - (element.height ?? 14))
++        .clamp(0, _canvasHeight)
++        .toDouble();
++    final x = _snapValue((startX + delta.dx).clamp(0, maxX).toDouble());
++    final y = _snapValue((startY + delta.dy).clamp(0, maxY).toDouble());
++    _replace(element.copyWith(x: x, y: y));
++  }
++
++  void _endDrag() {
++    _dragStartGlobal = null;
++    _dragStartX = null;
++    _dragStartY = null;
++  }
++
++  void _align(String alignment) {
++    final element = _selected;
++    if (element == null) {
++      return;
++    }
++    final width = element.width ?? 100;
++    final x = switch (alignment) {
++      'left' => 0.0,
++      'center' => (CustomLayout.designWidth - width) / 2,
++      'right' => CustomLayout.designWidth - width,
++      _ => element.x,
++    };
++    final properties = Map<String, dynamic>.from(element.properties)
++      ..['alignment'] = alignment;
++    _replace(
++      element.copyWith(
++        x: _snapValue(x.clamp(0, CustomLayout.designWidth).toDouble()),
++        properties: properties,
++      ),
++    );
++  }
++
++  void _addText() {
++    final element = TemplateElement(
++      id: _newElementId('custom-text'),
++      type: ElementType.staticText,
++      x: 0,
++      y: _snapValue((_canvasHeight - 28).clamp(0, _canvasHeight).toDouble()),
++      width: CustomLayout.designWidth,
++      height: 22,
++      content: 'Additional header text',
++      properties: const {
++        'fontSize': 10.5,
++        'alignment': 'center',
++      },
++    );
++    setState(() {
++      _elements.add(element);
++      _selectedId = element.id;
++    });
++  }
++
++  void _addLine() {
++    final element = TemplateElement(
++      id: _newElementId('custom-line'),
++      type: ElementType.horizontalLine,
++      x: 0,
++      y: _snapValue((_canvasHeight - 10).clamp(0, _canvasHeight).toDouble()),
++      width: CustomLayout.designWidth,
++      properties: {
++        'color': widget.template.primaryColor.toInt(),
++        'thickness': 1.0,
++      },
++    );
++    setState(() {
++      _elements.add(element);
++      _selectedId = element.id;
++    });
++  }
++
++  void _addLogo() {
++    final element = TemplateElement(
++      id: _newElementId('custom-logo'),
++      type: ElementType.logo,
++      x: 0,
++      y: 0,
++      width: 48,
++      height: 48,
++    );
++    setState(() {
++      _elements.add(element);
++      _selectedId = element.id;
++    });
++  }
++
++  void _deleteSelected() {
++    final selected = _selected;
++    if (selected == null) {
++      return;
++    }
++    if (selected.type == ElementType.schoolName ||
++        selected.type == ElementType.paperTitle ||
++        selected.type == ElementType.headerFieldsBlock ||
++        selected.type == ElementType.maxMarks) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text(
++            'Core paper fields stay in the header. Move or resize them instead.',
++          ),
++        ),
++      );
++      return;
++    }
++    setState(() {
++      _elements.removeWhere((element) => element.id == selected.id);
++      _selectedId = null;
++    });
++  }
++
++  void _reset() {
++    setState(() {
++      _elements = [..._base.elements];
++      _canvasHeight = _base.canvasHeight;
++      _selectedId = null;
++    });
++  }
++
++  void _save() {
++    Navigator.pop(
++      context,
++      CustomLayout(
++        elements: List.unmodifiable(_elements),
++        canvasHeight: _canvasHeight,
++      ),
++    );
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final theme = Theme.of(context);
++    return Column(
++      children: [
++        Padding(
++          padding: const EdgeInsets.fromLTRB(18, 10, 10, 8),
++          child: Row(
++            children: [
++              Expanded(
++                child: Column(
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: [
++                    Text(
++                      'Arrange header',
++                      style: theme.textTheme.headlineSmall?.copyWith(
++                        fontWeight: FontWeight.w800,
++                      ),
++                    ),
++                    Text(
++                      'Drag header elements. Snap keeps print alignment clean; the question body remains flow-safe.',
++                      style: theme.textTheme.bodySmall?.copyWith(
++                        color: theme.colorScheme.onSurfaceVariant,
++                      ),
++                    ),
++                  ],
++                ),
++              ),
++              IconButton(
++                tooltip: 'Close',
++                onPressed: () => Navigator.pop(context),
++                icon: const Icon(Icons.close_rounded),
++              ),
++            ],
++          ),
++        ),
++        const Divider(height: 1),
++        Expanded(
++          child: LayoutBuilder(
++            builder: (context, constraints) {
++              final wide = constraints.maxWidth >= 920;
++              if (wide) {
++                return Row(
++                  crossAxisAlignment: CrossAxisAlignment.stretch,
++                  children: [
++                    Expanded(
++                      flex: 7,
++                      child: SingleChildScrollView(
++                        padding: const EdgeInsets.all(24),
++                        child: _buildCanvasPanel(context),
++                      ),
++                    ),
++                    const VerticalDivider(width: 1),
++                    SizedBox(
++                      width: 330,
++                      child: SingleChildScrollView(
++                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
++                        child: _buildProperties(context),
++                      ),
++                    ),
++                  ],
++                );
++              }
++              return SingleChildScrollView(
++                padding: const EdgeInsets.fromLTRB(14, 14, 14, 110),
++                child: Column(
++                  crossAxisAlignment: CrossAxisAlignment.stretch,
++                  children: [
++                    _buildCanvasPanel(context),
++                    const SizedBox(height: 18),
++                    _buildProperties(context),
++                  ],
++                ),
++              );
++            },
++          ),
++        ),
++        SafeArea(
++          top: false,
++          child: Padding(
++            padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
++            child: Row(
++              children: [
++                TextButton.icon(
++                  onPressed: _reset,
++                  icon: const Icon(Icons.restart_alt_rounded),
++                  label: const Text('Reset'),
++                ),
++                const Spacer(),
++                FilledButton.icon(
++                  key: const Key('header-layout-save'),
++                  onPressed: _save,
++                  icon: const Icon(Icons.check_rounded),
++                  label: const Text('Use this layout'),
++                ),
++              ],
++            ),
++          ),
++        ),
++      ],
++    );
++  }
++
++  Widget _buildCanvasPanel(BuildContext context) {
++    final theme = Theme.of(context);
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        Wrap(
++          spacing: 8,
++          runSpacing: 8,
++          crossAxisAlignment: WrapCrossAlignment.center,
++          children: [
++            FilterChip(
++              selected: _snap,
++              onSelected: (value) => setState(() => _snap = value),
++              avatar: const Icon(Icons.grid_4x4_rounded, size: 18),
++              label: const Text('Snap 6 pt'),
++            ),
++            OutlinedButton.icon(
++              onPressed: _addText,
++              icon: const Icon(Icons.text_fields_rounded),
++              label: const Text('Text'),
++            ),
++            OutlinedButton.icon(
++              onPressed: _addLine,
++              icon: const Icon(Icons.horizontal_rule_rounded),
++              label: const Text('Line'),
++            ),
++            OutlinedButton.icon(
++              onPressed: _addLogo,
++              icon: const Icon(Icons.image_outlined),
++              label: const Text('Logo slot'),
++            ),
++          ],
++        ),
++        const SizedBox(height: 12),
++        Container(
++          padding: const EdgeInsets.all(16),
++          decoration: BoxDecoration(
++            color: theme.colorScheme.surfaceContainerLow,
++            borderRadius: BorderRadius.circular(12),
++            border: Border.all(color: theme.colorScheme.outlineVariant),
++          ),
++          child: Center(
++            child: _HeaderDesignerCanvas(
++              paper: widget.paper,
++              template: widget.template,
++              elements: _elements,
++              canvasHeight: _canvasHeight,
++              selectedId: _selectedId,
++              snapGrid: _snap ? _grid : null,
++              onSelect: (id) => setState(() => _selectedId = id),
++              onDragStart: _startDrag,
++              onDragUpdate: _drag,
++              onDragEnd: _endDrag,
++            ),
++          ),
++        ),
++      ],
++    );
++  }
++
++  Widget _buildProperties(BuildContext context) {
++    final selected = _selected;
++    final theme = Theme.of(context);
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        Text(
++          'Header canvas',
++          style: theme.textTheme.titleMedium?.copyWith(
++            fontWeight: FontWeight.w800,
++          ),
++        ),
++        const SizedBox(height: 8),
++        _SliderRow(
++          label: 'Header height',
++          value: _canvasHeight,
++          min: 90,
++          max: 300,
++          onChanged: (value) => setState(
++            () => _canvasHeight = _snapValue(value).clamp(90, 300).toDouble(),
++          ),
++        ),
++        const SizedBox(height: 18),
++        if (selected == null)
++          Container(
++            padding: const EdgeInsets.all(14),
++            decoration: BoxDecoration(
++              color: theme.colorScheme.surfaceContainerLow,
++              borderRadius: BorderRadius.circular(10),
++            ),
++            child: const Text(
++              'Select an element on the page to change its position, width, alignment or typography.',
++            ),
++          )
++        else ...[
++          Row(
++            children: [
++              Expanded(
++                child: Text(
++                  _elementLabel(selected.type),
++                  style: theme.textTheme.titleMedium?.copyWith(
++                    fontWeight: FontWeight.w800,
++                  ),
++                ),
++              ),
++              IconButton(
++                tooltip: 'Delete element',
++                onPressed: _deleteSelected,
++                icon: const Icon(Icons.delete_outline_rounded),
++              ),
++            ],
++          ),
++          const SizedBox(height: 8),
++          _SliderRow(
++            label: 'X',
++            value: selected.x,
++            min: 0,
++            max: (CustomLayout.designWidth - (selected.width ?? 24))
++                .clamp(0, CustomLayout.designWidth)
++                .toDouble(),
++            onChanged: (value) => _replace(
++              selected.copyWith(x: _snapValue(value)),
++            ),
++          ),
++          _SliderRow(
++            label: 'Y',
++            value: selected.y,
++            min: 0,
++            max: (_canvasHeight - (selected.height ?? 14))
++                .clamp(0, _canvasHeight)
++                .toDouble(),
++            onChanged: (value) => _replace(
++              selected.copyWith(y: _snapValue(value)),
++            ),
++          ),
++          _SliderRow(
++            label: 'Width',
++            value: (selected.width ?? 100)
++                .clamp(24, CustomLayout.designWidth)
++                .toDouble(),
++            min: 24,
++            max: (CustomLayout.designWidth - selected.x)
++                .clamp(24, CustomLayout.designWidth)
++                .toDouble(),
++            onChanged: (value) => _replace(
++              selected.copyWith(
++                width: _snapValue(value)
++                    .clamp(24, CustomLayout.designWidth - selected.x)
++                    .toDouble(),
++              ),
++            ),
++          ),
++          if (selected.type == ElementType.logo ||
++              selected.type == ElementType.rectangular ||
++              selected.type == ElementType.headerFieldsBlock)
++            _SliderRow(
++              label: 'Height',
++              value: (selected.height ?? 48).clamp(16, 180).toDouble(),
++              min: 16,
++              max: 180,
++              onChanged: (value) => _replace(
++                selected.copyWith(
++                  height: _snapValue(value).clamp(16, 180).toDouble(),
++                ),
++              ),
++            ),
++          if (_supportsText(selected.type)) ...[
++            const SizedBox(height: 10),
++            Text('Alignment', style: theme.textTheme.labelLarge),
++            const SizedBox(height: 6),
++            SegmentedButton<String>(
++              segments: const [
++                ButtonSegment(
++                  value: 'left',
++                  icon: Icon(Icons.format_align_left_rounded),
++                ),
++                ButtonSegment(
++                  value: 'center',
++                  icon: Icon(Icons.format_align_center_rounded),
++                ),
++                ButtonSegment(
++                  value: 'right',
++                  icon: Icon(Icons.format_align_right_rounded),
++                ),
++              ],
++              selected: {
++                selected.properties['alignment']?.toString() ?? 'left',
++              },
++              onSelectionChanged: (selection) => _align(selection.first),
++            ),
++            const SizedBox(height: 10),
++            _SliderRow(
++              label: 'Font size',
++              value: ((selected.properties['fontSize'] as num?)?.toDouble() ?? 12)
++                  .clamp(8, 30)
++                  .toDouble(),
++              min: 8,
++              max: 30,
++              onChanged: (value) {
++                final properties = Map<String, dynamic>.from(
++                  selected.properties,
++                )..['fontSize'] = value;
++                _replace(selected.copyWith(properties: properties));
++              },
++            ),
++            SwitchListTile.adaptive(
++              contentPadding: EdgeInsets.zero,
++              title: const Text('Bold'),
++              value: selected.properties['bold'] == true,
++              onChanged: (value) {
++                final properties = Map<String, dynamic>.from(
++                  selected.properties,
++                )..['bold'] = value;
++                _replace(selected.copyWith(properties: properties));
++              },
++            ),
++          ],
++          if (selected.type == ElementType.staticText) ...[
++            const SizedBox(height: 8),
++            TextFormField(
++              initialValue: selected.content,
++              decoration: const InputDecoration(labelText: 'Text'),
++              onChanged: (value) => _replace(selected.copyWith(content: value)),
++            ),
++          ],
++        ],
++      ],
++    );
++  }
++
++  static bool _supportsText(ElementType type) =>
++      type == ElementType.schoolName ||
++      type == ElementType.paperTitle ||
++      type == ElementType.maxMarks ||
++      type == ElementType.headerFieldsBlock ||
++      type == ElementType.staticText ||
++      type == ElementType.rectangular;
++
++  static String _elementLabel(ElementType type) => switch (type) {
++    ElementType.schoolName => 'School / institution',
++    ElementType.paperTitle => 'Paper title',
++    ElementType.logo => 'Logo',
++    ElementType.maxMarks => 'Maximum marks',
++    ElementType.headerFieldsBlock => 'Metadata fields',
++    ElementType.staticText => 'Text box',
++    ElementType.horizontalLine => 'Horizontal line',
++    ElementType.rectangular => 'Box',
++  };
++}
++
++class _HeaderDesignerCanvas extends StatelessWidget {
++  final Paper paper;
++  final PaperTemplate template;
++  final List<TemplateElement> elements;
++  final double canvasHeight;
++  final String? selectedId;
++  final double? snapGrid;
++  final ValueChanged<String> onSelect;
++  final void Function(TemplateElement element, Offset globalPosition)
++  onDragStart;
++  final void Function(
++    TemplateElement element,
++    Offset globalPosition,
++    double scale,
++  )
++  onDragUpdate;
++  final VoidCallback onDragEnd;
++
++  const _HeaderDesignerCanvas({
++    required this.paper,
++    required this.template,
++    required this.elements,
++    required this.canvasHeight,
++    required this.selectedId,
++    required this.snapGrid,
++    required this.onSelect,
++    required this.onDragStart,
++    required this.onDragUpdate,
++    required this.onDragEnd,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    return LayoutBuilder(
++      builder: (context, constraints) {
++        final available = constraints.maxWidth.isFinite
++            ? constraints.maxWidth
++            : CustomLayout.designWidth;
++        final scale = (available / CustomLayout.designWidth)
++            .clamp(0.45, 1.15)
++            .toDouble();
++        return SizedBox(
++          width: CustomLayout.designWidth * scale,
++          height: canvasHeight * scale,
++          child: Transform.scale(
++            scale: scale,
++            alignment: Alignment.topLeft,
++            child: SizedBox(
++              width: CustomLayout.designWidth,
++              height: canvasHeight,
++              child: Stack(
++                clipBehavior: Clip.none,
++                children: [
++                  Positioned.fill(
++                    child: DecoratedBox(
++                      decoration: BoxDecoration(
++                        color: Colors.white,
++                        border: Border.all(color: Colors.black26),
++                      ),
++                      child: snapGrid == null
++                          ? null
++                          : CustomPaint(
++                              painter: _HeaderGridPainter(spacing: snapGrid!),
++                            ),
++                    ),
++                  ),
++                  for (final element in elements)
++                    Positioned(
++                      left: element.x,
++                      top: element.y,
++                      child: GestureDetector(
++                        behavior: HitTestBehavior.opaque,
++                        onTap: () => onSelect(element.id),
++                        onPanStart: (details) =>
++                            onDragStart(element, details.globalPosition),
++                        onPanUpdate: (details) => onDragUpdate(
++                          element,
++                          details.globalPosition,
++                          scale,
++                        ),
++                        onPanEnd: (_) => onDragEnd(),
++                        child: Container(
++                          constraints: BoxConstraints(
++                            minWidth: element.type == ElementType.horizontalLine
++                                ? (element.width ?? 100)
++                                : 16,
++                            minHeight: element.type == ElementType.horizontalLine
++                                ? 12
++                                : 16,
++                          ),
++                          decoration: element.id == selectedId
++                              ? BoxDecoration(
++                                  border: Border.all(
++                                    color: Theme.of(context).colorScheme.primary,
++                                    width: 1.2,
++                                  ),
++                                )
++                              : null,
++                          child: element.type == ElementType.horizontalLine
++                              ? Center(
++                                  child: PaperHeaderElementView(
++                                    element: element,
++                                    paper: paper,
++                                    template: template,
++                                  ),
++                                )
++                              : PaperHeaderElementView(
++                                  element: element,
++                                  paper: paper,
++                                  template: template,
++                                ),
++                        ),
++                      ),
++                    ),
++                ],
++              ),
++            ),
++          ),
++        );
++      },
++    );
++  }
++}
++
++class _HeaderGridPainter extends CustomPainter {
++  final double spacing;
++
++  const _HeaderGridPainter({required this.spacing});
++
++  @override
++  void paint(Canvas canvas, Size size) {
++    final paint = Paint()
++      ..color = Colors.black.withValues(alpha: 0.06)
++      ..strokeWidth = 0.5;
++    for (var x = 0.0; x <= size.width; x += spacing) {
++      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
++    }
++    for (var y = 0.0; y <= size.height; y += spacing) {
++      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
++    }
++  }
++
++  @override
++  bool shouldRepaint(covariant _HeaderGridPainter oldDelegate) =>
++      oldDelegate.spacing != spacing;
++}
++
++class _SliderRow extends StatelessWidget {
++  final String label;
++  final double value;
++  final double min;
++  final double max;
++  final ValueChanged<double> onChanged;
++
++  const _SliderRow({
++    required this.label,
++    required this.value,
++    required this.min,
++    required this.max,
++    required this.onChanged,
++  });
++
++  @override
++  Widget build(BuildContext context) {
++    final safeValue = value.clamp(min, max).toDouble();
++    return Row(
++      children: [
++        SizedBox(width: 82, child: Text(label)),
++        Expanded(
++          child: Slider(
++            value: safeValue,
++            min: min,
++            max: max,
++            onChanged: onChanged,
++          ),
++        ),
++        SizedBox(
++          width: 46,
++          child: Text(
++            safeValue.toStringAsFixed(0),
++            textAlign: TextAlign.right,
++          ),
++        ),
++      ],
++    );
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index b4af1a9..c89dbe6 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -5,6 +5,8 @@ import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
++import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_text_field.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
+@@ -25,7 +27,7 @@ import 'package:flutter_quill/flutter_quill.dart';
+ class WordPaperEditor extends StatefulWidget {
+   final Paper paper;
+   final bool compact;
+-  final PaperSize templatePageSize;
++  final PaperTemplate template;
+   final ValueChanged<String> onTitleChanged;
+   final ValueChanged<String> onSchoolNameChanged;
+   final ValueChanged<String> onInstructionChanged;
+@@ -41,6 +43,7 @@ class WordPaperEditor extends StatefulWidget {
+   final VoidCallback onAddSection;
+   final ValueChanged<String> onAddQuestion;
+   final Future<void> Function() onImportWord;
++  final Future<void> Function() onArrangeHeader;
+   final void Function(
+     PaperPageLayout layout,
+     String headerText,
+@@ -52,7 +55,7 @@ class WordPaperEditor extends StatefulWidget {
+     super.key,
+     required this.paper,
+     required this.compact,
+-    required this.templatePageSize,
++    required this.template,
+     required this.onTitleChanged,
+     required this.onSchoolNameChanged,
+     required this.onInstructionChanged,
+@@ -66,6 +69,7 @@ class WordPaperEditor extends StatefulWidget {
+     required this.onAddSection,
+     required this.onAddQuestion,
+     required this.onImportWord,
++    required this.onArrangeHeader,
+     required this.onApplyPageLayout,
+   });
+ 
+@@ -214,46 +218,18 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+     );
+   }
+ 
+-  ({double width, double height}) _resolvedPagePoints() {
+-    final explicit = widget.paper.pageLayout.explicitPageSizePoints;
+-    if (explicit != null) return explicit;
+-
+-    final portrait = switch (widget.templatePageSize) {
+-      PaperSize.a4 => (width: 595.28, height: 841.89),
+-      PaperSize.a5 => (width: 419.53, height: 595.28),
+-      PaperSize.a3 => (width: 841.89, height: 1190.55),
+-      PaperSize.letter => (width: 612.0, height: 792.0),
+-      PaperSize.legal => (width: 612.0, height: 1008.0),
+-    };
+-    if (widget.paper.pageLayout.orientation == PaperPageOrientation.landscape) {
+-      return (width: portrait.height, height: portrait.width);
+-    }
+-    return portrait;
+-  }
+ 
+   @override
+   Widget build(BuildContext context) {
+     final theme = Theme.of(context);
+-    final pagePoints = _resolvedPagePoints();
+-    final relativeWidth = 820 * (pagePoints.width / 595.28);
+-    final preferredPreviewWidth = relativeWidth.clamp(560, 980).toDouble();
+-    final outerHorizontal = widget.compact ? 20.0 : 48.0;
+-    final availablePreviewWidth =
+-        (MediaQuery.sizeOf(context).width - outerHorizontal)
+-            .clamp(280, 980)
+-            .toDouble();
+-    final previewWidth = preferredPreviewWidth < availablePreviewWidth
+-        ? preferredPreviewWidth
+-        : availablePreviewWidth;
+-    final pageScale = previewWidth / pagePoints.width;
+-    final margins = widget.paper.pageLayout.margins;
+-    final pagePadding = EdgeInsets.fromLTRB(
+-      (margins.leftPoints * pageScale).clamp(12, 120).toDouble(),
+-      (margins.topPoints * pageScale).clamp(14, 140).toDouble(),
+-      (margins.rightPoints * pageScale).clamp(12, 120).toDouble(),
+-      (margins.bottomPoints * pageScale).clamp(18, 160).toDouble(),
++    final pageMetrics = PaperPageCanvasMetrics.resolve(
++      layout: widget.paper.pageLayout,
++      templatePageSize: widget.template.paperSize,
++      viewportWidth: MediaQuery.sizeOf(context).width,
+     );
+-    final pageMinHeight = (pagePoints.height * pageScale).clamp(520, 1500).toDouble();
++    final previewWidth = pageMetrics.pageWidth;
++    final pagePadding = pageMetrics.pagePadding;
++    final pageMinHeight = pageMetrics.pageMinHeight;
+     return ColoredBox(
+       color: theme.colorScheme.surfaceContainerLow,
+       child: Column(
+@@ -268,6 +244,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+             onInsertQuestion: _insertQuestion,
+             onInsertPageBreak: _insertPageBreak,
+             onImportWord: widget.onImportWord,
++            onArrangeHeader: widget.onArrangeHeader,
+             onPageLayout: _openPageLayout,
+           ),
+           const Divider(height: 1),
+@@ -275,9 +252,9 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+             child: SingleChildScrollView(
+               key: const Key('word-paper-editor-scroll'),
+               padding: EdgeInsets.fromLTRB(
+-                widget.compact ? 10 : 24,
+                 16,
+-                widget.compact ? 10 : 24,
++                16,
++                16,
+                 widget.compact ? 110 : 40,
+               ),
+               child: Center(
+@@ -293,7 +270,18 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                         color: Colors.white,
+                         elevation: 1,
+                         shadowColor: Colors.black26,
+-                        borderRadius: BorderRadius.circular(8),
++                        shape: RoundedRectangleBorder(
++                          borderRadius: BorderRadius.circular(8),
++                          side: widget.template.hasBorder
++                              ? BorderSide(
++                                  color: Color(
++                                    widget.template.primaryColor.toInt(),
++                                  ),
++                                  width: 1.5,
++                                )
++                              : BorderSide.none,
++                        ),
++                        clipBehavior: Clip.antiAlias,
+                         child: ConstrainedBox(
+                           constraints: BoxConstraints(minHeight: pageMinHeight),
+                           child: Padding(
+@@ -303,30 +291,50 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                               child: DefaultTextStyle(
+                                 style: TextStyle(
+                                   color: Colors.black,
+-                                  fontSize: 15,
++                                  fontSize: widget.template.questionFontSize,
+                                   height: widget.paper.pageLayout.lineSpacing,
+                                 ),
+                                 child: Column(
+                                   crossAxisAlignment: CrossAxisAlignment.stretch,
+                                   children: [
+                                     _buildHeader(),
+-                                    const SizedBox(height: 16),
+-                                    if (widget.paper.instruction.trim().isNotEmpty ||
+-                                        widget.paper.sections.isNotEmpty)
++                                    const SizedBox(height: 10),
++                                    if (widget.paper.instruction.trim().isNotEmpty) ...[
++                                      const Divider(height: 28),
+                                       _InlineDocumentField(
+                                         key: const Key('word-paper-instruction'),
+                                         initialValue: widget.paper.instruction,
+                                         hintText: 'General instructions',
+                                         minLines: 1,
+                                         maxLines: 6,
+-                                        textAlign: widget.paper.instructionAlignment.textAlign,
++                                        textAlign: widget
++                                            .paper
++                                            .instructionAlignment
++                                            .textAlign,
+                                         textStyle: const TextStyle(
+                                           fontStyle: FontStyle.italic,
+                                         ),
+                                         onChanged: widget.onInstructionChanged,
+                                       ),
+-                                    if (widget.paper.instruction.trim().isNotEmpty)
+-                                      const Divider(height: 28),
++                                      const Divider(height: 30),
++                                    ] else if (widget.paper.sections.isNotEmpty) ...[
++                                      _InlineDocumentField(
++                                        key: const Key('word-paper-instruction'),
++                                        initialValue: '',
++                                        hintText: 'Add general instructions',
++                                        minLines: 1,
++                                        maxLines: 6,
++                                        textAlign: widget
++                                            .paper
++                                            .instructionAlignment
++                                            .textAlign,
++                                        textStyle: const TextStyle(
++                                          fontStyle: FontStyle.italic,
++                                        ),
++                                        onChanged: widget.onInstructionChanged,
++                                      ),
++                                      const Divider(height: 30),
++                                    ],
+                                     for (var sectionIndex = 0;
+                                         sectionIndex < widget.paper.sections.length;
+                                         sectionIndex++) ...[
+@@ -351,16 +359,6 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                                       const Divider(height: 16),
+                                       _WordFooterPreview(paper: widget.paper),
+                                     ],
+-                                    const SizedBox(height: 20),
+-                                    Align(
+-                                      alignment: Alignment.center,
+-                                      child: OutlinedButton.icon(
+-                                        key: const Key('word-mode-add-section'),
+-                                        onPressed: widget.onAddSection,
+-                                        icon: const Icon(Icons.add_rounded),
+-                                        label: const Text('Add section'),
+-                                      ),
+-                                    ),
+                                   ],
+                                 ),
+                               ),
+@@ -368,6 +366,16 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                           ),
+                         ),
+                       ),
++                      const SizedBox(height: 14),
++                      Align(
++                        alignment: Alignment.center,
++                        child: OutlinedButton.icon(
++                          key: const Key('word-mode-add-section'),
++                          onPressed: widget.onAddSection,
++                          icon: const Icon(Icons.add_rounded),
++                          label: const Text('Add section'),
++                        ),
++                      ),
+                     ],
+                   ),
+                 ),
+@@ -413,62 +421,27 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+           const SizedBox(height: 6),
+           const Divider(height: 10),
+         ],
+-        _InlineDocumentField(
+-          key: const Key('word-paper-school-name'),
+-          initialValue: widget.paper.schoolName,
+-          hintText: 'School / institution name',
+-          textAlign: TextAlign.center,
+-          textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+-          onChanged: widget.onSchoolNameChanged,
+-        ),
+-        const SizedBox(height: 6),
+-        _InlineDocumentField(
+-          key: const Key('word-paper-title'),
+-          initialValue: widget.paper.title,
+-          hintText: 'Question paper title',
+-          textAlign: TextAlign.center,
+-          textStyle: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+-          onChanged: widget.onTitleChanged,
++        PaperHeaderLayoutCanvas(
++          key: const Key('word-wysiwyg-header-canvas'),
++          template: widget.template,
++          paper: widget.paper,
++          editable: true,
++          onSchoolNameChanged: widget.onSchoolNameChanged,
++          onTitleChanged: widget.onTitleChanged,
++          onHeaderFieldChanged: widget.onHeaderFieldChanged,
+         ),
+-        if (widget.paper.headerFields.isNotEmpty) ...[
+-          const SizedBox(height: 14),
+-          if (widget.compact)
+-            Column(
+-              children: [
+-                for (final field in widget.paper.headerFields) ...[
+-                  _HeaderFieldEditor(
+-                    field: field,
+-                    onChanged: (value) =>
+-                        widget.onHeaderFieldChanged(field.id, value),
+-                  ),
+-                  const SizedBox(height: 8),
+-                ],
+-              ],
+-            )
+-          else
+-            Wrap(
+-              alignment: WrapAlignment.spaceBetween,
+-              spacing: 12,
+-              runSpacing: 10,
+-              children: [
+-                for (final field in widget.paper.headerFields)
+-                  SizedBox(
+-                    width: 230,
+-                    child: _HeaderFieldEditor(
+-                      field: field,
+-                      onChanged: (value) =>
+-                          widget.onHeaderFieldChanged(field.id, value),
+-                    ),
+-                  ),
+-              ],
+-            ),
+-        ],
+       ],
+     );
+   }
+ 
+   Widget _buildSection(PaperSection section) {
+     final answerRule = PaperStructureService.answerRuleText(section);
++    final hasManualPageBreak = section.questions.any(
++      (question) =>
++          question.isWordContentBlock &&
++          WordContentBlockService.kindOf(question) ==
++              WordContentBlockKind.pageBreak,
++    );
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.stretch,
+       children: [
+@@ -577,39 +550,31 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+           ),
+         if (section.showBottomDivider) const Divider(height: 24),
+         SizedBox(height: section.spacing.afterPoints),
+-        for (var rawIndex = 0;
+-            rawIndex < section.questions.length;
+-            rawIndex++)
+-          _WordQuestionBlock(
+-            key: Key('word-question-${section.questions[rawIndex].id}'),
+-            paper: widget.paper,
+-            section: section,
+-            question: section.questions[rawIndex],
+-            numberedOrdinal: PaperStructureService.numberedQuestionOrdinal(
+-              section,
+-              rawIndex,
+-            ),
+-            compact: widget.compact,
+-            autofocus:
+-                _pendingFocusQuestionId == section.questions[rawIndex].id,
+-            session: _richTextSession,
+-            onActivated: () =>
+-                _activate(section.id, section.questions[rawIndex].id),
+-            onChanged: (question) =>
+-                widget.onReplaceQuestion(section.id, question),
+-            onOpenFullEditor: () => widget.onEditQuestion(
+-              section.id,
+-              section.questions[rawIndex],
+-            ),
+-            onDelete: () => widget.onDeleteQuestion(
+-              section.id,
+-              section.questions[rawIndex].id,
+-            ),
+-            onEditTable: () =>
+-                _editBlockTable(section.id, section.questions[rawIndex]),
+-            onEditImage: () =>
+-                _editBlockImage(section.id, section.questions[rawIndex]),
+-          ),
++        if (widget.template.paperLayout == PaperLayout.twoColumn &&
++            !hasManualPageBreak)
++          for (var rawIndex = 0;
++              rawIndex < section.questions.length;
++              rawIndex += 2)
++            Padding(
++              padding: const EdgeInsets.only(bottom: 8),
++              child: Row(
++                crossAxisAlignment: CrossAxisAlignment.start,
++                children: [
++                  Expanded(child: _buildWordQuestion(section, rawIndex)),
++                  const SizedBox(width: 22),
++                  Expanded(
++                    child: rawIndex + 1 < section.questions.length
++                        ? _buildWordQuestion(section, rawIndex + 1)
++                        : const SizedBox(),
++                  ),
++                ],
++              ),
++            )
++        else
++          for (var rawIndex = 0;
++              rawIndex < section.questions.length;
++              rawIndex++)
++            _buildWordQuestion(section, rawIndex),
+         const SizedBox(height: 4),
+         Wrap(
+           spacing: 6,
+@@ -638,8 +603,31 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+       ],
+     );
+   }
++  Widget _buildWordQuestion(PaperSection section, int rawIndex) {
++    final question = section.questions[rawIndex];
++    return _WordQuestionBlock(
++      key: Key('word-question-${question.id}'),
++      paper: widget.paper,
++      section: section,
++      question: question,
++      numberedOrdinal: PaperStructureService.numberedQuestionOrdinal(
++        section,
++        rawIndex,
++      ),
++      compact: widget.compact,
++      autofocus: _pendingFocusQuestionId == question.id,
++      session: _richTextSession,
++      onActivated: () => _activate(section.id, question.id),
++      onChanged: (value) => widget.onReplaceQuestion(section.id, value),
++      onOpenFullEditor: () => widget.onEditQuestion(section.id, question),
++      onDelete: () => widget.onDeleteQuestion(section.id, question.id),
++      onEditTable: () => _editBlockTable(section.id, question),
++      onEditImage: () => _editBlockImage(section.id, question),
++    );
++  }
+ }
+ 
++
+ class _WordEditorRibbon extends StatelessWidget {
+   final bool compact;
+   final WordRichTextSession session;
+@@ -650,6 +638,7 @@ class _WordEditorRibbon extends StatelessWidget {
+   final VoidCallback onInsertQuestion;
+   final VoidCallback onInsertPageBreak;
+   final Future<void> Function() onImportWord;
++  final Future<void> Function() onArrangeHeader;
+   final Future<void> Function() onPageLayout;
+ 
+   const _WordEditorRibbon({
+@@ -662,6 +651,7 @@ class _WordEditorRibbon extends StatelessWidget {
+     required this.onInsertQuestion,
+     required this.onInsertPageBreak,
+     required this.onImportWord,
++    required this.onArrangeHeader,
+     required this.onPageLayout,
+   });
+ 
+@@ -698,6 +688,21 @@ class _WordEditorRibbon extends StatelessWidget {
+                         onImportWord: onImportWord,
+                         onPageLayout: onPageLayout,
+                       ),
++                      SizedBox(
++                        height: 34,
++                        child: Align(
++                          alignment: Alignment.centerLeft,
++                          child: TextButton.icon(
++                            key: const Key('word-ribbon-header-layout'),
++                            onPressed: onArrangeHeader,
++                            icon: const Icon(
++                              Icons.dashboard_customize_outlined,
++                              size: 18,
++                            ),
++                            label: const Text('Arrange header'),
++                          ),
++                        ),
++                      ),
+                       if (controller != null) ...[
+                         const SizedBox(height: 4),
+                         QuillSimpleToolbar(
+@@ -754,6 +759,7 @@ class _WordEditorRibbon extends StatelessWidget {
+                         canInsertPageBreak: canInsert,
+                         onInsertPageBreak: onInsertPageBreak,
+                         onPageLayout: onPageLayout,
++                        onArrangeHeader: onArrangeHeader,
+                       ),
+                     ],
+                   ),
+@@ -961,11 +967,13 @@ class _LayoutActions extends StatelessWidget {
+   final bool canInsertPageBreak;
+   final VoidCallback onInsertPageBreak;
+   final Future<void> Function() onPageLayout;
++  final Future<void> Function() onArrangeHeader;
+ 
+   const _LayoutActions({
+     required this.canInsertPageBreak,
+     required this.onInsertPageBreak,
+     required this.onPageLayout,
++    required this.onArrangeHeader,
+   });
+ 
+   @override
+@@ -983,6 +991,13 @@ class _LayoutActions extends StatelessWidget {
+         Row(
+           mainAxisSize: MainAxisSize.min,
+           children: [
++            _RibbonAction(
++              key: const Key('word-ribbon-header-layout'),
++              icon: Icons.dashboard_customize_outlined,
++              label: 'Header',
++              enabled: true,
++              onTap: onArrangeHeader,
++            ),
+             _RibbonAction(
+               key: const Key('word-ribbon-page-layout'),
+               icon: Icons.description_outlined,
+@@ -1081,8 +1096,8 @@ class _WordModeNotice extends StatelessWidget {
+             Expanded(
+               child: Text(
+                 compact
+-                    ? 'Word Mode: tap any question/paragraph and type directly. Formatting, Math and Geometry use the active cursor.'
+-                    : 'Word Mode edits the same paper as Smart Mode. Type and format question text inline, or insert free paragraphs, tables and images; Smart Mode keeps the structure and preserves custom Word content.',
++                    ? 'Word Mode: edit the page directly. Header, margins and template geometry now follow Preview.'
++                    : 'WYSIWYG Word Mode uses the same template header, page margins, border, question density and two-column flow as Preview. Arrange Header gives safe drag/resize freedom without turning questions into fragile absolute-positioned objects.',
+                 style: theme.textTheme.bodySmall?.copyWith(
+                   color: theme.colorScheme.onPrimaryContainer,
+                 ),
+@@ -1095,35 +1110,6 @@ class _WordModeNotice extends StatelessWidget {
+   }
+ }
+ 
+-class _HeaderFieldEditor extends StatelessWidget {
+-  final PaperHeaderField field;
+-  final ValueChanged<String> onChanged;
+-
+-  const _HeaderFieldEditor({required this.field, required this.onChanged});
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    return Row(
+-      crossAxisAlignment: CrossAxisAlignment.end,
+-      children: [
+-        Text(
+-          '${field.label}:',
+-          style: const TextStyle(fontWeight: FontWeight.w700),
+-        ),
+-        const SizedBox(width: 6),
+-        Expanded(
+-          child: _InlineDocumentField(
+-            key: Key('word-header-field-${field.id}'),
+-            initialValue: field.value,
+-            hintText: field.isPlaceholder ? 'Enter ${field.label}' : 'Value',
+-            onChanged: onChanged,
+-          ),
+-        ),
+-      ],
+-    );
+-  }
+-}
+-
+ class _WordQuestionBlock extends StatelessWidget {
+   final Paper paper;
+   final PaperSection section;
+diff --git a/lib/features/pdf/application/paper_header_layout_factory.dart b/lib/features/pdf/application/paper_header_layout_factory.dart
+index ac7d62b..893d647 100644
+--- a/lib/features/pdf/application/paper_header_layout_factory.dart
++++ b/lib/features/pdf/application/paper_header_layout_factory.dart
+@@ -33,8 +33,9 @@ class PaperHeaderLayoutFactory {
+   }
+ 
+   /// Adapts the resolved layout to real paper metadata without changing the
+-  /// persisted template. Built-in headers reserve two two-column metadata rows;
+-  /// extra teacher fields expand the header and move following elements down.
++  /// persisted template. Built-in headers reserve the rows required by their
++  /// curated metadata order; extra teacher fields expand the header and move
++  /// following elements down.
+   static CustomLayout resolveForPaper(PaperTemplate template, Paper paper) {
+     final base = resolve(template);
+     if (template.headerLayout == HeaderLayout.custom) return base;
+@@ -49,16 +50,15 @@ class PaperHeaderLayoutFactory {
+     if (fieldsBlock == null) return base;
+     final block = fieldsBlock;
+ 
+-    final requestedLabels =
++    final fieldCount = resolveHeaderFields(block, paper).length;
++    final rows = (fieldCount / 2).ceil();
++    final requestedCount =
+         (block.properties['fieldLabels'] as List?)
+             ?.where((value) => value.toString().trim().isNotEmpty)
+             .length ??
+         0;
+-    final fieldCount = requestedLabels > 0
+-        ? requestedLabels
+-        : paper.headerFields.length;
+-    final rows = (fieldCount / 2).ceil();
+-    final extraRows = rows > 2 ? rows - 2 : 0;
++    final reservedRows = (requestedCount / 2).ceil().clamp(2, 20).toInt();
++    final extraRows = rows > reservedRows ? rows - reservedRows : 0;
+     if (extraRows == 0) return base;
+ 
+     final extraHeight = extraRows * 18.0;
+@@ -84,10 +84,58 @@ class PaperHeaderLayoutFactory {
+ 
+   static const double _w = CustomLayout.designWidth;
+ 
++  /// Resolves template-preferred metadata slots without hiding teacher-added
++  /// fields. Preferred labels stay first; any extra paper fields follow.
++  static List<PaperHeaderField> resolveHeaderFields(
++    TemplateElement element,
++    Paper paper,
++  ) {
++    final requestedLabels =
++        (element.properties['fieldLabels'] as List?)
++            ?.map((value) => value.toString().trim())
++            .where((value) => value.isNotEmpty)
++            .toList(growable: false) ??
++        const <String>[];
++    if (requestedLabels.isEmpty) {
++      return List<PaperHeaderField>.unmodifiable(paper.headerFields);
++    }
++
++    final requestedKeys = requestedLabels
++        .map((label) => label.toLowerCase())
++        .toSet();
++    final fields = <PaperHeaderField>[];
++    for (final label in requestedLabels) {
++      PaperHeaderField? match;
++      for (final field in paper.headerFields) {
++        if (field.label.trim().toLowerCase() == label.toLowerCase()) {
++          match = field;
++          break;
++        }
++      }
++      if (match != null) {
++        fields.add(match);
++      } else if (element.properties['hideMissingFields'] != true) {
++        fields.add(
++          PaperHeaderField(
++            id: '',
++            label: label,
++            isPlaceholder: true,
++          ),
++        );
++      }
++    }
++    fields.addAll(
++      paper.headerFields.where(
++        (field) => !requestedKeys.contains(field.label.trim().toLowerCase()),
++      ),
++    );
++    return List<PaperHeaderField>.unmodifiable(fields);
++  }
++
+   static CustomLayout _centered(PaperTemplate template) {
+     final headingAlignment = template.centeredHeader ? 'center' : 'left';
+     return CustomLayout(
+-      canvasHeight: 122,
++      canvasHeight: 152,
+       elements: [
+         _el(
+           'school',
+@@ -95,13 +143,13 @@ class PaperHeaderLayoutFactory {
+           0,
+           0,
+           width: _w,
+-          properties: _text(16, bold: true, alignment: headingAlignment),
++          properties: _text(16.5, bold: true, alignment: headingAlignment),
+         ),
+         _el(
+           'title',
+           ElementType.paperTitle,
+           0,
+-          25,
++          26,
+           width: _w,
+           properties: _text(
+             template.headerFontSize,
+@@ -109,23 +157,27 @@ class PaperHeaderLayoutFactory {
+             alignment: headingAlignment,
+           ),
+         ),
++        _line('dividerTop', 57, template, thickness: 0.8),
+         _el(
+           'fields',
+           ElementType.headerFieldsBlock,
+           0,
+-          57,
++          71,
+           width: _w,
+-          properties: _text(10.5, alignment: 'center'),
++          properties: _fieldText(
++            10.5,
++            labels: const ['Subject', 'Class', 'Time', 'Date'],
++          ),
+         ),
+         _el(
+           'marks',
+           ElementType.maxMarks,
+           0,
+-          91,
++          116,
+           width: _w,
+           properties: _text(10.5, bold: true, alignment: 'right'),
+         ),
+-        _line('divider', 116, template),
++        _line('dividerBottom', 145, template),
+       ],
+     );
+   }
+@@ -134,19 +186,19 @@ class PaperHeaderLayoutFactory {
+     PaperTemplate template, {
+     required bool logoLeft,
+   }) {
+-    final logoX = logoLeft ? 0.0 : _w - 52;
+-    final textX = logoLeft ? 68.0 : 0.0;
+-    final textWidth = _w - 68;
++    final logoX = logoLeft ? 0.0 : _w - 50;
++    final textX = logoLeft ? 64.0 : 0.0;
++    final textWidth = _w - 64;
+     final alignment = logoLeft ? 'left' : 'right';
+     return CustomLayout(
+-      canvasHeight: 142,
++      canvasHeight: 162,
+       elements: [
+-        _el('logo', ElementType.logo, logoX, 5, width: 52, height: 52),
++        _el('logo', ElementType.logo, logoX, 4, width: 50, height: 50),
+         _el(
+           'school',
+           ElementType.schoolName,
+           textX,
+-          7,
++          5,
+           width: textWidth,
+           properties: _text(16, bold: true, alignment: alignment),
+         ),
+@@ -154,7 +206,7 @@ class PaperHeaderLayoutFactory {
+           'title',
+           ElementType.paperTitle,
+           textX,
+-          32,
++          31,
+           width: textWidth,
+           properties: _text(
+             template.headerFontSize,
+@@ -162,28 +214,35 @@ class PaperHeaderLayoutFactory {
+             alignment: alignment,
+           ),
+         ),
++        _line('dividerTop', 66, template, thickness: 0.8),
+         _el(
+           'fields',
+           ElementType.headerFieldsBlock,
+           0,
+-          78,
++          82,
+           width: _w,
+-          properties: _text(10.5),
++          properties: _fieldText(
++            10.5,
++            labels: const ['Subject', 'Class', 'Time', 'Date'],
++          ),
+         ),
+         _el(
+           'marks',
+           ElementType.maxMarks,
+           0,
+-          111,
++          126,
+           width: _w,
+           properties: _text(10.5, bold: true, alignment: 'right'),
+         ),
+-        _line('divider', 136, template),
++        _line('dividerBottom', 155, template),
+       ],
+     );
+   }
+ 
+   static CustomLayout _modern(PaperTemplate template) {
++    final fieldLabels = template.type == TemplateType.college
++        ? const ['Semester', 'Course Code', 'Paper Code', 'Time']
++        : const ['Batch', 'Set', 'Subject', 'Time'];
+     return CustomLayout(
+       canvasHeight: 132,
+       elements: [
+@@ -215,7 +274,10 @@ class PaperHeaderLayoutFactory {
+           0,
+           79,
+           width: _w,
+-          properties: _text(10.5),
++          properties: _fieldText(
++            10.5,
++            labels: fieldLabels,
++          ),
+         ),
+         _el(
+           'marks',
+@@ -225,6 +287,7 @@ class PaperHeaderLayoutFactory {
+           width: _w,
+           properties: _text(10.5, bold: true, alignment: 'right'),
+         ),
++        _line('dividerBottom', 129, template, thickness: 0.7),
+       ],
+     );
+   }
+@@ -263,7 +326,10 @@ class PaperHeaderLayoutFactory {
+           0,
+           58,
+           width: _w,
+-          properties: _text(10),
++          properties: _fieldText(
++            10,
++            labels: const ['Subject', 'Class', 'Time', 'Set'],
++          ),
+         ),
+         _line('divider', 101, template, thickness: 0.7),
+       ],
+@@ -274,22 +340,26 @@ class PaperHeaderLayoutFactory {
+     return CustomLayout(
+       canvasHeight: 166,
+       elements: [
+-        _el('logo', ElementType.logo, 0, 3, width: 48, height: 48),
++        _el('logo', ElementType.logo, 0, 5, width: 44, height: 44),
+         _el(
+           'school',
+           ElementType.schoolName,
+-          62,
+-          5,
+-          width: _w - 62,
+-          properties: _text(16.5, bold: true),
++          58,
++          4,
++          width: _w - 58,
++          properties: _text(16.5, bold: true, alignment: 'center'),
+         ),
+         _el(
+           'title',
+           ElementType.paperTitle,
+-          62,
++          58,
+           31,
+-          width: _w - 62,
+-          properties: _text(template.headerFontSize, bold: true),
++          width: _w - 58,
++          properties: _text(
++            template.headerFontSize,
++            bold: true,
++            alignment: 'center',
++          ),
+         ),
+         _line('dividerTop', 67, template),
+         _el(
+@@ -298,7 +368,10 @@ class PaperHeaderLayoutFactory {
+           0,
+           82,
+           width: _w,
+-          properties: _text(10.5),
++          properties: _fieldText(
++            10.5,
++            labels: const ['Semester', 'Course Code', 'Paper Code', 'Time'],
++          ),
+         ),
+         _el(
+           'marks',
+@@ -345,7 +418,10 @@ class PaperHeaderLayoutFactory {
+           12,
+           84,
+           width: _w - 24,
+-          properties: _text(10.5),
++          properties: _fieldText(
++            10.5,
++            labels: const ['Subject', 'Class', 'Time', 'Set'],
++          ),
+         ),
+         _el(
+           'marks',
+@@ -392,7 +468,10 @@ class PaperHeaderLayoutFactory {
+           8,
+           80,
+           width: _w - 16,
+-          properties: _text(10.5),
++          properties: _fieldText(
++            10.5,
++            labels: const ['Subject', 'Class', 'Time', 'Paper Code', 'Set', 'Roll No'],
++          ),
+         ),
+         _el(
+           'marks',
+@@ -440,6 +519,21 @@ class PaperHeaderLayoutFactory {
+     };
+   }
+ 
++  static Map<String, dynamic> _fieldText(
++    double size, {
++    required List<String> labels,
++    String alignment = 'left',
++  }) {
++    return {
++      ..._text(size, alignment: alignment),
++      'fieldLabels': labels,
++      // Built-in styles order real teacher metadata without inventing fields.
++      // Custom/legacy layouts that omit this flag keep their old placeholder
++      // behavior.
++      'hideMissingFields': true,
++    };
++  }
++
+   static TemplateElement _el(
+     String id,
+     ElementType type,
+diff --git a/lib/features/pdf/services/builders/header_builders.dart b/lib/features/pdf/services/builders/header_builders.dart
+index 9c51d47..7103f73 100644
+--- a/lib/features/pdf/services/builders/header_builders.dart
++++ b/lib/features/pdf/services/builders/header_builders.dart
+@@ -181,29 +181,10 @@ class CustomHeaderBuilder {
+     pw.TextStyle style,
+     double scale,
+   ) {
+-    final requestedLabels =
+-        (element.properties['fieldLabels'] as List?)
+-            ?.map((value) => value.toString().trim())
+-            .where((value) => value.isNotEmpty)
+-            .toList(growable: false) ??
+-        const <String>[];
+-
+-    final fields = requestedLabels.isEmpty
+-        ? paper.headerFields
+-        : requestedLabels
+-              .map((label) {
+-                for (final field in paper.headerFields) {
+-                  if (field.label.trim().toLowerCase() == label.toLowerCase()) {
+-                    return field;
+-                  }
+-                }
+-                return PaperHeaderField(
+-                  id: '',
+-                  label: label,
+-                  isPlaceholder: true,
+-                );
+-              })
+-              .toList(growable: false);
++    final fields = PaperHeaderLayoutFactory.resolveHeaderFields(
++      element,
++      paper,
++    );
+ 
+     if (fields.isEmpty) return pw.SizedBox();
+ 
+diff --git a/lib/features/pdf/services/word_export_service.dart b/lib/features/pdf/services/word_export_service.dart
+index 8bde340..5fc8915 100644
+--- a/lib/features/pdf/services/word_export_service.dart
++++ b/lib/features/pdf/services/word_export_service.dart
+@@ -369,29 +369,10 @@ class WordExportService {
+     double fontSize,
+     String alignment,
+   ) {
+-    final requestedLabels =
+-        (element.properties['fieldLabels'] as List?)
+-            ?.map((value) => value.toString().trim())
+-            .where((value) => value.isNotEmpty)
+-            .toList(growable: false) ??
+-        const <String>[];
+-
+-    final fields = requestedLabels.isEmpty
+-        ? paper.headerFields
+-        : requestedLabels
+-              .map((label) {
+-                for (final field in paper.headerFields) {
+-                  if (field.label.toLowerCase() == label.toLowerCase()) {
+-                    return field;
+-                  }
+-                }
+-                return PaperHeaderField(
+-                  id: '',
+-                  label: label,
+-                  isPlaceholder: true,
+-                );
+-              })
+-              .toList(growable: false);
++    final fields = PaperHeaderLayoutFactory.resolveHeaderFields(
++      element,
++      paper,
++    );
+     if (fields.isEmpty) return '';
+ 
+     final rows = StringBuffer();
+diff --git a/test/features/paper_composer/dual_editor_mode_test.dart b/test/features/paper_composer/dual_editor_mode_test.dart
+index 49bcf2c..b7533ee 100644
+--- a/test/features/paper_composer/dual_editor_mode_test.dart
++++ b/test/features/paper_composer/dual_editor_mode_test.dart
+@@ -52,7 +52,9 @@ void main() {
+     await tester.pumpAndSettle();
+ 
+     expect(find.byKey(const Key('word-paper-document')), findsOneWidget);
++    expect(find.byKey(const Key('word-wysiwyg-header-canvas')), findsOneWidget);
+     expect(find.byKey(const Key('word-paper-title')), findsOneWidget);
++    expect(find.byKey(const Key('word-ribbon-header-layout')), findsOneWidget);
+ 
+     final titleEditor = find.descendant(
+       of: find.byKey(const Key('word-paper-title')),
+diff --git a/test/features/paper_composer/wysiwyg_header_phase3_test.dart b/test/features/paper_composer/wysiwyg_header_phase3_test.dart
+new file mode 100644
+index 0000000..a84eac8
+--- /dev/null
++++ b/test/features/paper_composer/wysiwyg_header_phase3_test.dart
+@@ -0,0 +1,181 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
++import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/word_header_layout_editor_sheet.dart';
++import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
++import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('Preview and Word Mode share one page-canvas geometry contract', () {
++    final metrics = PaperPageCanvasMetrics.resolve(
++      layout: const PaperPageLayout(
++        pageSize: PaperPageSize.a4,
++        orientation: PaperPageOrientation.landscape,
++        margins: PaperPageMargins(
++          topPoints: 42,
++          rightPoints: 36,
++          bottomPoints: 48,
++          leftPoints: 30,
++        ),
++      ),
++      templatePageSize: PaperSize.letter,
++      viewportWidth: 900,
++    );
++
++    expect(metrics.pagePoints.width, closeTo(841.89, 0.01));
++    expect(metrics.pagePoints.height, closeTo(595.28, 0.01));
++    expect(metrics.pageWidth, lessThanOrEqualTo(868));
++    expect(metrics.pagePadding.left, greaterThan(0));
++    expect(metrics.pagePadding.right, greaterThan(0));
++    expect(metrics.pageMinHeight, greaterThan(0));
++  });
++
++  test('professional metadata slots keep teacher-added fields', () {
++    const template = PaperTemplate(
++      id: 'board',
++      name: 'Board',
++      type: TemplateType.board,
++      headerLayout: HeaderLayout.dps,
++    );
++    final paper = Paper(
++      id: 'p1',
++      title: 'Exam',
++      schoolName: 'School',
++      createdAt: DateTime.utc(2026, 9, 1),
++      headerFields: [
++        PaperHeaderField(id: 'subject', label: 'Subject', value: 'Math'),
++        PaperHeaderField(id: 'code', label: 'Paper Code', value: 'M-101'),
++        PaperHeaderField(id: 'roll', label: 'Roll No', isPlaceholder: true),
++        PaperHeaderField(id: 'custom', label: 'Invigilator', value: 'A. Rao'),
++      ],
++    );
++
++    final layout = PaperHeaderLayoutFactory.resolveForPaper(template, paper);
++    final block = layout.elements.firstWhere(
++      (element) => element.type == ElementType.headerFieldsBlock,
++    );
++    final fields = PaperHeaderLayoutFactory.resolveHeaderFields(block, paper);
++
++    expect(fields.map((field) => field.label), contains('Paper Code'));
++    expect(fields.map((field) => field.label), contains('Roll No'));
++    expect(fields.map((field) => field.label), contains('Invigilator'));
++    expect(
++      fields.firstWhere((field) => field.label == 'Subject').value,
++      'Math',
++    );
++  });
++
++  testWidgets('shared WYSIWYG header canvas edits the canonical paper fields', (
++    tester,
++  ) async {
++    const template = PaperTemplate(
++      id: 'school',
++      name: 'School Formal',
++      type: TemplateType.school,
++      headerLayout: HeaderLayout.centered,
++    );
++    final paper = Paper(
++      id: 'p1',
++      title: 'Midterm',
++      schoolName: 'ABC School',
++      createdAt: DateTime.utc(2026, 9, 1),
++      headerFields: [
++        PaperHeaderField(id: 'subject', label: 'Subject', value: 'Math'),
++        PaperHeaderField(id: 'class', label: 'Class', value: 'X'),
++        PaperHeaderField(id: 'time', label: 'Time', value: '3 Hours'),
++      ],
++    );
++    String? changedTitle;
++    String? changedFieldId;
++    String? changedFieldValue;
++
++    await tester.pumpWidget(
++      MaterialApp(
++        home: Scaffold(
++          body: Center(
++            child: SizedBox(
++              width: 700,
++              child: PaperHeaderLayoutCanvas(
++                template: template,
++                paper: paper,
++                editable: true,
++                onSchoolNameChanged: (_) {},
++                onTitleChanged: (value) => changedTitle = value,
++                onHeaderFieldChanged: (fieldId, value) {
++                  changedFieldId = fieldId;
++                  changedFieldValue = value;
++                },
++              ),
++            ),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.byKey(const Key('word-paper-title')), findsOneWidget);
++    final field = find.descendant(
++      of: find.byKey(const Key('word-paper-title')),
++      matching: find.byType(TextField),
++    );
++    await tester.enterText(field, 'Final Examination');
++    await tester.pump();
++
++    expect(changedTitle, 'Final Examination');
++
++    final subjectField = find.descendant(
++      of: find.byKey(const ValueKey('wysiwyg-header-field-subject')),
++      matching: find.byType(TextField),
++    );
++    await tester.enterText(subjectField, 'Physics');
++    await tester.pump();
++
++    expect(changedFieldId, 'subject');
++    expect(changedFieldValue, 'Physics');
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('header designer exposes drag/snap layout controls', (
++    tester,
++  ) async {
++    const template = PaperTemplate(
++      id: 'school',
++      name: 'School Formal',
++      type: TemplateType.school,
++      headerLayout: HeaderLayout.centered,
++    );
++    final paper = Paper(
++      id: 'p1',
++      title: 'Exam',
++      schoolName: 'School',
++      createdAt: DateTime.utc(2026, 9, 1),
++    );
++
++    await tester.pumpWidget(
++      MaterialApp(
++        home: Scaffold(
++          body: SizedBox(
++            width: 1000,
++            height: 800,
++            child: WordHeaderLayoutEditorSheet(
++              paper: paper,
++              template: template,
++            ),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.text('Arrange header'), findsOneWidget);
++    expect(find.text('Snap 6 pt'), findsOneWidget);
++    expect(find.text('Text'), findsOneWidget);
++    expect(find.text('Line'), findsOneWidget);
++    expect(find.byKey(const Key('header-layout-save')), findsOneWidget);
++    expect(tester.takeException(), isNull);
++  });
++}
+diff --git a/test/release/professional_formatting_phase3_gate_test.dart b/test/release/professional_formatting_phase3_gate_test.dart
+new file mode 100644
+index 0000000..d1989b2
+--- /dev/null
++++ b/test/release/professional_formatting_phase3_gate_test.dart
+@@ -0,0 +1,90 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
++import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('Phase 3 custom header geometry remains canonical and export-resolvable', () {
++    final layout = CustomLayout(
++      canvasHeight: 180,
++      elements: [
++        TemplateElement(
++          id: 'school',
++          type: ElementType.schoolName,
++          x: 24,
++          y: 12,
++          width: 420,
++          properties: const {
++            'fontSize': 18.0,
++            'bold': true,
++            'alignment': 'center',
++          },
++        ),
++        TemplateElement(
++          id: 'line',
++          type: ElementType.horizontalLine,
++          x: 0,
++          y: 164,
++          width: CustomLayout.designWidth,
++          properties: const {'thickness': 1.0},
++        ),
++      ],
++    );
++    final template = PaperTemplate(
++      id: 'custom-phase3',
++      name: 'Custom Phase 3',
++      type: TemplateType.school,
++      headerLayout: HeaderLayout.custom,
++      customLayout: layout,
++    );
++    final paper = Paper(
++      id: 'p1',
++      title: 'Exam',
++      schoolName: 'School',
++      createdAt: DateTime.utc(2026, 9, 1),
++    );
++
++    final resolved = PaperHeaderLayoutFactory.resolveForPaper(template, paper);
++
++    expect(resolved.canvasHeight, 180);
++    expect(resolved.elements.first.x, 24);
++    expect(resolved.elements.first.y, 12);
++    expect(resolved.elements.last.type, ElementType.horizontalLine);
++  });
++
++  test('Phase 3 built-in headers provide professional metadata hierarchy', () {
++    const board = PaperTemplate(
++      id: 'board',
++      name: 'Board',
++      type: TemplateType.board,
++      headerLayout: HeaderLayout.dps,
++    );
++    final paper = Paper(
++      id: 'p2',
++      title: 'Board Exam',
++      schoolName: 'School',
++      createdAt: DateTime.utc(2026, 9, 1),
++      headerFields: [
++        PaperHeaderField(id: 'subject', label: 'Subject', value: 'Science'),
++        PaperHeaderField(id: 'class', label: 'Class', value: 'X'),
++        PaperHeaderField(id: 'time', label: 'Time', value: '3 Hours'),
++        PaperHeaderField(id: 'code', label: 'Paper Code', value: 'S-10'),
++        PaperHeaderField(id: 'set', label: 'Set', value: 'A'),
++      ],
++    );
++
++    final layout = PaperHeaderLayoutFactory.resolveForPaper(board, paper);
++    final block = layout.elements.firstWhere(
++      (element) => element.type == ElementType.headerFieldsBlock,
++    );
++    final fields = PaperHeaderLayoutFactory.resolveHeaderFields(block, paper);
++    final labels = fields.map((field) => field.label).toSet();
++
++    expect(labels, containsAll({'Subject', 'Class', 'Time', 'Paper Code', 'Set'}));
++    expect(
++      layout.elements.where((element) => element.type == ElementType.horizontalLine).length,
++      greaterThanOrEqualTo(2),
++    );
++  });
++}

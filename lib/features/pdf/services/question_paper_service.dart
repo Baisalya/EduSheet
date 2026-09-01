@@ -17,50 +17,20 @@ import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/builders/header_builders.dart';
+import 'package:edusheet/features/pdf/services/pdf_export_theme_service.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
 class QuestionPaperService {
-  static Future<pw.ThemeData>? _themeFuture;
-
-  static Future<pw.ThemeData> _loadTheme() async {
-    final cachedTheme = _themeFuture;
-    if (cachedTheme != null) return cachedTheme;
-
-    _themeFuture = _buildTheme();
-    return _themeFuture!;
+  static Future<pw.ThemeData> _loadTheme() {
+    return PdfExportThemeService.loadTheme();
   }
 
   static void preloadTheme() {
     _loadTheme();
-  }
-
-  static Future<pw.ThemeData> _buildTheme() async {
-    final fonts = await Future.wait([
-      PdfGoogleFonts.notoSansRegular(),
-      PdfGoogleFonts.notoSansMathRegular(),
-      PdfGoogleFonts.notoSansSymbols2Regular(),
-      PdfGoogleFonts.notoSansDevanagariRegular(),
-      PdfGoogleFonts.notoSansOriyaRegular(),
-      PdfGoogleFonts.notoSansBengaliRegular(),
-      PdfGoogleFonts.notoSansTamilRegular(),
-      PdfGoogleFonts.notoSansTeluguRegular(),
-      PdfGoogleFonts.notoSansKannadaRegular(),
-      PdfGoogleFonts.notoSansGujaratiRegular(),
-      PdfGoogleFonts.notoSansMalayalamRegular(),
-      PdfGoogleFonts.notoSansGurmukhiRegular(),
-      PdfGoogleFonts.notoSansArabicRegular(),
-      PdfGoogleFonts.notoSansJPRegular(),
-    ]);
-
-    return pw.ThemeData.withFont(
-      base: fonts[0],
-      fontFallback: fonts.sublist(1),
-    );
   }
 
   static PdfPageFormat _getPageFormat(PaperSize size) {
@@ -318,7 +288,7 @@ class QuestionPaperService {
                   fontStyle: pw.FontStyle.italic,
                   fontWeight: pw.FontWeight.bold,
                 ),
-                textAlign: pw.TextAlign.center,
+                textAlign: _pdfTextAlign(paper.instructionAlignment),
               ),
             ),
           ...paper.sections.expand(
@@ -398,62 +368,52 @@ class QuestionPaperService {
     Map<String, pw.ImageProvider> questionImages, {
     required bool showHeading,
   }) {
-    final answerRule = PaperStructureService.answerRuleText(section);
+    final heading = showHeading
+        ? _buildSectionHeadingWidgets(section, template, paper, config)
+        : <pw.Widget>[];
+
+    if (showHeading &&
+        section.keepTogether &&
+        entries.isNotEmpty &&
+        template.paperLayout != PaperLayout.twoColumn &&
+        _canKeepSectionHeadingWith(entries.first.value, section)) {
+      final firstEntry = entries.first;
+      final firstQuestion = _buildQuestion(
+        PaperStructureService.numberedQuestionOrdinal(section, firstEntry.key),
+        firstEntry.value,
+        template,
+        paper,
+        section,
+        config,
+        questionImages,
+      );
+      final remaining = entries.skip(1).toList();
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [...heading, firstQuestion],
+            ),
+          ),
+          if (remaining.isNotEmpty)
+            _buildQuestionEntries(
+              section,
+              remaining,
+              template,
+              paper,
+              config,
+              questionImages,
+            ),
+        ],
+      );
+    }
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.SizedBox(height: (showHeading ? 20 : 8) * config.spacingScale),
-        if (showHeading && (section.showTitle || section.prefix.isNotEmpty))
-          pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            decoration: template.type == TemplateType.coaching
-                ? pw.BoxDecoration(color: template.secondaryColor)
-                : null,
-            child: pw.Text(
-              '${section.prefix} ${section.showTitle ? section.title : ""}'
-                  .trim(),
-              style: pw.TextStyle(
-                fontSize: 18 * config.fontScale,
-                fontWeight: pw.FontWeight.bold,
-                color: template.type == TemplateType.coaching
-                    ? template.primaryColor
-                    : PdfColors.black,
-              ),
-            ),
-          ),
-        if (showHeading &&
-            section.instruction != null &&
-            section.instruction!.isNotEmpty)
-          pw.Padding(
-            padding: pw.EdgeInsets.only(
-              bottom: paper.pageLayout.paragraphSpacingPoints
-                  .clamp(2, 18)
-                  .toDouble(),
-            ),
-            child: pw.Text(
-              'Instruction: ${section.instruction}',
-              style: pw.TextStyle(
-                fontStyle: pw.FontStyle.italic,
-                fontSize: 12 * config.fontScale,
-              ),
-            ),
-          ),
-        if (showHeading && answerRule != null)
-          pw.Padding(
-            padding: pw.EdgeInsets.only(
-              bottom: paper.pageLayout.paragraphSpacingPoints
-                  .clamp(2, 18)
-                  .toDouble(),
-            ),
-            child: pw.Text(
-              answerRule,
-              style: pw.TextStyle(
-                fontSize: 11 * config.fontScale,
-                fontWeight: pw.FontWeight.bold,
-              ),
-            ),
-          ),
-        if (showHeading && section.showDivider) pw.Divider(),
+        ...heading,
         _buildQuestionEntries(
           section,
           entries,
@@ -464,6 +424,134 @@ class QuestionPaperService {
         ),
       ],
     );
+  }
+
+  static List<pw.Widget> _buildSectionHeadingWidgets(
+    PaperSection section,
+    PaperTemplate template,
+    Paper paper,
+    PaperExportConfig config,
+  ) {
+    final answerRule = PaperStructureService.answerRuleText(section);
+    final marksText = section.sectionMarksText;
+    final headingText = section.formattedHeadingText;
+    final headingFontSize =
+        18 * config.fontScale * section.headingSize.exportScale;
+    final headingWidget = pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      decoration: section.headingBoxed
+          ? pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey700))
+          : template.type == TemplateType.coaching
+          ? pw.BoxDecoration(color: template.secondaryColor)
+          : null,
+      child: section.sectionMarksDisplay == SectionMarksDisplay.right
+          ? pw.Row(
+              children: [
+                pw.Expanded(
+                  child: pw.Text(
+                    headingText,
+                    textAlign: _pdfTextAlign(section.headingAlignment),
+                    style: pw.TextStyle(
+                      fontSize: headingFontSize,
+                      fontWeight: section.headingBold
+                          ? pw.FontWeight.bold
+                          : pw.FontWeight.normal,
+                      color: template.type == TemplateType.coaching
+                          ? template.primaryColor
+                          : PdfColors.black,
+                    ),
+                  ),
+                ),
+                if (marksText != null) ...[
+                  pw.SizedBox(width: 12),
+                  pw.Text(
+                    marksText,
+                    style: pw.TextStyle(
+                      fontSize: 11 * config.fontScale,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ],
+            )
+          : pw.Text(
+              section.sectionMarksDisplay == SectionMarksDisplay.inline &&
+                      marksText != null
+                  ? '$headingText ($marksText)'
+                  : headingText,
+              textAlign: _pdfTextAlign(section.headingAlignment),
+              style: pw.TextStyle(
+                fontSize: headingFontSize,
+                fontWeight: section.headingBold
+                    ? pw.FontWeight.bold
+                    : pw.FontWeight.normal,
+                color: template.type == TemplateType.coaching
+                    ? template.primaryColor
+                    : PdfColors.black,
+              ),
+            ),
+    );
+
+    return [
+      pw.SizedBox(height: section.spacing.beforePoints * config.spacingScale),
+      if (section.showTopDivider) pw.Divider(),
+      if (section.showTitle || section.prefix.isNotEmpty) headingWidget,
+      if (section.instruction != null && section.instruction!.isNotEmpty)
+        pw.Padding(
+          padding: pw.EdgeInsets.only(
+            bottom: paper.pageLayout.paragraphSpacingPoints
+                .clamp(2, 18)
+                .toDouble(),
+          ),
+          child: pw.Text(
+            '${section.showInstructionLabel ? 'Instruction: ' : ''}${section.instruction}',
+            textAlign: _pdfTextAlign(section.instructionAlignment),
+            style: pw.TextStyle(
+              fontStyle: pw.FontStyle.italic,
+              fontSize: 12 * config.fontScale,
+            ),
+          ),
+        ),
+      if (answerRule != null)
+        pw.Padding(
+          padding: pw.EdgeInsets.only(
+            bottom: paper.pageLayout.paragraphSpacingPoints
+                .clamp(2, 18)
+                .toDouble(),
+          ),
+          child: pw.Text(
+            answerRule,
+            textAlign: _pdfTextAlign(section.answerRuleAlignment),
+            style: pw.TextStyle(
+              fontSize: 11 * config.fontScale,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ),
+      if (section.showBottomDivider) pw.Divider(),
+      pw.SizedBox(height: section.spacing.afterPoints * config.spacingScale),
+    ];
+  }
+
+  static bool _canKeepSectionHeadingWith(
+    Question question,
+    PaperSection section,
+  ) {
+    if (question.isWordContentBlock) return false;
+    if (question.attachments.isNotEmpty || question.tableData != null) {
+      return false;
+    }
+    if (question.subQuestions.isNotEmpty ||
+        question.internalChoices.isNotEmpty) {
+      return false;
+    }
+    final answerSpace = QuestionAdvancedStructureService.resolveAnswerSpace(
+      question,
+      section,
+    );
+    if (answerSpace.isVisible && answerSpace.lines > 4) return false;
+    return question.plainTextAccessibility.length <= 480;
   }
 
   static pw.Widget _buildQuestionEntries(
@@ -572,19 +660,24 @@ class QuestionPaperService {
                   section,
                   config,
                   questionImages,
+                  inlineMarks:
+                      section.questionMarksPlacement ==
+                      QuestionMarksPlacement.inline,
                 ),
               ),
-              pw.SizedBox(
-                width: 40,
-                child: pw.Text(
-                  '[${PaperStructureService.marksSummary(q.marks)}]',
-                  textAlign: pw.TextAlign.right,
-                  style: pw.TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: pw.FontWeight.bold,
+              if (section.questionMarksPlacement ==
+                  QuestionMarksPlacement.rightEdge)
+                pw.SizedBox(
+                  width: 40,
+                  child: pw.Text(
+                    '[${PaperStructureService.marksSummary(q.marks)}]',
+                    textAlign: pw.TextAlign.right,
+                    style: pw.TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           if (config.includesAnswers)
@@ -630,18 +723,54 @@ class QuestionPaperService {
     double fontSize,
     PaperSection section,
     PaperExportConfig config,
-    Map<String, pw.ImageProvider> questionImages,
-  ) {
+    Map<String, pw.ImageProvider> questionImages, {
+    bool inlineMarks = false,
+  }) {
     final advanced = QuestionAdvancedContent.fromQuestion(question);
     final children = <pw.Widget>[];
 
-    children.add(
-      _parseRichTextToPdf(
-        question.text,
-        fontSize,
-        textAlign: _pdfTextAlign(question.alignment),
-      ),
+    if (question.instructions.trim().isNotEmpty) {
+      children.add(
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 5),
+          child: pw.Text(
+            question.instructions.trim(),
+            textAlign: _pdfTextAlign(question.instructionAlignment),
+            style: pw.TextStyle(
+              fontSize: fontSize * 0.9,
+              fontStyle: pw.FontStyle.italic,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final questionText = _parseRichTextToPdf(
+      question.text,
+      fontSize,
+      textAlign: _pdfTextAlign(question.alignment),
     );
+    if (inlineMarks) {
+      children.add(
+        pw.Wrap(
+          crossAxisAlignment: pw.WrapCrossAlignment.center,
+          spacing: 5,
+          children: [
+            questionText,
+            pw.Text(
+              '[${PaperStructureService.marksSummary(question.marks)}]',
+              style: pw.TextStyle(
+                fontSize: fontSize,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      children.add(questionText);
+    }
 
     if (advanced.hasStimulus) {
       children.add(pw.SizedBox(height: 6));
@@ -845,16 +974,22 @@ class QuestionPaperService {
                   section,
                   config,
                   questionImages,
+                  inlineMarks:
+                      section.questionMarksPlacement ==
+                      QuestionMarksPlacement.inline,
                 ),
               ),
-              pw.SizedBox(width: 6),
-              pw.Text(
-                '[${PaperStructureService.marksSummary(question.marks)}]',
-                style: pw.TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: pw.FontWeight.bold,
+              if (section.questionMarksPlacement ==
+                  QuestionMarksPlacement.rightEdge) ...[
+                pw.SizedBox(width: 6),
+                pw.Text(
+                  '[${PaperStructureService.marksSummary(question.marks)}]',
+                  style: pw.TextStyle(
+                    fontSize: fontSize,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
           if (advanced.hasAnswerSpace)

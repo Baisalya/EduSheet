@@ -266,6 +266,45 @@ void main() {
     },
   );
 
+  test('Word export preserves Phase 2 professional section styling', () async {
+    final paper = Paper(
+      id: 'professional-phase2',
+      title: 'Professional Phase 2',
+      createdAt: DateTime(2026, 9, 1),
+      sections: [
+        PaperSection(
+          id: 'section-a',
+          title: 'Section A',
+          prefix: 'Part I',
+          headingBold: true,
+          headingUppercase: true,
+          headingBoxed: true,
+          headingSize: SectionHeadingSize.large,
+          spacing: SectionSpacing.compact,
+          sectionMarksDisplay: SectionMarksDisplay.right,
+          questionMarksPlacement: QuestionMarksPlacement.rightEdge,
+          keepTogether: true,
+          questions: [Question(id: 'q1', text: 'Explain gravity.', marks: 5)],
+        ),
+      ],
+    );
+
+    final output = await WordExportService.export(paper, _sampleTemplate());
+    final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
+    final documentXml = _archiveText(archive, 'word/document.xml');
+    final renderedText = xml.XmlDocument.parse(
+      documentXml,
+    ).rootElement.innerText;
+
+    expect(renderedText, contains('Part I Section A'));
+    expect(documentXml, contains('<w:caps/>'));
+    expect(renderedText, contains('5 Marks'));
+    expect(documentXml, contains('<w:keepNext/>'));
+    expect(documentXml, contains('<w:pBdr>'));
+    expect(documentXml, contains('<w:tab/>'));
+    expect(documentXml, contains('w:val="right"'));
+  });
+
   test('Word export preserves advanced paper content blocks', () async {
     final output = await WordExportService.export(
       _advancedPaper(),

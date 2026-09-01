@@ -1,0 +1,16 @@
+PROFESSIONAL_FORMATTING_POLISH_PHASE3.md
+PROFESSIONAL_FORMATTING_POLISH_PHASE3_NOTES.md
+lib/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart
+lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+lib/features/paper_composer/presentation/widgets/paper_preview_page.dart
+lib/features/paper_composer/presentation/widgets/paper_style_editor_sheet.dart
+lib/features/paper_composer/presentation/widgets/paper_style_preview.dart
+lib/features/paper_composer/presentation/widgets/word_header_layout_editor_sheet.dart
+lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+lib/features/pdf/application/paper_header_layout_factory.dart
+lib/features/pdf/services/builders/header_builders.dart
+lib/features/pdf/services/word_export_service.dart
+test/features/paper_composer/dual_editor_mode_test.dart
+test/features/paper_composer/wysiwyg_header_phase3_test.dart
+test/release/professional_formatting_phase3_gate_test.dart

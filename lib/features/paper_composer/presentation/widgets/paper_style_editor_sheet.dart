@@ -254,7 +254,7 @@ class _PaperStyleEditorSheetState extends ConsumerState<PaperStyleEditorSheet> {
               decoration: const InputDecoration(
                 labelText: 'Header',
                 helperText:
-                    'Choose the overall arrangement, not individual coordinates.',
+                    'Choose a professional starting arrangement; Word Mode can fine-tune header positions.',
               ),
               items: [
                 for (final layout in allowedHeaders)

@@ -20,6 +20,7 @@ class QuestionDetailsDraft {
   final List<String> tags;
   final String language;
   final String instructions;
+  final PaperTextAlignment instructionAlignment;
   final String sourceReference;
 
   const QuestionDetailsDraft({
@@ -37,6 +38,7 @@ class QuestionDetailsDraft {
     this.tags = const [],
     this.language = 'en',
     this.instructions = '',
+    this.instructionAlignment = PaperTextAlignment.left,
     this.sourceReference = '',
   });
 
@@ -56,6 +58,7 @@ class QuestionDetailsDraft {
       tags: List<String>.from(question.tags),
       language: question.language,
       instructions: question.instructions,
+      instructionAlignment: question.instructionAlignment,
       sourceReference: question.sourceReference,
     );
   }
@@ -76,6 +79,7 @@ class QuestionDetailsDraft {
     List<String>? tags,
     String? language,
     String? instructions,
+    PaperTextAlignment? instructionAlignment,
     String? sourceReference,
   }) {
     return QuestionDetailsDraft(
@@ -95,6 +99,7 @@ class QuestionDetailsDraft {
       tags: tags ?? this.tags,
       language: language ?? this.language,
       instructions: instructions ?? this.instructions,
+      instructionAlignment: instructionAlignment ?? this.instructionAlignment,
       sourceReference: sourceReference ?? this.sourceReference,
     );
   }

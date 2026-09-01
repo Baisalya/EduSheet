@@ -9,7 +9,20 @@ class SectionFormatDraft {
   final QuestionNumberStyle? numberingStyle;
   final double? defaultMarks;
   final bool showTitle;
-  final bool showDivider;
+  final bool showTopDivider;
+  final bool showBottomDivider;
+  final PaperTextAlignment headingAlignment;
+  final PaperTextAlignment instructionAlignment;
+  final PaperTextAlignment answerRuleAlignment;
+  final bool showInstructionLabel;
+  final bool headingBold;
+  final bool headingUppercase;
+  final bool headingBoxed;
+  final SectionHeadingSize headingSize;
+  final SectionSpacing spacing;
+  final SectionMarksDisplay sectionMarksDisplay;
+  final QuestionMarksPlacement questionMarksPlacement;
+  final bool keepTogether;
   final bool pageBreakBefore;
   final int answerSpaceLines;
   final bool ruledAnswerArea;
@@ -21,7 +34,20 @@ class SectionFormatDraft {
     required this.numberingStyle,
     required this.defaultMarks,
     required this.showTitle,
-    required this.showDivider,
+    required this.showTopDivider,
+    required this.showBottomDivider,
+    required this.headingAlignment,
+    required this.instructionAlignment,
+    required this.answerRuleAlignment,
+    required this.showInstructionLabel,
+    required this.headingBold,
+    required this.headingUppercase,
+    required this.headingBoxed,
+    required this.headingSize,
+    required this.spacing,
+    required this.sectionMarksDisplay,
+    required this.questionMarksPlacement,
+    required this.keepTogether,
     required this.pageBreakBefore,
     required this.answerSpaceLines,
     required this.ruledAnswerArea,
@@ -66,7 +92,20 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
   late bool _answerAll;
   late String _numberingKey;
   late bool _showTitle;
-  late bool _showDivider;
+  late bool _showTopDivider;
+  late bool _showBottomDivider;
+  late PaperTextAlignment _headingAlignment;
+  late PaperTextAlignment _instructionAlignment;
+  late PaperTextAlignment _answerRuleAlignment;
+  late bool _showInstructionLabel;
+  late bool _headingBold;
+  late bool _headingUppercase;
+  late bool _headingBoxed;
+  late SectionHeadingSize _headingSize;
+  late SectionSpacing _spacing;
+  late SectionMarksDisplay _sectionMarksDisplay;
+  late QuestionMarksPlacement _questionMarksPlacement;
+  late bool _keepTogether;
   late bool _pageBreakBefore;
   late int _answerSpaceLines;
   late _AnswerAreaKind _answerArea;
@@ -89,7 +128,20 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
     _answerAll = section.requiredCount == null;
     _numberingKey = section.numberingStyle?.name ?? '_paper';
     _showTitle = section.showTitle;
-    _showDivider = section.showDivider;
+    _showTopDivider = section.showTopDivider;
+    _showBottomDivider = section.showBottomDivider;
+    _headingAlignment = section.headingAlignment;
+    _instructionAlignment = section.instructionAlignment;
+    _answerRuleAlignment = section.answerRuleAlignment;
+    _showInstructionLabel = section.showInstructionLabel;
+    _headingBold = section.headingBold;
+    _headingUppercase = section.headingUppercase;
+    _headingBoxed = section.headingBoxed;
+    _headingSize = section.headingSize;
+    _spacing = section.spacing;
+    _sectionMarksDisplay = section.sectionMarksDisplay;
+    _questionMarksPlacement = section.questionMarksPlacement;
+    _keepTogether = section.keepTogether;
     _pageBreakBefore = section.pageBreakBefore;
     _answerSpaceLines = section.answerSpaceLines.clamp(0, 12).toInt();
     _answerArea = section.graphAnswerArea
@@ -205,7 +257,9 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
                     ),
               ],
               onChanged: (value) {
-                if (value != null) setState(() => _numberingKey = value);
+                if (value != null) {
+                  setState(() => _numberingKey = value);
+                }
               },
             ),
             const SizedBox(height: 22),
@@ -237,11 +291,191 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
               value: _showTitle,
               onChanged: (value) => setState(() => _showTitle = value),
             ),
+            const SizedBox(height: 8),
+            _AlignmentPicker(
+              label: 'Section heading alignment',
+              value: _headingAlignment,
+              onChanged: (value) => setState(() => _headingAlignment = value),
+            ),
+            const SizedBox(height: 14),
+            _AlignmentPicker(
+              label: 'Section instruction alignment',
+              value: _instructionAlignment,
+              onChanged: (value) =>
+                  setState(() => _instructionAlignment = value),
+            ),
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Show divider'),
-              value: _showDivider,
-              onChanged: (value) => setState(() => _showDivider = value),
+              title: const Text('Show “Instruction:” label'),
+              subtitle: const Text(
+                'Off prints exactly what the teacher typed.',
+              ),
+              value: _showInstructionLabel,
+              onChanged: (value) =>
+                  setState(() => _showInstructionLabel = value),
+            ),
+            const SizedBox(height: 6),
+            _AlignmentPicker(
+              label: 'Answer-rule alignment',
+              value: _answerRuleAlignment,
+              onChanged: (value) =>
+                  setState(() => _answerRuleAlignment = value),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Line above section heading'),
+              value: _showTopDivider,
+              onChanged: (value) => setState(() => _showTopDivider = value),
+            ),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Line below section heading'),
+              value: _showBottomDivider,
+              onChanged: (value) => setState(() => _showBottomDivider = value),
+            ),
+            const SizedBox(height: 12),
+            _SectionHeading(
+              title: 'Heading appearance',
+              subtitle:
+                  'Fast professional presets plus lightweight typography controls.',
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<_HeadingPreset>(
+              segments: const [
+                ButtonSegment(
+                  value: _HeadingPreset.plain,
+                  label: Text('Plain'),
+                ),
+                ButtonSegment(
+                  value: _HeadingPreset.underline,
+                  label: Text('Underline'),
+                ),
+                ButtonSegment(
+                  value: _HeadingPreset.ruled,
+                  label: Text('Ruled'),
+                ),
+                ButtonSegment(
+                  value: _HeadingPreset.boxed,
+                  label: Text('Boxed'),
+                ),
+              ],
+              selected: {_currentHeadingPreset},
+              onSelectionChanged: (selection) =>
+                  _applyHeadingPreset(selection.first),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<SectionHeadingSize>(
+              segments: const [
+                ButtonSegment(
+                  value: SectionHeadingSize.small,
+                  label: Text('Small'),
+                ),
+                ButtonSegment(
+                  value: SectionHeadingSize.normal,
+                  label: Text('Normal'),
+                ),
+                ButtonSegment(
+                  value: SectionHeadingSize.large,
+                  label: Text('Large'),
+                ),
+              ],
+              selected: {_headingSize},
+              onSelectionChanged: (selection) =>
+                  setState(() => _headingSize = selection.first),
+            ),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Bold section heading'),
+              value: _headingBold,
+              onChanged: (value) => setState(() => _headingBold = value),
+            ),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('UPPERCASE section heading'),
+              value: _headingUppercase,
+              onChanged: (value) => setState(() => _headingUppercase = value),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<SectionMarksDisplay>(
+              initialValue: _sectionMarksDisplay,
+              decoration: const InputDecoration(
+                labelText: 'Section marks display',
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: SectionMarksDisplay.hidden,
+                  child: Text('Hidden'),
+                ),
+                DropdownMenuItem(
+                  value: SectionMarksDisplay.inline,
+                  child: Text('(20 Marks) after heading'),
+                ),
+                DropdownMenuItem(
+                  value: SectionMarksDisplay.right,
+                  child: Text('20 Marks at right edge'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _sectionMarksDisplay = value);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<QuestionMarksPlacement>(
+              initialValue: _questionMarksPlacement,
+              decoration: const InputDecoration(
+                labelText: 'Question marks placement',
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: QuestionMarksPlacement.inline,
+                  child: Text('Inline after question'),
+                ),
+                DropdownMenuItem(
+                  value: QuestionMarksPlacement.rightEdge,
+                  child: Text('Right edge'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _questionMarksPlacement = value);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<SectionSpacing>(
+              initialValue: _spacing,
+              decoration: const InputDecoration(labelText: 'Section spacing'),
+              items: const [
+                DropdownMenuItem(
+                  value: SectionSpacing.compact,
+                  child: Text('Compact'),
+                ),
+                DropdownMenuItem(
+                  value: SectionSpacing.normal,
+                  child: Text('Normal'),
+                ),
+                DropdownMenuItem(
+                  value: SectionSpacing.spacious,
+                  child: Text('Spacious'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _spacing = value);
+                }
+              },
+            ),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Keep heading with first question'),
+              subtitle: const Text(
+                'Avoid a section heading being stranded at the bottom of a page.',
+              ),
+              value: _keepTogether,
+              onChanged: (value) => setState(() => _keepTogether = value),
             ),
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
@@ -347,7 +581,20 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
               ),
         defaultMarks: defaultMarks,
         showTitle: _showTitle,
-        showDivider: _showDivider,
+        showTopDivider: _showTopDivider,
+        showBottomDivider: _showBottomDivider,
+        headingAlignment: _headingAlignment,
+        instructionAlignment: _instructionAlignment,
+        answerRuleAlignment: _answerRuleAlignment,
+        showInstructionLabel: _showInstructionLabel,
+        headingBold: _headingBold,
+        headingUppercase: _headingUppercase,
+        headingBoxed: _headingBoxed,
+        headingSize: _headingSize,
+        spacing: _spacing,
+        sectionMarksDisplay: _sectionMarksDisplay,
+        questionMarksPlacement: _questionMarksPlacement,
+        keepTogether: _keepTogether,
         pageBreakBefore: _pageBreakBefore,
         answerSpaceLines: _answerSpaceLines,
         ruledAnswerArea:
@@ -358,12 +605,80 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
     );
   }
 
+  _HeadingPreset get _currentHeadingPreset {
+    if (_headingBoxed) {
+      return _HeadingPreset.boxed;
+    }
+    if (_showTopDivider && _showBottomDivider) {
+      return _HeadingPreset.ruled;
+    }
+    if (!_showTopDivider && _showBottomDivider) {
+      return _HeadingPreset.underline;
+    }
+    return _HeadingPreset.plain;
+  }
+
+  void _applyHeadingPreset(_HeadingPreset preset) {
+    setState(() {
+      _headingBoxed = preset == _HeadingPreset.boxed;
+      _showTopDivider = preset == _HeadingPreset.ruled;
+      _showBottomDivider =
+          preset == _HeadingPreset.underline || preset == _HeadingPreset.ruled;
+    });
+  }
+
   static String _formatMarks(double marks) {
     return marks == marks.roundToDouble()
         ? marks.toInt().toString()
         : marks.toStringAsFixed(1);
   }
 }
+
+class _AlignmentPicker extends StatelessWidget {
+  final String label;
+  final PaperTextAlignment value;
+  final ValueChanged<PaperTextAlignment> onChanged;
+
+  const _AlignmentPicker({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 7),
+        SegmentedButton<PaperTextAlignment>(
+          segments: const [
+            ButtonSegment(
+              value: PaperTextAlignment.left,
+              icon: Icon(Icons.format_align_left_rounded),
+              label: Text('Left'),
+            ),
+            ButtonSegment(
+              value: PaperTextAlignment.center,
+              icon: Icon(Icons.format_align_center_rounded),
+              label: Text('Center'),
+            ),
+            ButtonSegment(
+              value: PaperTextAlignment.right,
+              icon: Icon(Icons.format_align_right_rounded),
+              label: Text('Right'),
+            ),
+          ],
+          selected: {value},
+          onSelectionChanged: (selection) => onChanged(selection.first),
+        ),
+      ],
+    );
+  }
+}
+
+enum _HeadingPreset { plain, underline, ruled, boxed }
 
 enum _AnswerAreaKind { plain, ruled, graph }
 

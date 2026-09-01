@@ -52,6 +52,7 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
   late bool _showDate;
   late bool _showStudentName;
   late bool _showRollNo;
+  late PaperTextAlignment _instructionAlignment;
   late String _logoPath;
   late List<_CustomFieldDraft> _customFields;
   String? _maximumMarksError;
@@ -76,6 +77,7 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
     _showDate = _hasHeader('Date');
     _showStudentName = _hasHeader('Student Name');
     _showRollNo = _hasHeader('Roll No');
+    _instructionAlignment = widget.paper.instructionAlignment;
     _logoPath = widget.paper.logos.isEmpty ? '' : widget.paper.logos.first;
     _customFields = widget.paper.headerFields
         .where(
@@ -136,6 +138,7 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
           title: _title.text.trim().isEmpty ? 'New Paper' : _title.text.trim(),
           schoolName: _school.text.trim(),
           instruction: _instruction.text.trim(),
+          instructionAlignment: _instructionAlignment,
           logos: _resolvedLogos(),
           headerFields: _resolvedHeaderFields(),
           maximumMarks: parsed,
@@ -529,9 +532,42 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                       controller: _instruction,
                       minLines: 3,
                       maxLines: 8,
+                      textAlign: _instructionAlignment.textAlign,
                       decoration: const InputDecoration(
                         labelText: 'Instructions',
                         alignLabelWithHint: true,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Instruction alignment',
+                        style: theme.textTheme.labelLarge,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    SegmentedButton<PaperTextAlignment>(
+                      segments: const [
+                        ButtonSegment(
+                          value: PaperTextAlignment.left,
+                          icon: Icon(Icons.format_align_left_rounded),
+                          label: Text('Left'),
+                        ),
+                        ButtonSegment(
+                          value: PaperTextAlignment.center,
+                          icon: Icon(Icons.format_align_center_rounded),
+                          label: Text('Center'),
+                        ),
+                        ButtonSegment(
+                          value: PaperTextAlignment.right,
+                          icon: Icon(Icons.format_align_right_rounded),
+                          label: Text('Right'),
+                        ),
+                      ],
+                      selected: {_instructionAlignment},
+                      onSelectionChanged: (selection) => setState(
+                        () => _instructionAlignment = selection.first,
                       ),
                     ),
                     const SizedBox(height: 20),

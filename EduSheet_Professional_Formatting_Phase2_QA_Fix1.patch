@@ -1,0 +1,119 @@
+diff --git a/lib/features/editor/domain/models/paper_model.dart b/lib/features/editor/domain/models/paper_model.dart
+index fdb5ed4..6cc9806 100644
+--- a/lib/features/editor/domain/models/paper_model.dart
++++ b/lib/features/editor/domain/models/paper_model.dart
+@@ -262,18 +262,6 @@ class Paper {
+     );
+   }
+ 
+-  String get formattedHeadingText {
+-    final value = '$prefix ${showTitle ? title : ''}'.trim();
+-    return headingUppercase ? value.toUpperCase() : value;
+-  }
+-
+-  String? get sectionMarksText {
+-    if (sectionMarksDisplay == SectionMarksDisplay.hidden) return null;
+-    final value = totalMarks == totalMarks.roundToDouble()
+-        ? totalMarks.toInt().toString()
+-        : totalMarks.toStringAsFixed(1);
+-    return '$value ${value == '1' ? 'Mark' : 'Marks'}';
+-  }
+ 
+   double get totalMarks {
+     return sections.fold(0.0, (sum, section) => sum + section.totalMarks);
+@@ -548,7 +536,9 @@ class PaperSection {
+   }
+ 
+   String? get sectionMarksText {
+-    if (sectionMarksDisplay == SectionMarksDisplay.hidden) return null;
++    if (sectionMarksDisplay == SectionMarksDisplay.hidden) {
++      return null;
++    }
+     final value = totalMarks == totalMarks.roundToDouble()
+         ? totalMarks.toInt().toString()
+         : totalMarks.toStringAsFixed(1);
+diff --git a/lib/features/paper_composer/presentation/widgets/section_format_sheet.dart b/lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
+index ac7205a..a6931c3 100644
+--- a/lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
+@@ -255,7 +255,9 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+                     ),
+               ],
+               onChanged: (value) {
+-                if (value != null) setState(() => _numberingKey = value);
++                if (value != null) {
++                  setState(() => _numberingKey = value);
++                }
+               },
+             ),
+             const SizedBox(height: 22),
+@@ -374,7 +376,9 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+                 DropdownMenuItem(value: SectionMarksDisplay.right, child: Text('20 Marks at right edge')),
+               ],
+               onChanged: (value) {
+-                if (value != null) setState(() => _sectionMarksDisplay = value);
++                if (value != null) {
++                  setState(() => _sectionMarksDisplay = value);
++                }
+               },
+             ),
+             const SizedBox(height: 12),
+@@ -386,7 +390,9 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+                 DropdownMenuItem(value: QuestionMarksPlacement.rightEdge, child: Text('Right edge')),
+               ],
+               onChanged: (value) {
+-                if (value != null) setState(() => _questionMarksPlacement = value);
++                if (value != null) {
++                  setState(() => _questionMarksPlacement = value);
++                }
+               },
+             ),
+             const SizedBox(height: 12),
+@@ -399,7 +405,9 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+                 DropdownMenuItem(value: SectionSpacing.spacious, child: Text('Spacious')),
+               ],
+               onChanged: (value) {
+-                if (value != null) setState(() => _spacing = value);
++                if (value != null) {
++                  setState(() => _spacing = value);
++                }
+               },
+             ),
+             SwitchListTile.adaptive(
+@@ -540,9 +548,15 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
+ 
+ 
+   _HeadingPreset get _currentHeadingPreset {
+-    if (_headingBoxed) return _HeadingPreset.boxed;
+-    if (_showTopDivider && _showBottomDivider) return _HeadingPreset.ruled;
+-    if (!_showTopDivider && _showBottomDivider) return _HeadingPreset.underline;
++    if (_headingBoxed) {
++      return _HeadingPreset.boxed;
++    }
++    if (_showTopDivider && _showBottomDivider) {
++      return _HeadingPreset.ruled;
++    }
++    if (!_showTopDivider && _showBottomDivider) {
++      return _HeadingPreset.underline;
++    }
+     return _HeadingPreset.plain;
+   }
+ 
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index 501e743..b4af1a9 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -511,9 +511,10 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+                         Flexible(
+                           child: _InlineDocumentField(
+                             key: Key('word-section-title-${section.id}'),
+-                            initialValue: section.headingUppercase
+-                                ? section.title.toUpperCase()
+-                                : section.title,
++                            initialValue: section.title,
++                            displayTransform: section.headingUppercase
++                                ? (value) => value.toUpperCase()
++                                : null,
+                             hintText: 'Section title',
+                             textAlign: section.headingAlignment.textAlign,
+                             textStyle: TextStyle(

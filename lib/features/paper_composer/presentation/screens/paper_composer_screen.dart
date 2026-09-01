@@ -14,10 +14,12 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_prev
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_section_card.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/section_format_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/word_header_layout_editor_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/word_paper_editor.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_composer_page.dart';
 import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
+import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
 import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
@@ -30,6 +32,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 enum _PaperEditingMode { smart, word }
 
@@ -326,7 +329,20 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
       numberingStyle: draft.numberingStyle,
       defaultMarks: draft.defaultMarks,
       showTitle: draft.showTitle,
-      showDivider: draft.showDivider,
+      showTopDivider: draft.showTopDivider,
+      showBottomDivider: draft.showBottomDivider,
+      headingAlignment: draft.headingAlignment,
+      instructionAlignment: draft.instructionAlignment,
+      answerRuleAlignment: draft.answerRuleAlignment,
+      showInstructionLabel: draft.showInstructionLabel,
+      headingBold: draft.headingBold,
+      headingUppercase: draft.headingUppercase,
+      headingBoxed: draft.headingBoxed,
+      headingSize: draft.headingSize,
+      spacing: draft.spacing,
+      sectionMarksDisplay: draft.sectionMarksDisplay,
+      questionMarksPlacement: draft.questionMarksPlacement,
+      keepTogether: draft.keepTogether,
       pageBreakBefore: draft.pageBreakBefore,
       answerSpaceLines: draft.answerSpaceLines,
       ruledAnswerArea: draft.ruledAnswerArea,
@@ -681,7 +697,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                         ? WordPaperEditor(
                             paper: paper,
                             compact: compact,
-                            templatePageSize: template.paperSize,
+                            template: template,
                             onTitleChanged: editor.updateTitle,
                             onSchoolNameChanged: (value) =>
                                 editor.updateBranding(schoolName: value),
@@ -716,6 +732,61 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                             onAddQuestion: (sectionId) =>
                                 _openQuestion(sectionId),
                             onImportWord: _importEduSheetWordRoundTrip,
+                            onArrangeHeader: () async {
+                              final layout =
+                                  await WordHeaderLayoutEditorSheet.show(
+                                    context,
+                                    paper: paper,
+                                    template: template,
+                                  );
+                              if (layout == null || !context.mounted) {
+                                return;
+                              }
+
+                              final editingExistingCustom =
+                                  template.headerLayout ==
+                                      HeaderLayout.custom &&
+                                  template.customLayout != null;
+                              final custom = template.copyWith(
+                                id: editingExistingCustom
+                                    ? template.id
+                                    : const Uuid().v4(),
+                                name: editingExistingCustom
+                                    ? template.name
+                                    : '${template.name} Custom Header',
+                                headerLayout: HeaderLayout.custom,
+                                customLayout: layout,
+                              );
+                              try {
+                                await ref
+                                    .read(templateProvider.notifier)
+                                    .saveTemplate(custom);
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                editor.updateTemplate(custom.id);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      editingExistingCustom
+                                          ? 'Header layout updated.'
+                                          : 'Custom header saved and applied.',
+                                    ),
+                                  ),
+                                );
+                              } catch (error) {
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Unable to save header layout: $error',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                             onApplyPageLayout:
                                 (
                                   layout,
