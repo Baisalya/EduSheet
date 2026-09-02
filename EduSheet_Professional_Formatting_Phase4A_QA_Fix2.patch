@@ -1,0 +1,127 @@
+diff --git a/PHASE4A_QA_FIX2_NOTES.md b/PHASE4A_QA_FIX2_NOTES.md
+new file mode 100644
+index 0000000..bb9a877
+--- /dev/null
++++ b/PHASE4A_QA_FIX2_NOTES.md
+@@ -0,0 +1,55 @@
++# Professional Formatting Phase 4A — QA Fix 2
++
++## Why this fix exists
++
++Windows QA after QA Fix 1 exposed two remaining analyzer warnings and one Windows-only test harness timeout.
++
++### Analyzer warnings
++
++The Dart analyzer reported `unnecessary_non_null_assertion` in:
++
++- `paper_details_sheet.dart`
++- `paper_header_layout_canvas.dart`
++
++Both branches already prove the `File` is non-null through the `canPreview` / `canShowImage` guards, so the redundant `!` operators were removed. No runtime behavior changes.
++
++### Selected-logo widget test timeout
++
++The production header logo rendering was correct, but the test created its PNG inside the same temporary directory used by the mocked path-provider. On Windows, `Image.file`/`FileImage` can keep a source handle alive briefly. QA Fix 1 then explicitly awaited `FileImage.evict()`, which could remain pending until the test's 10-minute timeout. The timeout was followed by a temp-directory deletion error because Windows still saw the logo file as in use.
++
++QA Fix 2 makes the test deterministic:
++
++- use the repository fixture `assets/Applogo.png` instead of creating a PNG inside the path-provider temp directory;
++- still verify that the shared header canvas builds an `Image` backed by `FileImage` and that its path is exactly the selected logo path;
++- dispose the widget with a bounded `pump`;
++- do **not** await `FileImage.evict()` in the widget test.
++
++This removes the Windows file-handle lifecycle from the assertion while still testing the selected-logo render path.
++
++## Scope
++
++No editor architecture, Paper schema, database, export format, dependency, question semantics, or logo behavior was changed.
++
++## Files changed
++
++1. `lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart`
++2. `lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart`
++3. `test/features/paper_composer/word_direct_authoring_phase4a_test.dart`
++4. `PHASE4A_QA_FIX2_NOTES.md`
++
++## Windows QA
++
++```powershell
++dart format .
++flutter analyze
++
++flutter test test/features/paper_composer/word_direct_authoring_phase4a_test.dart
++flutter test test/shared/presentation/adaptive_modal_usage_test.dart
++flutter test test/features/paper_composer/dual_editor_mode_test.dart
++flutter test test/release/professional_formatting_phase4a_gate_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
++
++Do not upgrade the unrelated outdated packages during this focused QA pass.
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart b/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+index a5ad8fc..8b94e30 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+@@ -719,7 +719,7 @@ class _LogoControl extends StatelessWidget {
+           child: canPreview
+               ? ClipRRect(
+                   borderRadius: BorderRadius.circular(9),
+-                  child: Image.file(file!, fit: BoxFit.contain),
++                  child: Image.file(file, fit: BoxFit.contain),
+                 )
+               : const Icon(Icons.image_outlined),
+         ),
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart b/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+index 2e8b712..33a50ac 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+@@ -285,7 +285,7 @@ class PaperHeaderElementView extends StatelessWidget {
+       content = ClipRRect(
+         borderRadius: BorderRadius.circular(3),
+         child: Image.file(
+-          file!,
++          file,
+           width: resolvedWidth,
+           height: resolvedHeight,
+           fit: BoxFit.contain,
+diff --git a/test/features/paper_composer/word_direct_authoring_phase4a_test.dart b/test/features/paper_composer/word_direct_authoring_phase4a_test.dart
+index 5d578a9..7ac60ea 100644
+--- a/test/features/paper_composer/word_direct_authoring_phase4a_test.dart
++++ b/test/features/paper_composer/word_direct_authoring_phase4a_test.dart
+@@ -1,4 +1,3 @@
+-import 'dart:convert';
+ import 'dart:io';
+ 
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+@@ -139,12 +138,8 @@ void main() {
+   testWidgets('shared header canvas renders the selected logo file', (
+     tester,
+   ) async {
+-    final logoFile = File('${tempDir.path}${Platform.pathSeparator}logo.png');
+-    await logoFile.writeAsBytes(
+-      base64Decode(
+-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+-      ),
+-    );
++    final logoFile = File('assets/Applogo.png').absolute;
++    expect(logoFile.existsSync(), isTrue);
+     final paper = Paper(
+       id: 'p-logo',
+       title: 'Exam',
+@@ -194,12 +189,11 @@ void main() {
+     expect(find.text('Add logo'), findsNothing);
+     expect(tester.takeException(), isNull);
+ 
+-    // Dispose the FileImage before the Windows temp directory is removed.
+-    // Waiting for pumpAndSettle here is deliberately avoided: image decoding
+-    // is not part of this structural test and may keep a pending frame alive.
++    // Keep the fixture outside the temporary path-provider directory. On
++    // Windows an Image.file decoder may briefly keep its source handle open,
++    // which must never turn temp-directory cleanup into a ten-minute timeout.
+     await tester.pumpWidget(const SizedBox.shrink());
+     await tester.pump();
+-    await (image.image as FileImage).evict();
+   });
+ 
+   testWidgets('editable header logo slot is a direct choose or replace target', (

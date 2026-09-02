@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builder.dart';
@@ -19,6 +18,7 @@ class WordRichTextSession extends ChangeNotifier {
   QuillController? _controller;
   Future<void> Function()? _insertMath;
   Future<void> Function()? _insertGeometry;
+  VoidCallback? _requestFocus;
   String? _questionId;
 
   QuillController? get activeController => _controller;
@@ -30,12 +30,14 @@ class WordRichTextSession extends ChangeNotifier {
     required QuillController controller,
     required Future<void> Function() insertMath,
     required Future<void> Function() insertGeometry,
+    required VoidCallback requestFocus,
   }) {
     if (identical(_controller, controller) && _questionId == questionId) return;
     _controller = controller;
     _questionId = questionId;
     _insertMath = insertMath;
     _insertGeometry = insertGeometry;
+    _requestFocus = requestFocus;
     notifyListeners();
   }
 
@@ -45,6 +47,7 @@ class WordRichTextSession extends ChangeNotifier {
     _questionId = null;
     _insertMath = null;
     _insertGeometry = null;
+    _requestFocus = null;
     notifyListeners();
   }
 
@@ -66,6 +69,10 @@ class WordRichTextSession extends ChangeNotifier {
   Future<void> insertGeometry() async {
     final callback = _insertGeometry;
     if (callback != null) await callback();
+  }
+
+  void restoreFocus() {
+    _requestFocus?.call();
   }
 }
 
@@ -188,6 +195,9 @@ class _WordRichTextEditorState extends ConsumerState<WordRichTextEditor> {
         controller: _controller,
         insertMath: _insertFormula,
         insertGeometry: _insertGeometry,
+        requestFocus: () {
+          if (mounted) _focusNode.requestFocus();
+        },
       );
     }
     if (mounted) setState(() {});
@@ -307,13 +317,7 @@ class _WordRichTextEditorState extends ConsumerState<WordRichTextEditor> {
       return;
     }
     GeometryDiagramRegistry.instance.save(diagram);
-    final data = jsonEncode({
-      'id': diagram.id,
-      'height': 200.0,
-      'widthFactor': 1.0,
-      'alignmentX': 0.0,
-      'diagram': diagram.toJson(),
-    });
+    final data = GeometryEmbedLayout.forDiagram(diagram).encode();
     _insertGeometryAt(data, range);
     _focusNode.requestFocus();
   }

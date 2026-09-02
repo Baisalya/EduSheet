@@ -6,9 +6,13 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
+import 'package:edusheet/features/geometry_builder/services/geometry_svg_service.dart';
 import 'package:edusheet/features/omr/domain/models/omr_config.dart';
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
+import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
 import 'package:edusheet/features/omr/services/omr_widgets_builder.dart';
 import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
@@ -751,26 +755,29 @@ class QuestionPaperService {
       fontSize,
       textAlign: _pdfTextAlign(question.alignment),
     );
-    if (inlineMarks) {
-      children.add(
-        pw.Wrap(
-          crossAxisAlignment: pw.WrapCrossAlignment.center,
-          spacing: 5,
-          children: [
-            questionText,
-            pw.Text(
-              '[${PaperStructureService.marksSummary(question.marks)}]',
-              style: pw.TextStyle(
-                fontSize: fontSize,
-                fontWeight: pw.FontWeight.bold,
+    final questionTextBlock = inlineMarks
+        ? pw.Wrap(
+            crossAxisAlignment: pw.WrapCrossAlignment.center,
+            spacing: 5,
+            children: [
+              questionText,
+              pw.Text(
+                '[${PaperStructureService.marksSummary(question.marks)}]',
+                style: pw.TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: pw.FontWeight.bold,
+                ),
               ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      children.add(questionText);
-    }
+            ],
+          )
+        : questionText;
+    children.add(
+      _buildPdfQuestionTextWithShapes(
+        questionTextBlock,
+        WordShapeService.shapesOf(question),
+        fontSize,
+      ),
+    );
 
     if (advanced.hasStimulus) {
       children.add(pw.SizedBox(height: 6));
@@ -936,6 +943,206 @@ class QuestionPaperService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: children,
+    );
+  }
+
+  static pw.Widget _buildPdfQuestionTextWithShapes(
+    pw.Widget questionText,
+    List<WordShapeObject> shapes,
+    double fontSize,
+  ) {
+    if (shapes.isEmpty) return questionText;
+    final ordered = [...shapes]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
+    WordShapeObject? square;
+    for (final shape in ordered) {
+      if (shape.wrapMode == WordTextWrapMode.squareLeft ||
+          shape.wrapMode == WordTextWrapMode.squareRight) {
+        square = shape;
+        break;
+      }
+    }
+    final behind = ordered
+        .where((shape) => shape.wrapMode == WordTextWrapMode.behindText)
+        .toList(growable: false);
+    final front = ordered
+        .where((shape) => shape.wrapMode == WordTextWrapMode.inFrontOfText)
+        .toList(growable: false);
+    final flow = ordered
+        .where((shape) {
+          return shape.wrapMode == WordTextWrapMode.inline ||
+              shape.wrapMode == WordTextWrapMode.topAndBottom;
+        })
+        .toList(growable: false);
+
+    pw.Widget text = questionText;
+    if (square != null) {
+      final shapeWidget = _buildPdfShape(square, fontSize, compact: true);
+      text = pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          if (square.wrapMode == WordTextWrapMode.squareLeft) ...[
+            shapeWidget,
+            pw.SizedBox(width: 8),
+          ],
+          pw.Expanded(child: questionText),
+          if (square.wrapMode == WordTextWrapMode.squareRight) ...[
+            pw.SizedBox(width: 8),
+            shapeWidget,
+          ],
+        ],
+      );
+    }
+
+    if (behind.isNotEmpty || front.isNotEmpty) {
+      text = pw.Stack(
+        children: [
+          for (final shape in behind)
+            pw.Positioned(
+              left: (shape.x * 180).clamp(0, 150).toDouble(),
+              top: (shape.y * 55).clamp(0, 45).toDouble(),
+              child: _buildPdfShape(shape, fontSize, compact: true),
+            ),
+          text,
+          for (final shape in front)
+            pw.Positioned(
+              left: (shape.x * 180).clamp(0, 150).toDouble(),
+              top: (shape.y * 55).clamp(0, 45).toDouble(),
+              child: _buildPdfShape(shape, fontSize, compact: true),
+            ),
+        ],
+      );
+    }
+
+    if (flow.isEmpty) return text;
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        text,
+        pw.SizedBox(height: 5),
+        for (final shape in flow)
+          pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 4),
+            child: pw.Align(
+              alignment: _pdfShapeAlignment(shape),
+              child: _buildPdfShape(shape, fontSize),
+            ),
+          ),
+      ],
+    );
+  }
+
+  static pw.Alignment _pdfShapeAlignment(WordShapeObject shape) {
+    if (shape.x <= 0.25) return pw.Alignment.centerLeft;
+    if (shape.x >= 0.65) return pw.Alignment.centerRight;
+    return pw.Alignment.center;
+  }
+
+  static pw.Widget _buildPdfShape(
+    WordShapeObject shape,
+    double fontSize, {
+    bool compact = false,
+  }) {
+    final baseWidth = compact ? 105.0 : 180.0;
+    final baseHeight = compact ? 48.0 : 86.0;
+    final width = (baseWidth * (shape.width / 0.36))
+        .clamp(compact ? 54.0 : 72.0, compact ? 135.0 : 220.0)
+        .toDouble();
+    final height = (baseHeight * (shape.height / 0.30))
+        .clamp(18.0, compact ? 70.0 : 120.0)
+        .toDouble();
+    final border = pw.Border.all(color: PdfColors.black, width: 0.8);
+
+    switch (shape.kind) {
+      case WordShapeKind.rectangle:
+        return pw.Container(
+          width: width,
+          height: height,
+          decoration: pw.BoxDecoration(border: border),
+        );
+      case WordShapeKind.roundedRectangle:
+        return pw.Container(
+          width: width,
+          height: height,
+          decoration: pw.BoxDecoration(
+            border: border,
+            borderRadius: pw.BorderRadius.circular(8),
+          ),
+        );
+      case WordShapeKind.ellipse:
+        return pw.Container(
+          width: width,
+          height: height,
+          decoration: pw.BoxDecoration(
+            border: border,
+            borderRadius: pw.BorderRadius.circular(height / 2),
+          ),
+        );
+      case WordShapeKind.line:
+        return pw.Container(
+          width: width,
+          height: 8,
+          alignment: pw.Alignment.center,
+          child: pw.Container(
+            width: width,
+            height: 0.8,
+            color: PdfColors.black,
+          ),
+        );
+      case WordShapeKind.arrow:
+        return _buildPdfArrow(width, fontSize, startHead: false, endHead: true);
+      case WordShapeKind.doubleArrow:
+        return _buildPdfArrow(width, fontSize, startHead: true, endHead: true);
+      case WordShapeKind.textBox:
+        return pw.Container(
+          width: width,
+          height: height,
+          padding: const pw.EdgeInsets.all(5),
+          alignment: pw.Alignment.center,
+          decoration: pw.BoxDecoration(border: border),
+          child: pw.Text(
+            shape.text,
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(fontSize: fontSize * 0.9),
+          ),
+        );
+      case WordShapeKind.callout:
+        return pw.Container(
+          width: width,
+          height: height,
+          padding: const pw.EdgeInsets.all(5),
+          alignment: pw.Alignment.center,
+          decoration: pw.BoxDecoration(
+            border: border,
+            borderRadius: pw.BorderRadius.circular(6),
+          ),
+          child: pw.Text(
+            shape.text,
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(fontSize: fontSize * 0.9),
+          ),
+        );
+    }
+  }
+
+  static pw.Widget _buildPdfArrow(
+    double width,
+    double fontSize, {
+    required bool startHead,
+    required bool endHead,
+  }) {
+    return pw.SizedBox(
+      width: width,
+      height: 18,
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          if (startHead)
+            pw.Text('<', style: pw.TextStyle(fontSize: fontSize * 0.9)),
+          pw.Expanded(child: pw.Container(height: 0.8, color: PdfColors.black)),
+          if (endHead)
+            pw.Text('>', style: pw.TextStyle(fontSize: fontSize * 0.9)),
+        ],
+      ),
     );
   }
 
@@ -1337,44 +1544,121 @@ class QuestionPaperService {
     pw.TextAlign textAlign = pw.TextAlign.left,
   }) {
     try {
-      if (text.startsWith('[') || text.startsWith('{')) {
-        final List<dynamic> deltaJson = jsonDecode(text);
-        final normalizedDelta = deltaJson.map((raw) {
-          if (raw is! Map) return <String, dynamic>{};
-          final operation = Map<String, dynamic>.from(raw);
-          final insert = operation['insert'];
-          if (insert is Map) {
-            if (insert.containsKey(MathExpression.quillEmbedKey)) {
-              final expression = MathExpression.tryFromQuillEmbedData(
-                insert[MathExpression.quillEmbedKey],
+      final trimmed = text.trimLeft();
+      if (trimmed.startsWith('[')) {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is List) {
+          final children = <pw.Widget>[];
+          final pending = <Map<String, dynamic>>[];
+
+          void flushText() {
+            if (pending.isEmpty) return;
+            final converter = QuillDeltaToHtmlConverter(List.of(pending));
+            final html = converter.convert();
+            final document = html_parser.parse(html);
+            final body = document.body;
+            if (body != null) {
+              children.add(
+                pw.RichText(
+                  textAlign: textAlign,
+                  text: pw.TextSpan(children: _domToTextSpans(body, fontSize)),
+                ),
               );
-              final plain = expression?.plainText.trim() ?? '';
-              operation['insert'] = expression == null
-                  ? '[formula]'
-                  : (plain.isEmpty ? expression.latex : plain);
-            } else if (insert.containsKey('geometry')) {
-              operation['insert'] = '[diagram]';
             }
+            pending.clear();
           }
-          return operation;
-        }).toList();
-        final converter = QuillDeltaToHtmlConverter(normalizedDelta);
-        final html = converter.convert();
-        final document = html_parser.parse(html);
-        return pw.RichText(
-          textAlign: textAlign,
-          text: pw.TextSpan(
-            children: _domToTextSpans(document.body!, fontSize),
-          ),
-        );
+
+          for (final raw in decoded) {
+            if (raw is! Map) continue;
+            final operation = Map<String, dynamic>.from(raw);
+            final insert = operation['insert'];
+            if (insert is Map) {
+              if (insert.containsKey(MathExpression.quillEmbedKey)) {
+                final expression = MathExpression.tryFromQuillEmbedData(
+                  insert[MathExpression.quillEmbedKey],
+                );
+                final plain = expression?.plainText.trim() ?? '';
+                operation['insert'] = expression == null
+                    ? '[formula]'
+                    : (plain.isEmpty ? expression.latex : plain);
+              } else if (insert.containsKey('geometry')) {
+                flushText();
+                children.add(
+                  _geometryEmbedToPdf(
+                    GeometryEmbedLayout.fromData(insert['geometry']),
+                  ),
+                );
+                continue;
+              }
+            }
+            pending.add(operation);
+          }
+          flushText();
+
+          if (children.isEmpty) return pw.SizedBox();
+          if (children.length == 1) return children.single;
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: children,
+          );
+        }
       }
-    } catch (e) {
-      // Fallback to plain text
+    } catch (_) {
+      // Fallback to plain text below. Export must never lose the rest of a
+      // question merely because one legacy rich-text operation is malformed.
     }
     return pw.Text(
       text,
       textAlign: textAlign,
       style: pw.TextStyle(fontSize: fontSize),
+    );
+  }
+
+  static pw.Widget _geometryEmbedToPdf(GeometryEmbedLayout rawLayout) {
+    final layout = rawLayout.normalized();
+    final diagram = layout.diagram;
+    if (diagram == null) {
+      return pw.Padding(
+        padding: pw.EdgeInsets.only(
+          top: layout.marginTop,
+          bottom: layout.marginBottom,
+        ),
+        child: pw.Text('[diagram]'),
+      );
+    }
+
+    // Geometry embeds are canonical block objects in EduSheet. Use a stable
+    // printable content width so their relative width/alignment matches Word
+    // Mode and Preview while remaining safe across A4/A5/Letter margins.
+    const printableReferenceWidth = 420.0;
+    final figureWidth = (printableReferenceWidth * layout.widthFactor)
+        .clamp(140.0, printableReferenceWidth)
+        .toDouble();
+    final figureHeight = (layout.height * 0.75).clamp(72.0, 390.0).toDouble();
+    final alignment = switch (layout.effectiveAlignmentX) {
+      < -0.5 => pw.Alignment.centerLeft,
+      > 0.5 => pw.Alignment.centerRight,
+      _ => pw.Alignment.center,
+    };
+
+    return pw.Padding(
+      padding: pw.EdgeInsets.only(
+        top: layout.marginTop,
+        bottom: layout.marginBottom,
+      ),
+      child: pw.Align(
+        alignment: alignment,
+        child: pw.Container(
+          width: figureWidth,
+          height: figureHeight,
+          child: pw.SvgImage(
+            svg: GeometrySvgService().toSvg(diagram.copyWith(showGrid: false)),
+            width: figureWidth,
+            height: figureHeight,
+            fit: pw.BoxFit.contain,
+          ),
+        ),
+      ),
     );
   }
 

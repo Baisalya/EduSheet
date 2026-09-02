@@ -1,5 +1,6 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:flutter/material.dart';
 
 class PaperOutlinePanel extends StatelessWidget {
@@ -81,6 +82,7 @@ class PaperOutlinePanel extends StatelessWidget {
 }
 
 class _OutlineSection extends StatelessWidget {
+  static const _codec = QuestionRichTextCodec();
   final PaperSection section;
   final int sectionNumber;
   final VoidCallback onSelectSection;
@@ -135,11 +137,7 @@ class _OutlineSection extends StatelessWidget {
                       ),
               ),
               title: Text(
-                entry.value.plainTextAccessibility.trim().isEmpty
-                    ? (entry.value.isWordContentBlock
-                          ? 'Free Word content'
-                          : 'Untitled question')
-                    : entry.value.plainTextAccessibility.trim(),
+                _questionLabel(entry.value),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12),
@@ -149,5 +147,15 @@ class _OutlineSection extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _questionLabel(Question question) {
+    final decoded = _codec.accessibleText(_codec.decodeQuestion(question));
+    final fallback = question.plainTextAccessibility.trim();
+    final text = decoded.isNotEmpty ? decoded : fallback;
+    if (text.isNotEmpty) return text;
+    return question.isWordContentBlock
+        ? 'Free Word content'
+        : 'Untitled question';
   }
 }

@@ -6,6 +6,7 @@ import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_e
 import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
@@ -13,6 +14,7 @@ import 'package:edusheet/features/editor/domain/models/question_option_layout.da
 import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/word_shape_preview.dart';
 import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
@@ -560,23 +562,9 @@ class _PreviewQuestionContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final advanced = QuestionAdvancedContent.fromQuestion(question);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (question.instructions.trim().isNotEmpty) ...[
-          Text(
-            question.instructions.trim(),
-            textAlign: question.instructionAlignment.textAlign,
-            style: const TextStyle(
-              fontSize: 12,
-              fontStyle: FontStyle.italic,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 5),
-        ],
-        if (inlineMarks)
-          Row(
+    final shapes = WordShapeService.shapesOf(question);
+    final richText = inlineMarks
+        ? Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
@@ -592,8 +580,23 @@ class _PreviewQuestionContent extends StatelessWidget {
               ),
             ],
           )
-        else
-          QuestionRichTextPreview(question: question, maxHeight: 220),
+        : QuestionRichTextPreview(question: question, maxHeight: 220);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (question.instructions.trim().isNotEmpty) ...[
+          Text(
+            question.instructions.trim(),
+            textAlign: question.instructionAlignment.textAlign,
+            style: const TextStyle(
+              fontSize: 12,
+              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 5),
+        ],
+        WordShapeFlowPreview(shapes: shapes, child: richText),
         if (advanced.hasStimulus) ...[
           const SizedBox(height: 7),
           _PreviewStimulus(stimulus: advanced.stimulus!),

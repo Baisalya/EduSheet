@@ -1,9 +1,11 @@
 import 'dart:convert';
 
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
+import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
 import 'package:uuid/uuid.dart';
 
-enum WordContentBlockKind { paragraph, table, image, pageBreak }
+enum WordContentBlockKind { paragraph, table, image, shape, pageBreak }
 
 /// Compatibility-safe bridge for Word Mode free-form content.
 ///
@@ -53,6 +55,18 @@ class WordContentBlockService {
     );
   }
 
+  static Question shape(WordShapeObject shape) {
+    return _base(
+      kind: WordContentBlockKind.shape,
+      text: _delta(''),
+      plainText: shape.kind.label,
+      extraMetadata: {
+        WordShapeService.metadataKey: [shape.toJson()],
+        WordShapeService.metadataVersionKey: 1,
+      },
+    );
+  }
+
   static Question pageBreak() {
     return _base(
       kind: WordContentBlockKind.pageBreak,
@@ -67,6 +81,7 @@ class WordContentBlockService {
     required String plainText,
     QuestionTable? tableData,
     List<QuestionAttachment> attachments = const [],
+    Map<String, dynamic> extraMetadata = const {},
   }) {
     return Question(
       id: const Uuid().v4(),
@@ -79,6 +94,7 @@ class WordContentBlockService {
       metadata: {
         Question.wordContentBlockKindMetadataKey: kind.name,
         Question.wordContentBlockVersionMetadataKey: 1,
+        ...extraMetadata,
       },
     );
   }

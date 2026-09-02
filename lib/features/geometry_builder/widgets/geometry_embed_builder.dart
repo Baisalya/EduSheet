@@ -1,8 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+import '../application/geometry_embed_layout.dart';
 import '../models/geometry_diagram.dart';
 import '../painters/geometry_painter.dart';
 import '../services/geometry_diagram_registry.dart';
@@ -14,55 +13,23 @@ class GeometryEmbedBuilder extends EmbedBuilder {
 
   @override
   Widget build(BuildContext context, EmbedContext embedContext) {
-    final data = embedContext.node.value.data;
-    var id = data.toString();
-    var height = 200.0;
-    var widthFactor = 1.0;
-    var alignmentX = 0.0;
-    GeometryDiagram? embeddedDiagram;
-
-    try {
-      if (data is String && data.trimLeft().startsWith('{')) {
-        final decoded = jsonDecode(data);
-        if (decoded is Map<String, dynamic>) {
-          id = decoded['id']?.toString() ?? id;
-          height = (decoded['height'] as num?)?.toDouble() ?? height;
-          widthFactor =
-              (decoded['widthFactor'] as num?)?.toDouble() ?? widthFactor;
-          alignmentX =
-              (decoded['alignmentX'] as num?)?.toDouble() ?? alignmentX;
-          final diagramJson = decoded['diagram'];
-          if (diagramJson is Map<String, dynamic>) {
-            embeddedDiagram = GeometryDiagram.fromJson(diagramJson);
-          } else if (diagramJson is Map) {
-            embeddedDiagram = GeometryDiagram.fromJson(
-              Map<String, dynamic>.from(diagramJson),
-            );
-          }
-        }
-      }
-    } catch (_) {
-      id = data.toString();
-    }
-
+    final layout = GeometryEmbedLayout.fromData(embedContext.node.value.data);
     final diagram =
-        GeometryDiagramRegistry.instance.diagramFor(id) ?? embeddedDiagram;
+        GeometryDiagramRegistry.instance.diagramFor(layout.id) ??
+        layout.diagram;
     if (diagram == null) {
-      return Text('{{geometry:$id}}');
+      return Text('{{geometry:${layout.id}}}');
     }
-    if (GeometryDiagramRegistry.instance.diagramFor(id) == null) {
+    if (GeometryDiagramRegistry.instance.diagramFor(layout.id) == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (GeometryDiagramRegistry.instance.diagramFor(id) == null) {
+        if (GeometryDiagramRegistry.instance.diagramFor(layout.id) == null) {
           GeometryDiagramRegistry.instance.save(diagram);
         }
       });
     }
 
     return _InteractiveGeometryWrapper(
-      id: id,
-      height: height.clamp(90.0, 520.0).toDouble(),
-      widthFactor: widthFactor.clamp(0.35, 1.0).toDouble(),
-      alignmentX: alignmentX.clamp(-1.0, 1.0).toDouble(),
+      layout: layout.copyWith(diagram: diagram),
       diagram: diagram,
       interactive: !embedContext.readOnly,
       embedContext: embedContext,
@@ -71,19 +38,13 @@ class GeometryEmbedBuilder extends EmbedBuilder {
 }
 
 class _InteractiveGeometryWrapper extends StatefulWidget {
-  final String id;
-  final double height;
-  final double widthFactor;
-  final double alignmentX;
+  final GeometryEmbedLayout layout;
   final GeometryDiagram diagram;
   final bool interactive;
   final EmbedContext embedContext;
 
   const _InteractiveGeometryWrapper({
-    required this.id,
-    required this.height,
-    required this.widthFactor,
-    required this.alignmentX,
+    required this.layout,
     required this.diagram,
     required this.interactive,
     required this.embedContext,
@@ -101,26 +62,35 @@ class _InteractiveGeometryWrapperState
   late double _currentHeight;
   late double _currentWidthFactor;
   late double _currentAlignmentX;
+  late double _marginTop;
+  late double _marginBottom;
+  late GeometryEmbedWrapMode _wrapMode;
   late GeometryDiagram _diagram;
 
   @override
   void initState() {
     super.initState();
-    _currentHeight = widget.height;
-    _currentWidthFactor = widget.widthFactor;
-    _currentAlignmentX = widget.alignmentX;
+    _loadLayout(widget.layout);
     _diagram = widget.diagram;
   }
 
   @override
   void didUpdateWidget(_InteractiveGeometryWrapper oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_isResizing) {
-      _currentHeight = widget.height;
-      _currentWidthFactor = widget.widthFactor;
-      _currentAlignmentX = widget.alignmentX;
+    if (!_isResizing && oldWidget.layout != widget.layout) {
+      _loadLayout(widget.layout);
     }
     if (oldWidget.diagram != widget.diagram) _diagram = widget.diagram;
+  }
+
+  void _loadLayout(GeometryEmbedLayout layout) {
+    final normalized = layout.normalized();
+    _currentHeight = normalized.height;
+    _currentWidthFactor = normalized.widthFactor;
+    _currentAlignmentX = normalized.alignmentX;
+    _marginTop = normalized.marginTop;
+    _marginBottom = normalized.marginBottom;
+    _wrapMode = normalized.wrapMode;
   }
 
   int get _embedOffset {
@@ -130,13 +100,18 @@ class _InteractiveGeometryWrapperState
         .offset;
   }
 
-  String _payload() => jsonEncode({
-    'id': widget.id,
-    'height': _currentHeight,
-    'widthFactor': _currentWidthFactor,
-    'alignmentX': _currentAlignmentX,
-    'diagram': _diagram.toJson(),
-  });
+  GeometryEmbedLayout get _currentLayout => GeometryEmbedLayout(
+    id: widget.layout.id,
+    diagram: _diagram,
+    height: _currentHeight,
+    widthFactor: _currentWidthFactor,
+    alignmentX: _currentAlignmentX,
+    marginTop: _marginTop,
+    marginBottom: _marginBottom,
+    wrapMode: _wrapMode,
+  ).normalized();
+
+  String _payload() => _currentLayout.encode(diagramOverride: _diagram);
 
   void _commitLayout() {
     widget.embedContext.controller.replaceText(
@@ -168,7 +143,33 @@ class _InteractiveGeometryWrapperState
   }
 
   void _setAlignment(double alignmentX) {
-    setState(() => _currentAlignmentX = alignmentX);
+    setState(() {
+      _currentAlignmentX = alignmentX;
+      if (_wrapMode == GeometryEmbedWrapMode.squareLeft ||
+          _wrapMode == GeometryEmbedWrapMode.squareRight) {
+        _wrapMode = GeometryEmbedWrapMode.topAndBottom;
+      }
+    });
+    _commitLayout();
+  }
+
+  void _setWrap(GeometryEmbedWrapMode mode) {
+    setState(() {
+      _wrapMode = mode;
+      if (mode == GeometryEmbedWrapMode.squareLeft) {
+        _currentAlignmentX = -1;
+      } else if (mode == GeometryEmbedWrapMode.squareRight) {
+        _currentAlignmentX = 1;
+      }
+    });
+    _commitLayout();
+  }
+
+  void _setSpacing(_GeometrySpacingPreset preset) {
+    setState(() {
+      _marginTop = preset.space;
+      _marginBottom = preset.space;
+    });
     _commitLayout();
   }
 
@@ -183,16 +184,18 @@ class _InteractiveGeometryWrapperState
         final figureWidth = (availableWidth * _currentWidthFactor)
             .clamp(120.0, availableWidth)
             .toDouble();
+        final effectiveAlignment = _currentLayout.effectiveAlignmentX;
 
         return Container(
+          key: ValueKey('geometry-embed-${widget.layout.id}'),
           width: double.infinity,
-          margin: const EdgeInsets.symmetric(vertical: 10),
+          margin: EdgeInsets.only(top: _marginTop, bottom: _marginBottom),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (widget.interactive && _isSelected) _buildMiniToolbar(theme),
               Align(
-                alignment: Alignment(_currentAlignmentX, 0),
+                alignment: Alignment(effectiveAlignment, 0),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: widget.interactive
@@ -207,6 +210,11 @@ class _InteractiveGeometryWrapperState
                                         (details.delta.dx / availableWidth) * 2)
                                     .clamp(-1.0, 1.0)
                                     .toDouble();
+                            if (_wrapMode == GeometryEmbedWrapMode.squareLeft ||
+                                _wrapMode ==
+                                    GeometryEmbedWrapMode.squareRight) {
+                              _wrapMode = GeometryEmbedWrapMode.topAndBottom;
+                            }
                           });
                         }
                       : null,
@@ -282,7 +290,7 @@ class _InteractiveGeometryWrapperState
                 child: Text(
                   widget.interactive && _isSelected
                       ? 'Drag sideways to position • drag corner to resize • double-tap to edit'
-                      : _diagram.name,
+                      : '${_diagram.name} • ${_wrapMode.label}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
@@ -315,19 +323,19 @@ class _InteractiveGeometryWrapperState
           _ToolbarIcon(
             tooltip: 'Align left',
             icon: Icons.format_align_left_rounded,
-            selected: _currentAlignmentX < -0.5,
+            selected: _currentLayout.effectiveAlignmentX < -0.5,
             onPressed: () => _setAlignment(-1),
           ),
           _ToolbarIcon(
             tooltip: 'Align center',
             icon: Icons.format_align_center_rounded,
-            selected: _currentAlignmentX.abs() <= 0.5,
+            selected: _currentLayout.effectiveAlignmentX.abs() <= 0.5,
             onPressed: () => _setAlignment(0),
           ),
           _ToolbarIcon(
             tooltip: 'Align right',
             icon: Icons.format_align_right_rounded,
-            selected: _currentAlignmentX > 0.5,
+            selected: _currentLayout.effectiveAlignmentX > 0.5,
             onPressed: () => _setAlignment(1),
           ),
           PopupMenuButton<double>(
@@ -338,6 +346,34 @@ class _InteractiveGeometryWrapperState
               PopupMenuItem(value: 0.5, child: Text('Half width')),
               PopupMenuItem(value: 0.75, child: Text('Three-quarter width')),
               PopupMenuItem(value: 1.0, child: Text('Full width')),
+            ],
+          ),
+          PopupMenuButton<GeometryEmbedWrapMode>(
+            tooltip: 'Text wrapping / anchor',
+            icon: const Icon(Icons.wrap_text_rounded, size: 20),
+            onSelected: _setWrap,
+            itemBuilder: (context) => [
+              for (final mode in GeometryEmbedWrapMode.values)
+                PopupMenuItem(value: mode, child: Text(mode.label)),
+            ],
+          ),
+          PopupMenuButton<_GeometrySpacingPreset>(
+            tooltip: 'Space around diagram',
+            icon: const Icon(Icons.height_rounded, size: 20),
+            onSelected: _setSpacing,
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _GeometrySpacingPreset.compact,
+                child: Text('Compact spacing'),
+              ),
+              PopupMenuItem(
+                value: _GeometrySpacingPreset.normal,
+                child: Text('Normal spacing'),
+              ),
+              PopupMenuItem(
+                value: _GeometrySpacingPreset.spacious,
+                child: Text('Spacious spacing'),
+              ),
             ],
           ),
           IconButton(
@@ -354,6 +390,15 @@ class _InteractiveGeometryWrapperState
       ),
     );
   }
+}
+
+enum _GeometrySpacingPreset {
+  compact(6),
+  normal(10),
+  spacious(18);
+
+  final double space;
+  const _GeometrySpacingPreset(this.space);
 }
 
 class _ToolbarIcon extends StatelessWidget {

@@ -1,0 +1,4 @@
+PHASE4A_QA_FIX1_NOTES.md
+lib/features/paper_composer/presentation/widgets/paper_section_card.dart
+lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+test/features/paper_composer/word_direct_authoring_phase4a_test.dart

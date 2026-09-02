@@ -4,6 +4,7 @@ import '../application/geometry_editor_session.dart';
 import '../application/geometry_selection.dart';
 import '../models/geometry_label.dart';
 import '../models/geometry_point.dart';
+import '../painters/geometry_freeform_draft_painter.dart';
 import '../painters/geometry_painter.dart';
 
 class GeometryCanvas extends StatefulWidget {
@@ -48,8 +49,8 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
             Offset toDiagram(Offset local) =>
                 Offset(local.dx * scaleX, local.dy * scaleY);
 
-            void selectAt(TapDownDetails details) {
-              widget.session.selectAt(toDiagram(details.localPosition));
+            void handleTap(TapUpDetails details) {
+              widget.session.tapCanvas(toDiagram(details.localPosition));
             }
 
             void editAt(Offset localPosition) {
@@ -76,29 +77,31 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
 
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTapDown: widget.interactive ? selectAt : null,
-              onDoubleTapDown: widget.interactive
+              onTapUp: widget.interactive ? handleTap : null,
+              onDoubleTapDown:
+                  widget.interactive && widget.session.isSelectionTool
                   ? (details) => editAt(details.localPosition)
                   : null,
-              onLongPressStart: widget.interactive
+              onLongPressStart:
+                  widget.interactive && widget.session.isSelectionTool
                   ? (details) => editAt(details.localPosition)
                   : null,
               onPanStart: widget.interactive
-                  ? (details) {
-                      widget.session.beginDragAt(
-                        toDiagram(details.localPosition),
-                      );
-                    }
+                  ? (details) => widget.session.beginCanvasGesture(
+                      toDiagram(details.localPosition),
+                    )
                   : null,
               onPanUpdate: widget.interactive
-                  ? (details) {
-                      widget.session.dragTo(toDiagram(details.localPosition));
-                    }
+                  ? (details) => widget.session.updateCanvasGesture(
+                      toDiagram(details.localPosition),
+                    )
                   : null,
               onPanEnd: widget.interactive
-                  ? (_) => widget.session.endDrag()
+                  ? (_) => widget.session.endCanvasGesture()
                   : null,
-              onPanCancel: widget.interactive ? widget.session.endDrag : null,
+              onPanCancel: widget.interactive
+                  ? widget.session.cancelFreeformDraft
+                  : null,
               child: RepaintBoundary(
                 key: widget.repaintKey,
                 child: DecoratedBox(
@@ -113,19 +116,34 @@ class _GeometryCanvasState extends State<GeometryCanvas> {
                     ),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: CustomPaint(
-                    painter: GeometryPainter(
-                      diagram: diagram,
-                      selectedLabelId: selection.labelId,
-                      selectedPointId: selection.pointId,
-                      selectedShapeId:
-                          selection.kind == GeometrySelectionKind.shape
-                          ? selection.shapeId
-                          : null,
-                      selectedSidePointIds: selection.sidePointIds(diagram),
-                      selectedMarkId: selection.markId,
-                    ),
-                    size: Size.infinite,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CustomPaint(
+                        painter: GeometryPainter(
+                          diagram: diagram,
+                          selectedLabelId: selection.labelId,
+                          selectedPointId: selection.pointId,
+                          selectedShapeId:
+                              selection.kind == GeometrySelectionKind.shape
+                              ? selection.shapeId
+                              : null,
+                          selectedSidePointIds: selection.sidePointIds(diagram),
+                          selectedMarkId: selection.markId,
+                        ),
+                      ),
+                      IgnorePointer(
+                        child: CustomPaint(
+                          painter: GeometryFreeformDraftPainter(
+                            tool: widget.session.freeformTool,
+                            diagramSize: diagram.canvasSize,
+                            start: widget.session.freeformDrawStart,
+                            current: widget.session.freeformDrawCurrent,
+                            angleDraft: widget.session.freeformAngleDraft,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

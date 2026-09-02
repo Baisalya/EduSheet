@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
@@ -698,23 +700,50 @@ class _LogoControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final normalized = path.trim();
+    final file = normalized.isEmpty ? null : File(normalized);
+    final canPreview = file != null && file.existsSync();
+
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: const CircleAvatar(child: Icon(Icons.image_outlined)),
-      title: Text(path.isEmpty ? 'School logo' : 'Logo selected'),
+      leading: SizedBox(
+        width: 48,
+        height: 48,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+          child: canPreview
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(9),
+                  child: Image.file(file, fit: BoxFit.contain),
+                )
+              : const Icon(Icons.image_outlined),
+        ),
+      ),
+      title: const Text('School logo'),
       subtitle: Text(
-        path.isEmpty
-            ? 'Optional. PNG or JPG.'
-            : path.split(RegExp(r'[\\/]')).last,
+        normalized.isEmpty
+            ? 'Optional. Choose a PNG or JPG.'
+            : normalized.split(RegExp(r'[\\/]')).last,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       trailing: Wrap(
         spacing: 4,
         children: [
-          TextButton(
+          TextButton.icon(
             onPressed: onPick,
-            child: Text(path.isEmpty ? 'Add' : 'Change'),
+            icon: Icon(
+              normalized.isEmpty
+                  ? Icons.add_photo_alternate_outlined
+                  : Icons.swap_horiz_rounded,
+              size: 17,
+            ),
+            label: Text(normalized.isEmpty ? 'Choose' : 'Replace'),
           ),
           if (onClear != null)
             IconButton(

@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
@@ -6,10 +8,16 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_mark.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_shape.dart';
 import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
+import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
 import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
@@ -140,9 +148,9 @@ class WordExportService {
     final images = <_ImagePart>[];
     var relationshipIndex = 1;
 
-    for (final logoPath in paper.logos.where(
-      (path) => path.trim().isNotEmpty,
-    )) {
+    for (var logoIndex = 0; logoIndex < paper.logos.length; logoIndex++) {
+      final logoPath = paper.logos[logoIndex].trim();
+      if (logoPath.isEmpty) continue;
       final file = File(logoPath);
       if (!await file.exists()) continue;
 
@@ -157,6 +165,7 @@ class WordExportService {
           bytes: await file.readAsBytes(),
           sourcePath: logoPath,
           headerLogo: true,
+          headerLogoIndex: logoIndex,
         ),
       );
       relationshipIndex++;
@@ -201,7 +210,9 @@ class WordExportService {
         '<w:document xmlns:w="$_wordNamespace" xmlns:r="$_relationsNamespace" '
         'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
         'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
-        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">',
+        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" '
+        'xmlns:v="urn:schemas-microsoft-com:vml" '
+        'xmlns:o="urn:schemas-microsoft-com:office:office">',
       )
       ..write('<w:body>');
 
@@ -261,8 +272,13 @@ class WordExportService {
   ) {
     final layout = PaperHeaderLayoutFactory.resolveForPaper(template, paper);
     final buffer = StringBuffer();
-    final logoImages = images.where((image) => image.headerLogo).toList();
-    var imageIndex = 0;
+    final logoSlotIndexes = <String, int>{};
+    var nextLogoSlotIndex = 0;
+    for (final element in layout.elements) {
+      if (element.type == ElementType.logo) {
+        logoSlotIndexes[element.id] = nextLogoSlotIndex++;
+      }
+    }
 
     final elements = [...layout.elements]
       ..sort((a, b) {
@@ -281,11 +297,12 @@ class WordExportService {
 
       switch (element.type) {
         case ElementType.logo:
-          if (imageIndex < logoImages.length) {
-            buffer.write(
-              _imageParagraph(logoImages[imageIndex], alignment: alignment),
-            );
-            imageIndex++;
+          final logoSlotIndex = logoSlotIndexes[element.id];
+          final logoImage = logoSlotIndex == null
+              ? null
+              : _headerLogoImageForIndex(images, logoSlotIndex);
+          if (logoImage != null) {
+            buffer.write(_imageParagraph(logoImage, alignment: alignment));
           }
           break;
         case ElementType.schoolName:
@@ -595,7 +612,10 @@ class WordExportService {
     List<_ImagePart> images,
   ) {
     final buffer = StringBuffer();
-    final text = OfficeTextFormatter.questionText(question.text).trim();
+    final text = OfficeTextFormatter.questionText(
+      question.text,
+      geometryPlaceholder: '',
+    ).trim();
     final alignment = _wordAlignment(_flutterTextAlignName(question.alignment));
     final fontSize = template.questionFontSize;
     final paragraphSpacing = _pointsToTwips(
@@ -617,6 +637,9 @@ class WordExportService {
           ),
         );
       }
+      buffer.write(
+        _geometryEmbedsXml(question.text, fontSize: fontSize, indentLeft: 0),
+      );
       buffer.write(
         _questionAdvancedBlocksXml(
           question,
@@ -684,6 +707,9 @@ class WordExportService {
       ),
     );
 
+    buffer.write(
+      _geometryEmbedsXml(question.text, fontSize: fontSize, indentLeft: 360),
+    );
     buffer.write(
       _questionAdvancedBlocksXml(
         question,
@@ -800,7 +826,10 @@ class WordExportService {
     required int rightTabPosition,
   }) {
     final buffer = StringBuffer();
-    final text = OfficeTextFormatter.questionText(question.text).trim();
+    final text = OfficeTextFormatter.questionText(
+      question.text,
+      geometryPlaceholder: '',
+    ).trim();
     if (question.instructions.trim().isNotEmpty) {
       buffer.write(
         _paragraph(
@@ -856,6 +885,13 @@ class WordExportService {
       ),
     );
 
+    buffer.write(
+      _geometryEmbedsXml(
+        question.text,
+        fontSize: fontSize,
+        indentLeft: indentLeft + 240,
+      ),
+    );
     buffer.write(
       _questionAdvancedBlocksXml(
         question,
@@ -949,6 +985,396 @@ class WordExportService {
     return buffer.toString();
   }
 
+  static String _geometryEmbedsXml(
+    String richText, {
+    required double fontSize,
+    required int indentLeft,
+  }) {
+    final embeds = geometryEmbedsFromQuillText(richText);
+    if (embeds.isEmpty) return '';
+    final buffer = StringBuffer();
+    for (final rawLayout in embeds) {
+      final layout = rawLayout.normalized();
+      final diagram = layout.diagram;
+      if (diagram == null) {
+        buffer.write(
+          _paragraph(
+            '[diagram]',
+            italic: true,
+            fontSize: fontSize * 0.9,
+            indentLeft: indentLeft,
+          ),
+        );
+        continue;
+      }
+      buffer.write(
+        _geometryEmbedParagraph(
+          layout,
+          diagram,
+          fontSize: fontSize,
+          indentLeft: indentLeft,
+        ),
+      );
+    }
+    return buffer.toString();
+  }
+
+  static String _geometryEmbedParagraph(
+    GeometryEmbedLayout layout,
+    GeometryDiagram diagram, {
+    required double fontSize,
+    required int indentLeft,
+  }) {
+    final widthPt = (420 * layout.widthFactor).clamp(140, 420).toDouble();
+    final heightPt = (layout.height * 0.75).clamp(72, 390).toDouble();
+    final alignment = switch (layout.effectiveAlignmentX) {
+      < -0.5 => 'left',
+      > 0.5 => 'right',
+      _ => 'center',
+    };
+    final wrapStyle = switch (layout.wrapMode) {
+      GeometryEmbedWrapMode.squareLeft =>
+        'position:relative;float:left;mso-wrap-style:square;'
+            'mso-wrap-distance-left:0pt;mso-wrap-distance-right:8pt;',
+      GeometryEmbedWrapMode.squareRight =>
+        'position:relative;float:right;mso-wrap-style:square;'
+            'mso-wrap-distance-left:8pt;mso-wrap-distance-right:0pt;',
+      GeometryEmbedWrapMode.topAndBottom =>
+        'position:relative;mso-wrap-style:topAndBottom;',
+      GeometryEmbedWrapMode.inline => 'position:relative;mso-wrap-style:none;',
+    };
+    final groupId = _xml('edusheet_geometry_${diagram.id}');
+    final canvasWidth = math.max(1, diagram.canvasSize.width.round());
+    final canvasHeight = math.max(1, diagram.canvasSize.height.round());
+    final before = _pointsToTwips(layout.marginTop);
+    final after = _pointsToTwips(layout.marginBottom);
+
+    return '<w:p><w:pPr><w:jc w:val="$alignment"/>'
+        '<w:spacing w:before="$before" w:after="$after"/>'
+        '${indentLeft > 0 ? '<w:ind w:left="$indentLeft"/>' : ''}'
+        '</w:pPr><w:r><w:pict>'
+        '<v:group id="$groupId" coordorigin="0,0" '
+        'coordsize="$canvasWidth,$canvasHeight" '
+        'style="$wrapStyle width:${widthPt.toStringAsFixed(1)}pt;'
+        'height:${heightPt.toStringAsFixed(1)}pt" '
+        'filled="f" stroked="f">'
+        '${_geometryVmlContent(diagram, fontSize: fontSize)}'
+        '</v:group></w:pict></w:r></w:p>';
+  }
+
+  static String _geometryVmlContent(
+    GeometryDiagram diagram, {
+    required double fontSize,
+  }) {
+    final buffer = StringBuffer();
+    final points = diagram.pointMap;
+    for (final shape in diagram.shapes) {
+      final offsets = shape.pointIds
+          .map((id) => points[id]?.position)
+          .whereType<Offset>()
+          .toList();
+      if (offsets.isEmpty) continue;
+      final id = _xml('geometry_shape_${shape.id}');
+      switch (shape.type) {
+        case GeometryShapeType.line:
+          if (offsets.length >= 2) {
+            buffer.write(_vmlLine(id, offsets[0], offsets[1]));
+          }
+        case GeometryShapeType.arrow:
+          if (offsets.length >= 2) {
+            buffer.write(_vmlLine(id, offsets[0], offsets[1], endArrow: true));
+          }
+        case GeometryShapeType.numberLine:
+          if (offsets.length >= 2) {
+            buffer.write(_vmlLine(id, offsets[0], offsets[1]));
+            buffer.write(_vmlNumberLineTicks(shape.id, offsets[0], offsets[1]));
+          }
+        case GeometryShapeType.circle:
+        case GeometryShapeType.sphere:
+          final radius = offsets.length >= 2
+              ? (offsets[1] - offsets[0]).distance
+              : shape.radius;
+          buffer.write(
+            _vmlOval(id, center: offsets[0], radiusX: radius, radiusY: radius),
+          );
+          if (shape.type == GeometryShapeType.sphere) {
+            buffer.write(
+              _vmlOval(
+                '${id}_equator',
+                center: offsets[0],
+                radiusX: radius * 0.875,
+                radiusY: radius * 0.275,
+                strokeWeight: 1,
+              ),
+            );
+          }
+        case GeometryShapeType.semicircle:
+          final radius = offsets.length >= 2
+              ? (offsets[1] - offsets[0]).distance
+              : shape.radius;
+          final center = offsets[0];
+          buffer.write(
+            '<v:arc id="$id" startangle="180" endangle="360" '
+            'style="position:absolute;left:${_vmlNum(center.dx - radius)};'
+            'top:${_vmlNum(center.dy - radius)};width:${_vmlNum(radius * 2)};'
+            'height:${_vmlNum(radius * 2)}" filled="f" strokecolor="black" '
+            'strokeweight="1.5pt"/>',
+          );
+          buffer.write(
+            _vmlLine(
+              '${id}_diameter',
+              center - Offset(radius, 0),
+              center + Offset(radius, 0),
+            ),
+          );
+        case GeometryShapeType.coordinateAxes:
+          if (offsets.length >= 4) {
+            buffer.write(
+              _vmlLine('${id}_y', offsets[1], offsets[0], endArrow: true),
+            );
+            buffer.write(
+              _vmlLine('${id}_x', offsets[2], offsets[3], endArrow: true),
+            );
+            buffer.write(
+              _vmlTextBox(
+                '${id}_xlabel',
+                'x',
+                offsets[3] + const Offset(6, -12),
+                fontSize: fontSize * 0.8,
+              ),
+            );
+            buffer.write(
+              _vmlTextBox(
+                '${id}_ylabel',
+                'y',
+                offsets[0] + const Offset(6, 0),
+                fontSize: fontSize * 0.8,
+              ),
+            );
+          }
+        case GeometryShapeType.cube:
+          if (offsets.length >= 8) {
+            buffer.write(_vmlPolygon('${id}_front', offsets.take(4).toList()));
+            buffer.write(
+              _vmlPolygon('${id}_back', offsets.skip(4).take(4).toList()),
+            );
+            for (var index = 0; index < 4; index++) {
+              buffer.write(
+                _vmlLine(
+                  '${id}_edge$index',
+                  offsets[index],
+                  offsets[index + 4],
+                ),
+              );
+            }
+          }
+        case GeometryShapeType.cuboid:
+        case GeometryShapeType.cylinder:
+        case GeometryShapeType.cone:
+        case GeometryShapeType.triangle:
+        case GeometryShapeType.rightTriangle:
+        case GeometryShapeType.square:
+        case GeometryShapeType.rectangle:
+        case GeometryShapeType.parallelogram:
+        case GeometryShapeType.trapezium:
+        case GeometryShapeType.rhombus:
+        case GeometryShapeType.pentagon:
+        case GeometryShapeType.hexagon:
+        case GeometryShapeType.polygon:
+          if (offsets.length >= 2) {
+            buffer.write(_vmlPolygon(id, offsets));
+          }
+      }
+    }
+
+    for (final mark in diagram.marks) {
+      final offsets = mark.pointIds
+          .map((id) => points[id]?.position)
+          .whereType<Offset>()
+          .toList();
+      final id = _xml('geometry_mark_${mark.id}');
+      switch (mark.type) {
+        case GeometryMarkType.angleArc:
+        case GeometryMarkType.curvedArc:
+          if (offsets.length >= 3) {
+            final vertex = offsets[0];
+            final a1 = math.atan2(
+              offsets[1].dy - vertex.dy,
+              offsets[1].dx - vertex.dx,
+            );
+            final a2 = math.atan2(
+              offsets[2].dy - vertex.dy,
+              offsets[2].dx - vertex.dx,
+            );
+            final start = a1 * 180 / math.pi;
+            final end = a2 * 180 / math.pi;
+            buffer.write(
+              '<v:arc id="$id" startangle="${_vmlNum(start)}" '
+              'endangle="${_vmlNum(end)}" '
+              'style="position:absolute;left:${_vmlNum(vertex.dx - 26)};'
+              'top:${_vmlNum(vertex.dy - 26)};width:52;height:52" '
+              'filled="f" strokecolor="black" strokeweight="1.2pt"/>',
+            );
+          }
+        case GeometryMarkType.radiusLine:
+        case GeometryMarkType.diameterLine:
+        case GeometryMarkType.dottedConstructionLine:
+        case GeometryMarkType.dashedHeightLine:
+          if (offsets.length >= 2) {
+            buffer.write(
+              _vmlLine(
+                id,
+                offsets[0],
+                offsets[1],
+                dashed:
+                    mark.type == GeometryMarkType.dottedConstructionLine ||
+                    mark.type == GeometryMarkType.dashedHeightLine,
+              ),
+            );
+          }
+        case GeometryMarkType.arrowHead:
+          if (offsets.length >= 2) {
+            buffer.write(_vmlLine(id, offsets[0], offsets[1], endArrow: true));
+          }
+        case GeometryMarkType.doubleArrow:
+          if (offsets.length >= 2) {
+            buffer.write(
+              _vmlLine(
+                id,
+                offsets[0],
+                offsets[1],
+                startArrow: true,
+                endArrow: true,
+              ),
+            );
+          }
+        case GeometryMarkType.centerPoint:
+          final center = offsets.isNotEmpty ? offsets.first : mark.position;
+          buffer.write(
+            '<v:oval id="$id" style="position:absolute;left:${_vmlNum(center.dx - 2.5)};'
+            'top:${_vmlNum(center.dy - 2.5)};width:5;height:5" '
+            'fillcolor="black" stroked="f"/>',
+          );
+        case GeometryMarkType.rightAngle:
+        case GeometryMarkType.equalSideTick:
+        case GeometryMarkType.parallelLine:
+          // These semantic marks remain in the canonical round-trip payload.
+          // Their primary printable geometry is already visible in EduSheet;
+          // VML keeps the core diagram vector-safe without rasterizing it.
+          break;
+      }
+    }
+
+    for (final point in diagram.points) {
+      if (point.label.trim().isEmpty) continue;
+      buffer.write(
+        _vmlTextBox(
+          'geometry_point_${_xml(point.id)}',
+          point.label,
+          point.labelPosition,
+          fontSize: point.labelFontSize,
+          bold: point.labelBold,
+        ),
+      );
+    }
+    for (final label in diagram.labels) {
+      if (label.text.trim().isEmpty) continue;
+      buffer.write(
+        _vmlTextBox(
+          'geometry_label_${_xml(label.id)}',
+          label.text,
+          label.position,
+          fontSize: label.fontSize,
+          bold: label.isBold,
+        ),
+      );
+    }
+    return buffer.toString();
+  }
+
+  static String _vmlLine(
+    String id,
+    Offset start,
+    Offset end, {
+    bool startArrow = false,
+    bool endArrow = false,
+    bool dashed = false,
+  }) {
+    final stroke = (startArrow || endArrow || dashed)
+        ? '<v:stroke${startArrow ? ' startarrow="block"' : ''}'
+              '${endArrow ? ' endarrow="block"' : ''}'
+              '${dashed ? ' dashstyle="dash"' : ''}/>'
+        : '';
+    return '<v:line id="${_xml(id)}" from="${_vmlNum(start.dx)},${_vmlNum(start.dy)}" '
+        'to="${_vmlNum(end.dx)},${_vmlNum(end.dy)}" strokecolor="black" '
+        'strokeweight="1.5pt">$stroke</v:line>';
+  }
+
+  static String _vmlNumberLineTicks(String shapeId, Offset start, Offset end) {
+    final delta = end - start;
+    final length = delta.distance;
+    if (length == 0) return '';
+    final direction = delta / length;
+    final normal = Offset(-direction.dy, direction.dx);
+    final buffer = StringBuffer();
+    for (var index = 0; index <= 10; index++) {
+      final point = start + delta * (index / 10);
+      buffer.write(
+        _vmlLine(
+          '${shapeId}_tick_$index',
+          point - normal * 6,
+          point + normal * 6,
+        ),
+      );
+    }
+    return buffer.toString();
+  }
+
+  static String _vmlOval(
+    String id, {
+    required Offset center,
+    required double radiusX,
+    required double radiusY,
+    double strokeWeight = 1.5,
+  }) {
+    return '<v:oval id="${_xml(id)}" '
+        'style="position:absolute;left:${_vmlNum(center.dx - radiusX)};'
+        'top:${_vmlNum(center.dy - radiusY)};width:${_vmlNum(radiusX * 2)};'
+        'height:${_vmlNum(radiusY * 2)}" filled="f" strokecolor="black" '
+        'strokeweight="${_vmlNum(strokeWeight)}pt"/>';
+  }
+
+  static String _vmlPolygon(String id, List<Offset> points) {
+    if (points.length < 2) return '';
+    final rendered = <Offset>[...points];
+    if (points.length > 2) rendered.add(points.first);
+    final pointText = rendered
+        .map((point) => '${_vmlNum(point.dx)},${_vmlNum(point.dy)}')
+        .join(' ');
+    return '<v:polyline id="${_xml(id)}" points="$pointText" '
+        'filled="f" strokecolor="black" strokeweight="1.5pt"/>';
+  }
+
+  static String _vmlTextBox(
+    String id,
+    String text,
+    Offset position, {
+    required double fontSize,
+    bool bold = false,
+  }) {
+    return '<v:rect id="${_xml(id)}" '
+        'style="position:absolute;left:${_vmlNum(position.dx)};'
+        'top:${_vmlNum(position.dy - fontSize)};width:90;height:${_vmlNum(fontSize + 8)}" '
+        'filled="f" stroked="f"><v:textbox inset="0,0,0,0"><w:txbxContent>'
+        '${_paragraph(text, bold: bold, fontSize: fontSize, spacingAfter: 0)}'
+        '</w:txbxContent></v:textbox></v:rect>';
+  }
+
+  static String _vmlNum(double value) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toStringAsFixed(2);
+  }
+
   static String _questionAdvancedBlocksXml(
     Question question, {
     required double fontSize,
@@ -967,6 +1393,10 @@ class WordExportService {
         ),
       );
     }
+
+    buffer.write(
+      _wordShapesXml(WordShapeService.shapesOf(question), fontSize: fontSize),
+    );
 
     for (final attachment in question.attachments) {
       if (attachment.kind != QuestionAttachmentKind.image) continue;
@@ -1003,6 +1433,124 @@ class WordExportService {
     }
 
     return buffer.toString();
+  }
+
+  static String _wordShapesXml(
+    List<WordShapeObject> shapes, {
+    required double fontSize,
+  }) {
+    if (shapes.isEmpty) return '';
+    final ordered = [...shapes]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
+    final buffer = StringBuffer();
+    for (final shape in ordered) {
+      buffer.write(_wordShapeParagraph(shape, fontSize: fontSize));
+    }
+    return buffer.toString();
+  }
+
+  static String _wordShapeParagraph(
+    WordShapeObject shape, {
+    required double fontSize,
+  }) {
+    final widthPt = (shape.width * 420).clamp(46, 320).toDouble();
+    final heightPt = (shape.height * 250).clamp(14, 180).toDouble();
+    final leftPt = (shape.x * 360).clamp(0, 300).toDouble();
+    final topPt = (shape.y * 180).clamp(0, 140).toDouble();
+    final layer = switch (shape.wrapMode) {
+      WordTextWrapMode.behindText => -251658240,
+      WordTextWrapMode.inFrontOfText => 251658240 + shape.zIndex,
+      _ => shape.zIndex,
+    };
+    final style = _wordShapeStyle(
+      shape,
+      widthPt: widthPt,
+      heightPt: heightPt,
+      leftPt: leftPt,
+      topPt: topPt,
+      layer: layer,
+    );
+    final strokeXml = switch (shape.kind) {
+      WordShapeKind.arrow => '<v:stroke endarrow="block"/>',
+      WordShapeKind.doubleArrow =>
+        '<v:stroke startarrow="block" endarrow="block"/>',
+      _ => '',
+    };
+    final textXml =
+        (shape.kind == WordShapeKind.textBox ||
+            shape.kind == WordShapeKind.callout)
+        ? '<v:textbox inset="4pt,2pt,4pt,2pt"><w:txbxContent>'
+              '${_paragraph(shape.text, alignment: 'center', fontSize: fontSize * 0.9, spacingAfter: 0)}'
+              '</w:txbxContent></v:textbox>'
+        : '';
+    final id = _xml('edusheet_shape_${shape.id}');
+
+    final shapeXml = switch (shape.kind) {
+      WordShapeKind.rectangle =>
+        '<v:rect id="$id" style="$style" fillcolor="white" strokecolor="black">$strokeXml</v:rect>',
+      WordShapeKind.textBox =>
+        '<v:rect id="$id" style="$style" fillcolor="white" strokecolor="black">$textXml</v:rect>',
+      WordShapeKind.roundedRectangle =>
+        '<v:roundrect id="$id" arcsize="18%" style="$style" fillcolor="white" strokecolor="black">$strokeXml</v:roundrect>',
+      WordShapeKind.ellipse =>
+        '<v:oval id="$id" style="$style" fillcolor="white" strokecolor="black">$strokeXml</v:oval>',
+      WordShapeKind.line =>
+        '<v:line id="$id" from="0,0" to="100,0" style="$style" strokecolor="black"/>',
+      WordShapeKind.arrow =>
+        '<v:line id="$id" from="0,0" to="100,0" style="$style" strokecolor="black">$strokeXml</v:line>',
+      WordShapeKind.doubleArrow =>
+        '<v:line id="$id" from="0,0" to="100,0" style="$style" strokecolor="black">$strokeXml</v:line>',
+      WordShapeKind.callout =>
+        '<v:roundrect id="$id" arcsize="12%" style="$style" fillcolor="white" strokecolor="black">$textXml</v:roundrect>',
+    };
+
+    final alignment = switch (shape.wrapMode) {
+      WordTextWrapMode.squareLeft => 'left',
+      WordTextWrapMode.squareRight => 'right',
+      _ => 'center',
+    };
+    return '<w:p><w:pPr><w:jc w:val="$alignment"/></w:pPr>'
+        '<w:r><w:pict>$shapeXml</w:pict></w:r></w:p>';
+  }
+
+  static String _wordShapeStyle(
+    WordShapeObject shape, {
+    required double widthPt,
+    required double heightPt,
+    required double leftPt,
+    required double topPt,
+    required int layer,
+  }) {
+    final size =
+        'width:${widthPt.toStringAsFixed(1)}pt;'
+        'height:${heightPt.toStringAsFixed(1)}pt;';
+    final rotation = shape.rotationDegrees == 0
+        ? ''
+        : 'rotation:${shape.rotationDegrees.toStringAsFixed(1)};';
+    switch (shape.wrapMode) {
+      case WordTextWrapMode.inline:
+        return 'position:relative;$size$rotation;z-index:$layer';
+      case WordTextWrapMode.squareLeft:
+        return 'position:relative;float:left;$size$rotation;z-index:$layer;'
+            'mso-wrap-distance-left:0pt;mso-wrap-distance-right:8pt;'
+            'mso-wrap-style:square';
+      case WordTextWrapMode.squareRight:
+        return 'position:relative;float:right;$size$rotation;z-index:$layer;'
+            'mso-wrap-distance-left:8pt;mso-wrap-distance-right:0pt;'
+            'mso-wrap-style:square';
+      case WordTextWrapMode.topAndBottom:
+        return 'position:relative;$size$rotation;z-index:$layer;'
+            'mso-wrap-style:topAndBottom';
+      case WordTextWrapMode.behindText:
+        return 'position:absolute;margin-left:${leftPt.toStringAsFixed(1)}pt;'
+            'margin-top:${topPt.toStringAsFixed(1)}pt;$size$rotation;'
+            'z-index:$layer;mso-position-horizontal-relative:text;'
+            'mso-position-vertical-relative:text;mso-wrap-style:none';
+      case WordTextWrapMode.inFrontOfText:
+        return 'position:absolute;margin-left:${leftPt.toStringAsFixed(1)}pt;'
+            'margin-top:${topPt.toStringAsFixed(1)}pt;$size$rotation;'
+            'z-index:$layer;mso-position-horizontal-relative:text;'
+            'mso-position-vertical-relative:text;mso-wrap-style:none';
+    }
   }
 
   static String _stimulusXml(
@@ -1241,6 +1789,16 @@ class WordExportService {
       case QuestionAnswerSpaceStyle.none:
         return '';
     }
+  }
+
+  static _ImagePart? _headerLogoImageForIndex(
+    List<_ImagePart> images,
+    int logoIndex,
+  ) {
+    for (final image in images) {
+      if (image.headerLogo && image.headerLogoIndex == logoIndex) return image;
+    }
+    return null;
   }
 
   static _ImagePart? _imageForSourcePath(
@@ -1814,6 +2372,7 @@ class _ImagePart {
   final List<int> bytes;
   final String sourcePath;
   final bool headerLogo;
+  final int? headerLogoIndex;
 
   const _ImagePart({
     required this.relationshipId,
@@ -1822,6 +2381,7 @@ class _ImagePart {
     required this.bytes,
     required this.sourcePath,
     required this.headerLogo,
+    this.headerLogoIndex,
   });
 }
 

@@ -9,6 +9,11 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+Finder _modeSegment(String label) => find.descendant(
+  of: find.byKey(const Key('paper-editor-mode-segmented')),
+  matching: find.text(label),
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -44,17 +49,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('paper-editor-mode-switch')), findsOneWidget);
-    expect(find.text('Smart'), findsOneWidget);
-    expect(find.text('Word'), findsOneWidget);
+    expect(_modeSegment('Smart'), findsOneWidget);
+    expect(_modeSegment('Word'), findsOneWidget);
     expect(find.byKey(const Key('word-paper-document')), findsNothing);
 
-    await tester.tap(find.text('Word'));
+    await tester.tap(_modeSegment('Word'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('word-paper-document')), findsOneWidget);
     expect(find.byKey(const Key('word-wysiwyg-header-canvas')), findsOneWidget);
     expect(find.byKey(const Key('word-paper-title')), findsOneWidget);
     expect(find.byKey(const Key('word-ribbon-header-layout')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('word-mobile-toolbar')),
+        matching: find.byKey(const Key('word-mode-add-section')),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('word-ribbon-question-bank')), findsOneWidget);
 
     final titleEditor = find.descendant(
       of: find.byKey(const Key('word-paper-title')),
@@ -67,12 +80,12 @@ void main() {
     // Word Mode must therefore be observable without any import/conversion.
     expect(find.text('Algebra Midterm'), findsWidgets);
 
-    await tester.tap(find.text('Smart'));
+    await tester.tap(_modeSegment('Smart'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('word-paper-document')), findsNothing);
     expect(find.text('Algebra Midterm'), findsOneWidget);
 
-    await tester.tap(find.text('Word'));
+    await tester.tap(_modeSegment('Word'));
     await tester.pumpAndSettle();
     final titleField = tester.widget<TextField>(
       find.descendant(
@@ -94,7 +107,7 @@ void main() {
 
       await tester.pumpWidget(const ProviderScope(child: _TestApp()));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Word'));
+      await tester.tap(_modeSegment('Word'));
       await tester.pumpAndSettle();
 
       final addSection = find.byKey(const Key('word-mode-add-section'));
@@ -117,13 +130,13 @@ void main() {
       expect(find.byKey(const Key('word-ribbon-math')), findsOneWidget);
       expect(find.byKey(const Key('word-ribbon-geometry')), findsOneWidget);
 
-      await tester.tap(find.text('Smart'));
+      await tester.tap(_modeSegment('Smart'));
       await tester.pumpAndSettle();
 
       expect(find.text('Custom notice'), findsOneWidget);
       expect(find.text('0 questions · 0 marks'), findsOneWidget);
 
-      await tester.tap(find.text('Word'));
+      await tester.tap(_modeSegment('Word'));
       await tester.pumpAndSettle();
       final restored = tester.widget<QuillEditor>(
         find.byType(QuillEditor).first,
@@ -132,6 +145,62 @@ void main() {
         restored.controller.document.toPlainText(),
         contains('Custom notice'),
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Word desktop ribbon shows all groups at full screen and survives free-form resizing',
+    (tester) async {
+      tester.view.physicalSize = const Size(1920, 840);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(const ProviderScope(child: _TestApp()));
+      await tester.pumpAndSettle();
+      await tester.tap(_modeSegment('Word'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('word-desktop-ribbon')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('word-desktop-ribbon')),
+          matching: find.byKey(const Key('word-mode-add-section')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('word-ribbon-question-bank')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('word-desktop-command-scroll')),
+        findsOneWidget,
+      );
+
+      final homeSize = tester.getSize(
+        find.byKey(const Key('word-desktop-home-group')),
+      );
+      expect(homeSize.width, lessThanOrEqualTo(200));
+
+      final lastDesktopAction = tester.getRect(
+        find.byKey(const Key('word-ribbon-page-break')),
+      );
+      expect(lastDesktopAction.right, lessThanOrEqualTo(1920));
+      expect(tester.takeException(), isNull);
+
+      tester.view.physicalSize = const Size(1392, 840);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('word-desktop-ribbon')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      tester.view.physicalSize = const Size(820, 620);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('word-desktop-ribbon')), findsOneWidget);
+      expect(find.byKey(const Key('word-ribbon-import')), findsOneWidget);
+      expect(find.byKey(const Key('word-ribbon-page-layout')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -146,13 +215,18 @@ void main() {
 
     await tester.pumpWidget(const ProviderScope(child: _TestApp()));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Word'));
+    await tester.tap(_modeSegment('Word'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('word-paper-editor-scroll')), findsOneWidget);
     expect(find.byKey(const Key('word-paper-document')), findsOneWidget);
+    expect(
+      find.byKey(const Key('word-mobile-primary-actions')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('word-ribbon-import')), findsOneWidget);
-    expect(find.text('Add section'), findsOneWidget);
+    expect(find.byKey(const Key('word-mode-add-section')), findsOneWidget);
+    expect(find.byKey(const Key('word-ribbon-question-bank')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

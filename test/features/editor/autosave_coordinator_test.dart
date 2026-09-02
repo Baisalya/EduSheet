@@ -57,6 +57,26 @@ void main() {
       coordinator.dispose();
     });
 
+    test(
+      'discardPending prevents a ghost save after reset or document switch',
+      () async {
+        final saved = <String>[];
+        final coordinator = AutosaveCoordinator<String>(
+          delay: const Duration(milliseconds: 25),
+          save: (value) async => saved.add(value),
+        );
+
+        coordinator.schedule('temporary blank draft');
+        coordinator.discardPending();
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        await coordinator.flush();
+
+        expect(saved, isEmpty);
+        expect(coordinator.status.phase, AutosavePhase.idle);
+        coordinator.dispose();
+      },
+    );
+
     test('reports failure without discarding the editable snapshot', () async {
       final coordinator = AutosaveCoordinator<String>(
         delay: Duration.zero,

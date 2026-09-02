@@ -51,6 +51,9 @@ class PaperSectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final numberingStyle = section.numberingStyle ?? paperNumberingStyle;
+    final assessmentQuestionCount =
+        PaperStructureService.assessmentQuestionCount(section);
+    final totalMarks = section.totalMarks;
     final answerAny =
         section.requiredCount != null &&
         section.requiredCount! > 0 &&
@@ -85,7 +88,7 @@ class PaperSectionCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${PaperStructureService.assessmentQuestionCount(section)} question${PaperStructureService.assessmentQuestionCount(section) == 1 ? '' : 's'} · ${_marks(section.totalMarks)} marks',
+                        '$assessmentQuestionCount question${assessmentQuestionCount == 1 ? '' : 's'} · ${_marks(totalMarks)} ${totalMarks == 1 ? 'mark' : 'marks'}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),

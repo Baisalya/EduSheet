@@ -1,0 +1,4 @@
+PROFESSIONAL_ADAPTIVE_RIBBON_POLISH.md
+lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+test/features/paper_composer/dual_editor_mode_test.dart

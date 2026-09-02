@@ -1,0 +1,138 @@
+diff --git a/PHASE4A_QA_FIX1_NOTES.md b/PHASE4A_QA_FIX1_NOTES.md
+new file mode 100644
+index 0000000..2d62765
+--- /dev/null
++++ b/PHASE4A_QA_FIX1_NOTES.md
+@@ -0,0 +1,38 @@
++# Phase 4A QA Fix 1
++
++Baseline: Professional Formatting Phase 4A direct authoring completion package.
++
++## Windows QA failures addressed
++
++1. Direct Word question test expected the grammatically correct Smart Mode section summary `1 question · 1 mark`, while the section card always rendered the plural `marks`.
++   - `PaperSectionCard` now uses singular `mark` only when total marks equals 1.
++   - Existing plural output remains unchanged for 0, decimals and values other than 1.
++
++2. `word_paper_editor.dart` introduced a direct `showModalBottomSheet` for logo actions, violating the app-wide adaptive modal gate.
++   - Logo Choose/Replace/Remove now uses `showAdaptiveModalBottomSheet`.
++   - This preserves finite full-width modal constraints on compact Windows and Android.
++
++3. The Phase 4A logo rendering widget test used `pumpAndSettle()` while a Windows `FileImage` decode remained pending, causing the 10-minute test timeout and a temp-directory file-lock cleanup error.
++   - The structural test now pumps once, verifies the actual `FileImage` path directly, disposes the widget, evicts the image provider and clears live/cache entries.
++   - Temp directory cleanup includes a short bounded retry for Windows file-handle release.
++   - Production logo rendering behavior is unchanged.
++
++## Scope
++
++No Paper schema, database, dependency, export model, Smart/Word canonical architecture, marks calculation, question image model or Phase 4A feature behavior was changed beyond the singular UI label and adaptive logo action presentation.
++
++## Windows QA rerun
++
++```powershell
++dart format .
++flutter analyze
++flutter test test/features/paper_composer/word_direct_authoring_phase4a_test.dart
++flutter test test/shared/presentation/adaptive_modal_usage_test.dart
++flutter test test/features/paper_composer/dual_editor_mode_test.dart
++flutter test test/release/professional_formatting_phase4a_gate_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
++
++Do not lock Phase 4A until the rerun is green.
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_section_card.dart b/lib/features/paper_composer/presentation/widgets/paper_section_card.dart
+index 62c5ccd..4e7e428 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_section_card.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_section_card.dart
+@@ -51,6 +51,9 @@ class PaperSectionCard extends StatelessWidget {
+   Widget build(BuildContext context) {
+     final theme = Theme.of(context);
+     final numberingStyle = section.numberingStyle ?? paperNumberingStyle;
++    final assessmentQuestionCount =
++        PaperStructureService.assessmentQuestionCount(section);
++    final totalMarks = section.totalMarks;
+     final answerAny = section.requiredCount != null &&
+         section.requiredCount! > 0 &&
+         section.requiredCount! <
+@@ -84,7 +87,7 @@ class PaperSectionCard extends StatelessWidget {
+                       ),
+                       const SizedBox(height: 3),
+                       Text(
+-                        '${PaperStructureService.assessmentQuestionCount(section)} question${PaperStructureService.assessmentQuestionCount(section) == 1 ? '' : 's'} · ${_marks(section.totalMarks)} marks',
++                        '$assessmentQuestionCount question${assessmentQuestionCount == 1 ? '' : 's'} · ${_marks(totalMarks)} ${totalMarks == 1 ? 'mark' : 'marks'}',
+                         style: theme.textTheme.bodySmall?.copyWith(
+                           color: theme.colorScheme.onSurfaceVariant,
+                         ),
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index 8150b08..177ac85 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -15,8 +15,9 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/question_t
+ import 'package:edusheet/features/paper_composer/presentation/widgets/word_rich_text_editor.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+-import 'package:flutter/material.dart';
++import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
+ import 'package:file_picker/file_picker.dart';
++import 'package:flutter/material.dart';
+ import 'package:flutter_quill/flutter_quill.dart';
+ 
+ /// Word-style editing surface for the canonical [Paper].
+@@ -312,7 +313,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+     final existing = logoIndex < widget.paper.logos.length
+         ? widget.paper.logos[logoIndex].trim()
+         : '';
+-    final action = await showModalBottomSheet<_LogoAction>(
++    final action = await showAdaptiveModalBottomSheet<_LogoAction>(
+       context: context,
+       showDragHandle: true,
+       builder: (context) => SafeArea(
+diff --git a/test/features/paper_composer/word_direct_authoring_phase4a_test.dart b/test/features/paper_composer/word_direct_authoring_phase4a_test.dart
+index dae9f5c..5d578a9 100644
+--- a/test/features/paper_composer/word_direct_authoring_phase4a_test.dart
++++ b/test/features/paper_composer/word_direct_authoring_phase4a_test.dart
+@@ -35,8 +35,18 @@ void main() {
+   tearDown(() async {
+     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+         .setMockMethodCallHandler(pathProviderChannel, null);
++    imageCache.clear();
++    imageCache.clearLiveImages();
+     if (await tempDir.exists()) {
+-      await tempDir.delete(recursive: true);
++      for (var attempt = 0; attempt < 10; attempt++) {
++        try {
++          await tempDir.delete(recursive: true);
++          break;
++        } on FileSystemException {
++          if (attempt == 9) rethrow;
++          await Future<void>.delayed(const Duration(milliseconds: 50));
++        }
++      }
+     }
+   });
+ 
+@@ -175,11 +185,21 @@ void main() {
+         ),
+       ),
+     );
+-    await tester.pumpAndSettle();
++    await tester.pump();
+ 
+     expect(find.byType(Image), findsOneWidget);
++    final image = tester.widget<Image>(find.byType(Image));
++    expect(image.image, isA<FileImage>());
++    expect((image.image as FileImage).file.path, logoFile.path);
+     expect(find.text('Add logo'), findsNothing);
+     expect(tester.takeException(), isNull);
++
++    // Dispose the FileImage before the Windows temp directory is removed.
++    // Waiting for pumpAndSettle here is deliberately avoided: image decoding
++    // is not part of this structural test and may keep a pending frame alive.
++    await tester.pumpWidget(const SizedBox.shrink());
++    await tester.pump();
++    await (image.image as FileImage).evict();
+   });
+ 
+   testWidgets('editable header logo slot is a direct choose or replace target', (

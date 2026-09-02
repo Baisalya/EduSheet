@@ -1,0 +1,10 @@
+lib/features/editor/presentation/providers/editor_provider.dart
+lib/features/editor/services/autosave_coordinator.dart
+lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+lib/features/paper_composer/presentation/widgets/paper_outline_panel.dart
+lib/features/paper_composer/presentation/widgets/question_card.dart
+lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+test/features/editor/autosave_coordinator_test.dart
+tool/run_final_authoring_polish_gate.ps1
+PROFESSIONAL_FINAL_AUTHORING_POLISH.md
+PROFESSIONAL_FINAL_AUTHORING_POLISH_CHANGED_FILES.txt

@@ -1,0 +1,8 @@
+PHASE4C_QA_FIX1_NOTES.md
+lib/features/geometry_builder/painters/geometry_freeform_draft_painter.dart
+lib/features/geometry_builder/services/geometry_svg_service.dart
+lib/features/pdf/services/word_export_service.dart
+test/features/geometry_builder/geometry_embed_layout_phase4c_test.dart
+test/features/geometry_builder/geometry_freeform_phase4c_test.dart
+test/features/pdf/office_export_services_test.dart
+test/release/professional_formatting_phase4c_gate_test.dart

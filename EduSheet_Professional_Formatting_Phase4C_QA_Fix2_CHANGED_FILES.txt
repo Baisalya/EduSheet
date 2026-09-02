@@ -1,0 +1,2 @@
+PHASE4C_QA_FIX2_NOTES.md
+lib/features/geometry_builder/services/geometry_svg_service.dart

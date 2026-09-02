@@ -702,11 +702,18 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                             onSchoolNameChanged: (value) =>
                                 editor.updateBranding(schoolName: value),
                             onInstructionChanged: editor.updateInstruction,
+                            onInstructionAlignmentChanged:
+                                editor.updateInstructionAlignment,
                             onHeaderFieldChanged: (fieldId, value) =>
                                 editor.updateHeaderField(
                                   fieldId,
                                   value: value,
                                   isPlaceholder: value.trim().isEmpty,
+                                ),
+                            onLogoChanged: (logoIndex, path) =>
+                                editor.updateBranding(
+                                  logoIndex: logoIndex,
+                                  logo: path,
                                 ),
                             onSectionTitleChanged: (sectionId, value) =>
                                 editor.updateSection(sectionId, title: value),
@@ -715,6 +722,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                                   sectionId,
                                   instruction: value,
                                 ),
+                            onReplaceSection: editor.replaceSectionObject,
                             onEditQuestion: (sectionId, question) =>
                                 _openQuestion(sectionId, question: question),
                             onReplaceQuestion: (sectionId, question) =>
@@ -729,8 +737,20 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                             onDeleteQuestion: (sectionId, questionId) =>
                                 _actions.deleteQuestion(sectionId, questionId),
                             onAddSection: _addSection,
-                            onAddQuestion: (sectionId) =>
-                                _openQuestion(sectionId),
+                            onAddFromQuestionBank: (sectionId) async {
+                              if (sectionId == null) {
+                                await _startFromQuestionBank();
+                                return;
+                              }
+                              final currentSection = ref
+                                  .read(editorStateProvider)
+                                  .sections
+                                  .where((section) => section.id == sectionId)
+                                  .firstOrNull;
+                              if (currentSection != null) {
+                                await _addFromQuestionBank(currentSection);
+                              }
+                            },
                             onImportWord: _importEduSheetWordRoundTrip,
                             onArrangeHeader: () async {
                               final layout =

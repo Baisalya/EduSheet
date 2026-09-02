@@ -144,7 +144,9 @@ class _QuestionImageAttachmentSheetState
                   OutlinedButton.icon(
                     onPressed: _pickImage,
                     icon: const Icon(Icons.photo_library_outlined),
-                    label: Text(path == null ? 'Choose image' : 'Change image'),
+                    label: Text(
+                      path == null ? 'Choose image' : 'Replace image',
+                    ),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 6),

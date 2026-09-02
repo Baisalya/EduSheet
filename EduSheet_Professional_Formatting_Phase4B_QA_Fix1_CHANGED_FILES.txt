@@ -1,0 +1,2 @@
+lib/features/paper_composer/presentation/widgets/word_shape_preview.dart
+PHASE4B_QA_FIX1_NOTES.md

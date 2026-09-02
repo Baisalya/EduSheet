@@ -68,12 +68,16 @@ class EditorState extends _$EditorState {
   final List<Paper> _undoStack = [];
   final List<Paper> _redoStack = [];
   bool _historyNavigation = false;
+  final Set<String> _persistedDocumentIds = <String>{};
 
   @override
   Paper build() {
     final repository = ref.read(paperRepositoryProvider);
     _autosave = AutosaveCoordinator<Paper>(
-      save: repository.savePaper,
+      save: (paper) async {
+        await repository.savePaper(paper);
+        _persistedDocumentIds.add(paper.id);
+      },
       onStatus: (status) {
         ref.read(editorSaveStatusProvider.notifier).state = status;
         if (status.phase == AutosavePhase.saved) {
@@ -90,7 +94,12 @@ class EditorState extends _$EditorState {
           if (_undoStack.length > _historyLimit) _undoStack.removeAt(0);
           _redoStack.clear();
         }
-        _autosave.schedule(next);
+        if (_shouldAutosave(next)) {
+          _autosave.schedule(next);
+        } else {
+          ref.read(editorSaveStatusProvider.notifier).state =
+              const AutosaveStatus(AutosavePhase.idle);
+        }
       }
     });
 
@@ -126,17 +135,53 @@ class EditorState extends _$EditorState {
     );
   }
 
+  bool _shouldAutosave(Paper paper) {
+    return _persistedDocumentIds.contains(paper.id) ||
+        _isMeaningfulDraft(paper);
+  }
+
+  bool _isMeaningfulDraft(Paper paper) {
+    if (paper.sections.isNotEmpty) return true;
+    if (paper.schoolName.trim().isNotEmpty) return true;
+    if (paper.instruction.trim().isNotEmpty) return true;
+    if (paper.logos.any((logo) => logo.trim().isNotEmpty)) return true;
+    if (paper.maximumMarks != null) return true;
+    if (paper.includeCoverPage || paper.includeOmr) return true;
+    if (paper.headerText.trim().isNotEmpty ||
+        paper.footerText.trim().isNotEmpty) {
+      return true;
+    }
+    if (paper.showPageNumbers) return true;
+    if (paper.templateId != PaperStyleCatalog.defaultTemplateId) return true;
+    if (paper.title.trim().isNotEmpty && paper.title.trim() != 'New Paper') {
+      return true;
+    }
+    return paper.headerFields.any((field) {
+      final value = field.value.trim();
+      return value.isNotEmpty && !field.isPlaceholder;
+    });
+  }
+
   Future<void> savePaper() async {
     _autosave.schedule(state);
     await _autosave.flush();
   }
 
   void loadPaper(Paper paper) {
+    _autosave.discardPending(resetStatus: false);
+    _persistedDocumentIds.add(paper.id);
     _replaceWithoutHistory(paper);
+    ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(
+      AutosavePhase.saved,
+    );
   }
 
   void reset() {
+    _autosave.discardPending(resetStatus: false);
     _replaceWithoutHistory(_newPaper());
+    ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(
+      AutosavePhase.idle,
+    );
   }
 
   bool get canUndo => _undoStack.isNotEmpty;
@@ -175,6 +220,10 @@ class EditorState extends _$EditorState {
 
   void updateInstruction(String instruction) {
     state = state.copyWith(instruction: instruction);
+  }
+
+  void updateInstructionAlignment(PaperTextAlignment alignment) {
+    state = state.copyWith(instructionAlignment: alignment);
   }
 
   /// Applies the teacher-facing Paper Setup form as one document mutation.
@@ -372,6 +421,16 @@ class EditorState extends _$EditorState {
       graphAnswerArea: source.graphAnswerArea,
     );
     state = state.copyWith(sections: [...state.sections, section]);
+  }
+
+  void replaceSectionObject(PaperSection replacement) {
+    state = state.copyWith(
+      sections: state.sections
+          .map(
+            (section) => section.id == replacement.id ? replacement : section,
+          )
+          .toList(growable: false),
+    );
   }
 
   void updateSection(

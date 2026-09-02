@@ -64,6 +64,21 @@ class AutosaveCoordinator<T> {
     if (_hasPendingValue) await flush();
   }
 
+  /// Drops a debounced value that has not started writing yet.
+  ///
+  /// Editor workflows use this when switching documents or resetting a blank
+  /// draft so an old pending autosave cannot appear later as a ghost paper.
+  void discardPending({bool resetStatus = true}) {
+    if (_disposed) return;
+    _timer?.cancel();
+    _timer = null;
+    _pendingValue = null;
+    _hasPendingValue = false;
+    if (resetStatus) {
+      _emit(const AutosaveStatus(AutosavePhase.idle));
+    }
+  }
+
   Future<void> _queuePendingWrite() async {
     if (_disposed || !_hasPendingValue) return;
     final value = _pendingValue as T;

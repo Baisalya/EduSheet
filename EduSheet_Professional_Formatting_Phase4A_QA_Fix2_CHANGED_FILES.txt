@@ -1,0 +1,4 @@
+lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+test/features/paper_composer/word_direct_authoring_phase4a_test.dart
+PHASE4A_QA_FIX2_NOTES.md

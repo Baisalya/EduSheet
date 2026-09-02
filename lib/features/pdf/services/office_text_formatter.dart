@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 
 class OfficeTextFormatter {
-  static String questionText(String text) {
+  static String questionText(
+    String text, {
+    String geometryPlaceholder = '[diagram]',
+  }) {
     try {
       final trimmed = text.trimLeft();
       if (trimmed.startsWith('[')) {
@@ -24,7 +27,7 @@ class OfficeTextFormatter {
                   }
                   return '[formula]';
                 }
-                if (insert.containsKey('geometry')) return '[diagram]';
+                if (insert.containsKey('geometry')) return geometryPlaceholder;
               }
               return ' ';
             })

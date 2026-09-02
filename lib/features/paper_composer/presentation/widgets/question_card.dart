@@ -2,6 +2,7 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
 import 'package:flutter/material.dart';
 
 class QuestionCard extends StatelessWidget {
@@ -32,8 +33,16 @@ class QuestionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final unplacedMath = _codec.unplacedMathExpressions(question);
     final isWordBlock = question.isWordContentBlock;
-    final plain = question.plainTextAccessibility.trim();
-    final hasDiagram = plain.contains('[diagram]');
+    final fallbackPlain = question.plainTextAccessibility.trim();
+    final decodedPlain = _codec.accessibleText(_codec.decodeQuestion(question));
+    final plain = decodedPlain.isNotEmpty ? decodedPlain : fallbackPlain;
+    final hasDiagram =
+        plain.contains('[diagram]') || question.text.contains('"geometry"');
+    final showRichPreview =
+        !isWordBlock &&
+        (question.text.trimLeft().startsWith('[{') ||
+            question.mathExpressions.isNotEmpty ||
+            hasDiagram);
     final blockKind = question.wordContentBlockKind;
 
     return Card(
@@ -76,18 +85,27 @@ class QuestionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      plain.isEmpty
-                          ? (isWordBlock
-                                ? 'Free Word content'
-                                : 'Untitled question')
-                          : plain,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
+                    if (showRichPreview)
+                      QuestionRichTextPreview(
+                        key: ValueKey(
+                          'smart-question-rich-preview-${question.id}',
+                        ),
+                        question: question,
+                        maxHeight: 120,
+                      )
+                    else
+                      Text(
+                        plain.isEmpty
+                            ? (isWordBlock
+                                  ? 'Free Word content'
+                                  : 'Untitled question')
+                            : plain,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,

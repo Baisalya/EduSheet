@@ -1,0 +1,1444 @@
+diff --git a/PROFESSIONAL_FORMATTING_PHASE4A_DIRECT_AUTHORING.md b/PROFESSIONAL_FORMATTING_PHASE4A_DIRECT_AUTHORING.md
+new file mode 100644
+index 0000000..d6416e3
+--- /dev/null
++++ b/PROFESSIONAL_FORMATTING_PHASE4A_DIRECT_AUTHORING.md
+@@ -0,0 +1,75 @@
++# Professional Formatting Phase 4A — Direct WYSIWYG Authoring
++
++Status: IMPLEMENTATION COMPLETE — awaiting Windows QA / manual smoke before lock
++Baseline: RC Candidate 2 automated-green tree / Professional Formatting Phase 3 QA Fix 1
++
++## Scope
++
++Phase 4A is intentionally limited to three teacher-facing upgrades:
++
++1. Direct Word Mode question creation/editing on the paper page.
++2. Direct header logo choose/replace/remove with the actual logo rendered in Word Mode and Preview.
++3. Picture insertion into the active assessment question, with replace/remove controls.
++
++Shapes, wrapping/floating placement and free-form geometry belong to Phase 4B/4C and are not introduced here.
++
++## Canonical architecture
++
++`Paper` and `Question` remain the only persisted source of truth. Word Mode does not create a parallel document model.
++
++- New inline questions are normal assessment `Question` objects.
++- Pictures are normal image `QuestionAttachment` objects on the active assessment question.
++- A free Word paragraph/table is not silently converted into an assessment question when Picture is used; the existing free-image-block path remains available there.
++- Header logo paths continue to use `Paper.logos`; header layout geometry remains in `PaperTemplate` / `CustomLayout`.
++- Replacing a picture preserves the attachment id so selection/export references remain stable.
++
++## Completed implementation
++
++- Added `WordDirectAuthoringService` for blank canonical assessment questions and image append/replace/remove mutations.
++- Word Mode `Question` buttons insert a blank assessment question inline and autofocus it instead of navigating to `QuestionComposerPage`.
++- Full question composer remains reachable through the existing advanced/settings action.
++- Existing inline Math and Geometry commands continue to operate through the active Word rich-text session/caret.
++- Word Mode Picture targets the active assessment question. When no assessment question owns the current editing target, existing standalone free-image behavior is preserved.
++- Question pictures expose Replace and Remove actions directly in Word Mode. Non-picture attachment kinds are not accidentally routed through the picture replacement flow.
++- Shared header canvas maps logo slots by canonical template order, renders the real selected file, and exposes direct editable logo targets.
++- Word Mode logo target opens Choose / Replace / Remove and writes through `EditorState.updateBranding`.
++- Paper Setup logo control previews the selected image and uses Choose / Replace terminology.
++- Word rich-text session restores focus after picture selection/replacement so Math/Geometry/caret authoring can continue naturally.
++- DOCX export now preserves sparse logo-slot indexes (for example, slot 0 empty and slot 1 populated) instead of shifting later logos into earlier slots.
++- Existing Preview/PDF question-image and logo rendering remain the export/render path; no duplicate Phase-4A renderer was introduced.
++- Added focused Phase 4A tests, Office export regression coverage, and a release-gate test for canonical question/image/logo persistence.
++
++## Scope safety
++
++- No database/schema migration.
++- No dependency upgrade.
++- No Smart/Word canonical paper split.
++- No question numbering/marks-calculation rewrite.
++- No floating image/wrap/shape model introduced early.
++- RC Candidate 2 remains the automated-green baseline, but Phase 4A requires a fresh analyzer/test/build/manual pass before release lock.
++
++## Required completion QA
++
++```powershell
++dart format .
++flutter analyze
++
++flutter test test/features/paper_composer/word_direct_authoring_phase4a_test.dart
++flutter test test/features/paper_composer/dual_editor_mode_test.dart
++flutter test test/features/paper_composer/wysiwyg_header_phase3_test.dart
++flutter test test/release/professional_formatting_phase4a_gate_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
++
++## Manual Windows + Android smoke
++
++1. Word Mode → add section → `Question`; confirm no full-screen New Question page opens and the inline question receives focus.
++2. Type text, insert Math and Geometry, continue typing, and verify caret/focus does not jump to the end unexpectedly.
++3. With that assessment question active, choose `Picture`; verify it appears under the same question, then Replace and Remove it.
++4. Focus a free paragraph and use Picture; verify it stays free document content rather than turning the paragraph into an assessment question.
++5. Tap an empty header logo slot → Choose logo; verify the actual image appears in Word Mode and Preview.
++6. Tap the populated slot → Replace, then Remove; verify Preview/PDF/DOCX follow the canonical logo state.
++7. Export PDF/DOCX with a question picture and verify the image/caption survive.
++8. Smart → Word → Smart round-trip and autosave/reopen; verify direct question text, picture attachments and logo paths remain intact.
+diff --git a/PROFESSIONAL_FORMATTING_PHASE4A_NOTES.md b/PROFESSIONAL_FORMATTING_PHASE4A_NOTES.md
+new file mode 100644
+index 0000000..f725533
+--- /dev/null
++++ b/PROFESSIONAL_FORMATTING_PHASE4A_NOTES.md
+@@ -0,0 +1,46 @@
++# EduSheet — Professional Formatting Phase 4A QA Notes
++
++## Baseline
++
++Phase 4A starts from the RC Candidate 2 automated-green / Professional Formatting Phase 3 QA Fix 1 tree. Phase 3 and RC2 are not reopened architecturally.
++
++## Teacher-facing changes
++
++- Word Mode creates assessment questions directly on the page.
++- Math/Geometry continue to use the active inline rich-text session.
++- Picture inserts into the active assessment question and exposes Replace/Remove.
++- Header logo slots are direct Choose/Replace/Remove targets and render the real selected image in the shared Word/Preview header canvas.
++- Paper Setup shows a real logo thumbnail.
++
++## Reliability hardening included during completion
++
++- Picture targeting explicitly ignores free Word-content blocks, preventing a free paragraph from silently becoming the owner of an assessment-picture attachment.
++- Picture replacement preserves the existing attachment id.
++- Picture management controls are shown only for image attachments, so file/geometry attachment kinds are not accidentally replaced through the image picker.
++- DOCX logo serialization preserves canonical logo-slot indexes even when earlier logo slots are empty and even when the custom layout's element order differs from Word's visual x/y serialization order.
++
++## Static QA in assistant environment
++
++- All changed `package:edusheet/...` imports resolve.
++- Changed Dart files pass delimiter/string/comment structural scan.
++- No merge-conflict markers in changed files.
++- Patch will be generated against the exact RC2 baseline and apply-checked against a fresh copy.
++- Modified/full ZIP CRC integrity will be verified.
++
++Flutter/Dart executables are not installed in the assistant container, so no analyzer/runtime test pass is claimed here. Windows QA is authoritative.
++
++## Windows QA
++
++```powershell
++dart format .
++flutter analyze
++flutter test test/features/paper_composer/word_direct_authoring_phase4a_test.dart
++flutter test test/features/paper_composer/dual_editor_mode_test.dart
++flutter test test/features/paper_composer/wysiwyg_header_phase3_test.dart
++flutter test test/release/professional_formatting_phase4a_gate_test.dart
++flutter test test/features/pdf/office_export_services_test.dart
++flutter test test/release
++flutter test
++```
++
++Do not lock Phase 4A until analyzer, focused tests, release tests and full regression are green and Windows/Android manual smoke confirms direct typing, Math/Geometry focus, logo Choose/Replace/Remove, question Picture Add/Replace/Remove, Preview/PDF/DOCX parity and autosave/reopen persistence.
+diff --git a/lib/features/paper_composer/application/word_direct_authoring_service.dart b/lib/features/paper_composer/application/word_direct_authoring_service.dart
+new file mode 100644
+index 0000000..68e2fa9
+--- /dev/null
++++ b/lib/features/paper_composer/application/word_direct_authoring_service.dart
+@@ -0,0 +1,57 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
++
++/// Canonical mutations used by Word Mode's direct-on-page authoring flow.
++///
++/// Phase 4A intentionally keeps [Paper] / [Question] as the only persisted
++/// document model. Creating a question inline or adding a picture therefore
++/// produces the same [Question] objects that Smart Mode, Preview and exporters
++/// already understand; there is no parallel Word-only document copy.
++class WordDirectAuthoringService {
++  const WordDirectAuthoringService._();
++
++  static Question blankAssessmentQuestion({double? defaultMarks}) {
++    final marks = _normalizedMarks(defaultMarks);
++    return QuestionDraft.create(
++      type: QuestionType.descriptive,
++      marks: marks,
++    ).toQuestion(plainTextAccessibility: '');
++  }
++
++  static Question appendImage(
++    Question question,
++    QuestionAttachment attachment,
++  ) {
++    return question.copyWith(
++      attachments: [...question.attachments, attachment],
++    );
++  }
++
++  static Question replaceImage(
++    Question question,
++    String attachmentId,
++    QuestionAttachment replacement,
++  ) {
++    final attachments = [
++      for (final item in question.attachments)
++        if (item.id == attachmentId)
++          replacement.copyWith(id: attachmentId)
++        else
++          item,
++    ];
++    return question.copyWith(attachments: attachments);
++  }
++
++  static Question removeImage(Question question, String attachmentId) {
++    return question.copyWith(
++      attachments: question.attachments
++          .where((item) => item.id != attachmentId)
++          .toList(growable: false),
++    );
++  }
++
++  static double _normalizedMarks(double? value) {
++    if (value == null || !value.isFinite || value <= 0) return 1.0;
++    return value;
++  }
++}
+diff --git a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+index 46322a8..86255eb 100644
+--- a/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
++++ b/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+@@ -705,6 +705,11 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                                   value: value,
+                                   isPlaceholder: value.trim().isEmpty,
+                                 ),
++                            onLogoChanged: (logoIndex, path) =>
++                                editor.updateBranding(
++                                  logoIndex: logoIndex,
++                                  logo: path,
++                                ),
+                             onSectionTitleChanged: (sectionId, value) =>
+                                 editor.updateSection(sectionId, title: value),
+                             onSectionInstructionChanged: (sectionId, value) =>
+@@ -726,7 +731,6 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
+                             onDeleteQuestion: (sectionId, questionId) =>
+                                 _actions.deleteQuestion(sectionId, questionId),
+                             onAddSection: _addSection,
+-                            onAddQuestion: (sectionId) => _openQuestion(sectionId),
+                             onImportWord: _importEduSheetWordRoundTrip,
+                             onArrangeHeader: () async {
+                               final layout =
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart b/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+index 8206e1d..a5ad8fc 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+@@ -1,3 +1,5 @@
++import 'dart:io';
++
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
+ import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+@@ -698,23 +700,50 @@ class _LogoControl extends StatelessWidget {
+ 
+   @override
+   Widget build(BuildContext context) {
++    final normalized = path.trim();
++    final file = normalized.isEmpty ? null : File(normalized);
++    final canPreview = file != null && file.existsSync();
++
+     return ListTile(
+       contentPadding: EdgeInsets.zero,
+-      leading: const CircleAvatar(child: Icon(Icons.image_outlined)),
+-      title: Text(path.isEmpty ? 'School logo' : 'Logo selected'),
++      leading: SizedBox(
++        width: 48,
++        height: 48,
++        child: DecoratedBox(
++          decoration: BoxDecoration(
++            borderRadius: BorderRadius.circular(10),
++            border: Border.all(
++              color: Theme.of(context).colorScheme.outlineVariant,
++            ),
++          ),
++          child: canPreview
++              ? ClipRRect(
++                  borderRadius: BorderRadius.circular(9),
++                  child: Image.file(file!, fit: BoxFit.contain),
++                )
++              : const Icon(Icons.image_outlined),
++        ),
++      ),
++      title: const Text('School logo'),
+       subtitle: Text(
+-        path.isEmpty
+-            ? 'Optional. PNG or JPG.'
+-            : path.split(RegExp(r'[\\/]')).last,
++        normalized.isEmpty
++            ? 'Optional. Choose a PNG or JPG.'
++            : normalized.split(RegExp(r'[\\/]')).last,
+         maxLines: 1,
+         overflow: TextOverflow.ellipsis,
+       ),
+       trailing: Wrap(
+         spacing: 4,
+         children: [
+-          TextButton(
++          TextButton.icon(
+             onPressed: onPick,
+-            child: Text(path.isEmpty ? 'Add' : 'Change'),
++            icon: Icon(
++              normalized.isEmpty
++                  ? Icons.add_photo_alternate_outlined
++                  : Icons.swap_horiz_rounded,
++              size: 17,
++            ),
++            label: Text(normalized.isEmpty ? 'Choose' : 'Replace'),
+           ),
+           if (onClear != null)
+             IconButton(
+diff --git a/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart b/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+index 8a5263b..2e8b712 100644
+--- a/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
++++ b/lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+@@ -1,3 +1,5 @@
++import 'dart:io';
++
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
+ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
+@@ -18,6 +20,7 @@ class PaperHeaderLayoutCanvas extends StatelessWidget {
+   final ValueChanged<String>? onSchoolNameChanged;
+   final ValueChanged<String>? onTitleChanged;
+   final void Function(String fieldId, String value)? onHeaderFieldChanged;
++  final ValueChanged<int>? onLogoPressed;
+ 
+   const PaperHeaderLayoutCanvas({
+     super.key,
+@@ -28,6 +31,7 @@ class PaperHeaderLayoutCanvas extends StatelessWidget {
+     this.onSchoolNameChanged,
+     this.onTitleChanged,
+     this.onHeaderFieldChanged,
++    this.onLogoPressed,
+   });
+ 
+   @override
+@@ -35,27 +39,37 @@ class PaperHeaderLayoutCanvas extends StatelessWidget {
+     final layout = paper == null
+         ? PaperHeaderLayoutFactory.resolve(template)
+         : PaperHeaderLayoutFactory.resolveForPaper(template, paper!);
++    var logoIndex = 0;
++    final positionedElements = <Widget>[];
++    for (final element in layout.elements) {
++      final elementLogoIndex = element.type == ElementType.logo
++          ? logoIndex++
++          : null;
++      positionedElements.add(
++        Positioned(
++          left: element.x,
++          top: element.y,
++          child: PaperHeaderElementView(
++            element: element,
++            paper: paper,
++            template: template,
++            editable: editable,
++            logoIndex: elementLogoIndex,
++            onLogoPressed: onLogoPressed,
++            onSchoolNameChanged: onSchoolNameChanged,
++            onTitleChanged: onTitleChanged,
++            onHeaderFieldChanged: onHeaderFieldChanged,
++          ),
++        ),
++      );
++    }
++
+     final design = SizedBox(
+       width: CustomLayout.designWidth,
+       height: layout.canvasHeight,
+       child: Stack(
+         clipBehavior: Clip.none,
+-        children: [
+-          for (final element in layout.elements)
+-            Positioned(
+-              left: element.x,
+-              top: element.y,
+-              child: PaperHeaderElementView(
+-                element: element,
+-                paper: paper,
+-                template: template,
+-                editable: editable,
+-                onSchoolNameChanged: onSchoolNameChanged,
+-                onTitleChanged: onTitleChanged,
+-                onHeaderFieldChanged: onHeaderFieldChanged,
+-              ),
+-            ),
+-        ],
++        children: positionedElements,
+       ),
+     );
+ 
+@@ -91,6 +105,8 @@ class PaperHeaderElementView extends StatelessWidget {
+   final Paper? paper;
+   final PaperTemplate template;
+   final bool editable;
++  final int? logoIndex;
++  final ValueChanged<int>? onLogoPressed;
+   final ValueChanged<String>? onSchoolNameChanged;
+   final ValueChanged<String>? onTitleChanged;
+   final void Function(String fieldId, String value)? onHeaderFieldChanged;
+@@ -101,6 +117,8 @@ class PaperHeaderElementView extends StatelessWidget {
+     required this.paper,
+     required this.template,
+     this.editable = false,
++    this.logoIndex,
++    this.onLogoPressed,
+     this.onSchoolNameChanged,
+     this.onTitleChanged,
+     this.onHeaderFieldChanged,
+@@ -133,25 +151,7 @@ class PaperHeaderElementView extends StatelessWidget {
+ 
+     switch (element.type) {
+       case ElementType.logo:
+-        final hasActualLogo =
+-            paper == null || paper!.logos.any((path) => path.trim().isNotEmpty);
+-        if (!hasActualLogo) {
+-          return SizedBox(width: width ?? 48, height: height ?? 48);
+-        }
+-        return Container(
+-          width: width ?? 48,
+-          height: height ?? 48,
+-          decoration: BoxDecoration(
+-            borderRadius: BorderRadius.circular(4),
+-            border: Border.all(color: Colors.black26),
+-          ),
+-          alignment: Alignment.center,
+-          child: const Icon(
+-            Icons.school_outlined,
+-            size: 24,
+-            color: Colors.black45,
+-          ),
+-        );
++        return _buildLogo(width, height);
+       case ElementType.schoolName:
+         return _box(
+           width,
+@@ -264,6 +264,77 @@ class PaperHeaderElementView extends StatelessWidget {
+     }
+   }
+ 
++  Widget _buildLogo(double? width, double? height) {
++    final resolvedWidth = width ?? 48;
++    final resolvedHeight = height ?? 48;
++    final index = logoIndex ?? 0;
++    final path = paper != null && index < paper!.logos.length
++        ? paper!.logos[index].trim()
++        : '';
++    final file = path.isEmpty ? null : File(path);
++    final canShowImage = file != null && file.existsSync();
++
++    Widget content;
++    if (paper == null) {
++      content = const Icon(
++        Icons.school_outlined,
++        size: 24,
++        color: Colors.black45,
++      );
++    } else if (canShowImage) {
++      content = ClipRRect(
++        borderRadius: BorderRadius.circular(3),
++        child: Image.file(
++          file!,
++          width: resolvedWidth,
++          height: resolvedHeight,
++          fit: BoxFit.contain,
++          errorBuilder: (_, _, _) => const Icon(
++            Icons.broken_image_outlined,
++            color: Colors.black45,
++          ),
++        ),
++      );
++    } else if (editable) {
++      content = Column(
++        mainAxisAlignment: MainAxisAlignment.center,
++        children: [
++          const Icon(Icons.add_photo_alternate_outlined, size: 22),
++          if (resolvedHeight >= 42)
++            const Text(
++              'Add logo',
++              maxLines: 1,
++              style: TextStyle(fontSize: 8, fontWeight: FontWeight.w600),
++            ),
++        ],
++      );
++    } else {
++      return SizedBox(width: resolvedWidth, height: resolvedHeight);
++    }
++
++    final logoBox = Container(
++      width: resolvedWidth,
++      height: resolvedHeight,
++      decoration: BoxDecoration(
++        borderRadius: BorderRadius.circular(4),
++        border: editable ? Border.all(color: Colors.black26) : null,
++      ),
++      alignment: Alignment.center,
++      child: content,
++    );
++
++    if (!editable || onLogoPressed == null) return logoBox;
++    return Tooltip(
++      message: path.isEmpty ? 'Choose logo' : 'Replace or remove logo',
++      child: InkWell(
++        key: ValueKey('word-header-logo-$index'),
++        onTap: () => onLogoPressed!(index),
++        borderRadius: BorderRadius.circular(4),
++        child: logoBox,
++      ),
++    );
++  }
++
+   Widget _buildHeaderFields(TemplateElement element, TextStyle style) {
+     final fields = _resolvedHeaderFields(element);
+     if (fields.isEmpty) {
+diff --git a/lib/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart b/lib/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart
+index 120e590..16398aa 100644
+--- a/lib/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart
++++ b/lib/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart
+@@ -144,7 +144,7 @@ class _QuestionImageAttachmentSheetState
+                   OutlinedButton.icon(
+                     onPressed: _pickImage,
+                     icon: const Icon(Icons.photo_library_outlined),
+-                    label: Text(path == null ? 'Choose image' : 'Change image'),
++                    label: Text(path == null ? 'Choose image' : 'Replace image'),
+                   ),
+                   if (_error != null) ...[
+                     const SizedBox(height: 6),
+diff --git a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+index 4ef45f3..8150b08 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+@@ -4,6 +4,7 @@ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+ import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
++import 'package:edusheet/features/paper_composer/application/word_direct_authoring_service.dart';
+ import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+ import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
+ import 'package:edusheet/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart';
+@@ -15,6 +16,7 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/word_rich_
+ import 'package:edusheet/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:flutter/material.dart';
++import 'package:file_picker/file_picker.dart';
+ import 'package:flutter_quill/flutter_quill.dart';
+ 
+ /// Word-style editing surface for the canonical [Paper].
+@@ -32,6 +34,7 @@ class WordPaperEditor extends StatefulWidget {
+   final ValueChanged<String> onSchoolNameChanged;
+   final ValueChanged<String> onInstructionChanged;
+   final void Function(String fieldId, String value) onHeaderFieldChanged;
++  final void Function(int logoIndex, String path) onLogoChanged;
+   final void Function(String sectionId, String title) onSectionTitleChanged;
+   final void Function(String sectionId, String instruction)
+   onSectionInstructionChanged;
+@@ -41,7 +44,6 @@ class WordPaperEditor extends StatefulWidget {
+   onInsertWordBlock;
+   final void Function(String sectionId, String questionId) onDeleteQuestion;
+   final VoidCallback onAddSection;
+-  final ValueChanged<String> onAddQuestion;
+   final Future<void> Function() onImportWord;
+   final Future<void> Function() onArrangeHeader;
+   final void Function(
+@@ -60,6 +62,7 @@ class WordPaperEditor extends StatefulWidget {
+     required this.onSchoolNameChanged,
+     required this.onInstructionChanged,
+     required this.onHeaderFieldChanged,
++    required this.onLogoChanged,
+     required this.onSectionTitleChanged,
+     required this.onSectionInstructionChanged,
+     required this.onEditQuestion,
+@@ -67,7 +70,6 @@ class WordPaperEditor extends StatefulWidget {
+     required this.onInsertWordBlock,
+     required this.onDeleteQuestion,
+     required this.onAddSection,
+-    required this.onAddQuestion,
+     required this.onImportWord,
+     required this.onArrangeHeader,
+     required this.onApplyPageLayout,
+@@ -131,6 +133,45 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+     });
+   }
+ 
++  PaperSection? _sectionById(String sectionId) {
++    return widget.paper.sections
++        .where((section) => section.id == sectionId)
++        .firstOrNull;
++  }
++
++  ({String sectionId, Question question})? get _activeQuestionTarget {
++    final questionId = _richTextSession.activeQuestionId;
++    if (questionId == null) return null;
++
++    if (_activeSectionId != null) {
++      final section = _sectionById(_activeSectionId!);
++      final question = section?.questions
++          .where((item) => item.id == questionId)
++          .firstOrNull;
++      if (section != null &&
++          question != null &&
++          !question.isWordContentBlock) {
++        return (sectionId: section.id, question: question);
++      }
++    }
++
++    for (final section in widget.paper.sections) {
++      final question = section.questions
++          .where((item) => item.id == questionId)
++          .firstOrNull;
++      if (question != null && !question.isWordContentBlock) {
++        return (sectionId: section.id, question: question);
++      }
++    }
++    return null;
++  }
++
++  void _restoreActiveEditorFocus() {
++    WidgetsBinding.instance.addPostFrameCallback((_) {
++      if (mounted) _richTextSession.restoreFocus();
++    });
++  }
++
+   void _insertParagraph() {
+     final sectionId = _targetSectionId;
+     if (sectionId == null) return;
+@@ -156,10 +197,27 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+   }
+ 
+   Future<void> _insertImage() async {
+-    final sectionId = _targetSectionId;
++    final activeTarget = _activeQuestionTarget;
++    final sectionId = activeTarget?.sectionId ?? _targetSectionId;
+     if (sectionId == null) return;
++
+     final attachment = await QuestionImageAttachmentSheet.show(context);
+     if (attachment == null || !mounted) return;
++
++    if (activeTarget != null) {
++      final updated = WordDirectAuthoringService.appendImage(
++        activeTarget.question,
++        attachment,
++      );
++      setState(() {
++        _activeSectionId = activeTarget.sectionId;
++        _pendingFocusQuestionId = activeTarget.question.id;
++      });
++      widget.onReplaceQuestion(activeTarget.sectionId, updated);
++      _restoreActiveEditorFocus();
++      return;
++    }
++
+     final block = WordContentBlockService.image(attachment);
+     setState(() {
+       _activeSectionId = sectionId;
+@@ -171,7 +229,20 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+   void _insertQuestion() {
+     final sectionId = _targetSectionId;
+     if (sectionId == null) return;
+-    widget.onAddQuestion(sectionId);
++    final section = _sectionById(sectionId);
++    if (section == null) return;
++    final question = WordDirectAuthoringService.blankAssessmentQuestion(
++      defaultMarks: section.defaultMarks,
++    );
++    setState(() {
++      _activeSectionId = sectionId;
++      _pendingFocusQuestionId = question.id;
++    });
++    widget.onInsertWordBlock(
++      sectionId,
++      question,
++      _targetInsertIndex(sectionId),
++    );
+   }
+ 
+   void _insertPageBreak() {
+@@ -205,19 +276,96 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+     widget.onReplaceQuestion(sectionId, question.copyWith(tableData: table));
+   }
+ 
+-  Future<void> _editBlockImage(String sectionId, Question question) async {
+-    final initial = question.attachments.firstOrNull;
++  Future<void> _editQuestionImage(
++    String sectionId,
++    Question question,
++    QuestionAttachment current,
++  ) async {
+     final attachment = await QuestionImageAttachmentSheet.show(
+       context,
+-      initial: initial,
++      initial: current,
+     );
+     if (attachment == null || !mounted) return;
+     widget.onReplaceQuestion(
+       sectionId,
+-      question.copyWith(attachments: [attachment]),
++      WordDirectAuthoringService.replaceImage(
++        question,
++        current.id,
++        attachment,
++      ),
+     );
++    _restoreActiveEditorFocus();
+   }
+ 
++  void _removeQuestionImage(
++    String sectionId,
++    Question question,
++    QuestionAttachment attachment,
++  ) {
++    widget.onReplaceQuestion(
++      sectionId,
++      WordDirectAuthoringService.removeImage(question, attachment.id),
++    );
++  }
++
++  Future<void> _editLogo(int logoIndex) async {
++    final existing = logoIndex < widget.paper.logos.length
++        ? widget.paper.logos[logoIndex].trim()
++        : '';
++    final action = await showModalBottomSheet<_LogoAction>(
++      context: context,
++      showDragHandle: true,
++      builder: (context) => SafeArea(
++        child: Padding(
++          padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
++          child: Column(
++            mainAxisSize: MainAxisSize.min,
++            crossAxisAlignment: CrossAxisAlignment.stretch,
++            children: [
++              Text(
++                'School logo',
++                style: Theme.of(context).textTheme.titleMedium?.copyWith(
++                  fontWeight: FontWeight.w800,
++                ),
++              ),
++              const SizedBox(height: 4),
++              Text(
++                existing.isEmpty
++                    ? 'Choose a PNG or JPG for this header logo slot.'
++                    : 'Replace the selected logo or remove it from this slot.',
++              ),
++              const SizedBox(height: 10),
++              ListTile(
++                leading: const Icon(Icons.photo_library_outlined),
++                title: Text(existing.isEmpty ? 'Choose logo' : 'Replace logo'),
++                onTap: () => Navigator.pop(context, _LogoAction.choose),
++              ),
++              if (existing.isNotEmpty)
++                ListTile(
++                  leading: const Icon(Icons.delete_outline_rounded),
++                  title: const Text('Remove logo'),
++                  onTap: () => Navigator.pop(context, _LogoAction.remove),
++                ),
++            ],
++          ),
++        ),
++      ),
++    );
++    if (action == null || !mounted) return;
++    if (action == _LogoAction.remove) {
++      widget.onLogoChanged(logoIndex, '');
++      return;
++    }
++
++    final result = await FilePicker.platform.pickFiles(
++      type: FileType.custom,
++      allowedExtensions: const ['png', 'jpg', 'jpeg'],
++      allowMultiple: false,
++    );
++    final path = result?.files.single.path;
++    if (path == null || path.trim().isEmpty || !mounted) return;
++    widget.onLogoChanged(logoIndex, path);
++  }
+ 
+   @override
+   Widget build(BuildContext context) {
+@@ -433,6 +581,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+           onSchoolNameChanged: widget.onSchoolNameChanged,
+           onTitleChanged: widget.onTitleChanged,
+           onHeaderFieldChanged: widget.onHeaderFieldChanged,
++          onLogoPressed: _editLogo,
+         ),
+       ],
+     );
+@@ -588,7 +737,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+               key: Key('word-add-question-${section.id}'),
+               onPressed: () {
+                 setState(() => _activeSectionId = section.id);
+-                widget.onAddQuestion(section.id);
++                _insertQuestion();
+               },
+               icon: const Icon(Icons.add_rounded, size: 18),
+               label: const Text('Question'),
+@@ -626,12 +775,17 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
+       onOpenFullEditor: () => widget.onEditQuestion(section.id, question),
+       onDelete: () => widget.onDeleteQuestion(section.id, question.id),
+       onEditTable: () => _editBlockTable(section.id, question),
+-      onEditImage: () => _editBlockImage(section.id, question),
++      onEditImage: (attachment) =>
++          _editQuestionImage(section.id, question, attachment),
++      onRemoveImage: (attachment) =>
++          _removeQuestionImage(section.id, question, attachment),
+     );
+   }
+ }
+ 
+ 
++enum _LogoAction { choose, remove }
++
+ class _WordEditorRibbon extends StatelessWidget {
+   final bool compact;
+   final WordRichTextSession session;
+@@ -922,7 +1076,7 @@ class _InsertActions extends StatelessWidget {
+     final imageAction = _RibbonAction(
+       key: const Key('word-ribbon-image'),
+       icon: Icons.image_outlined,
+-      label: 'Image',
++      label: 'Picture',
+       enabled: enabled,
+       onTap: onInsertImage,
+     );
+@@ -1125,8 +1279,8 @@ class _WordModeNotice extends StatelessWidget {
+             Expanded(
+               child: Text(
+                 compact
+-                    ? 'Word Mode: edit the page directly. Header, margins and template geometry now follow Preview.'
+-                    : 'WYSIWYG Word Mode uses the same template header, page margins, border, question density and two-column flow as Preview. Arrange Header gives safe drag/resize freedom without turning questions into fragile absolute-positioned objects.',
++                    ? 'Word Mode: type questions directly on the page. Math, Geometry and Pictures use the active question; tap a logo slot to choose or replace it.'
++                    : 'WYSIWYG Word Mode edits the canonical paper directly. Add Question creates an inline question instead of opening the full-screen composer; Math, Geometry and Pictures use the active question. Tap a header logo slot to choose, replace or remove its image.',
+                 style: theme.textTheme.bodySmall?.copyWith(
+                   color: theme.colorScheme.onPrimaryContainer,
+                 ),
+@@ -1152,7 +1306,8 @@ class _WordQuestionBlock extends StatelessWidget {
+   final VoidCallback onOpenFullEditor;
+   final VoidCallback onDelete;
+   final VoidCallback onEditTable;
+-  final VoidCallback onEditImage;
++  final ValueChanged<QuestionAttachment> onEditImage;
++  final ValueChanged<QuestionAttachment> onRemoveImage;
+ 
+   const _WordQuestionBlock({
+     super.key,
+@@ -1169,6 +1324,7 @@ class _WordQuestionBlock extends StatelessWidget {
+     required this.onDelete,
+     required this.onEditTable,
+     required this.onEditImage,
++    required this.onRemoveImage,
+   });
+ 
+   static String _alphaLabel(int index) {
+@@ -1324,15 +1480,10 @@ class _WordQuestionBlock extends StatelessWidget {
+                     if (question.attachments.isNotEmpty) ...[
+                       const SizedBox(height: 8),
+                       for (final attachment in question.attachments)
+-                        _WordAttachmentPreview(attachment: attachment),
+-                      if (isWordBlock)
+-                        Align(
+-                          alignment: Alignment.centerLeft,
+-                          child: TextButton.icon(
+-                            onPressed: onEditImage,
+-                            icon: const Icon(Icons.edit_outlined, size: 16),
+-                            label: const Text('Edit image'),
+-                          ),
++                        _WordAttachmentPreview(
++                          attachment: attachment,
++                          onEdit: () => onEditImage(attachment),
++                          onRemove: () => onRemoveImage(attachment),
+                         ),
+                     ],
+                     if (question.subQuestions.isNotEmpty) ...[
+@@ -1712,8 +1863,14 @@ class _TableCellText extends StatelessWidget {
+ 
+ class _WordAttachmentPreview extends StatelessWidget {
+   final QuestionAttachment attachment;
++  final VoidCallback onEdit;
++  final VoidCallback onRemove;
+ 
+-  const _WordAttachmentPreview({required this.attachment});
++  const _WordAttachmentPreview({
++    required this.attachment,
++    required this.onEdit,
++    required this.onRemove,
++  });
+ 
+   @override
+   Widget build(BuildContext context) {
+@@ -1760,6 +1917,27 @@ class _WordAttachmentPreview extends StatelessWidget {
+                 style: Theme.of(context).textTheme.bodySmall,
+               ),
+             ),
++          if (attachment.kind == QuestionAttachmentKind.image)
++            Align(
++              alignment: Alignment.centerLeft,
++              child: Wrap(
++                spacing: 4,
++                children: [
++                  TextButton.icon(
++                    key: ValueKey('word-image-replace-${attachment.id}'),
++                    onPressed: onEdit,
++                    icon: const Icon(Icons.swap_horiz_rounded, size: 16),
++                    label: const Text('Replace'),
++                  ),
++                  TextButton.icon(
++                    key: ValueKey('word-image-remove-${attachment.id}'),
++                    onPressed: onRemove,
++                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
++                    label: const Text('Remove'),
++                  ),
++                ],
++              ),
++            ),
+         ],
+       ),
+     );
+diff --git a/lib/features/paper_composer/presentation/widgets/word_rich_text_editor.dart b/lib/features/paper_composer/presentation/widgets/word_rich_text_editor.dart
+index 818032f..3a66948 100644
+--- a/lib/features/paper_composer/presentation/widgets/word_rich_text_editor.dart
++++ b/lib/features/paper_composer/presentation/widgets/word_rich_text_editor.dart
+@@ -19,6 +19,7 @@ class WordRichTextSession extends ChangeNotifier {
+   QuillController? _controller;
+   Future<void> Function()? _insertMath;
+   Future<void> Function()? _insertGeometry;
++  VoidCallback? _requestFocus;
+   String? _questionId;
+ 
+   QuillController? get activeController => _controller;
+@@ -30,12 +31,14 @@ class WordRichTextSession extends ChangeNotifier {
+     required QuillController controller,
+     required Future<void> Function() insertMath,
+     required Future<void> Function() insertGeometry,
++    required VoidCallback requestFocus,
+   }) {
+     if (identical(_controller, controller) && _questionId == questionId) return;
+     _controller = controller;
+     _questionId = questionId;
+     _insertMath = insertMath;
+     _insertGeometry = insertGeometry;
++    _requestFocus = requestFocus;
+     notifyListeners();
+   }
+ 
+@@ -45,6 +48,7 @@ class WordRichTextSession extends ChangeNotifier {
+     _questionId = null;
+     _insertMath = null;
+     _insertGeometry = null;
++    _requestFocus = null;
+     notifyListeners();
+   }
+ 
+@@ -67,6 +71,10 @@ class WordRichTextSession extends ChangeNotifier {
+     final callback = _insertGeometry;
+     if (callback != null) await callback();
+   }
++
++  void restoreFocus() {
++    _requestFocus?.call();
++  }
+ }
+ 
+ /// Inline rich-text editor used by Word Mode.
+@@ -187,6 +195,9 @@ class _WordRichTextEditorState extends ConsumerState<WordRichTextEditor> {
+         controller: _controller,
+         insertMath: _insertFormula,
+         insertGeometry: _insertGeometry,
++        requestFocus: () {
++          if (mounted) _focusNode.requestFocus();
++        },
+       );
+     }
+     if (mounted) setState(() {});
+diff --git a/lib/features/pdf/services/word_export_service.dart b/lib/features/pdf/services/word_export_service.dart
+index 5fc8915..2b5112a 100644
+--- a/lib/features/pdf/services/word_export_service.dart
++++ b/lib/features/pdf/services/word_export_service.dart
+@@ -138,9 +138,9 @@ class WordExportService {
+     final images = <_ImagePart>[];
+     var relationshipIndex = 1;
+ 
+-    for (final logoPath in paper.logos.where(
+-      (path) => path.trim().isNotEmpty,
+-    )) {
++    for (var logoIndex = 0; logoIndex < paper.logos.length; logoIndex++) {
++      final logoPath = paper.logos[logoIndex].trim();
++      if (logoPath.isEmpty) continue;
+       final file = File(logoPath);
+       if (!await file.exists()) continue;
+ 
+@@ -155,6 +155,7 @@ class WordExportService {
+           bytes: await file.readAsBytes(),
+           sourcePath: logoPath,
+           headerLogo: true,
++          headerLogoIndex: logoIndex,
+         ),
+       );
+       relationshipIndex++;
+@@ -259,8 +260,13 @@ class WordExportService {
+   ) {
+     final layout = PaperHeaderLayoutFactory.resolveForPaper(template, paper);
+     final buffer = StringBuffer();
+-    final logoImages = images.where((image) => image.headerLogo).toList();
+-    var imageIndex = 0;
++    final logoSlotIndexes = <String, int>{};
++    var nextLogoSlotIndex = 0;
++    for (final element in layout.elements) {
++      if (element.type == ElementType.logo) {
++        logoSlotIndexes[element.id] = nextLogoSlotIndex++;
++      }
++    }
+ 
+     final elements = [...layout.elements]
+       ..sort((a, b) {
+@@ -279,11 +285,12 @@ class WordExportService {
+ 
+       switch (element.type) {
+         case ElementType.logo:
+-          if (imageIndex < logoImages.length) {
+-            buffer.write(
+-              _imageParagraph(logoImages[imageIndex], alignment: alignment),
+-            );
+-            imageIndex++;
++          final logoSlotIndex = logoSlotIndexes[element.id];
++          final logoImage = logoSlotIndex == null
++              ? null
++              : _headerLogoImageForIndex(images, logoSlotIndex);
++          if (logoImage != null) {
++            buffer.write(_imageParagraph(logoImage, alignment: alignment));
+           }
+           break;
+         case ElementType.schoolName:
+@@ -1282,6 +1289,16 @@ class WordExportService {
+     }
+   }
+ 
++  static _ImagePart? _headerLogoImageForIndex(
++    List<_ImagePart> images,
++    int logoIndex,
++  ) {
++    for (final image in images) {
++      if (image.headerLogo && image.headerLogoIndex == logoIndex) return image;
++    }
++    return null;
++  }
++
+   static _ImagePart? _imageForSourcePath(
+     List<_ImagePart> images,
+     String sourcePath,
+@@ -1845,6 +1862,7 @@ class _ImagePart {
+   final List<int> bytes;
+   final String sourcePath;
+   final bool headerLogo;
++  final int? headerLogoIndex;
+ 
+   const _ImagePart({
+     required this.relationshipId,
+@@ -1853,6 +1871,7 @@ class _ImagePart {
+     required this.bytes,
+     required this.sourcePath,
+     required this.headerLogo,
++    this.headerLogoIndex,
+   });
+ }
+ 
+diff --git a/test/features/paper_composer/word_direct_authoring_phase4a_test.dart b/test/features/paper_composer/word_direct_authoring_phase4a_test.dart
+new file mode 100644
+index 0000000..dae9f5c
+--- /dev/null
++++ b/test/features/paper_composer/word_direct_authoring_phase4a_test.dart
+@@ -0,0 +1,259 @@
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/presentation/screens/create_paper_screen.dart';
++import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
++import 'package:edusheet/features/paper_composer/application/word_direct_authoring_service.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart';
++import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
++import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++import 'package:flutter_localizations/flutter_localizations.dart';
++import 'package:flutter_quill/flutter_quill.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  const pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
++  late Directory tempDir;
++
++  setUp(() async {
++    tempDir = await Directory.systemTemp.createTemp('phase4a_direct_word_');
++    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
++        .setMockMethodCallHandler(pathProviderChannel, (call) async {
++          if (call.method == 'getApplicationDocumentsDirectory') {
++            return tempDir.path;
++          }
++          return null;
++        });
++  });
++
++  tearDown(() async {
++    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
++        .setMockMethodCallHandler(pathProviderChannel, null);
++    if (await tempDir.exists()) {
++      await tempDir.delete(recursive: true);
++    }
++  });
++
++  test('direct Word question uses section marks and remains canonical', () {
++    final question = WordDirectAuthoringService.blankAssessmentQuestion(
++      defaultMarks: 4,
++    );
++
++    expect(question.isWordContentBlock, isFalse);
++    expect(question.type, QuestionType.descriptive);
++    expect(question.marks, 4);
++    expect(question.text, isEmpty);
++
++    const first = QuestionAttachment(
++      id: 'a1',
++      kind: QuestionAttachmentKind.image,
++      path: 'one.png',
++      alternativeText: 'one',
++    );
++    const replacement = QuestionAttachment(
++      id: 'replacement-id',
++      kind: QuestionAttachmentKind.image,
++      path: 'two.png',
++      alternativeText: 'two',
++    );
++
++    final withImage = WordDirectAuthoringService.appendImage(question, first);
++    expect(withImage.attachments.single.path, 'one.png');
++
++    final replaced = WordDirectAuthoringService.replaceImage(
++      withImage,
++      first.id,
++      replacement,
++    );
++    expect(replaced.attachments.single.path, 'two.png');
++    expect(replaced.attachments.single.id, first.id);
++
++    final removed = WordDirectAuthoringService.removeImage(
++      replaced,
++      first.id,
++    );
++    expect(removed.attachments, isEmpty);
++  });
++
++  testWidgets('Word Question action creates the question on the page directly', (
++    tester,
++  ) async {
++    tester.view.physicalSize = const Size(430, 900);
++    tester.view.devicePixelRatio = 1;
++    addTearDown(tester.view.resetPhysicalSize);
++    addTearDown(tester.view.resetDevicePixelRatio);
++
++    await tester.pumpWidget(const ProviderScope(child: _TestApp()));
++    await tester.pumpAndSettle();
++
++    await tester.tap(find.text('Word'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.byKey(const Key('word-mode-add-section')));
++    await tester.pumpAndSettle();
++
++    expect(find.byKey(const Key('word-ribbon-question')), findsOneWidget);
++    await tester.tap(find.byKey(const Key('word-ribbon-question')));
++    await tester.pumpAndSettle();
++
++    // Phase 4A must stay on the WYSIWYG page instead of navigating to the
++    // full-screen "New question" composer.
++    expect(find.byKey(const Key('word-paper-document')), findsOneWidget);
++    expect(find.byKey(const Key('paper-editor-mode-switch')), findsOneWidget);
++    expect(find.text('New question'), findsNothing);
++    expect(find.byType(QuillEditor), findsOneWidget);
++
++    final editor = tester.widget<QuillEditor>(find.byType(QuillEditor));
++    editor.controller.replaceText(0, 0, 'Solve x + 2 = 5', null);
++    await tester.pump();
++
++    await tester.tap(find.text('Smart'));
++    await tester.pumpAndSettle();
++    expect(find.text('1 question · 1 mark'), findsOneWidget);
++
++    await tester.tap(find.text('Word'));
++    await tester.pumpAndSettle();
++    final restored = tester.widget<QuillEditor>(find.byType(QuillEditor));
++    expect(
++      restored.controller.document.toPlainText(),
++      contains('Solve x + 2 = 5'),
++    );
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('shared header canvas renders the selected logo file', (
++    tester,
++  ) async {
++    final logoFile = File('${tempDir.path}${Platform.pathSeparator}logo.png');
++    await logoFile.writeAsBytes(
++      base64Decode(
++        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
++      ),
++    );
++    final paper = Paper(
++      id: 'p-logo',
++      title: 'Exam',
++      schoolName: 'School',
++      logos: [logoFile.path],
++      createdAt: DateTime.utc(2026, 9, 1),
++    );
++    final template = PaperTemplate(
++      id: 'custom-logo-preview',
++      name: 'Custom Logo Preview',
++      type: TemplateType.school,
++      headerLayout: HeaderLayout.custom,
++      customLayout: CustomLayout(
++        canvasHeight: 90,
++        elements: [
++          TemplateElement(
++            id: 'logo',
++            type: ElementType.logo,
++            x: 0,
++            y: 0,
++            width: 60,
++            height: 60,
++          ),
++        ],
++      ),
++    );
++
++    await tester.pumpWidget(
++      MaterialApp(
++        home: Scaffold(
++          body: SizedBox(
++            width: 600,
++            child: PaperHeaderLayoutCanvas(
++              template: template,
++              paper: paper,
++            ),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    expect(find.byType(Image), findsOneWidget);
++    expect(find.text('Add logo'), findsNothing);
++    expect(tester.takeException(), isNull);
++  });
++
++  testWidgets('editable header logo slot is a direct choose or replace target', (
++    tester,
++  ) async {
++    final paper = Paper(
++      id: 'p1',
++      title: 'Exam',
++      schoolName: 'School',
++      createdAt: DateTime.utc(2026, 9, 1),
++    );
++    final template = PaperTemplate(
++      id: 'custom-logo',
++      name: 'Custom Logo',
++      type: TemplateType.school,
++      headerLayout: HeaderLayout.custom,
++      customLayout: CustomLayout(
++        canvasHeight: 90,
++        elements: [
++          TemplateElement(
++            id: 'logo',
++            type: ElementType.logo,
++            x: 0,
++            y: 0,
++            width: 60,
++            height: 60,
++          ),
++        ],
++      ),
++    );
++    int? tappedLogoIndex;
++
++    await tester.pumpWidget(
++      MaterialApp(
++        home: Scaffold(
++          body: SizedBox(
++            width: 600,
++            child: PaperHeaderLayoutCanvas(
++              template: template,
++              paper: paper,
++              editable: true,
++              onLogoPressed: (index) => tappedLogoIndex = index,
++            ),
++          ),
++        ),
++      ),
++    );
++    await tester.pumpAndSettle();
++
++    final logo = find.byKey(const ValueKey('word-header-logo-0'));
++    expect(logo, findsOneWidget);
++    expect(find.text('Add logo'), findsOneWidget);
++    await tester.tap(logo);
++    await tester.pump();
++    expect(tappedLogoIndex, 0);
++    expect(tester.takeException(), isNull);
++  });
++}
++
++class _TestApp extends StatelessWidget {
++  const _TestApp();
++
++  @override
++  Widget build(BuildContext context) {
++    return MaterialApp(
++      localizationsDelegates: const [
++        GlobalMaterialLocalizations.delegate,
++        GlobalWidgetsLocalizations.delegate,
++        GlobalCupertinoLocalizations.delegate,
++        FlutterQuillLocalizations.delegate,
++      ],
++      supportedLocales: const [Locale('en', 'US')],
++      builder: (context, child) => MathKeyboardWrapper(child: child!),
++      home: const CreatePaperScreen(),
++    );
++  }
++}
+diff --git a/test/features/pdf/office_export_services_test.dart b/test/features/pdf/office_export_services_test.dart
+index 42f01f7..b1e2876 100644
+--- a/test/features/pdf/office_export_services_test.dart
++++ b/test/features/pdf/office_export_services_test.dart
+@@ -9,6 +9,7 @@ import 'package:edusheet/features/paper_composer/domain/question_advanced_conten
+ import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
+ import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+ import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
++import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
+ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+ import 'package:edusheet/features/pdf/services/export_file_service.dart';
+ import 'package:edusheet/features/pdf/services/pdf_service.dart';
+@@ -106,6 +107,65 @@ void main() {
+     );
+   });
+ 
++  test('Word export preserves sparse header logo slot ordering', () async {
++    final logo = File('${tempDir.path}${Platform.pathSeparator}logo.png');
++    await logo.writeAsBytes(
++      base64Decode(
++        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
++      ),
++    );
++    final paper = _samplePaper().copyWith(logos: ['', logo.path]);
++    final template = PaperTemplate(
++      id: 'sparse-logo-layout',
++      name: 'Sparse logo layout',
++      type: TemplateType.school,
++      headerLayout: HeaderLayout.custom,
++      customLayout: CustomLayout(
++        canvasHeight: 80,
++        elements: [
++          // Slot indexes follow canonical template element order, not the
++          // x/y sorting Word uses to serialize the visual header. Slot 0 is
++          // intentionally on the right and blank; slot 1 is on the left.
++          TemplateElement(
++            id: 'logo-right-slot-0',
++            type: ElementType.logo,
++            x: 170,
++            y: 0,
++            width: 40,
++            height: 40,
++          ),
++          TemplateElement(
++            id: 'between',
++            type: ElementType.staticText,
++            x: 50,
++            y: 0,
++            width: 100,
++            height: 20,
++            content: 'BETWEEN-LOGOS',
++          ),
++          TemplateElement(
++            id: 'logo-left-slot-1',
++            type: ElementType.logo,
++            x: 0,
++            y: 0,
++            width: 40,
++            height: 40,
++          ),
++        ],
++      ),
++    );
++
++    final output = await WordExportService.export(paper, template);
++    final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
++    final documentXml = _archiveText(archive, 'word/document.xml');
++    final markerIndex = documentXml.indexOf('BETWEEN-LOGOS');
++    final imageIndex = documentXml.indexOf('<a:blip');
++
++    expect(markerIndex, greaterThanOrEqualTo(0));
++    expect(imageIndex, greaterThanOrEqualTo(0));
++    expect(imageIndex, lessThan(markerIndex));
++  });
++
+   test('Word export embeds an exact EduSheet Smart Paper round-trip envelope', () async {
+     final paper = _samplePaper();
+     final output = await WordExportService.export(paper, _sampleTemplate());
+diff --git a/test/release/professional_formatting_phase4a_gate_test.dart b/test/release/professional_formatting_phase4a_gate_test.dart
+new file mode 100644
+index 0000000..79c054b
+--- /dev/null
++++ b/test/release/professional_formatting_phase4a_gate_test.dart
+@@ -0,0 +1,55 @@
++import 'package:edusheet/features/editor/domain/models/paper_model.dart';
++import 'package:edusheet/features/editor/services/paper_structure_service.dart';
++import 'package:edusheet/features/paper_composer/application/word_direct_authoring_service.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('Phase 4A direct Word question stays an assessment question', () {
++    final question = WordDirectAuthoringService.blankAssessmentQuestion(
++      defaultMarks: 3,
++    );
++    final section = PaperSection(
++      id: 's1',
++      title: 'Section A',
++      questions: [question],
++    );
++
++    expect(question.isWordContentBlock, isFalse);
++    expect(question.marks, 3);
++    expect(PaperStructureService.assessmentQuestionCount(section), 1);
++    expect(section.totalMarks, 3);
++  });
++
++  test('Phase 4A question pictures and logos survive canonical JSON round-trip', () {
++    const attachment = QuestionAttachment(
++      id: 'image-1',
++      kind: QuestionAttachmentKind.image,
++      path: r'C:\paper\diagram.png',
++      alternativeText: 'A labelled diagram',
++      caption: 'Figure 1',
++      mimeType: 'image/png',
++    );
++    final question = WordDirectAuthoringService.appendImage(
++      WordDirectAuthoringService.blankAssessmentQuestion(),
++      attachment,
++    );
++    final paper = Paper(
++      id: 'p1',
++      title: 'Exam',
++      schoolName: 'School',
++      logos: const [r'C:\paper\school-logo.png'],
++      sections: [
++        PaperSection(id: 's1', title: 'Section A', questions: [question]),
++      ],
++      createdAt: DateTime.utc(2026, 9, 1),
++    );
++
++    final restored = Paper.fromJson(paper.toJson());
++
++    expect(restored.logos.single, r'C:\paper\school-logo.png');
++    expect(restored.sections.single.questions.single.attachments.single.path,
++        r'C:\paper\diagram.png');
++    expect(restored.sections.single.questions.single.attachments.single.caption,
++        'Figure 1');
++  });
++}

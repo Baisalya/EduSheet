@@ -5,10 +5,18 @@ import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_mark.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_point.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_shape.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
 import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
+import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
+import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
 import 'package:edusheet/features/pdf/application/question_paper_export_service.dart';
+import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/export_file_service.dart';
 import 'package:edusheet/features/pdf/services/pdf_service.dart';
@@ -104,6 +112,65 @@ void main() {
       _archiveText(archive, 'word/document.xml'),
       contains('Algebra Test'),
     );
+  });
+
+  test('Word export preserves sparse header logo slot ordering', () async {
+    final logo = File('${tempDir.path}${Platform.pathSeparator}logo.png');
+    await logo.writeAsBytes(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      ),
+    );
+    final paper = _samplePaper().copyWith(logos: ['', logo.path]);
+    final template = PaperTemplate(
+      id: 'sparse-logo-layout',
+      name: 'Sparse logo layout',
+      type: TemplateType.school,
+      headerLayout: HeaderLayout.custom,
+      customLayout: CustomLayout(
+        canvasHeight: 80,
+        elements: [
+          // Slot indexes follow canonical template element order, not the
+          // x/y sorting Word uses to serialize the visual header. Slot 0 is
+          // intentionally on the right and blank; slot 1 is on the left.
+          TemplateElement(
+            id: 'logo-right-slot-0',
+            type: ElementType.logo,
+            x: 170,
+            y: 0,
+            width: 40,
+            height: 40,
+          ),
+          TemplateElement(
+            id: 'between',
+            type: ElementType.staticText,
+            x: 50,
+            y: 0,
+            width: 100,
+            height: 20,
+            content: 'BETWEEN-LOGOS',
+          ),
+          TemplateElement(
+            id: 'logo-left-slot-1',
+            type: ElementType.logo,
+            x: 0,
+            y: 0,
+            width: 40,
+            height: 40,
+          ),
+        ],
+      ),
+    );
+
+    final output = await WordExportService.export(paper, template);
+    final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
+    final documentXml = _archiveText(archive, 'word/document.xml');
+    final markerIndex = documentXml.indexOf('BETWEEN-LOGOS');
+    final imageIndex = documentXml.indexOf('<a:blip');
+
+    expect(markerIndex, greaterThanOrEqualTo(0));
+    expect(imageIndex, greaterThanOrEqualTo(0));
+    expect(imageIndex, lessThan(markerIndex));
   });
 
   test(
@@ -520,6 +587,177 @@ void main() {
       expect(questionSlideXml, contains('3'));
     },
   );
+  test(
+    'Phase 4B Word export preserves editable shapes, wrapping and layers',
+    () async {
+      var question = _samplePaper().sections.single.questions.single;
+      question = WordShapeService.append(
+        question,
+        WordShapeService.create(WordShapeKind.textBox).copyWith(
+          text: 'Important note',
+          wrapMode: WordTextWrapMode.squareLeft,
+          zIndex: 4,
+        ),
+      );
+      question = WordShapeService.append(
+        question,
+        WordShapeService.create(
+          WordShapeKind.arrow,
+        ).copyWith(wrapMode: WordTextWrapMode.inFrontOfText, zIndex: 8),
+      );
+      question = WordShapeService.append(
+        question,
+        WordShapeService.create(
+          WordShapeKind.ellipse,
+        ).copyWith(wrapMode: WordTextWrapMode.behindText, zIndex: -2),
+      );
+      final paper = _samplePaper().copyWith(
+        sections: [
+          _samplePaper().sections.single.copyWith(questions: [question]),
+        ],
+      );
+
+      final output = await WordExportService.export(paper, _sampleTemplate());
+      final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
+      final documentXml = _archiveText(archive, 'word/document.xml');
+
+      expect(documentXml, contains('xmlns:v="urn:schemas-microsoft-com:vml"'));
+      expect(documentXml, contains('edusheet_shape_'));
+      expect(documentXml, contains('<v:textbox'));
+      expect(documentXml, contains('Important note'));
+      expect(documentXml, contains('mso-wrap-style:square'));
+      expect(documentXml, contains('z-index:-251658240'));
+      expect(documentXml, contains('z-index:251658248'));
+      expect(documentXml, contains('endarrow="block"'));
+    },
+  );
+
+  test('Phase 4B PDF export accepts wrapped and layered shapes', () async {
+    var question = _samplePaper().sections.single.questions.single;
+    for (final entry in <(WordShapeKind, WordTextWrapMode)>[
+      (WordShapeKind.rectangle, WordTextWrapMode.squareLeft),
+      (WordShapeKind.roundedRectangle, WordTextWrapMode.squareRight),
+      (WordShapeKind.ellipse, WordTextWrapMode.topAndBottom),
+      (WordShapeKind.arrow, WordTextWrapMode.inFrontOfText),
+      (WordShapeKind.callout, WordTextWrapMode.behindText),
+    ]) {
+      question = WordShapeService.append(
+        question,
+        WordShapeService.create(entry.$1).copyWith(
+          wrapMode: entry.$2,
+          text: entry.$1 == WordShapeKind.callout ? 'Remember' : '',
+        ),
+      );
+    }
+    final paper = _samplePaper().copyWith(
+      sections: [
+        _samplePaper().sections.single.copyWith(questions: [question]),
+      ],
+    );
+
+    final output = await QuestionPaperExportService.exportPdf(
+      paper: paper,
+      availableTemplates: [_sampleTemplate()],
+    );
+    expect(await output.exists(), isTrue);
+    expect(await output.length(), greaterThan(0));
+  });
+
+  test(
+    'Phase 4C Word export preserves vector geometry placement metadata',
+    () async {
+      final diagram = _phase4cGeometryDiagram();
+      final layout = GeometryEmbedLayout(
+        id: diagram.id,
+        diagram: diagram,
+        height: 240,
+        widthFactor: 0.65,
+        marginTop: 6,
+        marginBottom: 18,
+        wrapMode: GeometryEmbedWrapMode.squareLeft,
+      );
+      final base = _samplePaper();
+      final question = base.sections.single.questions.single.copyWith(
+        text: jsonEncode([
+          {'insert': 'Use the diagram.\n'},
+          {
+            'insert': {'geometry': layout.encode()},
+          },
+          {'insert': '\nState the result.\n'},
+        ]),
+      );
+      final paper = base.copyWith(
+        sections: [
+          base.sections.single.copyWith(questions: [question]),
+        ],
+      );
+
+      final output = await WordExportService.export(paper, _sampleTemplate());
+      final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
+      final documentXml = _archiveText(archive, 'word/document.xml');
+
+      expect(documentXml, contains('edusheet_geometry_${diagram.id}'));
+      expect(documentXml, contains('<v:group'));
+      expect(documentXml, contains('mso-wrap-style:square'));
+      expect(documentXml, contains('float:left'));
+      expect(documentXml, contains('endarrow="block"'));
+      expect(documentXml, contains('>A<'));
+      expect(documentXml, isNot(contains('[diagram]')));
+
+      final restored = await SmartPaperDocxRoundTripService.importFromFile(
+        output,
+      );
+      expect(restored.canRestoreExactly, isTrue);
+      expect(
+        geometryEmbedsFromQuillText(
+          restored.paper!.sections.single.questions.single.text,
+        ).single.diagram?.toJson(),
+        diagram.toJson(),
+      );
+    },
+  );
+
+  test(
+    'Phase 4C PDF export renders canonical geometry instead of placeholder',
+    () async {
+      final diagram = _phase4cGeometryDiagram();
+      final base = _samplePaper();
+      final question = base.sections.single.questions.single.copyWith(
+        text: jsonEncode([
+          {'insert': 'Use the construction.\n'},
+          {
+            'insert': {
+              'geometry': GeometryEmbedLayout(
+                id: diagram.id,
+                diagram: diagram,
+                height: 220,
+                widthFactor: 0.75,
+                wrapMode: GeometryEmbedWrapMode.topAndBottom,
+              ).encode(),
+            },
+          },
+          {'insert': '\nAnswer below.\n'},
+        ]),
+      );
+      final paper = base.copyWith(
+        sections: [
+          base.sections.single.copyWith(questions: [question]),
+        ],
+      );
+
+      final output = await QuestionPaperExportService.exportPdf(
+        paper: paper,
+        availableTemplates: [_sampleTemplate()],
+      );
+      expect(await output.exists(), isTrue);
+      expect(await output.length(), greaterThan(0));
+      final bytes = await output.readAsBytes();
+      expect(
+        utf8.decode(bytes, allowMalformed: true),
+        isNot(contains('[diagram]')),
+      );
+    },
+  );
 }
 
 Paper _advancedPaper() {
@@ -574,6 +812,53 @@ Paper _advancedPaper() {
             metadata: advanced.writeToMetadata(const {}),
           ),
         ],
+      ),
+    ],
+  );
+}
+
+GeometryDiagram _phase4cGeometryDiagram() {
+  return const GeometryDiagram(
+    id: 'phase4c-export-geometry',
+    points: [
+      GeometryPoint(id: 'a', label: 'A', position: Offset(100, 120)),
+      GeometryPoint(id: 'b', label: 'B', position: Offset(190, 120)),
+      GeometryPoint(id: 'c', label: 'C', position: Offset(100, 40)),
+      GeometryPoint(id: 'top', label: '', position: Offset(260, 30)),
+      GeometryPoint(id: 'bottom', label: '', position: Offset(260, 190)),
+      GeometryPoint(id: 'left', label: '', position: Offset(190, 110)),
+      GeometryPoint(id: 'right', label: '', position: Offset(330, 110)),
+      GeometryPoint(id: 'n1', label: '', position: Offset(30, 210)),
+      GeometryPoint(id: 'n2', label: '', position: Offset(330, 210)),
+    ],
+    shapes: [
+      GeometryShape(
+        id: 'arrow',
+        type: GeometryShapeType.arrow,
+        pointIds: ['a', 'b'],
+      ),
+      GeometryShape(
+        id: 'line',
+        type: GeometryShapeType.line,
+        pointIds: ['a', 'c'],
+      ),
+      GeometryShape(
+        id: 'axes',
+        type: GeometryShapeType.coordinateAxes,
+        pointIds: ['top', 'bottom', 'left', 'right'],
+      ),
+      GeometryShape(
+        id: 'number-line',
+        type: GeometryShapeType.numberLine,
+        pointIds: ['n1', 'n2'],
+      ),
+    ],
+    marks: [
+      GeometryMark(
+        id: 'angle',
+        type: GeometryMarkType.angleArc,
+        pointIds: ['a', 'b', 'c'],
+        position: Offset(100, 120),
       ),
     ],
   );

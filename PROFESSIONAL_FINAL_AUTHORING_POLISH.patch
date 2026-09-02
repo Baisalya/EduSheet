@@ -1,0 +1,809 @@
+diff -ruN /mnt/data/edusheet_baseline_compare/PROFESSIONAL_FINAL_AUTHORING_POLISH.md ./PROFESSIONAL_FINAL_AUTHORING_POLISH.md
+--- /mnt/data/edusheet_baseline_compare/PROFESSIONAL_FINAL_AUTHORING_POLISH.md	1970-01-01 00:00:00.000000000 +0000
++++ ./PROFESSIONAL_FINAL_AUTHORING_POLISH.md	2026-09-01 20:58:55.676282894 +0000
+@@ -0,0 +1,23 @@
++# EduSheet — Professional Final Authoring Polish
++
++Baseline: **Professional Formatting Phase 4C QA Fix 2**.
++
++## Implemented
++
++- Word Mode now exposes contextual **Home** formatting when a teacher focuses a section title or instruction.
++  - Section heading: left / center / right alignment, bold, small / normal / large heading size, top divider, bottom divider.
++  - Section instruction: left / center / right alignment.
++  - General paper instruction: left / center / right alignment.
++- Section formatting updates use a generic `replaceSectionObject` boundary instead of introducing a callback per formatting property.
++- Header logo UX now supports **Choose / Replace / Remove**, plus **Add or manage logo slots** which opens the free-form header arranger for multiple logos.
++- Smart Mode question cards render rich question content through the same Quill preview path used by Word Mode, including math and geometry embeds.
++- Smart Mode outline derives its label from decoded rich content instead of leaking raw Quill/custom JSON.
++- Autosave no longer treats the untouched default `New Paper` as a meaningful draft.
++- Pending debounced autosaves are discarded on reset/document switch so an abandoned draft cannot appear later as a ghost paper.
++- Existing saved papers remain autosavable even if the teacher removes all assessment content, so intentional clearing of a real document still persists.
++- Added an autosave regression test for pending-save discard behavior.
++- Added `tool/run_final_authoring_polish_gate.ps1` covering format, analyze, focused regressions, release gates and full tests.
++
++## Validation note
++
++This package was assembled in an environment without a Flutter/Dart SDK, so the included PowerShell gate is the authoritative local validation step. Run it from the project root on the Windows Flutter development machine before replacing the production baseline.
+diff -ruN /mnt/data/edusheet_baseline_compare/PROFESSIONAL_FINAL_AUTHORING_POLISH_CHANGED_FILES.txt ./PROFESSIONAL_FINAL_AUTHORING_POLISH_CHANGED_FILES.txt
+--- /mnt/data/edusheet_baseline_compare/PROFESSIONAL_FINAL_AUTHORING_POLISH_CHANGED_FILES.txt	1970-01-01 00:00:00.000000000 +0000
++++ ./PROFESSIONAL_FINAL_AUTHORING_POLISH_CHANGED_FILES.txt	2026-09-01 20:59:16.470187682 +0000
+@@ -0,0 +1,10 @@
++lib/features/editor/presentation/providers/editor_provider.dart
++lib/features/editor/services/autosave_coordinator.dart
++lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
++lib/features/paper_composer/presentation/widgets/paper_outline_panel.dart
++lib/features/paper_composer/presentation/widgets/question_card.dart
++lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
++test/features/editor/autosave_coordinator_test.dart
++tool/run_final_authoring_polish_gate.ps1
++PROFESSIONAL_FINAL_AUTHORING_POLISH.md
++PROFESSIONAL_FINAL_AUTHORING_POLISH_CHANGED_FILES.txt
+diff -ruN /mnt/data/edusheet_baseline_compare/lib/features/editor/presentation/providers/editor_provider.dart ./lib/features/editor/presentation/providers/editor_provider.dart
+--- /mnt/data/edusheet_baseline_compare/lib/features/editor/presentation/providers/editor_provider.dart	2026-09-01 08:55:36.000000000 +0000
++++ ./lib/features/editor/presentation/providers/editor_provider.dart	2026-09-01 20:57:17.266020445 +0000
+@@ -68,12 +68,16 @@
+   final List<Paper> _undoStack = [];
+   final List<Paper> _redoStack = [];
+   bool _historyNavigation = false;
++  final Set<String> _persistedDocumentIds = <String>{};
+ 
+   @override
+   Paper build() {
+     final repository = ref.read(paperRepositoryProvider);
+     _autosave = AutosaveCoordinator<Paper>(
+-      save: repository.savePaper,
++      save: (paper) async {
++        await repository.savePaper(paper);
++        _persistedDocumentIds.add(paper.id);
++      },
+       onStatus: (status) {
+         ref.read(editorSaveStatusProvider.notifier).state = status;
+         if (status.phase == AutosavePhase.saved) {
+@@ -90,7 +94,12 @@
+           if (_undoStack.length > _historyLimit) _undoStack.removeAt(0);
+           _redoStack.clear();
+         }
+-        _autosave.schedule(next);
++        if (_shouldAutosave(next)) {
++          _autosave.schedule(next);
++        } else {
++          ref.read(editorSaveStatusProvider.notifier).state =
++              const AutosaveStatus(AutosavePhase.idle);
++        }
+       }
+     });
+ 
+@@ -126,17 +135,49 @@
+     );
+   }
+ 
++  bool _shouldAutosave(Paper paper) {
++    return _persistedDocumentIds.contains(paper.id) || _isMeaningfulDraft(paper);
++  }
++
++  bool _isMeaningfulDraft(Paper paper) {
++    if (paper.sections.isNotEmpty) return true;
++    if (paper.schoolName.trim().isNotEmpty) return true;
++    if (paper.instruction.trim().isNotEmpty) return true;
++    if (paper.logos.any((logo) => logo.trim().isNotEmpty)) return true;
++    if (paper.maximumMarks != null) return true;
++    if (paper.includeCoverPage || paper.includeOmr) return true;
++    if (paper.headerText.trim().isNotEmpty || paper.footerText.trim().isNotEmpty) {
++      return true;
++    }
++    if (paper.showPageNumbers) return true;
++    if (paper.templateId != PaperStyleCatalog.defaultTemplateId) return true;
++    if (paper.title.trim().isNotEmpty && paper.title.trim() != 'New Paper') {
++      return true;
++    }
++    return paper.headerFields.any((field) {
++      final value = field.value.trim();
++      return value.isNotEmpty && !field.isPlaceholder;
++    });
++  }
++
+   Future<void> savePaper() async {
+     _autosave.schedule(state);
+     await _autosave.flush();
+   }
+ 
+   void loadPaper(Paper paper) {
++    _autosave.discardPending(resetStatus: false);
++    _persistedDocumentIds.add(paper.id);
+     _replaceWithoutHistory(paper);
++    ref.read(editorSaveStatusProvider.notifier).state =
++        const AutosaveStatus(AutosavePhase.saved);
+   }
+ 
+   void reset() {
++    _autosave.discardPending(resetStatus: false);
+     _replaceWithoutHistory(_newPaper());
++    ref.read(editorSaveStatusProvider.notifier).state =
++        const AutosaveStatus(AutosavePhase.idle);
+   }
+ 
+   bool get canUndo => _undoStack.isNotEmpty;
+@@ -177,6 +218,10 @@
+     state = state.copyWith(instruction: instruction);
+   }
+ 
++  void updateInstructionAlignment(PaperTextAlignment alignment) {
++    state = state.copyWith(instructionAlignment: alignment);
++  }
++
+   /// Applies the teacher-facing Paper Setup form as one document mutation.
+   ///
+   /// This keeps autosave and undo/redo semantic: pressing Undo after saving
+@@ -374,6 +419,14 @@
+     state = state.copyWith(sections: [...state.sections, section]);
+   }
+ 
++  void replaceSectionObject(PaperSection replacement) {
++    state = state.copyWith(
++      sections: state.sections
++          .map((section) => section.id == replacement.id ? replacement : section)
++          .toList(growable: false),
++    );
++  }
++
+   void updateSection(
+     String sectionId, {
+     String? title,
+diff -ruN /mnt/data/edusheet_baseline_compare/lib/features/editor/services/autosave_coordinator.dart ./lib/features/editor/services/autosave_coordinator.dart
+--- /mnt/data/edusheet_baseline_compare/lib/features/editor/services/autosave_coordinator.dart	2026-08-31 07:27:52.000000000 +0000
++++ ./lib/features/editor/services/autosave_coordinator.dart	2026-09-01 20:57:17.265845100 +0000
+@@ -64,6 +64,21 @@
+     if (_hasPendingValue) await flush();
+   }
+ 
++  /// Drops a debounced value that has not started writing yet.
++  ///
++  /// Editor workflows use this when switching documents or resetting a blank
++  /// draft so an old pending autosave cannot appear later as a ghost paper.
++  void discardPending({bool resetStatus = true}) {
++    if (_disposed) return;
++    _timer?.cancel();
++    _timer = null;
++    _pendingValue = null;
++    _hasPendingValue = false;
++    if (resetStatus) {
++      _emit(const AutosaveStatus(AutosavePhase.idle));
++    }
++  }
++
+   Future<void> _queuePendingWrite() async {
+     if (_disposed || !_hasPendingValue) return;
+     final value = _pendingValue as T;
+diff -ruN /mnt/data/edusheet_baseline_compare/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart ./lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+--- /mnt/data/edusheet_baseline_compare/lib/features/paper_composer/presentation/screens/paper_composer_screen.dart	2026-09-01 13:37:46.000000000 +0000
++++ ./lib/features/paper_composer/presentation/screens/paper_composer_screen.dart	2026-09-01 20:54:30.882032628 +0000
+@@ -699,6 +699,8 @@
+                             onSchoolNameChanged: (value) =>
+                                 editor.updateBranding(schoolName: value),
+                             onInstructionChanged: editor.updateInstruction,
++                            onInstructionAlignmentChanged:
++                                editor.updateInstructionAlignment,
+                             onHeaderFieldChanged: (fieldId, value) =>
+                                 editor.updateHeaderField(
+                                   fieldId,
+@@ -717,6 +719,7 @@
+                                   sectionId,
+                                   instruction: value,
+                                 ),
++                            onReplaceSection: editor.replaceSectionObject,
+                             onEditQuestion: (sectionId, question) =>
+                                 _openQuestion(sectionId, question: question),
+                             onReplaceQuestion: (sectionId, question) =>
+diff -ruN /mnt/data/edusheet_baseline_compare/lib/features/paper_composer/presentation/widgets/paper_outline_panel.dart ./lib/features/paper_composer/presentation/widgets/paper_outline_panel.dart
+--- /mnt/data/edusheet_baseline_compare/lib/features/paper_composer/presentation/widgets/paper_outline_panel.dart	2026-08-31 13:20:20.000000000 +0000
++++ ./lib/features/paper_composer/presentation/widgets/paper_outline_panel.dart	2026-09-01 20:55:10.339869186 +0000
+@@ -1,5 +1,6 @@
+ import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+ import 'package:edusheet/features/editor/services/paper_structure_service.dart';
++import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
+ import 'package:flutter/material.dart';
+ 
+ class PaperOutlinePanel extends StatelessWidget {
+@@ -81,6 +82,7 @@
+ }
+ 
+ class _OutlineSection extends StatelessWidget {
++  static const _codec = QuestionRichTextCodec();
+   final PaperSection section;
+   final int sectionNumber;
+   final VoidCallback onSelectSection;
+@@ -135,11 +137,7 @@
+                       ),
+               ),
+               title: Text(
+-                entry.value.plainTextAccessibility.trim().isEmpty
+-                    ? (entry.value.isWordContentBlock
+-                          ? 'Free Word content'
+-                          : 'Untitled question')
+-                    : entry.value.plainTextAccessibility.trim(),
++                _questionLabel(entry.value),
+                 maxLines: 1,
+                 overflow: TextOverflow.ellipsis,
+                 style: const TextStyle(fontSize: 12),
+@@ -150,4 +148,12 @@
+       ),
+     );
+   }
++  String _questionLabel(Question question) {
++    final decoded = _codec.accessibleText(_codec.decodeQuestion(question));
++    final fallback = question.plainTextAccessibility.trim();
++    final text = decoded.isNotEmpty ? decoded : fallback;
++    if (text.isNotEmpty) return text;
++    return question.isWordContentBlock ? 'Free Word content' : 'Untitled question';
++  }
++
+ }
+diff -ruN /mnt/data/edusheet_baseline_compare/lib/features/paper_composer/presentation/widgets/question_card.dart ./lib/features/paper_composer/presentation/widgets/question_card.dart
+--- /mnt/data/edusheet_baseline_compare/lib/features/paper_composer/presentation/widgets/question_card.dart	2026-08-31 13:18:12.000000000 +0000
++++ ./lib/features/paper_composer/presentation/widgets/question_card.dart	2026-09-01 20:55:10.339680241 +0000
+@@ -2,6 +2,7 @@
+ import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+ import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
+ import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
++import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
+ import 'package:flutter/material.dart';
+ 
+ class QuestionCard extends StatelessWidget {
+@@ -32,8 +33,15 @@
+     final theme = Theme.of(context);
+     final unplacedMath = _codec.unplacedMathExpressions(question);
+     final isWordBlock = question.isWordContentBlock;
+-    final plain = question.plainTextAccessibility.trim();
+-    final hasDiagram = plain.contains('[diagram]');
++    final fallbackPlain = question.plainTextAccessibility.trim();
++    final decodedPlain = _codec.accessibleText(_codec.decodeQuestion(question));
++    final plain = decodedPlain.isNotEmpty ? decodedPlain : fallbackPlain;
++    final hasDiagram =
++        plain.contains('[diagram]') || question.text.contains('\"geometry\"');
++    final showRichPreview = !isWordBlock &&
++        (question.text.trimLeft().startsWith('[{') ||
++            question.mathExpressions.isNotEmpty ||
++            hasDiagram);
+     final blockKind = question.wordContentBlockKind;
+ 
+     return Card(
+@@ -79,16 +87,25 @@
+                 child: Column(
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: [
+-                    Text(
+-                      plain.isEmpty
+-                          ? (isWordBlock ? 'Free Word content' : 'Untitled question')
+-                          : plain,
+-                      maxLines: 3,
+-                      overflow: TextOverflow.ellipsis,
+-                      style: theme.textTheme.bodyLarge?.copyWith(
+-                        fontWeight: FontWeight.w600,
++                    if (showRichPreview)
++                      QuestionRichTextPreview(
++                        key: ValueKey('smart-question-rich-preview-${question.id}'),
++                        question: question,
++                        maxHeight: 120,
++                      )
++                    else
++                      Text(
++                        plain.isEmpty
++                            ? (isWordBlock
++                                  ? 'Free Word content'
++                                  : 'Untitled question')
++                            : plain,
++                        maxLines: 3,
++                        overflow: TextOverflow.ellipsis,
++                        style: theme.textTheme.bodyLarge?.copyWith(
++                          fontWeight: FontWeight.w600,
++                        ),
+                       ),
+-                    ),
+                     const SizedBox(height: 8),
+                     Wrap(
+                       spacing: 6,
+diff -ruN /mnt/data/edusheet_baseline_compare/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart ./lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+--- /mnt/data/edusheet_baseline_compare/lib/features/paper_composer/presentation/widgets/word_paper_editor.dart	2026-09-01 17:41:46.000000000 +0000
++++ ./lib/features/paper_composer/presentation/widgets/word_paper_editor.dart	2026-09-01 20:58:12.837217033 +0000
+@@ -39,11 +39,13 @@
+   final ValueChanged<String> onTitleChanged;
+   final ValueChanged<String> onSchoolNameChanged;
+   final ValueChanged<String> onInstructionChanged;
++  final ValueChanged<PaperTextAlignment> onInstructionAlignmentChanged;
+   final void Function(String fieldId, String value) onHeaderFieldChanged;
+   final void Function(int logoIndex, String path) onLogoChanged;
+   final void Function(String sectionId, String title) onSectionTitleChanged;
+   final void Function(String sectionId, String instruction)
+   onSectionInstructionChanged;
++  final ValueChanged<PaperSection> onReplaceSection;
+   final void Function(String sectionId, Question question) onEditQuestion;
+   final void Function(String sectionId, Question question) onReplaceQuestion;
+   final void Function(String sectionId, Question block, int? insertAt)
+@@ -67,10 +69,12 @@
+     required this.onTitleChanged,
+     required this.onSchoolNameChanged,
+     required this.onInstructionChanged,
++    required this.onInstructionAlignmentChanged,
+     required this.onHeaderFieldChanged,
+     required this.onLogoChanged,
+     required this.onSectionTitleChanged,
+     required this.onSectionInstructionChanged,
++    required this.onReplaceSection,
+     required this.onEditQuestion,
+     required this.onReplaceQuestion,
+     required this.onInsertWordBlock,
+@@ -89,6 +93,8 @@
+   late final WordRichTextSession _richTextSession;
+   String? _activeSectionId;
+   String? _pendingFocusQuestionId;
++  _WordDocumentFormatTarget _formatTarget = _WordDocumentFormatTarget.none;
++  String? _formatSectionId;
+ 
+   @override
+   void initState() {
+@@ -128,17 +134,39 @@
+   }
+ 
+   void _activate(String sectionId, String questionId) {
+-    if (_activeSectionId == sectionId && _pendingFocusQuestionId == null) {
++    if (_activeSectionId == sectionId &&
++        _pendingFocusQuestionId == null &&
++        _formatTarget == _WordDocumentFormatTarget.none) {
+       return;
+     }
+     setState(() {
+       _activeSectionId = sectionId;
++      _formatTarget = _WordDocumentFormatTarget.none;
++      _formatSectionId = null;
+       if (_pendingFocusQuestionId == questionId) {
+         _pendingFocusQuestionId = null;
+       }
+     });
+   }
+ 
++  void _activateDocumentFormat(
++    _WordDocumentFormatTarget target, {
++    String? sectionId,
++  }) {
++    if (_formatTarget == target && _formatSectionId == sectionId) return;
++    setState(() {
++      _formatTarget = target;
++      _formatSectionId = sectionId;
++      if (sectionId != null) _activeSectionId = sectionId;
++    });
++  }
++
++  PaperSection? get _formatSection {
++    final id = _formatSectionId;
++    if (id == null) return null;
++    return _sectionById(id);
++  }
++
+   PaperSection? _sectionById(String sectionId) {
+     return widget.paper.sections
+         .where((section) => section.id == sectionId)
+@@ -382,6 +410,12 @@
+                   title: const Text('Remove logo'),
+                   onTap: () => Navigator.pop(context, _LogoAction.remove),
+                 ),
++              ListTile(
++                leading: const Icon(Icons.dashboard_customize_outlined),
++                title: const Text('Add or manage logo slots'),
++                subtitle: const Text('Place multiple logos anywhere in the header.'),
++                onTap: () => Navigator.pop(context, _LogoAction.manageSlots),
++              ),
+             ],
+           ),
+         ),
+@@ -392,6 +426,10 @@
+       widget.onLogoChanged(logoIndex, '');
+       return;
+     }
++    if (action == _LogoAction.manageSlots) {
++      await widget.onArrangeHeader();
++      return;
++    }
+ 
+     final result = await FilePicker.platform.pickFiles(
+       type: FileType.custom,
+@@ -431,6 +469,12 @@
+             onImportWord: widget.onImportWord,
+             onArrangeHeader: widget.onArrangeHeader,
+             onPageLayout: _openPageLayout,
++            formatTarget: _formatTarget,
++            paperInstructionAlignment: widget.paper.instructionAlignment,
++            formatSection: _formatSection,
++            onPaperInstructionAlignmentChanged:
++                widget.onInstructionAlignmentChanged,
++            onReplaceSection: widget.onReplaceSection,
+           ),
+           if (widget.compact)
+             _CompactWordSectionAction(onAddSection: widget.onAddSection),
+@@ -502,6 +546,13 @@
+                                           fontStyle: FontStyle.italic,
+                                         ),
+                                         onChanged: widget.onInstructionChanged,
++                                        onFocusChanged: (focused) {
++                                          if (focused) {
++                                            _activateDocumentFormat(
++                                              _WordDocumentFormatTarget.paperInstruction,
++                                            );
++                                          }
++                                        },
+                                       ),
+                                       const Divider(height: 30),
+                                     ] else if (widget.paper.sections.isNotEmpty) ...[
+@@ -519,6 +570,13 @@
+                                           fontStyle: FontStyle.italic,
+                                         ),
+                                         onChanged: widget.onInstructionChanged,
++                                        onFocusChanged: (focused) {
++                                          if (focused) {
++                                            _activateDocumentFormat(
++                                              _WordDocumentFormatTarget.paperInstruction,
++                                            );
++                                          }
++                                        },
+                                       ),
+                                       const Divider(height: 30),
+                                     ],
+@@ -688,6 +746,14 @@
+                             ),
+                             onChanged: (value) =>
+                                 widget.onSectionTitleChanged(section.id, value),
++                            onFocusChanged: (focused) {
++                              if (focused) {
++                                _activateDocumentFormat(
++                                  _WordDocumentFormatTarget.sectionHeading,
++                                  sectionId: section.id,
++                                );
++                              }
++                            },
+                           ),
+                         ),
+                       if (section.sectionMarksDisplay ==
+@@ -728,6 +794,14 @@
+           textStyle: const TextStyle(fontStyle: FontStyle.italic),
+           onChanged: (value) =>
+               widget.onSectionInstructionChanged(section.id, value),
++          onFocusChanged: (focused) {
++            if (focused) {
++              _activateDocumentFormat(
++                _WordDocumentFormatTarget.sectionInstruction,
++                sectionId: section.id,
++              );
++            }
++          },
+         ),
+         if (answerRule != null)
+           Padding(
+@@ -821,7 +895,14 @@
+ }
+ 
+ 
+-enum _LogoAction { choose, remove }
++enum _LogoAction { choose, remove, manageSlots }
++
++enum _WordDocumentFormatTarget {
++  none,
++  paperInstruction,
++  sectionHeading,
++  sectionInstruction,
++}
+ 
+ class _WordEditorRibbon extends StatelessWidget {
+   final bool compact;
+@@ -836,6 +917,11 @@
+   final Future<void> Function() onImportWord;
+   final Future<void> Function() onArrangeHeader;
+   final Future<void> Function() onPageLayout;
++  final _WordDocumentFormatTarget formatTarget;
++  final PaperTextAlignment paperInstructionAlignment;
++  final PaperSection? formatSection;
++  final ValueChanged<PaperTextAlignment> onPaperInstructionAlignmentChanged;
++  final ValueChanged<PaperSection> onReplaceSection;
+ 
+   const _WordEditorRibbon({
+     required this.compact,
+@@ -850,6 +936,11 @@
+     required this.onImportWord,
+     required this.onArrangeHeader,
+     required this.onPageLayout,
++    required this.formatTarget,
++    required this.paperInstructionAlignment,
++    required this.formatSection,
++    required this.onPaperInstructionAlignmentChanged,
++    required this.onReplaceSection,
+   });
+ 
+   @override
+@@ -862,6 +953,16 @@
+         animation: session,
+         builder: (context, _) {
+           final controller = session.activeController;
++          final hasDocumentContext =
++              formatTarget != _WordDocumentFormatTarget.none;
++          final documentToolbar = _WordDocumentContextToolbar(
++            target: formatTarget,
++            paperInstructionAlignment: paperInstructionAlignment,
++            section: formatSection,
++            onPaperInstructionAlignmentChanged:
++                onPaperInstructionAlignmentChanged,
++            onReplaceSection: onReplaceSection,
++          );
+           return Padding(
+             padding: EdgeInsets.fromLTRB(
+               compact ? 6 : 14,
+@@ -901,7 +1002,10 @@
+                           ),
+                         ),
+                       ),
+-                      if (controller != null) ...[
++                      if (hasDocumentContext) ...[
++                        const SizedBox(height: 4),
++                        documentToolbar,
++                      ] else if (controller != null) ...[
+                         const SizedBox(height: 4),
+                         QuillSimpleToolbar(
+                           controller: controller,
+@@ -924,9 +1028,11 @@
+                               ),
+                             ),
+                             const SizedBox(height: 3),
+-                            if (controller == null)
++                            if (hasDocumentContext)
++                              documentToolbar
++                            else if (controller == null)
+                               Text(
+-                                'Click in a question or paragraph to format it.',
++                                'Click in a question, section or instruction to format it.',
+                                 style: theme.textTheme.bodySmall?.copyWith(
+                                   color: theme.colorScheme.onSurfaceVariant,
+                                 ),
+@@ -1027,6 +1133,150 @@
+   );
+ }
+ 
++class _WordDocumentContextToolbar extends StatelessWidget {
++  final _WordDocumentFormatTarget target;
++  final PaperTextAlignment paperInstructionAlignment;
++  final PaperSection? section;
++  final ValueChanged<PaperTextAlignment> onPaperInstructionAlignmentChanged;
++  final ValueChanged<PaperSection> onReplaceSection;
++
++  const _WordDocumentContextToolbar({
++    required this.target,
++    required this.paperInstructionAlignment,
++    required this.section,
++    required this.onPaperInstructionAlignmentChanged,
++    required this.onReplaceSection,
++  });
++
++  PaperTextAlignment get _alignment {
++    switch (target) {
++      case _WordDocumentFormatTarget.paperInstruction:
++        return paperInstructionAlignment;
++      case _WordDocumentFormatTarget.sectionHeading:
++        return section?.headingAlignment ?? PaperTextAlignment.center;
++      case _WordDocumentFormatTarget.sectionInstruction:
++        return section?.instructionAlignment ?? PaperTextAlignment.center;
++      case _WordDocumentFormatTarget.none:
++        return PaperTextAlignment.left;
++    }
++  }
++
++  void _setAlignment(PaperTextAlignment value) {
++    final current = section;
++    switch (target) {
++      case _WordDocumentFormatTarget.paperInstruction:
++        onPaperInstructionAlignmentChanged(value);
++        break;
++      case _WordDocumentFormatTarget.sectionHeading:
++        if (current != null) {
++          onReplaceSection(current.copyWith(headingAlignment: value));
++        }
++        break;
++      case _WordDocumentFormatTarget.sectionInstruction:
++        if (current != null) {
++          onReplaceSection(current.copyWith(instructionAlignment: value));
++        }
++        break;
++      case _WordDocumentFormatTarget.none:
++        break;
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final current = section;
++    final isHeading = target == _WordDocumentFormatTarget.sectionHeading;
++    return Wrap(
++      key: const Key('word-document-context-toolbar'),
++      spacing: 6,
++      runSpacing: 6,
++      crossAxisAlignment: WrapCrossAlignment.center,
++      children: [
++        SegmentedButton<PaperTextAlignment>(
++          key: const Key('word-document-alignment'),
++          showSelectedIcon: false,
++          segments: const [
++            ButtonSegment(
++              value: PaperTextAlignment.left,
++              icon: Icon(Icons.format_align_left_rounded, size: 18),
++              tooltip: 'Align left',
++            ),
++            ButtonSegment(
++              value: PaperTextAlignment.center,
++              icon: Icon(Icons.format_align_center_rounded, size: 18),
++              tooltip: 'Align center',
++            ),
++            ButtonSegment(
++              value: PaperTextAlignment.right,
++              icon: Icon(Icons.format_align_right_rounded, size: 18),
++              tooltip: 'Align right',
++            ),
++          ],
++          selected: {_alignment},
++          onSelectionChanged: (selection) {
++            if (selection.isNotEmpty) _setAlignment(selection.first);
++          },
++        ),
++        if (isHeading && current != null) ...[
++          FilterChip(
++            key: const Key('word-section-bold'),
++            selected: current.headingBold,
++            avatar: const Icon(Icons.format_bold_rounded, size: 18),
++            label: const Text('Bold'),
++            onSelected: (value) =>
++                onReplaceSection(current.copyWith(headingBold: value)),
++          ),
++          PopupMenuButton<SectionHeadingSize>(
++            key: const Key('word-section-heading-size'),
++            tooltip: 'Heading size',
++            initialValue: current.headingSize,
++            onSelected: (value) =>
++                onReplaceSection(current.copyWith(headingSize: value)),
++            itemBuilder: (context) => const [
++              PopupMenuItem(
++                value: SectionHeadingSize.small,
++                child: Text('Small heading'),
++              ),
++              PopupMenuItem(
++                value: SectionHeadingSize.normal,
++                child: Text('Normal heading'),
++              ),
++              PopupMenuItem(
++                value: SectionHeadingSize.large,
++                child: Text('Large heading'),
++              ),
++            ],
++            child: Chip(
++              avatar: const Icon(Icons.format_size_rounded, size: 18),
++              label: Text(switch (current.headingSize) {
++                SectionHeadingSize.small => 'Small',
++                SectionHeadingSize.normal => 'Normal',
++                SectionHeadingSize.large => 'Large',
++              }),
++            ),
++          ),
++          FilterChip(
++            key: const Key('word-section-top-divider'),
++            selected: current.showTopDivider,
++            avatar: const Icon(Icons.border_top_rounded, size: 18),
++            label: const Text('Top line'),
++            onSelected: (value) =>
++                onReplaceSection(current.copyWith(showTopDivider: value)),
++          ),
++          FilterChip(
++            key: const Key('word-section-bottom-divider'),
++            selected: current.showBottomDivider,
++            avatar: const Icon(Icons.border_bottom_rounded, size: 18),
++            label: const Text('Bottom line'),
++            onSelected: (value) =>
++                onReplaceSection(current.copyWith(showBottomDivider: value)),
++          ),
++        ],
++      ],
++    );
++  }
++}
++
+ class _CompactWordSectionAction extends StatelessWidget {
+   final VoidCallback onAddSection;
+ 
+@@ -1331,8 +1581,8 @@
+             Expanded(
+               child: Text(
+                 compact
+-                    ? 'Word Mode: type questions directly on the page. Math, Geometry and Pictures use the active question; tap a logo slot to choose or replace it.'
+-                    : 'WYSIWYG Word Mode edits the canonical paper directly. Add Question creates an inline question instead of opening the full-screen composer; Math, Geometry and Pictures use the active question. Tap a header logo slot to choose, replace or remove its image.',
++                    ? 'Word Mode: type directly on the page. Tap a section title or instruction for alignment and line controls; Math, Geometry and Pictures use the active question; logo slots can be replaced, removed or multiplied from Arrange header.'
++                    : 'WYSIWYG Word Mode edits the canonical paper directly. Click a section title or instruction to format alignment, heading size and divider lines from Home. Math, Geometry and Pictures use the active question. Header logo slots can be replaced, removed or added from Arrange header.',
+                 style: theme.textTheme.bodySmall?.copyWith(
+                   color: theme.colorScheme.onPrimaryContainer,
+                 ),
+@@ -2556,6 +2806,7 @@
+   final int maxLines;
+   final TextStyle? textStyle;
+   final String Function(String value)? displayTransform;
++  final ValueChanged<bool>? onFocusChanged;
+ 
+   const _InlineDocumentField({
+     super.key,
+@@ -2567,6 +2818,7 @@
+     this.maxLines = 2,
+     this.textStyle,
+     this.displayTransform,
++    this.onFocusChanged,
+   });
+ 
+   @override
+@@ -2602,6 +2854,7 @@
+   }
+ 
+   void _handleFocusChanged() {
++    widget.onFocusChanged?.call(_focusNode.hasFocus);
+     final value = _focusNode.hasFocus
+         ? widget.initialValue
+         : _displayValue(widget.initialValue);
+diff -ruN /mnt/data/edusheet_baseline_compare/test/features/editor/autosave_coordinator_test.dart ./test/features/editor/autosave_coordinator_test.dart
+--- /mnt/data/edusheet_baseline_compare/test/features/editor/autosave_coordinator_test.dart	2026-08-31 07:27:52.000000000 +0000
++++ ./test/features/editor/autosave_coordinator_test.dart	2026-09-01 20:57:40.989629526 +0000
+@@ -57,6 +57,23 @@
+       coordinator.dispose();
+     });
+ 
++    test('discardPending prevents a ghost save after reset or document switch', () async {
++      final saved = <String>[];
++      final coordinator = AutosaveCoordinator<String>(
++        delay: const Duration(milliseconds: 25),
++        save: (value) async => saved.add(value),
++      );
++
++      coordinator.schedule('temporary blank draft');
++      coordinator.discardPending();
++      await Future<void>.delayed(const Duration(milliseconds: 40));
++      await coordinator.flush();
++
++      expect(saved, isEmpty);
++      expect(coordinator.status.phase, AutosavePhase.idle);
++      coordinator.dispose();
++    });
++
+     test('reports failure without discarding the editable snapshot', () async {
+       final coordinator = AutosaveCoordinator<String>(
+         delay: Duration.zero,
+diff -ruN /mnt/data/edusheet_baseline_compare/tool/run_final_authoring_polish_gate.ps1 ./tool/run_final_authoring_polish_gate.ps1
+--- /mnt/data/edusheet_baseline_compare/tool/run_final_authoring_polish_gate.ps1	1970-01-01 00:00:00.000000000 +0000
++++ ./tool/run_final_authoring_polish_gate.ps1	2026-09-01 20:58:55.675498408 +0000
+@@ -0,0 +1,29 @@
++$ErrorActionPreference = 'Stop'
++
++function Invoke-Step {
++  param(
++    [Parameter(Mandatory = $true)][string]$Name,
++    [Parameter(Mandatory = $true)][scriptblock]$Action
++  )
++  Write-Host "`n== $Name ==" -ForegroundColor Cyan
++  & $Action
++  if ($LASTEXITCODE -ne 0) {
++    throw "$Name failed with exit code $LASTEXITCODE."
++  }
++}
++
++Write-Host 'EduSheet Professional Final Authoring Polish gate' -ForegroundColor Green
++Write-Host 'Baseline: Professional Formatting Phase 4C QA Fix 2'
++
++Invoke-Step '1/8 Formatting check' { dart format --output=none --set-exit-if-changed . }
++Invoke-Step '2/8 Static analysis' { flutter analyze }
++Invoke-Step '3/8 Autosave lifecycle tests' { flutter test test/features/editor/autosave_coordinator_test.dart }
++Invoke-Step '4/8 Word/Smart dual editor tests' { flutter test test/features/paper_composer/dual_editor_mode_test.dart }
++Invoke-Step '5/8 Direct Word authoring tests' { flutter test test/features/paper_composer/word_direct_authoring_phase4a_test.dart }
++Invoke-Step '6/8 Geometry + office export regression tests' {
++  flutter test test/features/geometry_builder/geometry_freeform_phase4c_test.dart test/features/pdf/office_export_services_test.dart
++}
++Invoke-Step '7/8 Release gates' { flutter test test/release }
++Invoke-Step '8/8 Full test suite' { flutter test }
++
++Write-Host "`nEduSheet Professional Final Authoring Polish gate PASSED." -ForegroundColor Green

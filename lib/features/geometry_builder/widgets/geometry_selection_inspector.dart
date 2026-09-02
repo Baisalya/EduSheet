@@ -58,6 +58,20 @@ class GeometrySelectionInspector extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               Text(
+                'Free-form tool',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                session.freeformHint,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
                 'Canvas',
                 style: theme.textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.w800,

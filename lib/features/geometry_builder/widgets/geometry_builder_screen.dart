@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../application/geometry_editor_session.dart';
+import '../application/geometry_freeform_tool.dart';
 import '../application/geometry_recipe.dart';
 import '../application/geometry_selection.dart';
 import '../models/geometry_diagram.dart';
@@ -12,6 +13,7 @@ import '../models/geometry_shape.dart';
 import 'geometry_add_sheet.dart';
 import 'geometry_canvas.dart';
 import 'geometry_context_bar.dart';
+import 'geometry_freeform_toolbar.dart';
 import 'geometry_input_dialogs.dart';
 import 'geometry_quick_start.dart';
 import 'geometry_selection_inspector.dart';
@@ -159,7 +161,11 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
               ),
               _EscapeIntent: CallbackAction<_EscapeIntent>(
                 onInvoke: (_) {
-                  if (_session.selection.kind != GeometrySelectionKind.none) {
+                  if (!_session.isSelectionTool) {
+                    _session.cancelFreeformDraft();
+                    _session.setFreeformTool(GeometryFreeformTool.select);
+                  } else if (_session.selection.kind !=
+                      GeometrySelectionKind.none) {
                     _session.clearSelection();
                   } else {
                     _requestClose();
@@ -356,12 +362,13 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
       builder: (context, _) {
         return Column(
           children: [
-            if (showQuickStart && _session.isEmpty)
+            if (showQuickStart && _session.isEmpty && _session.isSelectionTool)
               GeometryQuickStart(
                 compact: compactQuickStart,
                 onRecipe: _useRecipe,
                 onBrowseAll: _browseAll,
               ),
+            GeometryFreeformToolbar(session: _session),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
@@ -377,7 +384,9 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
                           onEditLabel: _showLabelEditor,
                           onEditPointLabel: _showPointLabelEditor,
                         ),
-                        if (_session.isEmpty && !showQuickStart)
+                        if (_session.isEmpty &&
+                            !showQuickStart &&
+                            _session.isSelectionTool)
                           Center(
                             child: Card(
                               elevation: 0,
@@ -396,7 +405,7 @@ class _GeometryBuilderScreenState extends State<GeometryBuilderScreen> {
                                     ),
                                     const SizedBox(height: 7),
                                     const Text(
-                                      'Start with a figure',
+                                      'Start with a figure or draw freely',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w800,
                                       ),

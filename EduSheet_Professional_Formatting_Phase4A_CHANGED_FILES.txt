@@ -1,0 +1,13 @@
+PROFESSIONAL_FORMATTING_PHASE4A_DIRECT_AUTHORING.md
+PROFESSIONAL_FORMATTING_PHASE4A_NOTES.md
+lib/features/paper_composer/application/word_direct_authoring_service.dart
+lib/features/paper_composer/presentation/screens/paper_composer_screen.dart
+lib/features/paper_composer/presentation/widgets/paper_details_sheet.dart
+lib/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart
+lib/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart
+lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
+lib/features/paper_composer/presentation/widgets/word_rich_text_editor.dart
+lib/features/pdf/services/word_export_service.dart
+test/features/paper_composer/word_direct_authoring_phase4a_test.dart
+test/features/pdf/office_export_services_test.dart
+test/release/professional_formatting_phase4a_gate_test.dart

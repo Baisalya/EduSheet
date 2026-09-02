@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
 import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
@@ -18,6 +20,7 @@ class PaperHeaderLayoutCanvas extends StatelessWidget {
   final ValueChanged<String>? onSchoolNameChanged;
   final ValueChanged<String>? onTitleChanged;
   final void Function(String fieldId, String value)? onHeaderFieldChanged;
+  final ValueChanged<int>? onLogoPressed;
 
   const PaperHeaderLayoutCanvas({
     super.key,
@@ -28,6 +31,7 @@ class PaperHeaderLayoutCanvas extends StatelessWidget {
     this.onSchoolNameChanged,
     this.onTitleChanged,
     this.onHeaderFieldChanged,
+    this.onLogoPressed,
   });
 
   @override
@@ -35,28 +39,35 @@ class PaperHeaderLayoutCanvas extends StatelessWidget {
     final layout = paper == null
         ? PaperHeaderLayoutFactory.resolve(template)
         : PaperHeaderLayoutFactory.resolveForPaper(template, paper!);
+    var logoIndex = 0;
+    final positionedElements = <Widget>[];
+    for (final element in layout.elements) {
+      final elementLogoIndex = element.type == ElementType.logo
+          ? logoIndex++
+          : null;
+      positionedElements.add(
+        Positioned(
+          left: element.x,
+          top: element.y,
+          child: PaperHeaderElementView(
+            element: element,
+            paper: paper,
+            template: template,
+            editable: editable,
+            logoIndex: elementLogoIndex,
+            onLogoPressed: onLogoPressed,
+            onSchoolNameChanged: onSchoolNameChanged,
+            onTitleChanged: onTitleChanged,
+            onHeaderFieldChanged: onHeaderFieldChanged,
+          ),
+        ),
+      );
+    }
+
     final design = SizedBox(
       width: CustomLayout.designWidth,
       height: layout.canvasHeight,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          for (final element in layout.elements)
-            Positioned(
-              left: element.x,
-              top: element.y,
-              child: PaperHeaderElementView(
-                element: element,
-                paper: paper,
-                template: template,
-                editable: editable,
-                onSchoolNameChanged: onSchoolNameChanged,
-                onTitleChanged: onTitleChanged,
-                onHeaderFieldChanged: onHeaderFieldChanged,
-              ),
-            ),
-        ],
-      ),
+      child: Stack(clipBehavior: Clip.none, children: positionedElements),
     );
 
     if (height != null) {
@@ -91,6 +102,8 @@ class PaperHeaderElementView extends StatelessWidget {
   final Paper? paper;
   final PaperTemplate template;
   final bool editable;
+  final int? logoIndex;
+  final ValueChanged<int>? onLogoPressed;
   final ValueChanged<String>? onSchoolNameChanged;
   final ValueChanged<String>? onTitleChanged;
   final void Function(String fieldId, String value)? onHeaderFieldChanged;
@@ -101,6 +114,8 @@ class PaperHeaderElementView extends StatelessWidget {
     required this.paper,
     required this.template,
     this.editable = false,
+    this.logoIndex,
+    this.onLogoPressed,
     this.onSchoolNameChanged,
     this.onTitleChanged,
     this.onHeaderFieldChanged,
@@ -133,25 +148,7 @@ class PaperHeaderElementView extends StatelessWidget {
 
     switch (element.type) {
       case ElementType.logo:
-        final hasActualLogo =
-            paper == null || paper!.logos.any((path) => path.trim().isNotEmpty);
-        if (!hasActualLogo) {
-          return SizedBox(width: width ?? 48, height: height ?? 48);
-        }
-        return Container(
-          width: width ?? 48,
-          height: height ?? 48,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: Colors.black26),
-          ),
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.school_outlined,
-            size: 24,
-            color: Colors.black45,
-          ),
-        );
+        return _buildLogo(width, height);
       case ElementType.schoolName:
         return _box(
           width,
@@ -263,6 +260,75 @@ class PaperHeaderElementView extends StatelessWidget {
               : Text(element.content, style: style, textAlign: textAlign),
         );
     }
+  }
+
+  Widget _buildLogo(double? width, double? height) {
+    final resolvedWidth = width ?? 48;
+    final resolvedHeight = height ?? 48;
+    final index = logoIndex ?? 0;
+    final path = paper != null && index < paper!.logos.length
+        ? paper!.logos[index].trim()
+        : '';
+    final file = path.isEmpty ? null : File(path);
+    final canShowImage = file != null && file.existsSync();
+
+    Widget content;
+    if (paper == null) {
+      content = const Icon(
+        Icons.school_outlined,
+        size: 24,
+        color: Colors.black45,
+      );
+    } else if (canShowImage) {
+      content = ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: Image.file(
+          file,
+          width: resolvedWidth,
+          height: resolvedHeight,
+          fit: BoxFit.contain,
+          errorBuilder: (_, _, _) =>
+              const Icon(Icons.broken_image_outlined, color: Colors.black45),
+        ),
+      );
+    } else if (editable) {
+      content = Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.add_photo_alternate_outlined, size: 22),
+          if (resolvedHeight >= 42)
+            const Text(
+              'Add logo',
+              maxLines: 1,
+              style: TextStyle(fontSize: 8, fontWeight: FontWeight.w600),
+            ),
+        ],
+      );
+    } else {
+      return SizedBox(width: resolvedWidth, height: resolvedHeight);
+    }
+
+    final logoBox = Container(
+      width: resolvedWidth,
+      height: resolvedHeight,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(4),
+        border: editable ? Border.all(color: Colors.black26) : null,
+      ),
+      alignment: Alignment.center,
+      child: content,
+    );
+
+    if (!editable || onLogoPressed == null) return logoBox;
+    return Tooltip(
+      message: path.isEmpty ? 'Choose logo' : 'Replace or remove logo',
+      child: InkWell(
+        key: ValueKey('word-header-logo-$index'),
+        onTap: () => onLogoPressed!(index),
+        borderRadius: BorderRadius.circular(4),
+        child: logoBox,
+      ),
+    );
   }
 
   Widget _buildHeaderFields(TemplateElement element, TextStyle style) {

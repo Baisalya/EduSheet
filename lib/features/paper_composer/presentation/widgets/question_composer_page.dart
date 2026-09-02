@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builder.dart';
@@ -663,13 +662,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     }
 
     GeometryDiagramRegistry.instance.save(diagram);
-    final data = jsonEncode({
-      'id': diagram.id,
-      'height': 200.0,
-      'widthFactor': 1.0,
-      'alignmentX': 0.0,
-      'diagram': diagram.toJson(),
-    });
+    final data = GeometryEmbedLayout.forDiagram(diagram).encode();
     _insertGeometryAt(data, insertion);
     _syncInsertionAnchorFromController();
     setState(() => _bodyError = null);
