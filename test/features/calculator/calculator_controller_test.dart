@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:edusheet/features/calculator/domain/models/calculator_editing_value.dart';
+import 'package:edusheet/features/calculator/domain/models/calculator_input_command.dart';
 import 'package:edusheet/features/calculator/domain/models/calculator_mode.dart';
 import 'package:edusheet/features/calculator/presentation/providers/calculator_provider.dart';
 
@@ -14,6 +16,31 @@ void main() {
       controller.dispose();
     });
 
+    test('typed input commands share the controller dispatcher', () {
+      controller.dispatch(const CalculatorInputCommand.insertToken('1'));
+      controller.dispatch(const CalculatorInputCommand.insertToken('2'));
+      controller.dispatch(const CalculatorInputCommand.insertToken('+'));
+      controller.dispatch(const CalculatorInputCommand.insertToken('3'));
+
+      controller.dispatch(const CalculatorInputCommand.moveCursorLeft());
+      controller.dispatch(const CalculatorInputCommand.insertToken('9'));
+      expect(controller.state.equation, '12+93');
+      expect(controller.state.cursorOffset, 4);
+
+      controller.dispatch(CalculatorInputCommand.deleteForward);
+      expect(controller.state.equation, '12+9');
+      expect(controller.state.cursorOffset, 4);
+    });
+
+    test('resolved formula insertion routes through the typed dispatcher', () {
+      controller.dispatch(
+        const CalculatorInputCommand.insertFormula('(2)*(3)'),
+      );
+
+      expect(controller.state.equation, '(2)*(3)');
+      expect(controller.state.cursorOffset, 7);
+    });
+
     test('calculates and stores typed expression/result history', () {
       controller.addToken('2');
       controller.addToken('+');
@@ -26,6 +53,128 @@ void main() {
       expect(controller.state.history, hasLength(1));
       expect(controller.state.history.single.expression, '2+3');
       expect(controller.state.history.single.result, '5');
+    });
+
+    test('tracks caret position as tokens are inserted', () {
+      controller.addToken('1');
+      controller.addToken('2');
+      controller.addToken('+');
+      controller.addToken('3');
+
+      expect(controller.state.equation, '12+3');
+      expect(controller.state.cursorOffset, 4);
+      expect(
+        controller.state.selection,
+        const CalculatorSelection.collapsed(4),
+      );
+    });
+
+    test('inserts and replaces content at controller selection', () {
+      controller.addToken('1');
+      controller.addToken('2');
+      controller.addToken('+');
+      controller.addToken('4');
+      controller.addToken('5');
+
+      controller.setSelection(3);
+      controller.addToken('3');
+      expect(controller.state.equation, '12+345');
+      expect(controller.state.cursorOffset, 4);
+
+      controller.setSelection(3, 6);
+      controller.addToken('9');
+      expect(controller.state.equation, '12+9');
+      expect(controller.state.cursorOffset, 4);
+    });
+
+    test('backward and forward delete respect the caret and selection', () {
+      for (final token in ['1', '2', '+', 'sqrt(', '9']) {
+        controller.addToken(token);
+      }
+
+      controller.setSelection(3);
+      controller.deleteForward();
+      expect(controller.state.equation, '12+9');
+      expect(controller.state.cursorOffset, 3);
+
+      controller.setSelection(0, 2);
+      controller.deleteBackward();
+      expect(controller.state.equation, '+9');
+      expect(controller.state.cursorOffset, 0);
+    });
+
+    test('cursor navigation supports token-aware movement and selection', () {
+      for (final token in ['2', '+', 'sqrt(', '9']) {
+        controller.addToken(token);
+      }
+
+      controller.setSelection(7);
+      controller.moveCursorLeft();
+      expect(controller.state.cursorOffset, 2);
+
+      controller.moveCursorRight(extendSelection: true);
+      expect(
+        controller.state.selection,
+        const CalculatorSelection(baseOffset: 2, extentOffset: 7),
+      );
+
+      controller.moveCursorToEnd();
+      expect(controller.state.cursorOffset, controller.state.equation.length);
+      controller.moveCursorToStart();
+      expect(controller.state.cursorOffset, 0);
+    });
+
+    test(
+      'moving caret after equals switches from Ans continuation to editing',
+      () {
+        controller.addToken('2');
+        controller.addToken('+');
+        controller.addToken('3');
+        controller.calculate();
+        expect(controller.state.justEvaluated, isTrue);
+
+        controller.moveCursorLeft();
+        expect(controller.state.justEvaluated, isFalse);
+        controller.addToken('4');
+
+        expect(controller.state.equation, '2+43');
+      },
+    );
+
+    test('history expressions restore with caret at the end', () {
+      controller.addToken('1');
+      controller.addToken('+');
+      controller.addToken('1');
+      controller.calculate();
+      controller.clear();
+
+      controller.previousHistory();
+
+      expect(controller.state.equation, '1+1');
+      expect(controller.state.cursorOffset, 3);
+      expect(controller.state.hasSelection, isFalse);
+    });
+
+    test('history navigation restores the draft selection as well as text', () {
+      controller.addToken('1');
+      controller.addToken('+');
+      controller.addToken('1');
+      controller.calculate();
+      controller.clear();
+      controller.addToken('9');
+      controller.addToken('8');
+      controller.addToken('7');
+      controller.setSelection(1, 2);
+
+      controller.previousHistory();
+      expect(controller.state.equation, '1+1');
+
+      controller.nextHistory();
+      expect(controller.state.equation, '987');
+      expect(
+        controller.state.selection,
+        const CalculatorSelection(baseOffset: 1, extentOffset: 2),
+      );
     });
 
     test('shift is one-shot and changes the actual inserted token', () {

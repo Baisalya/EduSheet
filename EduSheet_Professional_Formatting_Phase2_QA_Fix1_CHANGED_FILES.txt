@@ -1,3 +1,0 @@
-lib/features/editor/domain/models/paper_model.dart
-lib/features/paper_composer/presentation/widgets/section_format_sheet.dart
-lib/features/paper_composer/presentation/widgets/word_paper_editor.dart

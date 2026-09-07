@@ -1,5 +1,0 @@
-EduSheet Question Bank ↔ Paper Composer refactor
-
-Apply this ZIP over the latest Word-only Question Paper Export build.
-No database migration and no pubspec dependency change are required.
-Existing question_bank.json files remain compatible.

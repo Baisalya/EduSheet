@@ -14,10 +14,16 @@ void main() {
       expect(engine.evaluate('(2+3)×4'), '20');
     });
 
-    test('formats ordinary floating point results cleanly', () {
-      expect(engine.evaluate('1÷3'), '0.3333333333');
-      expect(engine.evaluate('0.000000001'), '1e-9');
-    });
+    test(
+      'formats ordinary, tiny and large finite results without data loss',
+      () {
+        expect(engine.evaluate('1÷3'), '0.3333333333');
+        expect(engine.evaluate('0.000000001'), '1e-9');
+        expect(engine.evaluate('1EXP-13'), '1e-13');
+        expect(engine.evaluate('1.23456789EXP-7'), '1.23456789e-7');
+        expect(engine.evaluate('1EXP20'), '1e+20');
+      },
+    );
 
     test('supports constants, Ans and implicit multiplication', () {
       expect(double.parse(engine.evaluate('π')).toStringAsFixed(2), '3.14');
@@ -45,6 +51,9 @@ void main() {
       expect(engine.evaluate('ln(2.718281828459045)'), '1');
       expect(engine.evaluate('2EXP3'), '2000');
       expect(engine.evaluate('2EXP-3'), '0.002');
+      expect(engine.evaluate('.5EXP2'), '50');
+      expect(engine.evaluate('2.EXP3'), '2000');
+      expect(engine.evaluate('AnsEXP2', ans: 3), '300');
       expect(engine.evaluate('10^3'), '1000');
       expect(engine.evaluate('cbrt(27)'), '3');
       expect(engine.evaluate('sinh(0)'), '0');
@@ -69,24 +78,62 @@ void main() {
       expect(engine.evaluate('2sin(30', angleUnit: AngleUnit.degrees), '1');
     });
 
-    test('calculates factorial and combinatorics without the old 20 cap', () {
+    test('supports expression-aware factorial and combinatorics', () {
       expect(engine.evaluate('5!'), '120');
+      expect(engine.evaluate('(2+3)!'), '120');
+      expect(engine.evaluate('(3!)!'), '720');
       expect(engine.evaluate('5C2'), '10');
-      expect(engine.evaluate('5P2'), '20');
+      expect(engine.evaluate('(2+3)C2'), '10');
+      expect(engine.evaluate('5C(1+1)'), '10');
+      expect(engine.evaluate('AnsP2', ans: 5), '20');
+      expect(engine.evaluate('5!C2'), '7140');
       expect(engine.evaluate('21C1'), '21');
       expect(engine.evaluate('21P1'), '21');
       expect(engine.evaluate('100C2'), '4950');
     });
 
-    test('reports honest errors for invalid domains and overflow', () {
+    test('reports honest errors for invalid domains, syntax and overflow', () {
       expect(engine.evaluate('1÷0'), 'Error');
+      expect(engine.evaluate('1÷(2-2)'), 'Error');
       expect(engine.evaluate('invalid'), 'Error');
+      expect(engine.evaluate('m*a'), 'Error');
+      expect(engine.evaluate('xsinh(1)'), 'Error');
       expect(engine.evaluate('5C9'), 'Error');
+      expect(engine.evaluate('2.5!'), 'Error');
       expect(engine.evaluate('171!'), 'Error');
       expect(engine.evaluate('sqrt(-1)'), 'Error');
       expect(engine.evaluate('log(0)'), 'Error');
       expect(engine.evaluate('arcsin(2)'), 'Error');
+      expect(engine.evaluate('10^400'), 'Error');
+      expect(engine.evaluate('2EXP'), 'Error');
       expect(engine.evaluate('2+3)'), 'Error');
+    });
+
+    test('detailed errors classify common calculator failures', () {
+      expect(
+        engine.evaluateDetailed('1÷(2-2)').errorCode,
+        CalculationErrorCode.divisionByZero,
+      );
+      expect(
+        engine.evaluateDetailed('sqrt(-1)').errorCode,
+        CalculationErrorCode.domain,
+      );
+      expect(
+        engine.evaluateDetailed('2.5!').errorCode,
+        CalculationErrorCode.domain,
+      );
+      expect(
+        engine.evaluateDetailed('10^400').errorCode,
+        CalculationErrorCode.overflow,
+      );
+      expect(
+        engine.evaluateDetailed('m*a').errorCode,
+        CalculationErrorCode.unsupported,
+      );
+      expect(
+        engine.evaluateDetailed('2EXP').errorCode,
+        CalculationErrorCode.syntax,
+      );
     });
 
     test('detailed result distinguishes success from failure', () {
@@ -109,6 +156,7 @@ void main() {
       expect(engine.evaluatePreview('25×'), isNull);
       expect(engine.evaluatePreview('sin('), isNull);
       expect(engine.evaluatePreview('1÷0'), isNull);
+      expect(engine.evaluatePreview('1EXP-13')?.displayText, '1e-13');
     });
 
     test('live preview supports auto-closed scientific input', () {

@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/models/calculation_history_entry.dart';
+import '../../domain/models/calculator_editing_value.dart';
+import '../../domain/models/calculator_input_command.dart';
 import '../../domain/models/calculator_mode.dart';
 import '../../domain/services/calculator_input_editor.dart';
+import '../../domain/services/formula_solver.dart';
 import '../../domain/services/math_engine.dart';
 
 class CalculatorState {
-  final String equation;
+  final CalculatorEditingValue editingValue;
   final String result;
   final String? previewResult;
   final String? errorMessage;
@@ -18,11 +21,11 @@ class CalculatorState {
   final double lastAnswer;
   final List<CalculationHistoryEntry> history;
   final int historyIndex;
-  final String historyDraft;
+  final CalculatorEditingValue historyDraftEditingValue;
   final bool justEvaluated;
 
   const CalculatorState({
-    this.equation = '',
+    this.editingValue = const CalculatorEditingValue(),
     this.result = '0',
     this.previewResult,
     this.errorMessage,
@@ -32,12 +35,20 @@ class CalculatorState {
     this.lastAnswer = 0,
     this.history = const [],
     this.historyIndex = -1,
-    this.historyDraft = '',
+    this.historyDraftEditingValue = const CalculatorEditingValue(),
     this.justEvaluated = false,
   });
 
+  String get equation => editingValue.text;
+  CalculatorSelection get selection => editingValue.selection;
+  int get cursorOffset => editingValue.cursorOffset;
+  bool get hasSelection => editingValue.hasSelection;
+  String get historyDraft => historyDraftEditingValue.text;
+
   CalculatorState copyWith({
+    CalculatorEditingValue? editingValue,
     String? equation,
+    CalculatorSelection? selection,
     String? result,
     String? previewResult,
     bool clearPreviewResult = false,
@@ -49,11 +60,18 @@ class CalculatorState {
     double? lastAnswer,
     List<CalculationHistoryEntry>? history,
     int? historyIndex,
+    CalculatorEditingValue? historyDraftEditingValue,
     String? historyDraft,
     bool? justEvaluated,
   }) {
+    final nextEditingValue = _resolveEditingValue(
+      editingValue: editingValue,
+      equation: equation,
+      selection: selection,
+    );
+
     return CalculatorState(
-      equation: equation ?? this.equation,
+      editingValue: nextEditingValue,
       result: result ?? this.result,
       previewResult: clearPreviewResult
           ? null
@@ -67,9 +85,34 @@ class CalculatorState {
       lastAnswer: lastAnswer ?? this.lastAnswer,
       history: history ?? this.history,
       historyIndex: historyIndex ?? this.historyIndex,
-      historyDraft: historyDraft ?? this.historyDraft,
+      historyDraftEditingValue:
+          historyDraftEditingValue?.normalized() ??
+          (historyDraft != null
+              ? CalculatorEditingValue.fromText(historyDraft)
+              : this.historyDraftEditingValue),
       justEvaluated: justEvaluated ?? this.justEvaluated,
     );
+  }
+
+  CalculatorEditingValue _resolveEditingValue({
+    CalculatorEditingValue? editingValue,
+    String? equation,
+    CalculatorSelection? selection,
+  }) {
+    if (editingValue != null) return editingValue.normalized();
+    if (equation != null) {
+      if (selection != null) {
+        return CalculatorEditingValue(
+          text: equation,
+          selection: selection,
+        ).normalized();
+      }
+      return CalculatorEditingValue.fromText(equation);
+    }
+    if (selection != null) {
+      return this.editingValue.copyWith(selection: selection);
+    }
+    return this.editingValue;
   }
 }
 
@@ -88,62 +131,221 @@ class CalculatorController extends StateNotifier<CalculatorState> {
        _inputEditor = inputEditor,
        super(const CalculatorState());
 
-  void addToken(String token) {
+  /// Single execution path for calculator input intents.
+  ///
+  /// Touch buttons, hardware keyboard/numpad input, and resolved formula insertion are
+  /// translated into [CalculatorInputCommand] before reaching this dispatcher.
+  void dispatch(CalculatorInputCommand command) {
+    switch (command.type) {
+      case CalculatorInputCommandType.insertToken:
+        _insertToken(command.text!);
+        return;
+      case CalculatorInputCommandType.insertFormula:
+        _insertFormula(command.text!);
+        return;
+      case CalculatorInputCommandType.deleteBackward:
+        _deleteBackward();
+        return;
+      case CalculatorInputCommandType.deleteForward:
+        _deleteForward();
+        return;
+      case CalculatorInputCommandType.toggleSign:
+        _toggleSign();
+        return;
+      case CalculatorInputCommandType.moveCursorLeft:
+        _moveCursorLeft(extendSelection: command.extendSelection);
+        return;
+      case CalculatorInputCommandType.moveCursorRight:
+        _moveCursorRight(extendSelection: command.extendSelection);
+        return;
+      case CalculatorInputCommandType.moveCursorToStart:
+        _moveCursorToStart(extendSelection: command.extendSelection);
+        return;
+      case CalculatorInputCommandType.moveCursorToEnd:
+        _moveCursorToEnd(extendSelection: command.extendSelection);
+        return;
+      case CalculatorInputCommandType.selectAll:
+        setSelection(0, state.equation.length);
+        return;
+      case CalculatorInputCommandType.calculate:
+        _calculate();
+        return;
+      case CalculatorInputCommandType.clear:
+        _clear();
+        return;
+      case CalculatorInputCommandType.previousHistory:
+        _previousHistory();
+        return;
+      case CalculatorInputCommandType.nextHistory:
+        _nextHistory();
+        return;
+      case CalculatorInputCommandType.toggleShift:
+        _toggleShift();
+        return;
+      case CalculatorInputCommandType.toggleHyp:
+        _toggleHyp();
+        return;
+      case CalculatorInputCommandType.toggleAngleUnit:
+        _toggleAngleUnit();
+        return;
+    }
+  }
+
+  // Compatibility wrappers kept for existing callers and tests. New input
+  // surfaces should prefer [dispatch] so every source shares the same route.
+  void addToken(String token) =>
+      dispatch(CalculatorInputCommand.insertToken(token));
+
+  /// Backward delete kept under the existing name for keypad/API compatibility.
+  void delete() => dispatch(CalculatorInputCommand.deleteBackward);
+
+  void deleteBackward() => dispatch(CalculatorInputCommand.deleteBackward);
+
+  void deleteForward() => dispatch(CalculatorInputCommand.deleteForward);
+
+  void toggleSign() => dispatch(CalculatorInputCommand.toggleSign);
+
+  void selectAll() => dispatch(CalculatorInputCommand.selectAll);
+
+  void moveCursorLeft({bool extendSelection = false}) {
+    dispatch(
+      CalculatorInputCommand.moveCursorLeft(extendSelection: extendSelection),
+    );
+  }
+
+  void moveCursorRight({bool extendSelection = false}) {
+    dispatch(
+      CalculatorInputCommand.moveCursorRight(extendSelection: extendSelection),
+    );
+  }
+
+  void moveCursorToStart({bool extendSelection = false}) {
+    dispatch(
+      CalculatorInputCommand.moveCursorToStart(
+        extendSelection: extendSelection,
+      ),
+    );
+  }
+
+  void moveCursorToEnd({bool extendSelection = false}) {
+    dispatch(
+      CalculatorInputCommand.moveCursorToEnd(extendSelection: extendSelection),
+    );
+  }
+
+  void clear() => dispatch(CalculatorInputCommand.clear);
+
+  void toggleShift() => dispatch(CalculatorInputCommand.toggleShift);
+
+  void toggleHyp() => dispatch(CalculatorInputCommand.toggleHyp);
+
+  void toggleAngleUnit() => dispatch(CalculatorInputCommand.toggleAngleUnit);
+
+  void calculate() => dispatch(CalculatorInputCommand.calculate);
+
+  void previousHistory() => dispatch(CalculatorInputCommand.previousHistory);
+
+  void nextHistory() => dispatch(CalculatorInputCommand.nextHistory);
+
+  void scrollHistory(int direction) {
+    dispatch(
+      direction < 0
+          ? CalculatorInputCommand.previousHistory
+          : CalculatorInputCommand.nextHistory,
+    );
+  }
+
+  /// Compatibility wrapper for calculator-ready formula expressions.
+  /// Science formula variables must be resolved before calling this method.
+  void insertFormula(String expression) {
+    dispatch(CalculatorInputCommand.insertFormula(expression));
+  }
+
+  void setSelection(int baseOffset, [int? extentOffset]) {
+    final editingValue = _inputEditor.setSelection(
+      state.editingValue,
+      CalculatorSelection(
+        baseOffset: baseOffset,
+        extentOffset: extentOffset ?? baseOffset,
+      ),
+    );
+    _commitSelection(editingValue);
+  }
+
+  void _insertToken(String token) {
     final resolved = _inputEditor.resolveModeToken(
       token,
       isShift: state.isShift,
       isHyp: state.isHyp,
     );
-    final equation = _inputEditor.append(
-      state.equation,
+    final editingValue = _inputEditor.insert(
+      state.editingValue,
       resolved,
       justEvaluated: state.justEvaluated,
     );
 
-    state = state.copyWith(
-      equation: equation,
-      isShift: false,
-      isHyp: false,
-      historyIndex: -1,
-      historyDraft: '',
-      justEvaluated: false,
-      clearPreviewResult: true,
-      clearErrorMessage: true,
-    );
-    _schedulePreview();
+    _commitEditingValue(editingValue, resetModes: true);
   }
 
-  void delete() {
-    if (state.equation.isEmpty) return;
-    state = state.copyWith(
-      equation: _inputEditor.deleteLastToken(state.equation),
-      historyIndex: -1,
-      historyDraft: '',
-      justEvaluated: false,
-      clearPreviewResult: true,
-      clearErrorMessage: true,
-    );
-    _schedulePreview();
+  void _deleteBackward() {
+    final editingValue = _inputEditor.deleteBackward(state.editingValue);
+    if (editingValue == state.editingValue) return;
+    _commitEditingValue(editingValue);
   }
 
-  void toggleSign() {
-    state = state.copyWith(
-      equation: state.justEvaluated
-          ? '-Ans'
-          : _inputEditor.toggleSign(state.equation),
-      historyIndex: -1,
-      historyDraft: '',
-      justEvaluated: false,
-      clearPreviewResult: true,
-      clearErrorMessage: true,
-    );
-    _schedulePreview();
+  void _deleteForward() {
+    final editingValue = _inputEditor.deleteForward(state.editingValue);
+    if (editingValue == state.editingValue) return;
+    _commitEditingValue(editingValue);
   }
 
-  void clear() {
+  void _toggleSign() {
+    final editingValue = state.justEvaluated
+        ? CalculatorEditingValue.fromText('-Ans')
+        : _inputEditor.toggleSignAtCaret(state.editingValue);
+    _commitEditingValue(editingValue);
+  }
+
+  void _moveCursorLeft({bool extendSelection = false}) {
+    _commitSelection(
+      _inputEditor.moveCaretBackward(
+        state.editingValue,
+        extendSelection: extendSelection,
+      ),
+    );
+  }
+
+  void _moveCursorRight({bool extendSelection = false}) {
+    _commitSelection(
+      _inputEditor.moveCaretForward(
+        state.editingValue,
+        extendSelection: extendSelection,
+      ),
+    );
+  }
+
+  void _moveCursorToStart({bool extendSelection = false}) {
+    _commitSelection(
+      _inputEditor.moveCaretToStart(
+        state.editingValue,
+        extendSelection: extendSelection,
+      ),
+    );
+  }
+
+  void _moveCursorToEnd({bool extendSelection = false}) {
+    _commitSelection(
+      _inputEditor.moveCaretToEnd(
+        state.editingValue,
+        extendSelection: extendSelection,
+      ),
+    );
+  }
+
+  void _clear() {
     _previewTimer?.cancel();
     state = state.copyWith(
-      equation: '',
+      editingValue: const CalculatorEditingValue(),
       result: '0',
       isShift: false,
       isHyp: false,
@@ -155,7 +357,7 @@ class CalculatorController extends StateNotifier<CalculatorState> {
     );
   }
 
-  void toggleShift() {
+  void _toggleShift() {
     state = state.copyWith(
       isShift: !state.isShift,
       isHyp: false,
@@ -163,7 +365,7 @@ class CalculatorController extends StateNotifier<CalculatorState> {
     );
   }
 
-  void toggleHyp() {
+  void _toggleHyp() {
     state = state.copyWith(
       isHyp: !state.isHyp,
       isShift: false,
@@ -171,7 +373,7 @@ class CalculatorController extends StateNotifier<CalculatorState> {
     );
   }
 
-  void toggleAngleUnit() {
+  void _toggleAngleUnit() {
     state = state.copyWith(
       angleUnit: state.angleUnit == AngleUnit.radians
           ? AngleUnit.degrees
@@ -182,7 +384,7 @@ class CalculatorController extends StateNotifier<CalculatorState> {
     _schedulePreview();
   }
 
-  void calculate() {
+  void _calculate() {
     if (state.equation.trim().isEmpty) return;
 
     _previewTimer?.cancel();
@@ -229,12 +431,12 @@ class CalculatorController extends StateNotifier<CalculatorState> {
     );
   }
 
-  void previousHistory() {
+  void _previousHistory() {
     if (state.history.isEmpty) return;
 
     final draft = state.historyIndex == -1
-        ? state.equation
-        : state.historyDraft;
+        ? state.editingValue
+        : state.historyDraftEditingValue;
     final newIndex = state.historyIndex == -1
         ? state.history.length - 1
         : (state.historyIndex - 1 < 0 ? 0 : state.historyIndex - 1);
@@ -242,7 +444,7 @@ class CalculatorController extends StateNotifier<CalculatorState> {
 
     state = state.copyWith(
       historyIndex: newIndex,
-      historyDraft: draft,
+      historyDraftEditingValue: draft,
       equation: entry.expression,
       result: entry.result,
       justEvaluated: false,
@@ -251,13 +453,13 @@ class CalculatorController extends StateNotifier<CalculatorState> {
     );
   }
 
-  void nextHistory() {
+  void _nextHistory() {
     if (state.history.isEmpty || state.historyIndex == -1) return;
 
     if (state.historyIndex >= state.history.length - 1) {
       state = state.copyWith(
         historyIndex: -1,
-        equation: state.historyDraft,
+        editingValue: state.historyDraftEditingValue,
         historyDraft: '',
         justEvaluated: false,
         clearPreviewResult: true,
@@ -279,33 +481,16 @@ class CalculatorController extends StateNotifier<CalculatorState> {
     );
   }
 
-  void scrollHistory(int direction) {
-    if (direction < 0) {
-      previousHistory();
-    } else {
-      nextHistory();
-    }
-  }
-
-  void insertFormula(String formula) {
-    var cleanFormula = formula;
-    final equalsIndex = formula.indexOf('=');
-    if (equalsIndex != -1 && equalsIndex < formula.length - 1) {
-      cleanFormula = formula.substring(equalsIndex + 1).trim();
-    }
-
-    final equation = state.equation.isEmpty || state.justEvaluated
-        ? cleanFormula
-        : '${state.equation}$cleanFormula';
-    state = state.copyWith(
-      equation: equation,
-      historyIndex: -1,
-      historyDraft: '',
-      justEvaluated: false,
-      clearPreviewResult: true,
-      clearErrorMessage: true,
+  /// Inserts an already-resolved formula calculation into the editable
+  /// calculator surface. Symbolic textbook formulas are resolved by
+  /// FormulaSolver before they reach this controller.
+  void _insertFormula(String expression) {
+    final editingValue = _inputEditor.insert(
+      state.editingValue,
+      expression,
+      justEvaluated: state.justEvaluated,
     );
-    _schedulePreview();
+    _commitEditingValue(editingValue);
   }
 
   void clearHistory() {
@@ -325,6 +510,32 @@ class CalculatorController extends StateNotifier<CalculatorState> {
       historyDraft: '',
       justEvaluated: false,
       clearPreviewResult: true,
+      clearErrorMessage: true,
+    );
+  }
+
+  void _commitEditingValue(
+    CalculatorEditingValue editingValue, {
+    bool resetModes = false,
+  }) {
+    state = state.copyWith(
+      editingValue: editingValue,
+      isShift: resetModes ? false : state.isShift,
+      isHyp: resetModes ? false : state.isHyp,
+      historyIndex: -1,
+      historyDraft: '',
+      justEvaluated: false,
+      clearPreviewResult: true,
+      clearErrorMessage: true,
+    );
+    _schedulePreview();
+  }
+
+  void _commitSelection(CalculatorEditingValue editingValue) {
+    if (editingValue == state.editingValue && !state.justEvaluated) return;
+    state = state.copyWith(
+      editingValue: editingValue,
+      justEvaluated: false,
       clearErrorMessage: true,
     );
   }
@@ -390,3 +601,7 @@ final calculatorProvider =
     StateNotifierProvider<CalculatorController, CalculatorState>((ref) {
       return CalculatorController();
     });
+
+final formulaSolverProvider = Provider<FormulaSolver>((ref) {
+  return FormulaSolver();
+});

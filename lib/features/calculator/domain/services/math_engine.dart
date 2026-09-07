@@ -4,14 +4,28 @@ import 'package:math_expressions/math_expressions.dart';
 
 import '../models/calculation_result.dart';
 import '../models/calculator_mode.dart';
+import 'calculator_integer_operator_rewriter.dart';
+import 'calculator_numeric_formatter.dart';
+import 'calculator_operand_scanner.dart';
 
 class MathEngine {
-  // EduSheet normalizes implicit multiplication before parsing, so the modern
-  // grammar parser can be used without relying on the legacy parser's own
-  // multiplication heuristics. GrammarParser ships with math_expressions 2.7.0
-  // and fixes long-standing parsing issues in the maintenance-mode parser.
+  // EduSheet normalizes calculator-specific syntax before parsing, so the
+  // modern grammar parser can remain the single arithmetic evaluator.
   final ExpressionParser _parser = GrammarParser();
   final ContextModel _context = ContextModel();
+  final CalculatorNumericFormatter _numericFormatter;
+  final CalculatorIntegerOperatorRewriter _integerOperatorRewriter =
+      const CalculatorIntegerOperatorRewriter();
+  final CalculatorOperandScanner _operandScanner =
+      const CalculatorOperandScanner();
+
+  static const _maxNestedEvaluationDepth = 24;
+  static const _maxExactDoubleInteger = 9007199254740991.0; // 2^53 - 1
+
+  MathEngine({
+    CalculatorNumericFormatter numericFormatter =
+        const CalculatorNumericFormatter(),
+  }) : _numericFormatter = numericFormatter;
 
   String evaluate(
     String expression, {
@@ -29,8 +43,8 @@ class MathEngine {
   ///
   /// Preview evaluation is intentionally conservative: incomplete or invalid
   /// input produces no preview instead of surfacing an error while the user is
-  /// still typing. It is also side-effect free; callers decide whether a
-  /// successful result should ever become `Ans` or enter history.
+  /// still typing. It is side-effect free; callers decide whether a successful
+  /// result should ever become `Ans` or enter history.
   CalculationResult? evaluatePreview(
     String expression, {
     AngleUnit angleUnit = AngleUnit.radians,
@@ -47,7 +61,29 @@ class MathEngine {
     AngleUnit angleUnit = AngleUnit.radians,
     double ans = 0,
   }) {
+    return _evaluateDetailed(
+      expression,
+      angleUnit: angleUnit,
+      ans: ans,
+      evaluationDepth: 0,
+    );
+  }
+
+  CalculationResult _evaluateDetailed(
+    String expression, {
+    required AngleUnit angleUnit,
+    required double ans,
+    required int evaluationDepth,
+  }) {
     try {
+      if (evaluationDepth > _maxNestedEvaluationDepth) {
+        return const CalculationResult.failure(
+          errorCode: CalculationErrorCode.unsupported,
+          errorMessage:
+              'The expression is nested too deeply to evaluate safely.',
+        );
+      }
+
       if (!ans.isFinite) {
         return const CalculationResult.failure(
           errorCode: CalculationErrorCode.domain,
@@ -59,11 +95,19 @@ class MathEngine {
         expression,
         angleUnit: angleUnit,
         ans: ans,
+        evaluationDepth: evaluationDepth,
       );
 
       if (prepared.isEmpty) {
         return const CalculationResult.success(value: 0, displayText: '0');
       }
+
+      _validateSimpleDivisionByZero(
+        prepared,
+        angleUnit: angleUnit,
+        ans: ans,
+        evaluationDepth: evaluationDepth,
+      );
 
       final parsed = _parser.parse(prepared);
       final evaluated = parsed.evaluate(EvaluationType.REAL, _context);
@@ -75,17 +119,22 @@ class MathEngine {
       }
 
       var value = evaluated.toDouble();
-      if (value.abs() < 1e-12) {
-        value = 0.0;
-      }
+      // Only normalize IEEE negative zero. Do not globally collapse tiny finite
+      // values; `1E-13` is a valid result and must remain visible.
+      if (value == 0) value = 0.0;
 
       if (!value.isFinite) {
-        return _nonFiniteFailure(prepared);
+        return _nonFiniteFailure(prepared, value);
       }
 
       return CalculationResult.success(
         value: value,
-        displayText: _formatResult(value),
+        displayText: _numericFormatter.format(value),
+      );
+    } on CalculatorIntegerRewriteException catch (error) {
+      return CalculationResult.failure(
+        errorCode: error.code,
+        errorMessage: error.message,
       );
     } on _CalculationException catch (error) {
       return CalculationResult.failure(
@@ -131,19 +180,45 @@ class MathEngine {
     String expression, {
     required AngleUnit angleUnit,
     required double ans,
+    required int evaluationDepth,
   }) {
     var prepared = _normalizeSymbols(expression);
     if (prepared.isEmpty) return '';
 
     prepared = _autoCloseParentheses(prepared);
     prepared = _rewriteScientificNotation(prepared);
-    prepared = _rewriteCombinatorics(prepared);
-    prepared = _rewriteLiteralFactorials(prepared);
+    int evaluateIntegerOperand(
+      String operand, {
+      required String operatorName,
+      required String operandName,
+    }) {
+      return _evaluateIntegerOperand(
+        operand,
+        operatorName: operatorName,
+        operandName: operandName,
+        angleUnit: angleUnit,
+        ans: ans,
+        evaluationDepth: evaluationDepth + 1,
+      );
+    }
+
+    prepared = _integerOperatorRewriter.rewriteCombinatorics(
+      prepared,
+      evaluateOperand: evaluateIntegerOperand,
+    );
+    prepared = _integerOperatorRewriter.rewriteFactorials(
+      prepared,
+      evaluateOperand: evaluateIntegerOperand,
+    );
+    _validateNoCalculatorOperatorResidue(prepared);
+
     prepared = _insertImplicitMultiplication(prepared);
     prepared = _rewriteHyperbolic(prepared);
     prepared = _rewriteLogarithms(prepared);
     prepared = _applyAngleUnit(prepared, angleUnit);
     prepared = _replaceConstants(prepared, ans: ans);
+    _validateSupportedIdentifiers(prepared);
+    _validateBasicSyntax(prepared);
 
     return prepared;
   }
@@ -183,45 +258,95 @@ class MathEngine {
   }
 
   String _rewriteScientificNotation(String expression) {
-    return expression.replaceAllMapped(
-      RegExp(r'(\d+(?:\.\d+)?)(?:E|EXP)([+-]?\d+)'),
-      (match) => '${match.group(1)}*10^(${match.group(2)})',
-    );
-  }
-
-  String _rewriteCombinatorics(String expression) {
     var rewritten = expression;
 
-    rewritten = rewritten.replaceAllMapped(RegExp(r'(^|[^\w.])(\d+)C(\d+)'), (
-      match,
-    ) {
-      final n = int.parse(match.group(2)!);
-      final r = int.parse(match.group(3)!);
-      return '${match.group(1)}${_nCr(n, r)}';
-    });
+    // Literal mantissas, including `.5EXP2` and `2.E3`.
+    rewritten = rewritten.replaceAllMapped(
+      RegExp(r'(^|[^\w.])((?:\d+(?:\.\d*)?|\.\d+))(?:E|EXP)([+-]?\d+)'),
+      (match) {
+        final mantissa = _canonicalizeScientificMantissa(match.group(2)!);
+        return '${match.group(1)}$mantissa*10^(${match.group(3)})';
+      },
+    );
 
-    rewritten = rewritten.replaceAllMapped(RegExp(r'(^|[^\w.])(\d+)P(\d+)'), (
-      match,
-    ) {
-      final n = int.parse(match.group(2)!);
-      final r = int.parse(match.group(3)!);
-      return '${match.group(1)}${_nPr(n, r)}';
-    });
+    // `Ans`, pi and e are also useful mantissas when the EXP key follows a
+    // previous result or constant.
+    rewritten = rewritten.replaceAllMapped(
+      RegExp(r'(^|[^\w.])(Ans|pi|e)(?:E|EXP)([+-]?\d+)'),
+      (match) => '${match.group(1)}${match.group(2)}*10^(${match.group(3)})',
+    );
 
     return rewritten;
   }
 
-  String _rewriteLiteralFactorials(String expression) {
-    return expression.replaceAllMapped(RegExp(r'(^|[^\w.])(\d+)!'), (match) {
-      final n = int.parse(match.group(2)!);
-      if (n > 170) {
-        throw const _CalculationException(
-          CalculationErrorCode.overflow,
-          'Factorial results above 170! exceed the calculator numeric range.',
-        );
-      }
-      return '${match.group(1)}${_factorial(n)}';
-    });
+  String _canonicalizeScientificMantissa(String mantissa) {
+    if (mantissa.startsWith('.')) return '0$mantissa';
+    if (mantissa.endsWith('.')) return '${mantissa}0';
+    return mantissa;
+  }
+
+  int _evaluateIntegerOperand(
+    String operand, {
+    required String operatorName,
+    required String operandName,
+    required AngleUnit angleUnit,
+    required double ans,
+    required int evaluationDepth,
+  }) {
+    final directInteger = RegExp(r'^\+?\d+$').hasMatch(operand)
+        ? int.tryParse(operand.replaceFirst('+', ''))
+        : null;
+    if (directInteger != null) return directInteger;
+
+    final result = _evaluateDetailed(
+      operand,
+      angleUnit: angleUnit,
+      ans: ans,
+      evaluationDepth: evaluationDepth,
+    );
+    if (result.isFailure || result.value == null) {
+      throw _CalculationException(
+        result.errorCode ?? CalculationErrorCode.domain,
+        '$operatorName could not evaluate its $operandName operand: '
+        '${result.errorMessage ?? 'invalid value'}',
+      );
+    }
+
+    final value = result.value!;
+    if (!value.isFinite || value != value.truncateToDouble()) {
+      throw _CalculationException(
+        CalculationErrorCode.domain,
+        '$operatorName requires integer operands.',
+      );
+    }
+    if (value.abs() > _maxExactDoubleInteger) {
+      throw _CalculationException(
+        CalculationErrorCode.overflow,
+        '$operatorName operand is too large to preserve exact integer precision.',
+      );
+    }
+    return value.toInt();
+  }
+
+  void _validateNoCalculatorOperatorResidue(String expression) {
+    if (expression.contains('EXP') || expression.contains('E')) {
+      throw const _CalculationException(
+        CalculationErrorCode.syntax,
+        'Scientific notation requires exponent digits after EXP.',
+      );
+    }
+    if (expression.contains('!')) {
+      throw const _CalculationException(
+        CalculationErrorCode.syntax,
+        'Factorial syntax is incomplete.',
+      );
+    }
+    if (expression.contains('C') || expression.contains('P')) {
+      throw const _CalculationException(
+        CalculationErrorCode.syntax,
+        'nCr/nPr syntax is incomplete.',
+      );
+    }
   }
 
   String _insertImplicitMultiplication(String expression) {
@@ -251,10 +376,6 @@ class MathEngine {
 
   String _rewriteHyperbolic(String expression) {
     return _rewriteFunctionCalls(expression, {
-      // Avoid a unary-minus exponent (e^(-x)) here. The legacy
-      // ShuntingYardParser has special handling around unary minus and powers,
-      // so expressing the same exponent as (0 - x) is more robust while
-      // preserving the exact hyperbolic identities.
       'sinh': (x) => '((e^($x)-e^((0)-($x)))/2)',
       'cosh': (x) => '((e^($x)+e^((0)-($x)))/2)',
       'tanh': (x) => '((e^(2*($x))-1)/(e^(2*($x))+1))',
@@ -289,22 +410,84 @@ class MathEngine {
       RegExp(r'(^|[^A-Za-z])e(?=$|[^A-Za-z])'),
       (match) => '${match.group(1)}(${math.e})',
     );
-    rewritten = rewritten.replaceAll('Ans', '(${_serializeNumber(ans)})');
+    rewritten = rewritten.replaceAll(
+      'Ans',
+      '(${_numericFormatter.serialize(ans)})',
+    );
     return rewritten;
   }
 
-  String _serializeNumber(double value) {
-    final text = value.toString();
-    final exponentMarker = text.contains('e')
-        ? 'e'
-        : (text.contains('E') ? 'E' : null);
-    if (exponentMarker == null) return text;
+  void _validateBasicSyntax(String expression) {
+    if (RegExp(r'^[*/^,.]').hasMatch(expression) ||
+        RegExp(r'[+\-*/^,.]$').hasMatch(expression)) {
+      throw const _CalculationException(
+        CalculationErrorCode.syntax,
+        'The expression ends before an operand is complete.',
+      );
+    }
+    if (expression.contains('()') ||
+        expression.contains('(,') ||
+        expression.contains(',)')) {
+      throw const _CalculationException(
+        CalculationErrorCode.syntax,
+        'A function or group is missing an operand.',
+      );
+    }
+  }
 
-    final parts = text.split(exponentMarker);
-    if (parts.length != 2) return text;
-    final exponent = int.tryParse(parts[1]);
-    if (exponent == null) return text;
-    return '${parts[0]}*10^($exponent)';
+  void _validateSupportedIdentifiers(String expression) {
+    const supported = <String>{
+      'sin',
+      'cos',
+      'tan',
+      'arcsin',
+      'arccos',
+      'arctan',
+      'sqrt',
+      'nrt',
+      'log',
+      'ln',
+    };
+
+    for (final match in RegExp(r'[A-Za-z_]+').allMatches(expression)) {
+      final identifier = match.group(0)!;
+      if (!supported.contains(identifier)) {
+        throw _CalculationException(
+          CalculationErrorCode.unsupported,
+          'Unknown symbol or variable "$identifier".',
+        );
+      }
+    }
+  }
+
+  void _validateSimpleDivisionByZero(
+    String expression, {
+    required AngleUnit angleUnit,
+    required double ans,
+    required int evaluationDepth,
+  }) {
+    for (var i = 0; i < expression.length; i++) {
+      if (expression[i] != '/') continue;
+      final denominatorEnd = _operandScanner.findRightOperandEnd(
+        expression,
+        i + 1,
+      );
+      if (denominatorEnd == -1) continue;
+
+      final denominatorText = expression.substring(i + 1, denominatorEnd);
+      final denominator = _evaluateDetailed(
+        denominatorText,
+        angleUnit: angleUnit,
+        ans: ans,
+        evaluationDepth: evaluationDepth + 1,
+      );
+      if (denominator.isSuccess && denominator.value == 0) {
+        throw const _CalculationException(
+          CalculationErrorCode.divisionByZero,
+          'Division by zero is undefined.',
+        );
+      }
+    }
   }
 
   String _rewriteFunctionCalls(
@@ -362,115 +545,33 @@ class MathEngine {
     return -1;
   }
 
-  bool _isIdentifierChar(String char) {
-    return RegExp(r'[A-Za-z0-9_]').hasMatch(char);
-  }
+  bool _isIdentifierChar(String char) => RegExp(r'[A-Za-z0-9_]').hasMatch(char);
 
-  CalculationResult _nonFiniteFailure(String prepared) {
-    if (RegExp(r'/(?:\(?0(?:\.0*)?\)?)($|[^0-9.])').hasMatch(prepared)) {
+  CalculationResult _nonFiniteFailure(String prepared, double value) {
+    if (RegExp(r'/(?:\(?[+-]?0(?:\.0*)?\)?)($|[^0-9.])').hasMatch(prepared)) {
       return const CalculationResult.failure(
         errorCode: CalculationErrorCode.divisionByZero,
         errorMessage: 'Division by zero is undefined.',
       );
     }
+
+    if (value.isNaN ||
+        prepared.contains('sqrt(') ||
+        prepared.contains('arcsin(') ||
+        prepared.contains('arccos(') ||
+        prepared.contains('log(') ||
+        prepared.contains('ln(')) {
+      return const CalculationResult.failure(
+        errorCode: CalculationErrorCode.domain,
+        errorMessage:
+            'The expression is outside the calculator numeric domain.',
+      );
+    }
+
     return const CalculationResult.failure(
-      errorCode: CalculationErrorCode.domain,
-      errorMessage: 'The expression is outside the calculator numeric domain.',
+      errorCode: CalculationErrorCode.overflow,
+      errorMessage: 'The result exceeds the calculator numeric range.',
     );
-  }
-
-  String _formatResult(double result) {
-    if (result == result.truncateToDouble() && result.abs() < 1e21) {
-      return result.toInt().toString();
-    }
-
-    final absolute = result.abs();
-    if (absolute >= 1e10 || (absolute > 0 && absolute < 1e-8)) {
-      return _trimExponential(result.toStringAsExponential(10));
-    }
-
-    var resultText = result.toStringAsFixed(10);
-    while (resultText.contains('.') && resultText.endsWith('0')) {
-      resultText = resultText.substring(0, resultText.length - 1);
-    }
-    if (resultText.endsWith('.')) {
-      resultText = resultText.substring(0, resultText.length - 1);
-    }
-    return resultText;
-  }
-
-  String _trimExponential(String value) {
-    final parts = value.split('e');
-    var mantissa = parts[0];
-    while (mantissa.contains('.') && mantissa.endsWith('0')) {
-      mantissa = mantissa.substring(0, mantissa.length - 1);
-    }
-    if (mantissa.endsWith('.')) {
-      mantissa = mantissa.substring(0, mantissa.length - 1);
-    }
-    final exponent = int.parse(parts[1]);
-    return '${mantissa}e${exponent >= 0 ? '+' : ''}$exponent';
-  }
-
-  BigInt _factorial(int n) {
-    var result = BigInt.one;
-    for (var i = 2; i <= n; i++) {
-      result *= BigInt.from(i);
-    }
-    return result;
-  }
-
-  BigInt _nCr(int n, int r) {
-    if (r < 0 || r > n) {
-      throw const _CalculationException(
-        CalculationErrorCode.domain,
-        'nCr requires 0 ≤ r ≤ n.',
-      );
-    }
-    final iterations = r < n - r ? r : n - r;
-    _guardCombinatoricWork(iterations);
-
-    var result = BigInt.one;
-    for (var i = 1; i <= iterations; i++) {
-      result = result * BigInt.from(n - iterations + i) ~/ BigInt.from(i);
-    }
-    _guardParserRange(result);
-    return result;
-  }
-
-  BigInt _nPr(int n, int r) {
-    if (r < 0 || r > n) {
-      throw const _CalculationException(
-        CalculationErrorCode.domain,
-        'nPr requires 0 ≤ r ≤ n.',
-      );
-    }
-    _guardCombinatoricWork(r);
-
-    var result = BigInt.one;
-    for (var i = 0; i < r; i++) {
-      result *= BigInt.from(n - i);
-    }
-    _guardParserRange(result);
-    return result;
-  }
-
-  void _guardCombinatoricWork(int iterations) {
-    if (iterations > 10000) {
-      throw const _CalculationException(
-        CalculationErrorCode.overflow,
-        'This combinatoric operation is too large for an interactive calculation.',
-      );
-    }
-  }
-
-  void _guardParserRange(BigInt value) {
-    if (value.toString().length > 308) {
-      throw const _CalculationException(
-        CalculationErrorCode.overflow,
-        'The result exceeds the calculator numeric range.',
-      );
-    }
   }
 }
 

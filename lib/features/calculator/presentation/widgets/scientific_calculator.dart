@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../domain/models/calculator_input_command.dart';
 import '../../domain/models/calculator_mode.dart';
+import '../layout/calculator_layout_spec.dart';
 import '../providers/calculator_provider.dart';
+import '../services/calculator_keyboard_mapper.dart';
 import 'calculator_button.dart';
 import 'calculator_display.dart';
 
@@ -16,12 +19,23 @@ class ScientificCalculator extends ConsumerStatefulWidget {
 }
 
 class _ScientificCalculatorState extends ConsumerState<ScientificCalculator> {
-  final FocusNode _keyboardFocus = FocusNode(
-    debugLabel: 'scientific-calculator-keyboard',
-  );
+  static const _keyboardMapper = CalculatorKeyboardMapper();
+
+  late final FocusNode _keyboardFocus;
+  late final FocusNode _expressionFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    _keyboardFocus = FocusNode(debugLabel: 'scientific-calculator-keyboard');
+    _expressionFocus = FocusNode(
+      debugLabel: 'scientific-calculator-expression',
+    );
+  }
 
   @override
   void dispose() {
+    _expressionFocus.dispose();
     _keyboardFocus.dispose();
     super.dispose();
   }
@@ -33,70 +47,74 @@ class _ScientificCalculatorState extends ConsumerState<ScientificCalculator> {
 
     return Focus(
       focusNode: _keyboardFocus,
-      autofocus: true,
       onKeyEvent: _handleKeyEvent,
-      child: GestureDetector(
+      child: Listener(
         behavior: HitTestBehavior.translucent,
-        onTap: _keyboardFocus.requestFocus,
+        onPointerUp: (_) => _expressionFocus.requestFocus(),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 720;
-            final short = constraints.maxHeight < 650;
-            final padding = constraints.maxWidth >= 1000 ? 20.0 : 12.0;
+            final layout = CalculatorLayoutSpec.resolve(constraints);
+            final padding = EdgeInsets.fromLTRB(
+              layout.horizontalPadding,
+              layout.topPadding,
+              layout.horizontalPadding,
+              layout.bottomPadding,
+            );
 
-            if (short) {
+            final display = CalculatorDisplay(
+              editingValue: state.editingValue,
+              result: state.result,
+              previewResult: state.previewResult,
+              errorMessage: state.errorMessage,
+              isShift: state.isShift,
+              isHyp: state.isHyp,
+              angleUnit: state.angleUnit,
+              expressionFocusNode: _expressionFocus,
+              compact: layout.compactDisplay,
+              onSelectionChanged: (selection) => controller.setSelection(
+                selection.baseOffset,
+                selection.extentOffset,
+              ),
+            );
+
+            final modeStrip = _ModeStrip(
+              state: state,
+              controller: controller,
+              layout: layout,
+            );
+            final keypad = _KeypadArea(
+              state: state,
+              controller: controller,
+              layout: layout,
+            );
+
+            if (layout.scrollBody) {
               return SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(padding, 6, padding, 12),
+                key: ValueKey(layout.debugKey),
+                padding: padding,
+                physics: const ClampingScrollPhysics(),
                 child: Column(
                   children: [
-                    CalculatorDisplay(
-                      equation: state.equation,
-                      result: state.result,
-                      previewResult: state.previewResult,
-                      errorMessage: state.errorMessage,
-                      isShift: state.isShift,
-                      isHyp: state.isHyp,
-                      angleUnit: state.angleUnit,
-                    ),
-                    const SizedBox(height: 10),
-                    _ModeStrip(state: state, controller: controller),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: wide ? 330 : 545,
-                      child: _KeypadArea(
-                        state: state,
-                        controller: controller,
-                        wide: wide,
-                      ),
-                    ),
+                    display,
+                    SizedBox(height: layout.displayToModeGap),
+                    modeStrip,
+                    SizedBox(height: layout.modeToKeypadGap),
+                    SizedBox(height: layout.scrollKeypadHeight, child: keypad),
                   ],
                 ),
               );
             }
 
             return Padding(
-              padding: EdgeInsets.fromLTRB(padding, 6, padding, 12),
+              key: ValueKey(layout.debugKey),
+              padding: padding,
               child: Column(
                 children: [
-                  CalculatorDisplay(
-                    equation: state.equation,
-                    result: state.result,
-                    previewResult: state.previewResult,
-                    errorMessage: state.errorMessage,
-                    isShift: state.isShift,
-                    isHyp: state.isHyp,
-                    angleUnit: state.angleUnit,
-                  ),
-                  const SizedBox(height: 10),
-                  _ModeStrip(state: state, controller: controller),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: _KeypadArea(
-                      state: state,
-                      controller: controller,
-                      wide: wide,
-                    ),
-                  ),
+                  display,
+                  SizedBox(height: layout.displayToModeGap),
+                  modeStrip,
+                  SizedBox(height: layout.modeToKeypadGap),
+                  Expanded(child: keypad),
                 ],
               ),
             );
@@ -107,151 +125,56 @@ class _ScientificCalculatorState extends ConsumerState<ScientificCalculator> {
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event is KeyUpEvent) return KeyEventResult.ignored;
 
-    final controller = ref.read(calculatorProvider.notifier);
-    final key = event.logicalKey;
+    final keyboard = HardwareKeyboard.instance;
+    final command = _keyboardMapper.map(
+      key: event.logicalKey,
+      character: event.character,
+      shiftPressed: keyboard.isShiftPressed,
+      controlPressed: keyboard.isControlPressed,
+      metaPressed: keyboard.isMetaPressed,
+    );
+    if (command == null) return KeyEventResult.ignored;
 
-    if (key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter) {
-      controller.calculate();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.backspace ||
-        key == LogicalKeyboardKey.delete) {
-      controller.delete();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.escape) {
-      controller.clear();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowUp) {
-      controller.previousHistory();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowDown) {
-      controller.nextHistory();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.numpadAdd) {
-      controller.addToken('+');
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.numpadSubtract) {
-      controller.addToken('-');
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.numpadMultiply) {
-      controller.addToken('×');
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.numpadDivide) {
-      controller.addToken('÷');
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.numpadDecimal) {
-      controller.addToken('.');
-      return KeyEventResult.handled;
-    }
-
-    final digit = _digitForKey(key);
-    if (digit != null) {
-      controller.addToken(digit);
-      return KeyEventResult.handled;
-    }
-
-    final character = event.character;
-    if (character == null || character.isEmpty) {
-      return KeyEventResult.ignored;
-    }
-
-    if (RegExp(r'^[0-9]$').hasMatch(character)) {
-      controller.addToken(character);
-      return KeyEventResult.handled;
-    }
-
-    switch (character) {
-      case '+':
-      case '-':
-      case '(':
-      case ')':
-      case '.':
-      case '^':
-        controller.addToken(character);
-        return KeyEventResult.handled;
-      case '*':
-        controller.addToken('×');
-        return KeyEventResult.handled;
-      case '/':
-        controller.addToken('÷');
-        return KeyEventResult.handled;
-      case '=':
-        controller.calculate();
-        return KeyEventResult.handled;
-    }
-
-    return KeyEventResult.ignored;
-  }
-
-  String? _digitForKey(LogicalKeyboardKey key) {
-    if (key == LogicalKeyboardKey.digit0 || key == LogicalKeyboardKey.numpad0) {
-      return '0';
-    }
-    if (key == LogicalKeyboardKey.digit1 || key == LogicalKeyboardKey.numpad1) {
-      return '1';
-    }
-    if (key == LogicalKeyboardKey.digit2 || key == LogicalKeyboardKey.numpad2) {
-      return '2';
-    }
-    if (key == LogicalKeyboardKey.digit3 || key == LogicalKeyboardKey.numpad3) {
-      return '3';
-    }
-    if (key == LogicalKeyboardKey.digit4 || key == LogicalKeyboardKey.numpad4) {
-      return '4';
-    }
-    if (key == LogicalKeyboardKey.digit5 || key == LogicalKeyboardKey.numpad5) {
-      return '5';
-    }
-    if (key == LogicalKeyboardKey.digit6 || key == LogicalKeyboardKey.numpad6) {
-      return '6';
-    }
-    if (key == LogicalKeyboardKey.digit7 || key == LogicalKeyboardKey.numpad7) {
-      return '7';
-    }
-    if (key == LogicalKeyboardKey.digit8 || key == LogicalKeyboardKey.numpad8) {
-      return '8';
-    }
-    if (key == LogicalKeyboardKey.digit9 || key == LogicalKeyboardKey.numpad9) {
-      return '9';
-    }
-    return null;
+    ref.read(calculatorProvider.notifier).dispatch(command);
+    return KeyEventResult.handled;
   }
 }
 
 class _KeypadArea extends StatelessWidget {
   final CalculatorState state;
   final CalculatorController controller;
-  final bool wide;
+  final CalculatorLayoutSpec layout;
 
   const _KeypadArea({
     required this.state,
     required this.controller,
-    required this.wide,
+    required this.layout,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (wide) {
+    if (layout.splitKeypad) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
             flex: 3,
-            child: _ScientificKeypad(state: state, controller: controller),
+            child: _ScientificKeypad(
+              state: state,
+              controller: controller,
+              density: layout.controlDensity,
+            ),
           ),
-          const SizedBox(width: 8),
-          Expanded(flex: 4, child: _MainKeypad(controller: controller)),
+          SizedBox(width: layout.keypadGap),
+          Expanded(
+            flex: 4,
+            child: _MainKeypad(
+              controller: controller,
+              density: layout.controlDensity,
+            ),
+          ),
         ],
       );
     }
@@ -260,10 +183,20 @@ class _KeypadArea extends StatelessWidget {
       children: [
         Expanded(
           flex: 3,
-          child: _ScientificKeypad(state: state, controller: controller),
+          child: _ScientificKeypad(
+            state: state,
+            controller: controller,
+            density: layout.controlDensity,
+          ),
         ),
-        const SizedBox(height: 6),
-        Expanded(flex: 4, child: _MainKeypad(controller: controller)),
+        SizedBox(height: layout.keypadGap),
+        Expanded(
+          flex: 4,
+          child: _MainKeypad(
+            controller: controller,
+            density: layout.controlDensity,
+          ),
+        ),
       ],
     );
   }
@@ -272,76 +205,82 @@ class _KeypadArea extends StatelessWidget {
 class _ModeStrip extends StatelessWidget {
   final CalculatorState state;
   final CalculatorController controller;
+  final CalculatorLayoutSpec layout;
 
-  const _ModeStrip({required this.state, required this.controller});
+  const _ModeStrip({
+    required this.state,
+    required this.controller,
+    required this.layout,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final veryCompact = constraints.maxWidth < 390;
-        final showStatus = constraints.maxWidth >= 430;
-        final buttonWidth = veryCompact ? 62.0 : 72.0;
 
-        return SizedBox(
-          height: 44,
-          child: Row(
-            children: [
-              _ModeButton(
-                width: buttonWidth,
-                label: 'SHIFT',
-                selected: state.isShift,
-                activeColor: const Color(0xFFF59E0B),
-                onTap: controller.toggleShift,
-              ),
-              _ModeButton(
-                width: buttonWidth,
-                label: 'HYP',
-                selected: state.isHyp,
-                activeColor: const Color(0xFF7C3AED),
-                onTap: controller.toggleHyp,
-              ),
-              _ModeButton(
-                width: buttonWidth,
-                label: state.angleUnit == AngleUnit.degrees ? 'DEG' : 'RAD',
-                selected: state.angleUnit == AngleUnit.degrees,
-                activeColor: const Color(0xFF059669),
-                onTap: controller.toggleAngleUnit,
-              ),
-              if (showStatus)
-                Expanded(
-                  child: Container(
-                    height: double.infinity,
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(9),
-                      border: Border.all(
-                        color: theme.colorScheme.outlineVariant,
-                      ),
-                    ),
-                    child: Text(
-                      state.isShift
-                          ? 'Inverse functions active'
-                          : state.isHyp
-                          ? 'Hyperbolic functions active'
-                          : 'Keyboard + touch ready',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                      ),
-                    ),
+    return SizedBox(
+      height: layout.modeStripHeight,
+      child: Row(
+        children: [
+          _ModeButton(
+            width: layout.modeButtonWidth,
+            label: 'SHIFT',
+            selected: state.isShift,
+            activeColor: const Color(0xFFF59E0B),
+            onTap: () =>
+                controller.dispatch(CalculatorInputCommand.toggleShift),
+          ),
+          _ModeButton(
+            width: layout.modeButtonWidth,
+            label: 'HYP',
+            selected: state.isHyp,
+            activeColor: const Color(0xFF7C3AED),
+            onTap: () => controller.dispatch(CalculatorInputCommand.toggleHyp),
+          ),
+          _ModeButton(
+            width: layout.modeButtonWidth,
+            label: state.angleUnit == AngleUnit.degrees ? 'DEG' : 'RAD',
+            selected: state.angleUnit == AngleUnit.degrees,
+            activeColor: const Color(0xFF059669),
+            onTap: () =>
+                controller.dispatch(CalculatorInputCommand.toggleAngleUnit),
+          ),
+          if (layout.showModeStatus)
+            Expanded(
+              child: Container(
+                height: double.infinity,
+                alignment: Alignment.centerRight,
+                padding: EdgeInsets.symmetric(
+                  horizontal:
+                      layout.controlDensity == CalculatorControlDensity.dense
+                      ? 8
+                      : 12,
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: Text(
+                  state.isShift
+                      ? 'Inverse functions active'
+                      : state.isHyp
+                      ? 'Hyperbolic functions active'
+                      : 'Keyboard + touch ready',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    fontSize:
+                        layout.controlDensity == CalculatorControlDensity.dense
+                        ? 10
+                        : 11,
                   ),
                 ),
-            ],
-          ),
-        );
-      },
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -395,8 +334,13 @@ class _ModeButton extends StatelessWidget {
 class _ScientificKeypad extends StatelessWidget {
   final CalculatorState state;
   final CalculatorController controller;
+  final CalculatorControlDensity density;
 
-  const _ScientificKeypad({required this.state, required this.controller});
+  const _ScientificKeypad({
+    required this.state,
+    required this.controller,
+    required this.density,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -408,31 +352,41 @@ class _ScientificKeypad extends StatelessWidget {
             state.isHyp ? 'sinh' : (state.isShift ? 'sin⁻¹' : 'sin'),
             secondary: state.isHyp || state.isShift ? null : 'sin⁻¹',
             background: colors.function,
-            onTap: () => controller.addToken('sin('),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('sin('),
+            ),
           ),
           _functionButton(
             state.isHyp ? 'cosh' : (state.isShift ? 'cos⁻¹' : 'cos'),
             secondary: state.isHyp || state.isShift ? null : 'cos⁻¹',
             background: colors.function,
-            onTap: () => controller.addToken('cos('),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('cos('),
+            ),
           ),
           _functionButton(
             state.isHyp ? 'tanh' : (state.isShift ? 'tan⁻¹' : 'tan'),
             secondary: state.isHyp || state.isShift ? null : 'tan⁻¹',
             background: colors.function,
-            onTap: () => controller.addToken('tan('),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('tan('),
+            ),
           ),
           _functionButton(
             state.isShift ? '10ˣ' : 'log',
             secondary: state.isShift ? null : '10ˣ',
             background: colors.function,
-            onTap: () => controller.addToken('log('),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('log('),
+            ),
           ),
           _functionButton(
             state.isShift ? 'eˣ' : 'ln',
             secondary: state.isShift ? null : 'eˣ',
             background: colors.function,
-            onTap: () => controller.addToken('ln('),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('ln('),
+            ),
           ),
         ]),
         _row([
@@ -440,57 +394,77 @@ class _ScientificKeypad extends StatelessWidget {
             state.isShift ? '∛x' : '√x',
             secondary: state.isShift ? null : '∛x',
             background: colors.function,
-            onTap: () => controller.addToken('sqrt('),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('sqrt('),
+            ),
           ),
           _functionButton(
             state.isShift ? 'x³' : 'x²',
             secondary: state.isShift ? null : 'x³',
             background: colors.function,
-            onTap: () => controller.addToken('^2'),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('^2'),
+            ),
           ),
           _functionButton(
             state.isShift ? 'x⁻¹' : 'xʸ',
             secondary: state.isShift ? null : 'x⁻¹',
             background: colors.function,
-            onTap: () => controller.addToken('^'),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('^'),
+            ),
           ),
           _functionButton(
             state.isShift ? 'nPr' : 'nCr',
             secondary: state.isShift ? null : 'nPr',
             background: colors.function,
-            onTap: () => controller.addToken('C'),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('C'),
+            ),
           ),
           _functionButton(
             'x!',
             background: colors.function,
-            onTap: () => controller.addToken('!'),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('!'),
+            ),
           ),
         ]),
         _row([
           _functionButton(
             'π',
             background: colors.constant,
-            onTap: () => controller.addToken('π'),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('π'),
+            ),
           ),
           _functionButton(
             'e',
             background: colors.constant,
-            onTap: () => controller.addToken('e'),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('e'),
+            ),
           ),
           _functionButton(
             'Ans',
             background: colors.constant,
-            onTap: () => controller.addToken('Ans'),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('Ans'),
+            ),
           ),
           _functionButton(
             '(',
             background: colors.neutral,
-            onTap: () => controller.addToken('('),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('('),
+            ),
           ),
           _functionButton(
             ')',
             background: colors.neutral,
-            onTap: () => controller.addToken(')'),
+            onTap: () => controller.dispatch(
+              const CalculatorInputCommand.insertToken(')'),
+            ),
           ),
         ]),
       ],
@@ -512,6 +486,7 @@ class _ScientificKeypad extends StatelessWidget {
         secondaryLabel: secondary,
         bgColor: background,
         labelSize: 15,
+        density: density,
         onTap: onTap,
       ),
     );
@@ -520,8 +495,9 @@ class _ScientificKeypad extends StatelessWidget {
 
 class _MainKeypad extends StatelessWidget {
   final CalculatorController controller;
+  final CalculatorControlDensity density;
 
-  const _MainKeypad({required this.controller});
+  const _MainKeypad({required this.controller, required this.density});
 
   @override
   Widget build(BuildContext context) {
@@ -529,65 +505,149 @@ class _MainKeypad extends StatelessWidget {
     return Column(
       children: [
         _row([
-          _button('7', colors.number, () => controller.addToken('7')),
-          _button('8', colors.number, () => controller.addToken('8')),
-          _button('9', colors.number, () => controller.addToken('9')),
+          _button(
+            '7',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('7'),
+            ),
+          ),
+          _button(
+            '8',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('8'),
+            ),
+          ),
+          _button(
+            '9',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('9'),
+            ),
+          ),
           _button(
             'DEL',
             colors.danger,
-            controller.delete,
+            () => controller.dispatch(CalculatorInputCommand.deleteBackward),
             foreground: Colors.white,
           ),
           _button(
             'AC',
             colors.danger,
-            controller.clear,
+            () => controller.dispatch(CalculatorInputCommand.clear),
             foreground: Colors.white,
           ),
         ]),
         _row([
-          _button('4', colors.number, () => controller.addToken('4')),
-          _button('5', colors.number, () => controller.addToken('5')),
-          _button('6', colors.number, () => controller.addToken('6')),
+          _button(
+            '4',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('4'),
+            ),
+          ),
+          _button(
+            '5',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('5'),
+            ),
+          ),
+          _button(
+            '6',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('6'),
+            ),
+          ),
           _button(
             '×',
             colors.operator,
-            () => controller.addToken('×'),
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('×'),
+            ),
             foreground: Colors.white,
           ),
           _button(
             '÷',
             colors.operator,
-            () => controller.addToken('÷'),
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('÷'),
+            ),
             foreground: Colors.white,
           ),
         ]),
         _row([
-          _button('1', colors.number, () => controller.addToken('1')),
-          _button('2', colors.number, () => controller.addToken('2')),
-          _button('3', colors.number, () => controller.addToken('3')),
+          _button(
+            '1',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('1'),
+            ),
+          ),
+          _button(
+            '2',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('2'),
+            ),
+          ),
+          _button(
+            '3',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('3'),
+            ),
+          ),
           _button(
             '+',
             colors.operator,
-            () => controller.addToken('+'),
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('+'),
+            ),
             foreground: Colors.white,
           ),
           _button(
             '-',
             colors.operator,
-            () => controller.addToken('-'),
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('-'),
+            ),
             foreground: Colors.white,
           ),
         ]),
         _row([
-          _button('0', colors.number, () => controller.addToken('0')),
-          _button('.', colors.number, () => controller.addToken('.')),
-          _button('EXP', colors.neutral, () => controller.addToken('EXP')),
-          _button('±', colors.neutral, controller.toggleSign),
+          _button(
+            '0',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('0'),
+            ),
+          ),
+          _button(
+            '.',
+            colors.number,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('.'),
+            ),
+          ),
+          _button(
+            'EXP',
+            colors.neutral,
+            () => controller.dispatch(
+              const CalculatorInputCommand.insertToken('EXP'),
+            ),
+          ),
+          _button(
+            '±',
+            colors.neutral,
+            () => controller.dispatch(CalculatorInputCommand.toggleSign),
+          ),
           _button(
             '=',
             colors.equals,
-            controller.calculate,
+            () => controller.dispatch(CalculatorInputCommand.calculate),
             foreground: Colors.white,
           ),
         ]),
@@ -610,6 +670,7 @@ class _MainKeypad extends StatelessWidget {
         bgColor: background,
         textColor: foreground,
         labelSize: 18,
+        density: density,
         onTap: onTap,
       ),
     );

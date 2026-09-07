@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../layout/calculator_layout_spec.dart';
+
 enum CalculatorButtonShape { round, pill, rect }
 
 class CalculatorButton extends StatelessWidget {
@@ -16,6 +18,7 @@ class CalculatorButton extends StatelessWidget {
   final double? width;
   final double? height;
   final double labelSize;
+  final CalculatorControlDensity density;
 
   const CalculatorButton({
     super.key,
@@ -31,24 +34,53 @@ class CalculatorButton extends StatelessWidget {
     this.width,
     this.height,
     this.labelSize = 18,
+    this.density = CalculatorControlDensity.comfortable,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final radius = shape == CalculatorButtonShape.round ? 22.0 : 8.0;
+    final compact = density != CalculatorControlDensity.comfortable;
+    final dense = density == CalculatorControlDensity.dense;
+    final radius = shape == CalculatorButtonShape.round
+        ? 22.0
+        : dense
+        ? 7.0
+        : 8.0;
+    final outerPadding = dense
+        ? 2.0
+        : compact
+        ? 2.5
+        : 3.0;
+    final metaHeight = secondaryLabel == null && alphaLabel == null
+        ? 0.0
+        : dense
+        ? 11.0
+        : compact
+        ? 12.0
+        : 14.0;
+    final metaFontSize = dense
+        ? 8.5
+        : compact
+        ? 9.0
+        : 10.0;
+    final effectiveLabelSize = dense
+        ? labelSize - 1.5
+        : compact
+        ? labelSize - 0.75
+        : labelSize;
     final foreground = isActive
         ? Colors.white
         : (textColor ?? theme.colorScheme.onSurface);
     final background = isActive ? const Color(0xFF2563EB) : bgColor;
 
     return Padding(
-      padding: const EdgeInsets.all(3),
+      padding: EdgeInsets.all(outerPadding),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            height: secondaryLabel == null && alphaLabel == null ? 0 : 14,
+            height: metaHeight,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -58,9 +90,9 @@ class CalculatorButton extends StatelessWidget {
                       secondaryLabel!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFF59E0B),
-                        fontSize: 10,
+                      style: TextStyle(
+                        color: const Color(0xFFF59E0B),
+                        fontSize: metaFontSize,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -73,9 +105,9 @@ class CalculatorButton extends StatelessWidget {
                       alphaLabel!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFEF4444),
-                        fontSize: 10,
+                      style: TextStyle(
+                        color: const Color(0xFFEF4444),
+                        fontSize: metaFontSize,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -118,13 +150,17 @@ class CalculatorButton extends StatelessWidget {
                               maxLines: 1,
                               style: TextStyle(
                                 color: foreground,
-                                fontSize: labelSize,
+                                fontSize: effectiveLabelSize,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0,
                               ),
                             ),
                           )
-                        : Icon(icon, color: foreground, size: labelSize + 4),
+                        : Icon(
+                            icon,
+                            color: foreground,
+                            size: effectiveLabelSize + 4,
+                          ),
                   ),
                 ),
               ),

@@ -1,34 +1,39 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 
+import '../../domain/models/calculator_editing_value.dart';
 import '../../domain/models/calculator_mode.dart';
-import '../../domain/services/calculator_expression_formatter.dart';
+import 'calculator_expression_editor.dart';
 
 class CalculatorDisplay extends StatelessWidget {
-  final String equation;
+  final CalculatorEditingValue editingValue;
   final String result;
   final String? previewResult;
   final String? errorMessage;
   final bool isShift;
   final bool isHyp;
   final AngleUnit angleUnit;
+  final FocusNode expressionFocusNode;
+  final ValueChanged<CalculatorSelection> onSelectionChanged;
+  final bool compact;
 
   const CalculatorDisplay({
     super.key,
-    required this.equation,
+    required this.editingValue,
     required this.result,
     this.previewResult,
     required this.isShift,
     required this.isHyp,
     required this.angleUnit,
+    required this.expressionFocusNode,
+    required this.onSelectionChanged,
+    this.compact = false,
     this.errorMessage,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const formatter = CalculatorExpressionFormatter();
-    final latex = formatter.toLatex(equation);
+    final equation = editingValue.text;
 
     return Semantics(
       container: true,
@@ -40,7 +45,9 @@ class CalculatorDisplay extends StatelessWidget {
           : '$equation, live preview $previewResult, committed result $result',
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        padding: compact
+            ? const EdgeInsets.fromLTRB(12, 9, 12, 10)
+            : const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
@@ -68,28 +75,20 @@ class CalculatorDisplay extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: compact ? 5 : 8),
             SizedBox(
-              height: 42,
+              height: compact ? 38 : 44,
               width: double.infinity,
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  reverse: true,
-                  child: Math.tex(
-                    latex,
-                    textStyle: TextStyle(
-                      fontSize: 20,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
+              child: CalculatorExpressionEditor(
+                value: editingValue,
+                focusNode: expressionFocusNode,
+                onSelectionChanged: onSelectionChanged,
+                compact: compact,
               ),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: compact ? 3 : 6),
             SizedBox(
-              height: 30,
+              height: compact ? 24 : 30,
               width: double.infinity,
               child: Align(
                 alignment: Alignment.centerRight,
@@ -109,7 +108,7 @@ class CalculatorDisplay extends StatelessWidget {
                             color: theme.colorScheme.onSurfaceVariant.withAlpha(
                               148,
                             ),
-                            fontSize: 21,
+                            fontSize: compact ? 18 : 21,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.1,
                           ),
@@ -117,9 +116,9 @@ class CalculatorDisplay extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 2),
+            SizedBox(height: compact ? 0 : 2),
             SizedBox(
-              height: 48,
+              height: compact ? 40 : 48,
               width: double.infinity,
               child: Align(
                 alignment: Alignment.centerRight,
@@ -134,7 +133,7 @@ class CalculatorDisplay extends StatelessWidget {
                       color: errorMessage == null
                           ? theme.colorScheme.onSurface
                           : theme.colorScheme.error,
-                      fontSize: 40,
+                      fontSize: compact ? 34 : 40,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -142,7 +141,7 @@ class CalculatorDisplay extends StatelessWidget {
               ),
             ),
             if (errorMessage != null) ...[
-              const SizedBox(height: 4),
+              SizedBox(height: compact ? 2 : 4),
               Text(
                 errorMessage!,
                 maxLines: 2,

@@ -1,4 +1,0 @@
-lib/features/paper_composer/application/smart_paper_docx_round_trip_service.dart
-lib/features/paper_composer/presentation/widgets/word_paper_editor.dart
-test/features/pdf/office_export_services_test.dart
-test/release/smart_paper_word_round_trip_gate_test.dart

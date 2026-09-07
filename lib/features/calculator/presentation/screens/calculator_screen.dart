@@ -1,6 +1,7 @@
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 
+import '../layout/calculator_layout_spec.dart';
 import '../widgets/calculator_history_drawer.dart';
 import '../widgets/formula_catalog_sheet.dart';
 import '../widgets/scientific_calculator.dart';
@@ -35,7 +36,9 @@ class CalculatorScreen extends StatelessWidget {
   }
 
   void _showFormulaCatalog(BuildContext context) {
-    final desktop = MediaQuery.sizeOf(context).width >= 720;
+    final desktop =
+        MediaQuery.sizeOf(context).width >=
+        CalculatorLayoutSpec.splitKeypadBreakpoint;
     if (desktop) {
       showDialog<void>(
         context: context,
@@ -45,7 +48,10 @@ class CalculatorScreen extends StatelessWidget {
           child: SizedBox(
             width: 680,
             height: 600,
-            child: FormulaCatalogSheet(dialogMode: true),
+            child: FormulaCatalogSheet(
+              key: ValueKey('calculator-formula-route-dialog'),
+              dialogMode: true,
+            ),
           ),
         ),
       );
@@ -56,12 +62,16 @@ class CalculatorScreen extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => const FormulaCatalogSheet(),
+      builder: (context) => const FormulaCatalogSheet(
+        key: ValueKey('calculator-formula-route-sheet'),
+      ),
     );
   }
 
   void _showHistory(BuildContext context) {
-    final desktop = MediaQuery.sizeOf(context).width >= 720;
+    final desktop =
+        MediaQuery.sizeOf(context).width >=
+        CalculatorLayoutSpec.splitKeypadBreakpoint;
     if (desktop) {
       showDialog<void>(
         context: context,
