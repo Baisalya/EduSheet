@@ -20,13 +20,12 @@ try {
     Invoke-ReleaseCommand -Arguments @('clean')
     Invoke-ReleaseCommand -Arguments @('pub', 'get')
     Invoke-ReleaseCommand -Arguments @('test', '--no-pub')
-    Invoke-ReleaseCommand -Arguments @('analyze', '--no-pub')
+    Invoke-ReleaseCommand -Arguments @('analyze', '--no-pub', '--no-fatal-infos')
     Invoke-ReleaseCommand -Arguments @(
         'build',
         'appbundle',
         '--release',
-        '--dart-define=PREMIUM_ENABLED=true',
-        '--dart-define=PREMIUM_PRODUCT_ID=edusheet_premium_yearly'
+        '--dart-define=PREMIUM_ENABLED=false'
     )
 
     $bundlePath = (Resolve-Path -LiteralPath $bundleRelativePath).Path

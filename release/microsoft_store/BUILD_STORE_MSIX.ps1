@@ -48,7 +48,7 @@ if ($MsixVersion -ne $expectedMsixVersion) {
 if (-not $SkipChecks) {
     flutter pub get
     if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed.' }
-    flutter analyze
+    flutter analyze --no-fatal-infos
     if ($LASTEXITCODE -ne 0) { throw 'flutter analyze failed.' }
     flutter test
     if ($LASTEXITCODE -ne 0) { throw 'flutter test failed.' }

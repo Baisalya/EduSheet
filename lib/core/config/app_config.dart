@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 class AppConfig {
   const AppConfig._();
 
+  static const String androidPackageName = 'com.baishalya.edusheet';
+
   static const String premiumProductId = String.fromEnvironment(
     'PREMIUM_PRODUCT_ID',
     defaultValue: 'edusheet_premium_yearly',
@@ -31,6 +33,12 @@ class AppConfig {
   static const bool premiumEnabled = bool.fromEnvironment(
     'PREMIUM_ENABLED',
     defaultValue: false,
+  );
+
+  /// HTTPS endpoint that validates Android purchase tokens with Google Play.
+  /// Keep this empty in source and provide it to paid release builds.
+  static const String purchaseVerificationUrl = String.fromEnvironment(
+    'EDUSHEET_PURCHASE_VERIFICATION_URL',
   );
 
   /// Store update checks stay quiet in debug/tests and are enabled in release.

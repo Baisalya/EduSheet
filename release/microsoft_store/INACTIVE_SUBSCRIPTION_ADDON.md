@@ -32,3 +32,8 @@ When the owner explicitly decides to charge users:
 4. Build with `--dart-define=PREMIUM_ENABLED=true` only for a private test track first.
 5. Add server-side purchase verification before relying on subscription revenue or cross-device account recovery at scale.
 6. Update the app UI, privacy policy, Store disclosures, website, and `RELEASE_HELPER.md` before public activation.
+
+The shared entitlement API currently verifies Google Play only, and EduSheet is
+disabled there while the app is free. Microsoft monetization also requires a
+real Microsoft Store server-verification implementation before this add-on can
+be activated safely.

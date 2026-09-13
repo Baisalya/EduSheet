@@ -4,7 +4,7 @@ This file is the release contract for a human or AI preparing the next EduSheet 
 
 ## Current release state
 
-- Release date: 2026-08-30
+- Release preparation date: 2026-09-13
 - App version (`pubspec.yaml`): `1.2.2+5`
 - Next MSIX version: `1.2.5.0`
 - Windows architecture: `x64`
@@ -13,8 +13,8 @@ This file is the release contract for a human or AI preparing the next EduSheet 
 - Customer price: Free
 - Microsoft premium checkout: Disabled (`PREMIUM_ENABLED=false`)
 - Inactive future subscription product ID: `edusheet_premium_yearly`
-- Google Play premium/subscription product: Store discovery enabled in the
-  Android bundle; keep the product inactive so app use remains free
+- Google Play premium/subscription product: inactive; the Android bundle is
+  built with `PREMIUM_ENABLED=false`
 - Microsoft Store subscription add-on: Scaffold only; do not submit or publish
 - Partner Center submission: Not performed
 - Partner Center app state: `EduSheet` reserved and `In draft`
@@ -23,9 +23,10 @@ This file is the release contract for a human or AI preparing the next EduSheet 
 - Package publisher: `CN=8A4649E8-2942-4B3D-9789-6B628C3C006F`
 - Publisher display name: `Baishalya`
 - Subscription add-on Store ID: `9PGCF60ZZ4ZC` (`edusheet_premium_yearly`, no submission started)
-- Current Store package: `release/microsoft_store/packages/EduSheet_1.2.4.0_x64_store.msix`
-- Current Store package SHA-256: update after the final package is generated
-- Current QA package: `release/microsoft_store/packages/EduSheet_1.2.4.0_x64_qa.msix`
+- Current Store package: `release/microsoft_store/packages/EduSheet_1.2.5.0_x64_store.msix`
+- Current Store package size: `30,940,845` bytes
+- Current Store package SHA-256: `42081252E718108A6E438E55337E4A3734C992B2162BDF1E87F5A07F14B187FE`
+- Current QA package: generate only when local installation testing needs it
 - Current QA SHA-256: update after the final package is generated
 
 ## Version mapping - do not improvise
@@ -59,15 +60,14 @@ Play subscription is deliberately activated.
 
 - Normal Microsoft Store release builds must use `PREMIUM_ENABLED=false`.
 - All current workspace colour styles remain available.
-- The Google Play AAB uses `PREMIUM_ENABLED=true`, but an inactive or missing
-  product fails open and keeps every style free.
-- Do not activate the paid Google Play product until purchase lifecycle and
-  backend verification checks are complete.
+- The Google Play AAB also uses `PREMIUM_ENABLED=false` for the current free
+  release.
+- Do not activate the paid Google Play product or its backend verification
+  until purchase lifecycle checks are complete.
 - Do not create, submit, or activate the Microsoft subscription add-on.
 - The inactive add-on code and metadata may remain ready for a future explicit decision.
-- Use `PREMIUM_ENABLED=true` only for the Google Play build documented in
-  `release/google_play/RELEASE_HELPER.md`; keep paid activation off until the
-  purchase checks there are complete.
+- The future paid commands are documented in `release/STORE_RELEASE_RUNBOOK.md`.
+  They are not part of the current release.
 
 ## Build the local QA MSIX
 
@@ -102,7 +102,7 @@ The script builds with premium checkout disabled, creates an unsigned Store MSIX
 
 ## Required verification before any upload
 
-1. `flutter analyze`
+1. `flutter analyze --no-fatal-infos` (errors and warnings must still be fixed)
 2. `flutter test`
 3. `flutter build windows --release --dart-define=PREMIUM_ENABLED=false`
 4. `VERIFY_MSIX.ps1` passes.

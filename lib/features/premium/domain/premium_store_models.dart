@@ -30,11 +30,17 @@ class PremiumPurchaseUpdate {
   final String productId;
   final PremiumPurchaseStatus status;
   final String? message;
+  final String serverVerificationData;
+  final String? purchaseId;
+  final bool pendingCompletePurchase;
 
   const PremiumPurchaseUpdate({
     required this.productId,
     required this.status,
     this.message,
+    this.serverVerificationData = '',
+    this.purchaseId,
+    this.pendingCompletePurchase = false,
   });
 }
 

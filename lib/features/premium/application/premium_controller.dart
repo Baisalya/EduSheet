@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/config/app_config.dart';
+import '../data/premium_purchase_verifier.dart';
 import '../data/premium_store_gateway.dart';
 import '../domain/premium_state.dart';
 import '../domain/premium_store_models.dart';
@@ -13,16 +14,21 @@ final premiumProvider = StateNotifierProvider<PremiumController, PremiumState>((
 });
 
 class PremiumController extends StateNotifier<PremiumState> {
-  PremiumController({PremiumStoreGateway? store, bool? premiumEnabled})
-    : _store = store ?? createPremiumStoreGateway(),
-      _premiumEnabled = premiumEnabled ?? AppConfig.premiumEnabled,
-      // Fail open while store discovery is pending. No feature may become
-      // paid merely because Play Billing is slow, unavailable, or inactive.
-      super(const PremiumState(isComplimentaryAccess: true)) {
+  PremiumController({
+    PremiumStoreGateway? store,
+    PremiumPurchaseVerifier? verifier,
+    bool? premiumEnabled,
+  }) : _store = store ?? createPremiumStoreGateway(),
+       _verifier = verifier ?? GooglePlayPremiumPurchaseVerifier(),
+       _premiumEnabled = premiumEnabled ?? AppConfig.premiumEnabled,
+       // Fail open while store discovery is pending. No feature may become
+       // paid merely because Play Billing is slow, unavailable, or inactive.
+       super(const PremiumState(isComplimentaryAccess: true)) {
     unawaited(_initialize());
   }
 
   final PremiumStoreGateway _store;
+  final PremiumPurchaseVerifier _verifier;
   final bool _premiumEnabled;
   StreamSubscription<PremiumPurchaseUpdate>? _purchaseSubscription;
 
@@ -46,6 +52,18 @@ class PremiumController extends StateNotifier<PremiumState> {
             isComplimentaryAccess: true,
             storeStatus: PremiumStoreStatus.unsupported,
             clearMessage: true,
+          );
+        }
+        return;
+      }
+
+      if (_store.requiresServerVerification && !_verifier.isConfigured) {
+        if (mounted) {
+          state = state.copyWith(
+            isComplimentaryAccess: true,
+            storeStatus: PremiumStoreStatus.unavailable,
+            clearProduct: true,
+            message: _verifier.configurationMessage,
           );
         }
         return;
@@ -108,6 +126,10 @@ class PremiumController extends StateNotifier<PremiumState> {
   Future<void> buyPremium() async {
     final product = state.product;
     if (state.purchasePending || product == null) return;
+    if (_store.requiresServerVerification && !_verifier.isConfigured) {
+      state = state.copyWith(message: _verifier.configurationMessage);
+      return;
+    }
 
     state = state.copyWith(purchasePending: true, clearMessage: true);
     try {
@@ -170,7 +192,34 @@ class PremiumController extends StateNotifier<PremiumState> {
         if (mounted) state = state.copyWith(purchasePending: true);
       case PremiumPurchaseStatus.purchased:
       case PremiumPurchaseStatus.restored:
-        await _grantPremium();
+        if (_store.requiresServerVerification) {
+          final verification = await _verifier.verify(purchase);
+          if (!verification.isValid || !verification.isActive) {
+            if (mounted) {
+              state = state.copyWith(
+                isPremium: verification.isDefinitive ? false : state.isPremium,
+                purchasePending: false,
+                message:
+                    verification.message ??
+                    'Google Play could not verify an active subscription.',
+              );
+            }
+            return;
+          }
+        }
+        try {
+          if (purchase.pendingCompletePurchase) {
+            await _store.complete(purchase);
+          }
+          await _grantPremium();
+        } catch (_) {
+          if (mounted) {
+            state = state.copyWith(
+              purchasePending: false,
+              message: 'The verified purchase could not be completed safely.',
+            );
+          }
+        }
       case PremiumPurchaseStatus.error:
         if (mounted) {
           state = state.copyWith(
@@ -199,6 +248,7 @@ class PremiumController extends StateNotifier<PremiumState> {
   void dispose() {
     _purchaseSubscription?.cancel();
     _store.dispose();
+    _verifier.dispose();
     super.dispose();
   }
 }

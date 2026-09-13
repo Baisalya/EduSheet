@@ -10,6 +10,8 @@ import '../domain/premium_store_models.dart';
 abstract interface class PremiumStoreGateway {
   bool get isSupported;
 
+  bool get requiresServerVerification;
+
   Stream<PremiumPurchaseUpdate> get purchaseUpdates;
 
   Future<PremiumCatalogEntry?> loadProduct(String productId);
@@ -17,6 +19,8 @@ abstract interface class PremiumStoreGateway {
   Future<bool> buy(PremiumProduct product);
 
   Future<PremiumRestoreResult> restore(String productId);
+
+  Future<void> complete(PremiumPurchaseUpdate purchase);
 
   void dispose();
 }
@@ -27,9 +31,12 @@ PremiumStoreGateway createPremiumStoreGateway({TargetPlatform? platform}) {
   }
 
   return switch (platform ?? defaultTargetPlatform) {
-    TargetPlatform.android ||
-    TargetPlatform.iOS ||
-    TargetPlatform.macOS => MobilePremiumStoreGateway(),
+    TargetPlatform.android => MobilePremiumStoreGateway(
+      requiresServerVerification: true,
+    ),
+    TargetPlatform.iOS || TargetPlatform.macOS => MobilePremiumStoreGateway(
+      requiresServerVerification: false,
+    ),
     TargetPlatform.windows => MicrosoftPremiumStoreGateway(),
     _ => const UnsupportedPremiumStoreGateway(),
   };
@@ -40,6 +47,9 @@ class UnsupportedPremiumStoreGateway implements PremiumStoreGateway {
 
   @override
   bool get isSupported => false;
+
+  @override
+  bool get requiresServerVerification => false;
 
   @override
   Stream<PremiumPurchaseUpdate> get purchaseUpdates => const Stream.empty();
@@ -55,18 +65,27 @@ class UnsupportedPremiumStoreGateway implements PremiumStoreGateway {
       const PremiumRestoreResult(PremiumRestoreStatus.notFound);
 
   @override
+  Future<void> complete(PremiumPurchaseUpdate purchase) async {}
+
+  @override
   void dispose() {}
 }
 
 class MobilePremiumStoreGateway implements PremiumStoreGateway {
   final InAppPurchase _store;
+  @override
+  final bool requiresServerVerification;
   final StreamController<PremiumPurchaseUpdate> _updates =
       StreamController<PremiumPurchaseUpdate>.broadcast(sync: true);
   final Map<String, ProductDetails> _products = <String, ProductDetails>{};
+  final Map<String, PurchaseDetails> _pendingPurchases =
+      <String, PurchaseDetails>{};
   late final StreamSubscription<List<PurchaseDetails>> _subscription;
 
-  MobilePremiumStoreGateway({InAppPurchase? store})
-    : _store = store ?? InAppPurchase.instance {
+  MobilePremiumStoreGateway({
+    required this.requiresServerVerification,
+    InAppPurchase? store,
+  }) : _store = store ?? InAppPurchase.instance {
     _subscription = _store.purchaseStream.listen(
       _handlePurchaseDetails,
       onError: (Object error, StackTrace stackTrace) {
@@ -133,32 +152,50 @@ class MobilePremiumStoreGateway implements PremiumStoreGateway {
     return const PremiumRestoreResult(PremiumRestoreStatus.requested);
   }
 
-  Future<void> _handlePurchaseDetails(List<PurchaseDetails> purchases) async {
+  void _handlePurchaseDetails(List<PurchaseDetails> purchases) {
     for (final purchase in purchases) {
-      if (!_updates.isClosed) {
-        _updates.add(
-          PremiumPurchaseUpdate(
-            productId: purchase.productID,
-            status: switch (purchase.status) {
-              PurchaseStatus.pending => PremiumPurchaseStatus.pending,
-              PurchaseStatus.purchased => PremiumPurchaseStatus.purchased,
-              PurchaseStatus.restored => PremiumPurchaseStatus.restored,
-              PurchaseStatus.error => PremiumPurchaseStatus.error,
-              PurchaseStatus.canceled => PremiumPurchaseStatus.canceled,
-            },
-            message: purchase.error?.message,
-          ),
-        );
-      }
-
+      final update = PremiumPurchaseUpdate(
+        productId: purchase.productID,
+        status: switch (purchase.status) {
+          PurchaseStatus.pending => PremiumPurchaseStatus.pending,
+          PurchaseStatus.purchased => PremiumPurchaseStatus.purchased,
+          PurchaseStatus.restored => PremiumPurchaseStatus.restored,
+          PurchaseStatus.error => PremiumPurchaseStatus.error,
+          PurchaseStatus.canceled => PremiumPurchaseStatus.canceled,
+        },
+        message: purchase.error?.message,
+        serverVerificationData:
+            purchase.verificationData.serverVerificationData,
+        purchaseId: purchase.purchaseID,
+        pendingCompletePurchase: purchase.pendingCompletePurchase,
+      );
       if (purchase.pendingCompletePurchase) {
-        await _store.completePurchase(purchase);
+        _pendingPurchases[_purchaseKey(update)] = purchase;
+      }
+      if (!_updates.isClosed) {
+        _updates.add(update);
       }
     }
   }
 
+  String _purchaseKey(PremiumPurchaseUpdate purchase) =>
+      '${purchase.productId}|${purchase.purchaseId ?? ''}|${purchase.serverVerificationData}';
+
+  @override
+  Future<void> complete(PremiumPurchaseUpdate purchase) async {
+    if (!purchase.pendingCompletePurchase) return;
+    final details = _pendingPurchases.remove(_purchaseKey(purchase));
+    if (details == null) {
+      throw const PremiumStoreException(
+        'The verified purchase could not be completed safely.',
+      );
+    }
+    await _store.completePurchase(details);
+  }
+
   @override
   void dispose() {
+    _pendingPurchases.clear();
     unawaited(_subscription.cancel());
     unawaited(_updates.close());
   }
@@ -174,6 +211,9 @@ class MicrosoftPremiumStoreGateway implements PremiumStoreGateway {
 
   @override
   bool get isSupported => true;
+
+  @override
+  bool get requiresServerVerification => false;
 
   @override
   Stream<PremiumPurchaseUpdate> get purchaseUpdates => _updates.stream;
@@ -242,6 +282,9 @@ class MicrosoftPremiumStoreGateway implements PremiumStoreGateway {
           'Microsoft Store could not restore purchases.',
     );
   }
+
+  @override
+  Future<void> complete(PremiumPurchaseUpdate purchase) async {}
 
   Future<Map<String, Object?>> _invoke(String method, String productId) async {
     try {
