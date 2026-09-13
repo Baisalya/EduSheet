@@ -1,5 +1,10 @@
 # EduSheet release helper - Android and Windows
 
+Before running a command, read the release-mode gate in
+`release/STORE_RELEASE_RUNBOOK.md`. If the owner's current request does not say
+Free or Microsoft monetized, ask for that choice first. The current Store MSIX
+script is Free-only; it must not be used to activate Microsoft monetization.
+
 This file is the release contract for a human or AI preparing the next EduSheet package. Read it before changing versions or generating an MSIX. Update it in the same change as every release.
 
 ## Current release state

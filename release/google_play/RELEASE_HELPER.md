@@ -1,5 +1,10 @@
 # EduSheet Google Play release helper
 
+Before running a command, read the release-mode gate in
+`release/STORE_RELEASE_RUNBOOK.md`. If the owner's current request does not say
+Free, Google Play private/closed subscription test, or production promotion,
+ask for that choice first. Never infer monetization from prepared billing code.
+
 ## Current release contract
 
 - Application ID: `com.baishalya.edusheet`

@@ -4,6 +4,36 @@ This is the operating contract for a human or AI releasing EduSheet. Read the
 whole file, inspect `release/RELEASE_LOG.md`, and update the log after every
 build, upload, submission, rejection, approval, rollout, or monetization change.
 
+## AI start here: choose the release mode
+
+Before running any build, upload, or Store command, inspect the owner's current
+request. If it does not explicitly select a mode, ask exactly:
+
+```text
+EduSheet release mode kaunsa chahiye?
+1. Free on Google Play and Microsoft Store
+2. Google Play subscription private/closed test
+3. Google Play subscription production promotion
+4. Microsoft Store monetized release
+```
+
+Do not infer a paid release from billing code, product IDs, or prepared Store
+records. If the answer is missing or unclear, stop before building and leave the
+current Free configuration and inactive products unchanged.
+
+Follow only the matching path:
+
+- **1 — Free:** use `BUILD_PLAY_AAB.ps1` and/or `BUILD_STORE_MSIX.ps1` as
+  documented below. Keep `PREMIUM_ENABLED=false`.
+- **2 — Google private/closed test:** enable the verified Google backend,
+  increase the version, build the paid AAB, upload it to a test track, and run
+  the full purchase lifecycle tests. Do not promote it.
+- **3 — Google production promotion:** promote only the exact AAB that passed
+  closed testing. Do not rebuild it and do not create another version.
+- **4 — Microsoft monetized:** stop. Microsoft server-side verification is not
+  implemented, and the current MSIX builder deliberately forces Free mode.
+  Complete that implementation and private-flight QA before activation.
+
 ## Product decision in force
 
 EduSheet is free on Google Play and Microsoft Store. Do not show checkout, do
