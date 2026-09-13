@@ -37,6 +37,8 @@ entries; append a new dated entry.
 - Backend behavior commit: `f5d251d0a9ec9cff427dc25fdfb35f6d7fad0562`.
 - Backend repository head after documentation clarification:
   `7d75ec626859e0d03d13cd3bc2892752071ab8f6`, pushed to `origin/main`.
+- EduSheet release implementation/runbook commit:
+  `9d4004fb98b99c227fd500dc6f2076287d61fcd9`, pushed to `origin/master`.
 - Google Play upload/submission: not performed in this preparation.
 - Microsoft Store upload/submission: not performed in this preparation.
 
