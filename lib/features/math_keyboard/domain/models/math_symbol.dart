@@ -1,3 +1,6 @@
+import 'math_composer_spec.dart';
+import 'math_edit_command.dart';
+
 enum MathCategory {
   recent,
   favorites,
@@ -43,6 +46,9 @@ enum MathSubject {
   geometry,
   probability,
   statistics,
+  combinatorics,
+  numberTheory,
+  complexNumbers,
   linearAlgebra,
   sets,
   logic,
@@ -75,6 +81,10 @@ class MathSymbol {
   final MathEntryKind kind;
   final MathInputBehavior inputBehavior;
 
+  /// Declarative visual-editor recipe for symbols that need structured
+  /// insertion. Null means the visual editor can insert [tex] as a leaf.
+  final MathEditCommand? editorCommand;
+
   /// Optional source inserted before activating a modal input behavior.
   /// Examples: `e` for eˣ, `\sum` for a summation-index builder.
   final String? modeBaseSource;
@@ -106,6 +116,7 @@ class MathSymbol {
     required this.category,
     this.kind = MathEntryKind.symbol,
     this.inputBehavior = MathInputBehavior.insert,
+    this.editorCommand,
     this.modeBaseSource,
     this.isBuilder = false,
     this.variations,
@@ -120,6 +131,12 @@ class MathSymbol {
       isBuilder ||
       kind == MathEntryKind.structure ||
       kind == MathEntryKind.formulaTemplate;
+
+  /// Structured-composer metadata, when this symbol has semantic slots.
+  MathComposerSpec? get composer => editorCommand?.composer;
+
+  bool get supportsSourceSelectionWrap =>
+      editorCommand?.composer?.selectionWrap != null;
 
   String get accessibilityLabel =>
       spokenLabel ?? _spokenMathLabels[tex] ?? label;
@@ -152,6 +169,8 @@ class MathSymbol {
     MathCategory? category,
     MathEntryKind? kind,
     MathInputBehavior? inputBehavior,
+    MathEditCommand? editorCommand,
+    bool clearEditorCommand = false,
     String? modeBaseSource,
     bool clearModeBaseSource = false,
     bool? isBuilder,
@@ -169,6 +188,9 @@ class MathSymbol {
       category: category ?? this.category,
       kind: kind ?? this.kind,
       inputBehavior: inputBehavior ?? this.inputBehavior,
+      editorCommand: clearEditorCommand
+          ? null
+          : (editorCommand ?? this.editorCommand),
       modeBaseSource: clearModeBaseSource
           ? null
           : (modeBaseSource ?? this.modeBaseSource),

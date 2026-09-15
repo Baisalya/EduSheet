@@ -1,10 +1,13 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_validation_service.dart';
 
 /// Application boundary between the new authoring UI and the existing editor
 /// state/repository/autosave implementation.
 class PaperComposerActions {
+  static const _mathValidationService = QuestionMathValidationService();
+
   final EditorState _editor;
 
   const PaperComposerActions(this._editor);
@@ -94,11 +97,19 @@ class PaperComposerActions {
   }
 
   void addQuestionsFromBank(String sectionId, List<Question> questions) {
-    _editor.addQuestionsFromBank(sectionId, questions);
+    final safeQuestions = questions
+        .map((question) => _mathValidationService.validateAndRepair(question))
+        .map((result) => result.safeQuestion)
+        .toList();
+    _editor.addQuestionsFromBank(sectionId, safeQuestions);
   }
 
   void addSectionWithQuestionsFromBank(List<Question> questions) {
-    _editor.addSectionWithQuestionsFromBank(questions);
+    final safeQuestions = questions
+        .map((question) => _mathValidationService.validateAndRepair(question))
+        .map((result) => result.safeQuestion)
+        .toList();
+    _editor.addSectionWithQuestionsFromBank(safeQuestions);
   }
 
   void replaceQuestion(String sectionId, Question question) {
@@ -129,9 +140,11 @@ class PaperComposerActions {
         .firstOrNull;
     if (section == null) return false;
 
-    final question = draft.toQuestion(
-      plainTextAccessibility: plainTextAccessibility,
-    );
+    final question = _mathValidationService
+        .validateAndRepair(
+          draft.toQuestion(plainTextAccessibility: plainTextAccessibility),
+        )
+        .safeQuestion;
     final questions = [...section.questions];
     final existingIndex = questions.indexWhere(
       (item) => item.id == question.id,

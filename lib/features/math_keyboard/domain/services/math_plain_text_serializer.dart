@@ -1,5 +1,6 @@
 import '../catalog/math_symbol_catalog.dart';
 import '../models/math_symbol.dart';
+import 'math_dynamic_structure_codec.dart';
 
 class PlainMathInsertion {
   final String text;
@@ -24,6 +25,16 @@ class MathPlainTextSerializer {
     required bool subscriptMode,
   }) {
     var output = _textMapping[source];
+    if (output == null) {
+      final dynamicStructure = const MathDynamicStructureCodec().tryParse(
+        source,
+      );
+      if (dynamicStructure != null) {
+        output = const MathDynamicStructureCodec()
+            .compile(dynamicStructure)
+            .plainText;
+      }
+    }
 
     if (output == null &&
         powerMode &&
@@ -93,6 +104,9 @@ class MathPlainTextSerializer {
     'sinh()',
     'cosh()',
     'tanh()',
+    'gcd()',
+    'lcm()',
+    'arg()',
   };
 
   static const Map<String, String> _superscripts = <String, String>{
@@ -164,6 +178,16 @@ class MathPlainTextSerializer {
     r'\sqrt[3]{}': '∛()',
     r'\sqrt[]{}': 'ⁿ√()',
     r'\frac{}{}': '()⁄()',
+    r'\binom{}{}': 'C(,)',
+    r'\pmod{}': '(mod )',
+    r'\bigcup_{}^{}': '⋃ₐᵇ',
+    r'\bigcap_{}^{}': '⋂ₐᵇ',
+    r'\gcd': 'gcd()',
+    r'\operatorname{lcm}': 'lcm()',
+    r'\arg': 'arg()',
+    r'\Re': 'Re',
+    r'\Im': 'Im',
+    r'\overline{}': 'z̄',
     r'\frac{1}{2}': '½',
     r'\frac{1}{3}': '⅓',
     r'\frac{2}{3}': '⅔',
@@ -183,11 +207,17 @@ class MathPlainTextSerializer {
     r'\log_{}': 'logₐ()',
     r'\ln': 'ln()',
     r'|{}|': '||',
+    r'||{}||': '‖‖',
     r'^{}': '^',
     r'_{}': '_',
     r'^{2}': '²',
     r'^{3}': '³',
     r'e^{}': 'e^',
+    r'_{}^{}': '_^',
+    r'\frac{d{}}{d{}}': 'd()/d()',
+    r'\lim_{}': 'lim ',
+    r'\langle{},{}\rangle': '⟨,⟩',
+    r'|_{}^{}': '|ₐᵇ',
     r'\frac{d}{dx}': 'd/dx',
     r'\frac{dy}{dx}': 'dy/dx',
     r'\frac{d^2}{dx^2}': 'd²/dx²',

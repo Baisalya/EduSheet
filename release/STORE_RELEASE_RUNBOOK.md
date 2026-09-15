@@ -58,8 +58,9 @@ unlocks all current styles, does not query products, and cannot start checkout.
 | Android package | `com.baishalya.edusheet` |
 | Play version name | `1.2.2` |
 | Play version code | `5` |
-| Planned Play product | `edusheet_premium_yearly` (inactive) |
-| Planned Play base plan | `annual` (inactive) |
+| Planned Play product | `edusheet_premium_yearly` (created, inactive) |
+| Planned Play base plan | `annual` (draft/inactive; yearly auto-renewing) |
+| Planned Play annual price | India `INR 200.00`; other regions auto-converted by Play |
 | Microsoft Store ID | `9N0ZK8C31X94` |
 | MSIX identity | `Baishalya.EduSheet` |
 | MSIX publisher | `CN=8A4649E8-2942-4B3D-9789-6B628C3C006F` |

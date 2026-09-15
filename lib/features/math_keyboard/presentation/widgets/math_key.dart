@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
-import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
+import '../../domain/models/math_symbol.dart';
+import '../../domain/services/math_compatibility_service.dart';
+import 'math_keyboard_motion.dart';
 
 class MathKey extends StatefulWidget {
   final MathSymbol? symbol;
@@ -32,10 +34,13 @@ class MathKey extends StatefulWidget {
 }
 
 class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
+  static final MathCompatibilityCache _compatibilityCache =
+      MathCompatibilityCache(maximumEntries: 512);
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   bool _isPressed = false;
   bool _hasFocus = false;
+  bool _disableAnimations = false;
 
   @override
   void initState() {
@@ -51,6 +56,16 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _disableAnimations = MediaQuery.maybeOf(context)?.disableAnimations == true;
+    _controller.duration = _disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 100);
+    _controller.reverseDuration = _controller.duration;
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -58,18 +73,30 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
 
   void _handleTapDown(TapDownDetails details) {
     setState(() => _isPressed = true);
-    _controller.forward();
+    if (_disableAnimations) {
+      _controller.value = 1;
+    } else {
+      _controller.forward();
+    }
     HapticFeedback.lightImpact();
   }
 
   void _handleTapUp(TapUpDetails details) {
     setState(() => _isPressed = false);
-    _controller.reverse();
+    _releasePressAnimation();
   }
 
   void _handleTapCancel() {
     setState(() => _isPressed = false);
-    _controller.reverse();
+    _releasePressAnimation();
+  }
+
+  void _releasePressAnimation() {
+    if (_disableAnimations) {
+      _controller.value = 0;
+    } else {
+      _controller.reverse();
+    }
   }
 
   @override
@@ -171,7 +198,10 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
     final theme = Theme.of(context);
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 100),
+      duration: mathKeyboardMotionDuration(
+        context,
+        const Duration(milliseconds: 100),
+      ),
       builder: (context, value, child) {
         return Transform.scale(
           scale: value,
@@ -269,6 +299,15 @@ class _MathKeyState extends State<MathKey> with SingleTickerProviderStateMixin {
           textAlign: TextAlign.center,
           style: style.copyWith(fontSize: 10),
         );
+      }
+
+      final compatibility = _compatibilityCache.inspectSource(
+        displayTex,
+        plainFallback: label ?? tex,
+      );
+      if (compatibility.screenRenderer.support !=
+          MathCompatibilitySupport.native) {
+        return Text(label ?? tex, textAlign: TextAlign.center, style: style);
       }
 
       return IgnorePointer(

@@ -11,6 +11,7 @@ import '../../../features/question_bank/presentation/screens/question_bank_scree
 import '../../../features/document_reader/presentation/screens/document_reader_screen.dart';
 import '../../../features/calculator/presentation/screens/calculator_screen.dart';
 import '../../../features/word_converter/presentation/screens/word_converter_screen.dart';
+import '../../../features/teaching_planner/presentation/screens/teaching_planner_screen.dart';
 import '../../../features/premium/presentation/widgets/premium_badge_button.dart';
 import '../../services/review_service.dart';
 import '../providers/privacy_provider.dart';
@@ -106,11 +107,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onTap: () => _open(const QuestionBankScreen()),
       ),
       _HomeCard(
-        title: 'Settings',
-        lottieAsset: 'assets/lottie/settingssliders.json',
-        icon: Icons.settings,
-        color: Colors.blueGrey,
-        onTap: () => _open(const SettingsScreen()),
+        title: 'Teaching Planner',
+        lottieAsset: 'assets/lottie/syllabus_planner.json',
+        icon: Icons.calendar_month_rounded,
+        color: Colors.deepPurple,
+        onTap: () => _open(const TeachingPlannerScreen()),
+      ),
+      _HomeCard(
+        title: 'Calculator',
+        lottieAsset: 'assets/lottie/calculator.json',
+        icon: Icons.calculate,
+        color: Colors.teal,
+        onTap: () => _open(const CalculatorScreen()),
       ),
       _HomeCard(
         title: 'PDF/Word Reader',
@@ -126,12 +134,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         color: Colors.indigo,
         onTap: () => _open(const WordConverterScreen()),
       ),
+
       _HomeCard(
-        title: 'Calculator',
-        lottieAsset: 'assets/lottie/calculator.json',
-        icon: Icons.calculate,
-        color: Colors.teal,
-        onTap: () => _open(const CalculatorScreen()),
+        title: 'Settings',
+        lottieAsset: 'assets/lottie/settingssliders.json',
+        icon: Icons.settings,
+        color: Colors.blueGrey,
+        onTap: () => _open(const SettingsScreen()),
       ),
     ];
 

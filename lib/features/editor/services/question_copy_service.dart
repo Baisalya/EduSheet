@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_label.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_mark.dart';
@@ -28,21 +29,65 @@ class QuestionCopyService {
 
   Question copyQuestion(Question source, {DateTime? copiedAt}) {
     final now = copiedAt ?? DateTime.now();
-    final mathByOldId = <String, MathExpression>{};
+    final mathBySourceKey = <String, MathExpression>{};
     final clonedMath = <MathExpression>[];
 
     for (final expression in source.mathExpressions) {
       final cloned = _copyMathExpression(expression);
-      if (expression.id.isNotEmpty) {
-        mathByOldId[expression.id] = cloned;
-      }
+      mathBySourceKey[_mathSourceKey(expression)] = cloned;
       clonedMath.add(cloned);
     }
 
     final clonedText = _copyRichText(
       source.text,
-      mathByOldId: mathByOldId,
+      mathBySourceKey: mathBySourceKey,
       clonedMath: clonedMath,
+    );
+
+    final optionIds = <String, String>{};
+    final clonedOptions = source.options.map((option) {
+      final newId = _nextId();
+      optionIds[option.id] = newId;
+      return QuestionOption(
+        id: newId,
+        text: option.text,
+        isCorrect: option.isCorrect,
+      );
+    }).toList();
+
+    final attachmentIds = <String, String>{};
+    final clonedAttachments = source.attachments.map((attachment) {
+      final newId = _nextId();
+      attachmentIds[attachment.id] = newId;
+      return QuestionAttachment(
+        id: newId,
+        kind: attachment.kind,
+        path: attachment.path,
+        alternativeText: attachment.alternativeText,
+        caption: attachment.caption,
+        mimeType: attachment.mimeType,
+        width: attachment.width,
+        height: attachment.height,
+      );
+    }).toList();
+
+    final copiedMetadata = _copyDynamicMap(source.metadata);
+    final sourceMathContent = QuestionMathContent.fromMetadata(source.metadata);
+    final copiedMathContent = sourceMathContent.remapForCopy(
+      optionIds: optionIds,
+      attachmentIds: attachmentIds,
+      mapExpression: (expression) {
+        final key = _mathSourceKey(expression);
+        final existing = mathBySourceKey[key];
+        if (existing != null) return existing;
+        final cloned = _copyMathExpression(expression);
+        mathBySourceKey[key] = cloned;
+        clonedMath.add(cloned);
+        return cloned;
+      },
+    );
+    final normalizedMetadata = copiedMathContent.writeToMetadata(
+      copiedMetadata,
     );
 
     return Question(
@@ -51,15 +96,7 @@ class QuestionCopyService {
       richTextFormat: source.richTextFormat,
       plainTextAccessibility: source.plainTextAccessibility,
       imageUrl: source.imageUrl,
-      options: source.options
-          .map(
-            (option) => QuestionOption(
-              id: _nextId(),
-              text: option.text,
-              isCorrect: option.isCorrect,
-            ),
-          )
-          .toList(),
+      options: clonedOptions,
       type: source.type,
       marks: source.marks,
       negativeMarks: source.negativeMarks,
@@ -78,22 +115,10 @@ class QuestionCopyService {
       tags: List<String>.from(source.tags),
       language: source.language,
       instructions: source.instructions,
+      instructionAlignment: source.instructionAlignment,
       sourceReference: source.sourceReference,
       mathExpressions: clonedMath,
-      attachments: source.attachments
-          .map(
-            (attachment) => QuestionAttachment(
-              id: _nextId(),
-              kind: attachment.kind,
-              path: attachment.path,
-              alternativeText: attachment.alternativeText,
-              caption: attachment.caption,
-              mimeType: attachment.mimeType,
-              width: attachment.width,
-              height: attachment.height,
-            ),
-          )
-          .toList(),
+      attachments: clonedAttachments,
       tableData: _copyTable(source.tableData),
       subQuestions: source.subQuestions
           .map((item) => copyQuestion(item, copiedAt: now))
@@ -105,7 +130,7 @@ class QuestionCopyService {
       modifiedAt: now,
       version: 1,
       status: source.status,
-      metadata: _copyDynamicMap(source.metadata),
+      metadata: normalizedMetadata,
     );
   }
 
@@ -127,9 +152,12 @@ class QuestionCopyService {
     );
   }
 
+  String _mathSourceKey(MathExpression expression) =>
+      expression.persistentIdentity;
+
   String _copyRichText(
     String source, {
-    required Map<String, MathExpression> mathByOldId,
+    required Map<String, MathExpression> mathBySourceKey,
     required List<MathExpression> clonedMath,
   }) {
     final trimmed = source.trim();
@@ -151,7 +179,7 @@ class QuestionCopyService {
           final insert = Map<String, dynamic>.from(rawInsert);
           _copyMathEmbed(
             insert,
-            mathByOldId: mathByOldId,
+            mathBySourceKey: mathBySourceKey,
             clonedMath: clonedMath,
           );
           _copyGeometryEmbed(insert);
@@ -174,7 +202,7 @@ class QuestionCopyService {
 
   void _copyMathEmbed(
     Map<String, dynamic> insert, {
-    required Map<String, MathExpression> mathByOldId,
+    required Map<String, MathExpression> mathBySourceKey,
     required List<MathExpression> clonedMath,
   }) {
     if (!insert.containsKey(MathExpression.quillEmbedKey)) return;
@@ -185,12 +213,11 @@ class QuestionCopyService {
       return;
     }
 
-    var cloned = embedded.id.isEmpty ? null : mathByOldId[embedded.id];
+    final key = _mathSourceKey(embedded);
+    var cloned = mathBySourceKey[key];
     if (cloned == null) {
       cloned = _copyMathExpression(embedded);
-      if (embedded.id.isNotEmpty) {
-        mathByOldId[embedded.id] = cloned;
-      }
+      mathBySourceKey[key] = cloned;
       clonedMath.add(cloned);
     }
     insert[MathExpression.quillEmbedKey] = cloned.toQuillEmbedData();

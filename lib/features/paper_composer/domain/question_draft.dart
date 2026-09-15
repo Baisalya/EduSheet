@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import 'question_advanced_content.dart';
 import 'question_details_draft.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 
 /// Editing model for the paper composer.
 ///
@@ -30,6 +31,7 @@ class QuestionDraft {
   final QuestionOptionLayout optionLayout;
   final QuestionAdvancedContent advancedContent;
   final QuestionDetailsDraft details;
+  final QuestionMathContent mathContent;
 
   const QuestionDraft._({
     required Question seed,
@@ -46,6 +48,7 @@ class QuestionDraft {
     required this.optionLayout,
     required this.advancedContent,
     required this.details,
+    required this.mathContent,
   }) : _seed = seed;
 
   String get id => _seed.id;
@@ -84,6 +87,7 @@ class QuestionDraft {
       optionLayout: QuestionOptionLayout.vertical,
       advancedContent: QuestionAdvancedContent.empty,
       details: const QuestionDetailsDraft(),
+      mathContent: QuestionMathContent.empty,
     );
   }
 
@@ -105,6 +109,7 @@ class QuestionDraft {
       optionLayout: QuestionOptionLayoutCodec.fromQuestion(question),
       advancedContent: QuestionAdvancedContent.fromQuestion(question),
       details: QuestionDetailsDraft.fromQuestion(question),
+      mathContent: QuestionMathContent.fromQuestion(question),
     );
   }
 
@@ -123,6 +128,7 @@ class QuestionDraft {
     QuestionOptionLayout? optionLayout,
     QuestionAdvancedContent? advancedContent,
     QuestionDetailsDraft? details,
+    QuestionMathContent? mathContent,
   }) {
     return QuestionDraft._(
       seed: _seed,
@@ -139,6 +145,7 @@ class QuestionDraft {
       optionLayout: optionLayout ?? this.optionLayout,
       advancedContent: advancedContent ?? this.advancedContent,
       details: details ?? this.details,
+      mathContent: mathContent ?? this.mathContent,
     );
   }
 
@@ -171,6 +178,19 @@ class QuestionDraft {
       ..remove('paperComposerDraft');
     metadata = QuestionOptionLayoutCodec.write(metadata, optionLayout);
     metadata = advancedContent.writeToMetadata(metadata);
+    final currentMathSurfaces = _currentMathSurfaceText();
+    final surfaceOwnedIdentities = mathContent.expressionIdentities;
+    final reconciledMathContent = mathContent.retainMatching(
+      currentMathSurfaces,
+    );
+    final normalizedMathExpressions = _dedupeMathExpressions([
+      ...mathExpressions.where(
+        (expression) =>
+            !surfaceOwnedIdentities.contains(expression.persistentIdentity),
+      ),
+      ...reconciledMathContent.expressions,
+    ]);
+    metadata = reconciledMathContent.writeToMetadata(metadata);
 
     return _seed.copyWith(
       text: text,
@@ -197,7 +217,7 @@ class QuestionDraft {
       instructions: details.instructions,
       instructionAlignment: details.instructionAlignment,
       sourceReference: details.sourceReference,
-      mathExpressions: mathExpressions,
+      mathExpressions: normalizedMathExpressions,
       attachments: attachments,
       tableData: tableData,
       subQuestions: subQuestions,
@@ -208,6 +228,53 @@ class QuestionDraft {
       metadata: metadata,
       alignment: _seed.alignment,
     );
+  }
+
+  static List<MathExpression> _dedupeMathExpressions(
+    Iterable<MathExpression> expressions,
+  ) {
+    final result = <MathExpression>[];
+    final seen = <String>{};
+    for (final expression in expressions) {
+      if (seen.add(expression.persistentIdentity)) result.add(expression);
+    }
+    return result;
+  }
+
+  Map<String, String> _currentMathSurfaceText() {
+    final values = <String, String>{};
+    for (final option in options) {
+      values[QuestionMathSurfaceKey.option(option.id)] = option.text;
+    }
+    final stimulus = advancedContent.stimulus;
+    if (stimulus != null) {
+      values[QuestionMathSurfaceKey.stimulusTitle] = stimulus.title;
+      values[QuestionMathSurfaceKey.stimulusText] = stimulus.text;
+    }
+    for (final entry in advancedContent.wordBank.asMap().entries) {
+      values[QuestionMathSurfaceKey.wordBank(entry.key)] = entry.value;
+    }
+    final table = tableData;
+    if (table != null) {
+      values[QuestionMathSurfaceKey.tableCaption] = table.caption;
+      for (final entry in table.headers.asMap().entries) {
+        values[QuestionMathSurfaceKey.tableHeader(entry.key)] = entry.value;
+      }
+      for (final row in table.rows.asMap().entries) {
+        for (final cell in row.value.asMap().entries) {
+          values[QuestionMathSurfaceKey.tableCell(row.key, cell.key)] =
+              cell.value;
+        }
+      }
+    }
+    for (final attachment in attachments) {
+      values[QuestionMathSurfaceKey.attachmentCaption(attachment.id)] =
+          attachment.caption;
+    }
+    values[QuestionMathSurfaceKey.instructions] = details.instructions;
+    values[QuestionMathSurfaceKey.correctAnswer] = details.correctAnswer;
+    values[QuestionMathSurfaceKey.explanation] = details.explanation;
+    return values;
   }
 
   static QuestionTable? _copyTable(QuestionTable? table) {

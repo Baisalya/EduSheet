@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:math_keyboard/math_keyboard.dart' as math_kb;
+import '../../domain/services/math_accessible_text_service.dart';
+import '../../domain/services/math_compatibility_service.dart';
 import '../providers/math_keyboard_controller.dart';
+import '../shortcuts/math_keyboard_productivity_shortcuts.dart';
 import 'math_keyboard_interaction_region.dart';
 
 class MathKeyboardField extends ConsumerStatefulWidget {
@@ -200,6 +203,20 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
     }
 
     final hardware = HardwareKeyboard.instance;
+    final productivityCommand = MathKeyboardProductivityShortcuts.resolve(
+      key: event.logicalKey,
+      control: hardware.isControlPressed,
+      shift: hardware.isShiftPressed,
+      alt: hardware.isAltPressed,
+      meta: hardware.isMetaPressed,
+    );
+    if (productivityCommand != null &&
+        _mathKeyboardController.handleProductivityCommand(
+          productivityCommand,
+        )) {
+      return KeyEventResult.handled;
+    }
+
     if (hardware.isControlPressed ||
         hardware.isAltPressed ||
         hardware.isMetaPressed) {
@@ -220,8 +237,15 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
       _mathKeyboardController.moveCursorRight();
       return KeyEventResult.handled;
     }
-    if (key == LogicalKeyboardKey.tab ||
-        key == LogicalKeyboardKey.enter ||
+    if (key == LogicalKeyboardKey.tab) {
+      if (hardware.isShiftPressed) {
+        _mathKeyboardController.previousField();
+      } else {
+        _mathKeyboardController.nextField();
+      }
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter) {
       _mathKeyboardController.nextField();
       return KeyEventResult.handled;
@@ -523,6 +547,14 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
         tex.contains('\\') ||
         tex.contains(r'\frac') ||
         tex.contains(r'\sqrt');
+    final readableFallback = const MathAccessibleTextService().describe(tex);
+    final compatibility = const MathCompatibilityService().inspectSource(
+      tex,
+      plainFallback: readableFallback,
+    );
+    final canRenderTeX =
+        isTexLike &&
+        compatibility.screenRenderer.support == MathCompatibilitySupport.native;
 
     return Container(
       margin: const EdgeInsets.only(top: 12),
@@ -575,7 +607,7 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
               physics: const BouncingScrollPhysics(),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: isTexLike
+                child: canRenderTeX
                     ? Math.tex(
                         tex,
                         mathStyle: MathStyle.display,
@@ -584,7 +616,7 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
                           fontFamily: 'serif',
                         ),
                         onErrorFallback: (err) => Text(
-                          tex,
+                          readableFallback,
                           style: const TextStyle(
                             fontSize: 22,
                             height: 1.45,
@@ -593,7 +625,7 @@ class _MathKeyboardFieldState extends ConsumerState<MathKeyboardField> {
                         ),
                       )
                     : Text(
-                        tex,
+                        isTexLike ? readableFallback : tex,
                         style: TextStyle(
                           fontSize: 22,
                           height: 1.45,

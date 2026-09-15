@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:edusheet/features/math_keyboard/domain/catalog/math_symbol_catalog.dart';
-import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
-import 'package:edusheet/features/math_keyboard/domain/services/math_smart_palette.dart';
-import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_provider.dart';
+import '../../domain/catalog/math_symbol_catalog.dart';
+import '../../domain/models/math_symbol.dart';
+import '../../domain/services/math_smart_palette.dart';
+import '../providers/math_keyboard_provider.dart';
 
 class MathSymbolSearchSheet extends ConsumerStatefulWidget {
   final String Function(MathCategory category) categoryLabel;
@@ -66,8 +66,9 @@ class _MathSymbolSearchSheetState extends ConsumerState<MathSymbolSearchSheet> {
           final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
           final largeText = textScale >= 1.5;
           final useScrollableLayout =
-              largeText &&
-              (constraints.maxWidth < 520 || constraints.maxHeight < 680);
+              constraints.maxHeight < 360 ||
+              (largeText &&
+                  (constraints.maxWidth < 520 || constraints.maxHeight < 680));
           final chipRowHeight = largeText ? 58.0 : 38.0;
           final columns = constraints.maxWidth >= 720 ? 2 : 1;
 
@@ -92,6 +93,7 @@ class _MathSymbolSearchSheetState extends ConsumerState<MathSymbolSearchSheet> {
               textInputAction: TextInputAction.search,
               onChanged: (value) => setState(() => _query = value),
               decoration: InputDecoration(
+                labelText: 'Search math symbols',
                 hintText: 'What do you want to add?',
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _query.isEmpty
@@ -161,12 +163,20 @@ class _MathSymbolSearchSheetState extends ConsumerState<MathSymbolSearchSheet> {
               spacing: 12,
               runSpacing: 4,
               children: [
-                Text(
-                  _query.trim().isEmpty
-                      ? '${symbols.length} useful starting points'
-                      : '${symbols.length} results',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                Semantics(
+                  liveRegion: true,
+                  label: _query.trim().isEmpty
+                      ? '${symbols.length} useful math starting points.'
+                      : '${symbols.length} math results for ${_query.trim()}.',
+                  child: ExcludeSemantics(
+                    child: Text(
+                      _query.trim().isEmpty
+                          ? '${symbols.length} useful starting points'
+                          : '${symbols.length} results',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ),
                 Text(
@@ -262,77 +272,88 @@ class _SearchResultCard extends StatelessWidget {
         humanLabel.isNotEmpty &&
         humanLabel.toLowerCase() != symbol.label.toLowerCase();
 
-    return Material(
-      color: theme.colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      button: true,
+      label: 'Insert ${humanLabel.isEmpty ? symbol.label : humanLabel}',
+      hint:
+          '$categoryLabel. ${isFavorite ? 'Saved in favourites.' : 'Not in favourites.'}',
+      onTap: onSelected,
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
-        onTap: onSelected,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 64,
-                child: Text(
-                  symbol.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onSelected,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 64,
+                  child: Text(
+                    symbol.label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      showHumanLabel ? humanLabel : categoryLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 3,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          categoryLabel,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        showHumanLabel ? humanLabel : categoryLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
-                        if (symbol.isStructural)
-                          _MiniBadge(
-                            icon: Icons.account_tree_outlined,
-                            label: 'Structure',
+                      ),
+                      const SizedBox(height: 3),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 3,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            categoryLabel,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                      ],
-                    ),
-                  ],
+                          if (symbol.isStructural)
+                            const _MiniBadge(
+                              icon: Icons.account_tree_outlined,
+                              label: 'Structure',
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: isFavorite
-                    ? 'Remove from favourites'
-                    : 'Add to favourites',
-                visualDensity: VisualDensity.compact,
-                onPressed: onFavorite,
-                icon: Icon(
-                  isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
-                  color: isFavorite ? theme.colorScheme.primary : null,
+                IconButton(
+                  tooltip: isFavorite
+                      ? 'Remove from favourites'
+                      : 'Add to favourites',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onFavorite,
+                  icon: Icon(
+                    isFavorite
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    color: isFavorite ? theme.colorScheme.primary : null,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

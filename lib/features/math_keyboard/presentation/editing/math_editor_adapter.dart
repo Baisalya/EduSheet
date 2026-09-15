@@ -9,7 +9,11 @@ import 'package:math_keyboard/math_keyboard.dart' as math_kb;
 import 'package:math_keyboard/src/foundation/node.dart' as math_kb_node;
 
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
-import 'package:edusheet/features/math_keyboard/domain/services/math_plain_text_serializer.dart';
+import '../../domain/models/math_dynamic_structure.dart';
+import '../../domain/models/math_edit_command.dart';
+import '../../domain/models/math_symbol.dart';
+import '../../domain/services/math_dynamic_structure_codec.dart';
+import '../../domain/services/math_plain_text_serializer.dart';
 
 class MathInsertionContext {
   final bool powerMode;
@@ -25,6 +29,22 @@ class MathInsertionContext {
 
 abstract class MathEditorAdapter {
   void insert(String source, MathInsertionContext context);
+
+  /// Typed catalogue insertion path. Non-visual editors intentionally keep
+  /// using their existing plain-text serialization by default.
+  void insertSymbol(MathSymbol symbol, MathInsertionContext context) =>
+      insert(symbol.tex, context);
+
+  /// Runtime-sized structures use the same adapter boundary as catalogue
+  /// commands. Non-visual editors keep their existing serialization behavior.
+  void insertDynamicStructure(
+    MathDynamicStructureInstance instance,
+    MathInsertionContext context,
+  ) {
+    final document = const MathDynamicStructureCodec().compile(instance);
+    insert(document.tex, context);
+  }
+
   void moveLeft();
   void moveRight();
   void deleteBackward();
@@ -32,6 +52,9 @@ abstract class MathEditorAdapter {
 
   /// Returns true when the editor handled structured-slot navigation itself.
   bool moveToNextSlot() => false;
+
+  /// Returns true when the editor handled reverse structured-slot navigation.
+  bool moveToPreviousSlot() => false;
 }
 
 class MathEditorAdapterFactory {
@@ -262,234 +285,192 @@ class MathFieldEditorAdapter extends MathEditorAdapter {
 
   MathFieldEditorAdapter(this.controller);
 
+  /// Raw input is reserved for hardware characters, whitespace and other
+  /// non-catalogue actions. Catalogue structures use [insertSymbol] so their
+  /// editing semantics come from domain metadata rather than TeX matching.
   @override
   void insert(String source, MathInsertionContext context) {
-    const functionsWithBraces = <String>[
-      r'\sin',
-      r'\cos',
-      r'\tan',
-      r'\csc',
-      r'\sec',
-      r'\cot',
-      r'\log',
-      r'\ln',
-      r'\arcsin',
-      r'\arccos',
-      r'\arctan',
-      r'\sinh',
-      r'\cosh',
-      r'\tanh',
-    ];
+    final dynamicStructure = const MathDynamicStructureCodec().tryParse(source);
+    if (dynamicStructure != null) {
+      _insertDynamicStructure(dynamicStructure);
+      return;
+    }
 
-    if (source == r'\frac{1}{2}') {
-      _addFraction('1', '2');
-    } else if (source == r'\frac{1}{3}') {
-      _addFraction('1', '3');
-    } else if (source == r'\frac{2}{3}') {
-      _addFraction('2', '3');
-    } else if (source == r'\frac{d}{dx}') {
-      _addFraction('d', 'dx');
-    } else if (source == r'\frac{dy}{dx}') {
-      _addFraction('dy', 'dx');
-    } else if (source == r'\frac{d^2}{dx^2}') {
-      _addSecondDerivative();
-    } else if (source == r'\lim_{x \to \infty}') {
-      controller.addLeaf(r'\lim');
-      controller.addFunction('_', <math_kb_node.TeXArg>[
-        math_kb_node.TeXArg.braces,
-      ]);
-      controller.addLeaf('x');
-      controller.addLeaf(r'\to');
-      controller.addLeaf(r'\infty');
-      controller.goNext();
-    } else if (source == r'\int_{}^{}' || source == r'\int_{}^{}^{}') {
-      _addLimits(r'\int');
-    } else if (source == r'\sum_{}^{}' || source == r'\sum_{}^{}^{}') {
-      _addLimits(r'\sum');
-    } else if (source == r'\prod_{}^{}' || source == r'\prod_{}^{}^{}') {
-      _addLimits(r'\prod');
-    } else if (source == r'\triangle_{A B C}') {
-      controller.addLeaf(r'\triangle');
-      controller.addFunction('_', <math_kb_node.TeXArg>[
-        math_kb_node.TeXArg.braces,
-      ]);
-    } else if (source == r'\overline{AB}') {
-      _addSingleArgumentFunction(r'\overline');
-    } else if (source == r'\overrightarrow{AB}') {
-      _addSingleArgumentFunction(r'\overrightarrow');
-    } else if (source == r'\overleftrightarrow{AB}') {
-      _addSingleArgumentFunction(r'\overleftrightarrow');
-    } else if (source == r'\widehat{AB}') {
-      _addSingleArgumentFunction(r'\widehat');
-    } else if (source == r'\bar{x}') {
-      _addSingleArgumentFunction(r'\bar');
-    } else if (source == r'\vec{v}' || source == r'\vec{F}') {
-      _addSingleArgumentFunction(r'\vec');
-    } else if (source == r'\text{Graph}') {
-      controller.addLeaf(r'\text{Graph Frame}');
-    } else if (functionsWithBraces.contains(source)) {
-      controller.addLeaf(source);
-      controller.addLeaf('(');
-      controller.addLeaf(')');
-      controller.goBack();
-    } else if (source.endsWith(r'\theta') && source.length > 7) {
-      final function = source.split(' ').first;
-      controller.addLeaf(function);
-      controller.addLeaf('(');
-      controller.addLeaf(r'\theta');
-      controller.addLeaf(')');
-    } else if (source == r'\sqrt{}') {
-      _addSingleArgumentFunction(r'\sqrt');
-    } else if (source == r'\sqrt[3]{}') {
-      controller.addFunction(r'\sqrt', <math_kb_node.TeXArg>[
-        math_kb_node.TeXArg.brackets,
-        math_kb_node.TeXArg.braces,
-      ]);
-      controller.addLeaf('3');
-      controller.goNext();
-    } else if (source == r'\sqrt[]{}') {
-      controller.addFunction(r'\sqrt', <math_kb_node.TeXArg>[
-        math_kb_node.TeXArg.brackets,
-        math_kb_node.TeXArg.braces,
-      ]);
-    } else if (source == r'^{}') {
-      _addSingleArgumentFunction('^');
-    } else if (source == r'^{2}') {
-      _addPower('2');
-    } else if (source == r'^{3}') {
-      _addPower('3');
-    } else if (source == r'_{}') {
-      _addSingleArgumentFunction('_');
-    } else if (source.startsWith('^{') && source.endsWith('}')) {
-      _addPower(source.substring(2, source.length - 1));
-    } else if (source == r'\int') {
-      controller.addLeaf(r'\int');
-    } else if (source == r'\sum') {
-      controller.addLeaf(r'\sum');
-    } else if (source == r'\prod') {
-      controller.addLeaf(r'\prod');
-    } else if (source == r'\log_{}') {
-      controller.addLeaf(r'\log');
-      controller.addFunction('_', <math_kb_node.TeXArg>[
-        math_kb_node.TeXArg.braces,
-      ]);
-      controller.addLeaf('a');
-      controller.goNext();
-      controller.addLeaf('(');
-      controller.addLeaf(')');
-      controller.goBack();
-    } else if (source == r'e^{}') {
-      controller.addLeaf('e');
-      _addSingleArgumentFunction('^');
-    } else if (source == r'|{}|') {
-      _addPair('|', '|');
-    } else if (source == '(') {
-      _addPair('(', ')');
-    } else if (source == '[') {
-      _addPair('[', ']');
-    } else if (source == '{') {
-      _addPair('{', '}');
-    } else if (source == r'\langle\rangle') {
-      _addPair(r'\langle', r'\rangle');
-    } else if (source == r'\lfloor\rfloor') {
-      _addPair(r'\lfloor', r'\rfloor');
-    } else if (source == r'\lceil\rceil') {
-      _addPair(r'\lceil', r'\rceil');
-    } else if (source == r'\frac{}{}') {
-      controller.addFunction(r'\frac', <math_kb_node.TeXArg>[
-        math_kb_node.TeXArg.braces,
-        math_kb_node.TeXArg.braces,
-      ]);
-    } else if (context.powerMode &&
-        (source.length == 1 || source == r'\pi' || source == 'e')) {
-      _addSingleArgumentFunction('^');
-      controller.addLeaf(source);
-      controller.goNext();
-    } else if (context.subscriptMode &&
-        (source.length == 1 || source == r'\pi' || source == 'e')) {
-      _addSingleArgumentFunction('_');
-      controller.addLeaf(source);
-      controller.goNext();
-    } else {
-      if (context.symbolSizeLevel != 0 && source.startsWith('\\')) {
-        const sizeMap = <int, String>{
-          -2: r'\tiny',
-          -1: r'\small',
-          1: r'\large',
-          2: r'\Large',
-        };
-        final prefix = sizeMap[context.symbolSizeLevel] ?? '';
-        controller.addLeaf(prefix);
-        controller.addLeaf(' ');
+    final legacyCommand = MathLegacyEditCommandRegistry.bySource[source];
+    if (legacyCommand != null) {
+      _execute(legacyCommand);
+      return;
+    }
+    if (_insertIntoActiveScriptMode(source, context)) return;
+    _insertLeafWithSize(source, context.symbolSizeLevel);
+  }
+
+  @override
+  void insertSymbol(MathSymbol symbol, MathInsertionContext context) {
+    final command =
+        symbol.editorCommand ??
+        MathLegacyEditCommandRegistry.bySource[symbol.tex];
+    if (command != null) {
+      _execute(command);
+      return;
+    }
+
+    final dynamicStructure = const MathDynamicStructureCodec().tryParse(
+      symbol.tex,
+    );
+    if (dynamicStructure != null) {
+      _insertDynamicStructure(dynamicStructure);
+      return;
+    }
+
+    if (_insertIntoActiveScriptMode(symbol.tex, context)) return;
+    _insertLeafWithSize(symbol.tex, context.symbolSizeLevel);
+  }
+
+  @override
+  void insertDynamicStructure(
+    MathDynamicStructureInstance instance,
+    MathInsertionContext context,
+  ) {
+    _insertDynamicStructure(instance);
+  }
+
+  void _insertDynamicStructure(MathDynamicStructureInstance instance) {
+    final document = const MathDynamicStructureCodec().compile(instance);
+    final host = controller.currentNode;
+    host.removeCursor();
+
+    final structureKey = Object();
+    _DynamicMathSlotFunction? firstSlot;
+    for (var index = 0; index < document.tokens.length; index++) {
+      final token = document.tokens[index];
+      switch (token) {
+        case MathDynamicLiteralToken(:final source):
+          if (index == document.tokens.length - 1) {
+            host.addTeX(
+              _DynamicStructureEndLeaf(
+                source: source,
+                structureKey: structureKey,
+              ),
+            );
+          } else {
+            host.addTeX(math_kb_node.TeXLeaf(source));
+          }
+        case MathDynamicSlotToken(:final slot, :final initialValue):
+          final function = _DynamicMathSlotFunction(
+            parent: host,
+            slot: slot,
+            structureKey: structureKey,
+            initialValue: initialValue,
+          );
+          host.addTeX(function);
+          firstSlot ??= function;
       }
+    }
+
+    final first = firstSlot;
+    if (first == null) {
+      host.setCursor();
+      controller.currentNode = host;
+      _publishControllerMutation();
+      return;
+    }
+
+    final slotNode = first.argNodes.single;
+    slotNode.courserPosition = slotNode.children.length;
+    slotNode.setCursor();
+    controller.currentNode = slotNode;
+    _publishControllerMutation();
+  }
+
+  /// Publishes a tree mutation without reaching into ChangeNotifier's
+  /// protected `notifyListeners` API.
+  ///
+  /// The upstream controller exposes node mutation state publicly but does not
+  /// expose a public refresh method. Adding and immediately deleting an empty
+  /// leaf uses only its public editing API, emits the required change signal,
+  /// preserves the serialized TeX value, and leaves no sentinel node behind.
+  void _publishControllerMutation() {
+    controller.addLeaf('');
+    controller.goBack(deleteMode: true);
+  }
+
+  void _execute(MathEditCommand command) {
+    for (final operation in command.operations) {
+      switch (operation) {
+        case MathInsertLeaf(:final source):
+          controller.addLeaf(source);
+        case MathInsertFunction(:final function, :final arguments):
+          controller.addFunction(
+            function,
+            arguments.map(_toTeXArg).toList(growable: false),
+          );
+        case MathMoveSlot(:final direction, :final count):
+          for (var i = 0; i < count; i++) {
+            switch (direction) {
+              case MathSlotMoveDirection.previous:
+                controller.goBack();
+              case MathSlotMoveDirection.next:
+                controller.goNext();
+            }
+          }
+        case MathInsertDynamicStructure(:final spec):
+          _insertDynamicStructure(MathDynamicStructureInstance(spec: spec));
+      }
+    }
+  }
+
+  math_kb_node.TeXArg _toTeXArg(MathEditArgument argument) {
+    switch (argument) {
+      case MathEditArgument.braces:
+        return math_kb_node.TeXArg.braces;
+      case MathEditArgument.brackets:
+        return math_kb_node.TeXArg.brackets;
+    }
+  }
+
+  bool _insertIntoActiveScriptMode(
+    String source,
+    MathInsertionContext context,
+  ) {
+    final isScriptValue =
+        source.length == 1 || source == r'\pi' || source == 'e';
+    if (!isScriptValue) return false;
+
+    if (context.powerMode) {
+      controller.addFunction('^', <math_kb_node.TeXArg>[
+        math_kb_node.TeXArg.braces,
+      ]);
       controller.addLeaf(source);
+      controller.goNext();
+      return true;
     }
-  }
 
-  void _addFraction(String numerator, String denominator) {
-    controller.addFunction(r'\frac', <math_kb_node.TeXArg>[
-      math_kb_node.TeXArg.braces,
-      math_kb_node.TeXArg.braces,
-    ]);
-    for (final char in numerator.split('')) {
-      controller.addLeaf(char);
+    if (context.subscriptMode) {
+      controller.addFunction('_', <math_kb_node.TeXArg>[
+        math_kb_node.TeXArg.braces,
+      ]);
+      controller.addLeaf(source);
+      controller.goNext();
+      return true;
     }
-    controller.goNext();
-    for (final char in denominator.split('')) {
-      controller.addLeaf(char);
+
+    return false;
+  }
+
+  void _insertLeafWithSize(String source, int symbolSizeLevel) {
+    if (symbolSizeLevel != 0 && source.startsWith(r'\')) {
+      const sizeMap = <int, String>{
+        -2: r'\tiny',
+        -1: r'\small',
+        1: r'\large',
+        2: r'\Large',
+      };
+      final prefix = sizeMap[symbolSizeLevel] ?? '';
+      controller.addLeaf(prefix);
+      controller.addLeaf(' ');
     }
-    controller.goNext();
-  }
-
-  void _addSecondDerivative() {
-    controller.addFunction(r'\frac', <math_kb_node.TeXArg>[
-      math_kb_node.TeXArg.braces,
-      math_kb_node.TeXArg.braces,
-    ]);
-    controller.addLeaf('d');
-    _addSingleArgumentFunction('^');
-    controller.addLeaf('2');
-    controller.goNext();
-    controller.goNext();
-    controller.addLeaf('d');
-    controller.addLeaf('x');
-    _addSingleArgumentFunction('^');
-    controller.addLeaf('2');
-    controller.goNext();
-    controller.goNext();
-  }
-
-  void _addLimits(String base) {
-    controller.addLeaf(base);
-    controller.addFunction('_', <math_kb_node.TeXArg>[
-      math_kb_node.TeXArg.braces,
-    ]);
-    controller.goNext();
-    controller.addFunction('^', <math_kb_node.TeXArg>[
-      math_kb_node.TeXArg.braces,
-    ]);
-    controller.goBack();
-    controller.goBack();
-  }
-
-  void _addSingleArgumentFunction(String function) {
-    controller.addFunction(function, <math_kb_node.TeXArg>[
-      math_kb_node.TeXArg.braces,
-    ]);
-  }
-
-  void _addPower(String content) {
-    _addSingleArgumentFunction('^');
-    for (final char in content.split('')) {
-      controller.addLeaf(char);
-    }
-    if (content.isNotEmpty) controller.goNext();
-  }
-
-  void _addPair(String left, String right) {
-    controller.addLeaf(left);
-    controller.addLeaf(right);
-    controller.goBack();
+    controller.addLeaf(source);
   }
 
   @override
@@ -508,8 +489,243 @@ class MathFieldEditorAdapter extends MathEditorAdapter {
   }
 
   @override
+  bool moveToPreviousSlot() {
+    if (_moveToPreviousDynamicSlot()) return true;
+    if (_moveToPreviousFunctionArgument()) return true;
+    if (_moveSeededDerivativeToNumerator()) return true;
+    if (_moveUpperScriptToLowerScript()) return true;
+
+    controller.goBack();
+    return true;
+  }
+
+  @override
   bool moveToNextSlot() {
+    if (_moveToNextDynamicSlot()) return true;
+
+    // Some composer structures are represented by adjacent TeX functions
+    // rather than multiple arguments of one function. `goNext()` is node-based,
+    // so one call would stop between the semantic slots. Keep that package
+    // detail isolated here and expose one logical Next-slot action to the UI.
+    if (_isSeededDerivativeNumeratorSlot()) {
+      controller.goNext(); // numerator -> start of denominator
+      controller.goNext(); // skip the seeded denominator `d`
+      return true;
+    }
+
+    if (_isLowerScriptFollowedByUpperScript()) {
+      controller.goNext(); // lower-script arg -> parent node
+      controller.goNext(); // parent node -> upper-script arg
+      return true;
+    }
+
     controller.goNext();
     return true;
   }
+
+  bool _moveToPreviousDynamicSlot() {
+    final slotNode = controller.currentNode;
+    final slotFunction = slotNode.parent;
+    if (slotFunction is! _DynamicMathSlotFunction) return false;
+
+    final host = slotFunction.parent;
+    final startIndex = host.children.indexOf(slotFunction);
+    if (startIndex <= 0) return false;
+
+    _DynamicMathSlotFunction? previousSlot;
+    for (var index = startIndex - 1; index >= 0; index--) {
+      final child = host.children[index];
+      if (child is _DynamicMathSlotFunction &&
+          identical(child.structureKey, slotFunction.structureKey)) {
+        previousSlot = child;
+        break;
+      }
+    }
+    if (previousSlot == null) return false;
+
+    slotNode.removeCursor();
+    final previousNode = previousSlot.argNodes.single;
+    previousNode.courserPosition = previousNode.children.length;
+    previousNode.setCursor();
+    controller.currentNode = previousNode;
+    _publishControllerMutation();
+    return true;
+  }
+
+  bool _moveToPreviousFunctionArgument() {
+    final slotNode = controller.currentNode;
+    final function = slotNode.parent;
+    if (function is! math_kb_node.TeXFunction || function.argNodes.length < 2) {
+      return false;
+    }
+
+    final slotIndex = function.argNodes.indexWhere(
+      (arg) => identical(arg, slotNode),
+    );
+    if (slotIndex <= 0) return false;
+
+    slotNode.removeCursor();
+    final previousNode = function.argNodes[slotIndex - 1];
+    previousNode.courserPosition = previousNode.children.length;
+    previousNode.setCursor();
+    controller.currentNode = previousNode;
+    _publishControllerMutation();
+    return true;
+  }
+
+  bool _moveSeededDerivativeToNumerator() {
+    final node = controller.currentNode;
+    final parent = node.parent;
+    if (parent == null ||
+        parent.expression != r'\frac' ||
+        parent.argNodes.length != 2 ||
+        !identical(parent.argNodes[1], node) ||
+        _firstNonCursorExpression(parent.argNodes[0]) != 'd' ||
+        _firstNonCursorExpression(parent.argNodes[1]) != 'd') {
+      return false;
+    }
+
+    node.removeCursor();
+    final previousNode = parent.argNodes[0];
+    previousNode.courserPosition = previousNode.children.length;
+    previousNode.setCursor();
+    controller.currentNode = previousNode;
+    _publishControllerMutation();
+    return true;
+  }
+
+  bool _moveUpperScriptToLowerScript() {
+    final slotNode = controller.currentNode;
+    final upperScript = slotNode.parent;
+    if (upperScript == null || !upperScript.expression.startsWith('^')) {
+      return false;
+    }
+
+    final hostNode = upperScript.parent;
+    final upperIndex = hostNode.children.indexOf(upperScript);
+    if (upperIndex <= 0) return false;
+    final previous = hostNode.children[upperIndex - 1];
+    if (previous is! math_kb_node.TeXFunction || previous.expression != '_') {
+      return false;
+    }
+
+    slotNode.removeCursor();
+    final previousNode = previous.argNodes.single;
+    previousNode.courserPosition = previousNode.children.length;
+    previousNode.setCursor();
+    controller.currentNode = previousNode;
+    _publishControllerMutation();
+    return true;
+  }
+
+  bool _moveToNextDynamicSlot() {
+    final slotNode = controller.currentNode;
+    final slotFunction = slotNode.parent;
+    if (slotFunction is! _DynamicMathSlotFunction) return false;
+
+    final host = slotFunction.parent;
+    final startIndex = host.children.indexOf(slotFunction);
+    if (startIndex < 0) return false;
+
+    _DynamicMathSlotFunction? nextSlot;
+    var endIndex = -1;
+    for (var index = startIndex + 1; index < host.children.length; index++) {
+      final child = host.children[index];
+      if (child is _DynamicMathSlotFunction &&
+          identical(child.structureKey, slotFunction.structureKey)) {
+        nextSlot = child;
+        break;
+      }
+      if (child is _DynamicStructureEndLeaf &&
+          identical(child.structureKey, slotFunction.structureKey)) {
+        endIndex = index;
+        break;
+      }
+    }
+
+    slotNode.removeCursor();
+    if (nextSlot != null) {
+      final nextNode = nextSlot.argNodes.single;
+      nextNode.courserPosition = nextNode.children.length;
+      nextNode.setCursor();
+      controller.currentNode = nextNode;
+      _publishControllerMutation();
+      return true;
+    }
+
+    if (endIndex >= 0) {
+      host.courserPosition = endIndex + 1;
+      host.setCursor();
+      controller.currentNode = host;
+      _publishControllerMutation();
+      return true;
+    }
+
+    // The structure tree is malformed or was externally modified. Restore the
+    // cursor instead of leaving the controller without one.
+    slotNode.setCursor();
+    return false;
+  }
+
+  bool _isSeededDerivativeNumeratorSlot() {
+    final node = controller.currentNode;
+    final parent = node.parent;
+    if (parent == null ||
+        parent.expression != r'\frac' ||
+        parent.argNodes.length != 2 ||
+        !identical(parent.argNodes.first, node)) {
+      return false;
+    }
+
+    return _firstNonCursorExpression(parent.argNodes[0]) == 'd' &&
+        _firstNonCursorExpression(parent.argNodes[1]) == 'd';
+  }
+
+  bool _isLowerScriptFollowedByUpperScript() {
+    final slotNode = controller.currentNode;
+    final lowerScript = slotNode.parent;
+    if (lowerScript == null || lowerScript.expression != '_') return false;
+
+    final hostNode = lowerScript.parent;
+    final lowerIndex = hostNode.children.indexOf(lowerScript);
+    if (lowerIndex < 0 || lowerIndex + 1 >= hostNode.children.length) {
+      return false;
+    }
+
+    final next = hostNode.children[lowerIndex + 1];
+    return next is math_kb_node.TeXFunction && next.expression.startsWith('^');
+  }
+
+  String? _firstNonCursorExpression(math_kb_node.TeXNode node) {
+    for (final child in node.children) {
+      if (child is math_kb_node.Cursor) continue;
+      return child.expression;
+    }
+    return null;
+  }
+}
+
+class _DynamicMathSlotFunction extends math_kb_node.TeXFunction {
+  final MathDynamicSlotSpec slot;
+  final Object structureKey;
+
+  _DynamicMathSlotFunction({
+    required math_kb_node.TeXNode parent,
+    required this.slot,
+    required this.structureKey,
+    required String initialValue,
+  }) : super('', parent, <math_kb_node.TeXArg>[math_kb_node.TeXArg.braces]) {
+    final node = argNodes.single;
+    if (initialValue.isNotEmpty) {
+      node.children.add(math_kb_node.TeXLeaf(initialValue));
+      node.courserPosition = node.children.length;
+    }
+  }
+}
+
+class _DynamicStructureEndLeaf extends math_kb_node.TeXLeaf {
+  final Object structureKey;
+
+  _DynamicStructureEndLeaf({required String source, required this.structureKey})
+    : super(source);
 }

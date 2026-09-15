@@ -10,6 +10,8 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:edusheet/features/math_keyboard/domain/services/math_compatibility_service.dart';
+
 class PresentationExportService {
   static Future<File> exportAndOpen(Paper paper, PaperTemplate template) async {
     final file = await export(paper, template);
@@ -137,9 +139,12 @@ class PresentationExportService {
               question.mathExpressions,
             )
             .map(
-              (expression) => expression.plainText.trim().isEmpty
-                  ? expression.latex
-                  : expression.plainText,
+              (expression) => const MathCompatibilityService()
+                  .inspectSource(
+                    expression.latex,
+                    plainFallback: expression.plainText,
+                  )
+                  .readableFallback,
             )
             .toList();
     if (question.type.usesOptions) {

@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../../../editor/domain/models/math_expression.dart';
+import 'math_safety_validation_service.dart';
 
 class MathExpressionValidation {
   final bool isValid;
@@ -17,73 +18,32 @@ class MathExpressionValidation {
 }
 
 class MathExpressionValidator {
-  const MathExpressionValidator();
+  final MathSafetyValidationService safetyValidationService;
+
+  const MathExpressionValidator({
+    this.safetyValidationService = const MathSafetyValidationService(),
+  });
 
   MathExpressionValidation validate(MathExpression expression) {
     final source = expression.latex.trim();
-    final fallback = expression.plainText.trim().isEmpty
-        ? source
-        : expression.plainText.trim();
-    if (source.isEmpty) {
+    final safety = safetyValidationService.inspect(expression);
+    final compatibility = safety.compatibility;
+    final fallback = safety.readableFallback;
+
+    if (!compatibility.syntaxValid) {
       return MathExpressionValidation(
         isValid: false,
-        message: 'Formula source is empty.',
-        renderSource: '',
-        accessibleFallback: fallback,
-      );
-    }
-    final balance = _firstBalanceError(source);
-    if (balance != null) {
-      return MathExpressionValidation(
-        isValid: false,
-        message: balance,
+        message: compatibility.syntaxMessage,
         renderSource: source,
         accessibleFallback: fallback,
       );
     }
-    if (source.contains(r'\begin') != source.contains(r'\end')) {
-      return MathExpressionValidation(
-        isValid: false,
-        message: 'Formula has an incomplete environment.',
-        renderSource: source,
-        accessibleFallback: fallback,
-      );
-    }
+
     return MathExpressionValidation(
       isValid: true,
       renderSource: source,
       accessibleFallback: fallback,
     );
-  }
-
-  String? _firstBalanceError(String source) {
-    final stack = <String>[];
-    const opening = {'{': '}', '[': ']', '(': ')'};
-    const closing = {'}': '{', ']': '[', ')': '('};
-    var escaped = false;
-    for (final codePoint in source.runes) {
-      final character = String.fromCharCode(codePoint);
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (character == '\\') {
-        escaped = true;
-        continue;
-      }
-      if (opening.containsKey(character)) {
-        stack.add(character);
-      } else if (closing.containsKey(character)) {
-        if (stack.isEmpty || stack.last != closing[character]) {
-          return 'Formula has an unmatched “$character”.';
-        }
-        stack.removeLast();
-      }
-    }
-    if (stack.isNotEmpty) {
-      return 'Formula is missing “${opening[stack.last]}”.';
-    }
-    return null;
   }
 }
 

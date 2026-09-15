@@ -1,0 +1,8 @@
+Phase 6 compatibility regression hotfix
+
+docs/MATH_KEYBOARD_PHASE6_PARSER_RENDERER_COMPATIBILITY.md
+lib/features/math_keyboard/presentation/widgets/safe_math_expression.dart
+lib/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart
+lib/features/math_keyboard/presentation/widgets/math_key.dart
+lib/features/math_keyboard/domain/audit/math_compatibility_audit.dart
+test/features/math_keyboard/math_parser_renderer_compatibility_test.dart

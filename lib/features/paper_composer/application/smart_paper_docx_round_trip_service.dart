@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_validation_service.dart';
 import 'package:xml/xml.dart' as xml;
 
 /// Result of inspecting/importing a Word package for EduSheet round-trip data.
@@ -61,6 +62,8 @@ class SmartPaperDocxImportResult {
 /// relationships, page layout, arbitrary new paragraphs, etc.), import is
 /// deliberately refused instead of silently producing a lossy conversion.
 class SmartPaperDocxRoundTripService {
+  static const _mathValidationService = QuestionMathValidationService();
+
   const SmartPaperDocxRoundTripService._();
 
   static const customXmlPartName = 'customXml/edusheet-smart-paper.xml';
@@ -183,7 +186,7 @@ class SmartPaperDocxRoundTripService {
       if (bodyExact && companionExact) {
         return SmartPaperDocxImportResult(
           status: SmartPaperDocxImportStatus.exactEduSheetRoundTrip,
-          paper: paper,
+          paper: _mathValidationService.validateAndRepairPaper(paper).safePaper,
           message: 'Restored the exact EduSheet Smart Paper from Word.',
         );
       }
@@ -244,7 +247,11 @@ class SmartPaperDocxRoundTripService {
 
       return SmartPaperDocxImportResult(
         status: SmartPaperDocxImportStatus.safeMergedEduSheetRoundTrip,
-        paper: merged.paper,
+        paper: merged.paper == null
+            ? null
+            : _mathValidationService
+                  .validateAndRepairPaper(merged.paper!)
+                  .safePaper,
         mergedFieldCount: merged.changedFields,
         message: merged.changedFields == 0
             ? 'The Word package was rewritten, but no supported EduSheet content changed. The canonical Smart Paper is safe to restore.'

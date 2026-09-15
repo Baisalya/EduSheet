@@ -27,6 +27,19 @@ class MathExpression {
     this.metadata = const {},
   });
 
+  /// Full formula payload identity used by integrity validation and copy/dedupe
+  /// boundaries. This is intentionally not a hash so no collision can silently
+  /// merge two distinct formulas.
+  String get payloadIdentity {
+    return '$latex\u0000$plainText\u0000${display.name}\u0000'
+        '$formatVersion\u0000${_stableMetadataString(metadata)}';
+  }
+
+  /// Persistent identity includes the stored ID plus the complete payload.
+  /// Equal IDs with different payloads therefore remain distinguishable until
+  /// Phase 9 validation can repair the conflict explicitly.
+  String get persistentIdentity => '$id\u0000$payloadIdentity';
+
   MathExpression copyWith({
     String? id,
     String? latex,
@@ -81,7 +94,7 @@ class MathExpression {
         if (insert is! Map || !insert.containsKey(quillEmbedKey)) continue;
         final expression = tryFromQuillEmbedData(insert[quillEmbedKey]);
         if (expression == null) continue;
-        if (expression.id.isNotEmpty && !seen.add(expression.id)) continue;
+        if (!seen.add(expression.persistentIdentity)) continue;
         expressions.add(expression);
       }
       return expressions;
@@ -94,11 +107,14 @@ class MathExpression {
     String text,
     List<MathExpression> expressions,
   ) {
-    final embeddedIds = embeddedInRichText(
+    final embeddedIdentities = embeddedInRichText(
       text,
-    ).map((expression) => expression.id).where((id) => id.isNotEmpty).toSet();
+    ).map((expression) => expression.persistentIdentity).toSet();
     return expressions
-        .where((expression) => !embeddedIds.contains(expression.id))
+        .where(
+          (expression) =>
+              !embeddedIdentities.contains(expression.persistentIdentity),
+        )
         .toList();
   }
 
@@ -125,8 +141,7 @@ class MathExpression {
       latex: latex,
       plainText: json['plainText']?.toString() ?? latex,
       display: display,
-      formatVersion:
-          (json['formatVersion'] as num?)?.toInt() ?? currentFormatVersion,
+      formatVersion: _intValue(json['formatVersion'], currentFormatVersion),
       metadata: _stringKeyedMap(json['metadata']),
     );
   }
@@ -135,4 +150,40 @@ class MathExpression {
 Map<String, dynamic> _stringKeyedMap(dynamic value) {
   if (value is! Map) return const {};
   return value.map((key, item) => MapEntry(key.toString(), item));
+}
+
+String _stableMetadataString(Map<String, dynamic> metadata) {
+  try {
+    return jsonEncode(_canonicalJsonValue(metadata));
+  } catch (_) {
+    final keys = metadata.keys.toList()..sort();
+    return keys
+        .map((key) => '$key=${metadata[key]?.runtimeType}:${metadata[key]}')
+        .join('|');
+  }
+}
+
+dynamic _canonicalJsonValue(dynamic value) {
+  if (value is Map) {
+    final entries =
+        value.entries
+            .map((entry) => MapEntry(entry.key.toString(), entry.value))
+            .toList()
+          ..sort((left, right) => left.key.compareTo(right.key));
+    return <String, dynamic>{
+      for (final entry in entries) entry.key: _canonicalJsonValue(entry.value),
+    };
+  }
+  if (value is List) {
+    return value.map(_canonicalJsonValue).toList(growable: false);
+  }
+  if (value == null || value is String || value is num || value is bool) {
+    return value;
+  }
+  return '${value.runtimeType}:$value';
+}
+
+int _intValue(dynamic value, int fallback) {
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? fallback;
 }

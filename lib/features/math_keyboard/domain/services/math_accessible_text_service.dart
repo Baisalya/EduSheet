@@ -59,6 +59,18 @@ class MathAccessibleTextService {
       (match) => '${match.group(1)} divided by ${match.group(2)}',
     );
     text = text.replaceAllMapped(
+      RegExp(r'\\binom\{([^{}]+)\}\{([^{}]+)\}'),
+      (match) => '${match.group(1)} choose ${match.group(2)}',
+    );
+    text = text.replaceAllMapped(
+      RegExp(r'\\pmod\{([^{}]+)\}'),
+      (match) => ' modulo ${match.group(1)}',
+    );
+    text = text.replaceAllMapped(
+      RegExp(r'\\overline\{([^{}]+)\}'),
+      (match) => ' conjugate or overline of ${match.group(1)}',
+    );
+    text = text.replaceAllMapped(
       RegExp(r'\\text\{([^{}]+)\}'),
       (match) => match.group(1) ?? '',
     );
@@ -79,6 +91,15 @@ class MathAccessibleTextService {
       r'\ne': ' not equal to ',
       r'\approx': ' approximately ',
       r'\equiv': ' equivalent to ',
+      r'\mapsto': ' maps to ',
+      r'\mid': ' divides ',
+      r'\nmid': ' does not divide ',
+      r'\bigcup': ' big union ',
+      r'\bigcap': ' big intersection ',
+      r'\Re': ' real part ',
+      r'\Im': ' imaginary part ',
+      r'\arg': ' argument ',
+      r'\gcd': ' greatest common divisor ',
       r'\to': ' approaches ',
       r'\infty': ' infinity ',
       r'\int': ' integral ',

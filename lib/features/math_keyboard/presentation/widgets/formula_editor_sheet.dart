@@ -3,17 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:math_keyboard/math_keyboard.dart';
-import 'package:math_expressions/math_expressions.dart' show Expression;
 import 'package:uuid/uuid.dart';
 
 import '../../../editor/domain/models/math_expression.dart';
 import '../../domain/catalog/math_symbol_catalog.dart';
-import '../../domain/models/math_symbol.dart';
+import '../../domain/models/math_edit_command.dart';
 import '../../domain/services/math_accessible_text_service.dart';
+import '../../domain/services/math_compatibility_service.dart';
+import '../../domain/services/math_dynamic_structure_codec.dart';
 import '../../domain/services/math_expression_validator.dart';
+import '../../domain/services/math_selection_composer.dart';
+import '../editing/math_editor_adapter.dart';
 import '../providers/math_keyboard_controller.dart';
 import 'math_keyboard_field.dart';
 import 'safe_math_expression.dart';
+import 'math_keyboard_motion.dart';
 
 /// Teacher-first visual formula composer.
 ///
@@ -55,9 +59,36 @@ class FormulaEditorSheet extends ConsumerStatefulWidget {
   ConsumerState<FormulaEditorSheet> createState() => _FormulaEditorSheetState();
 }
 
+class _SourceWrapAction {
+  final String label;
+  final MathEditCommand command;
+
+  const _SourceWrapAction(this.label, this.command);
+}
+
 class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
   static const MathAccessibleTextService _accessibleText =
       MathAccessibleTextService();
+  static const MathSelectionComposer _selectionComposer =
+      MathSelectionComposer();
+  static final MathCompatibilityCache _compatibilityCache =
+      MathCompatibilityCache();
+  static const List<_SourceWrapAction> _sourceWrapActions = <_SourceWrapAction>[
+    _SourceWrapAction('Fraction', MathEditCommands.fraction),
+    _SourceWrapAction('nCr', MathEditCommands.binomial),
+    _SourceWrapAction('mod', MathEditCommands.modulo),
+    _SourceWrapAction('√', MathEditCommands.squareRoot),
+    _SourceWrapAction('Power', MathEditCommands.superscriptSlot),
+    _SourceWrapAction('Subscript', MathEditCommands.subscriptSlot),
+    _SourceWrapAction('xᵢⁿ', MathEditCommands.subscriptAndSuperscript),
+    _SourceWrapAction('|x|', MathEditCommands.absoluteValue),
+    _SourceWrapAction('‖x‖', MathEditCommands.norm),
+    _SourceWrapAction('d/dx', MathEditCommands.genericDerivative),
+    _SourceWrapAction('⟨a,b⟩', MathEditCommands.innerProduct),
+    _SourceWrapAction('Eval |ₐᵇ', MathEditCommands.evaluationBar),
+    _SourceWrapAction('Overline', MathEditCommands.emptyOverline),
+    _SourceWrapAction('Vector', MathEditCommands.emptyVector),
+  ];
 
   final MathFieldEditingController _visualController =
       MathFieldEditingController();
@@ -145,7 +176,10 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
         height: screen.height * 0.9,
         child: AnimatedPadding(
           key: const ValueKey('formula-editor-math-inset'),
-          duration: mathKeyboardTransitionDuration,
+          duration: mathKeyboardMotionDuration(
+            context,
+            mathKeyboardTransitionDuration,
+          ),
           curve: Curves.easeOutCubic,
           padding: EdgeInsets.only(bottom: mathKeyboardInset),
           child: LayoutBuilder(
@@ -520,6 +554,10 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
               ),
               onChanged: _onSourceChanged,
             ),
+            const SizedBox(height: 8),
+            _buildSourceSelectionComposer(context),
+            const SizedBox(height: 10),
+            _buildCompatibilityStatus(context),
             const SizedBox(height: 10),
             TextField(
               controller: _fallbackController,
@@ -560,6 +598,147 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
     );
   }
 
+  Widget _buildCompatibilityStatus(BuildContext context) {
+    final source = _sourceController.text.trim();
+    final fallback = _fallbackController.text.trim().isEmpty
+        ? _accessibleText.describe(source)
+        : _fallbackController.text.trim();
+    final report = _compatibilityCache.inspectSource(
+      source,
+      plainFallback: fallback,
+    );
+    final theme = Theme.of(context);
+
+    String shortLabel(MathSurfaceCompatibility surface) {
+      switch (surface.support) {
+        case MathCompatibilitySupport.native:
+          return 'native';
+        case MathCompatibilitySupport.fallback:
+          return 'fallback';
+        case MathCompatibilitySupport.sourceOnly:
+          return 'source only';
+        case MathCompatibilitySupport.unsupported:
+          return 'unsupported';
+      }
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Compatibility',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Visual: ${shortLabel(report.visualEditor)}  •  '
+              'Screen: ${shortLabel(report.screenRenderer)}  •  '
+              'PDF: ${shortLabel(report.pdfExport)}  •  '
+              'Word: ${shortLabel(report.wordExport)}',
+              style: theme.textTheme.bodySmall,
+            ),
+            if (!report.syntaxValid || !report.screenRenderer.isNative) ...[
+              const SizedBox(height: 4),
+              Text(
+                report.syntaxMessage ?? report.screenRenderer.message,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSourceSelectionComposer(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(9),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Wrap selected source',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Select an existing expression above, then wrap it without retyping.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _sourceWrapActions
+                  .map(
+                    (action) => ActionChip(
+                      label: Text(action.label),
+                      onPressed: () => _wrapSelectedSource(action.command),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _wrapSelectedSource(MathEditCommand command) {
+    final recipe = command.composer?.selectionWrap;
+    if (recipe == null) {
+      setState(() {
+        _error = 'This structure does not support source selection wrapping.';
+      });
+      return;
+    }
+
+    final selection = _sourceController.selection;
+    final result = _selectionComposer.wrap(
+      source: _sourceController.text,
+      selection: MathSourceSelection(
+        start: selection.start,
+        end: selection.end,
+      ),
+      recipe: recipe,
+    );
+    if (result == null) {
+      setState(() {
+        _error =
+            'Select the expression you want to wrap in Formula source first.';
+      });
+      return;
+    }
+
+    _sourceController.value = TextEditingValue(
+      text: result.source,
+      selection: TextSelection.collapsed(offset: result.cursorOffset),
+    );
+    _onSourceChanged(result.source);
+  }
+
   void _onVisualChanged(String value) {
     if (_syncingVisual) return;
     setState(() {
@@ -581,8 +760,15 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
         _visualReady = true;
         _sourceParseMessage = null;
       } else {
-        _sourceParseMessage =
-            'The source is not currently valid for visual editing. The last valid visual formula is kept safe.';
+        _visualReady = false;
+        final fallback = _fallbackController.text.trim().isEmpty
+            ? _accessibleText.describe(value)
+            : _fallbackController.text.trim();
+        final report = _compatibilityCache.inspectSource(
+          value,
+          plainFallback: fallback,
+        );
+        _sourceParseMessage = report.visualEditor.message;
       }
     });
     _refreshAutomaticDescription();
@@ -590,62 +776,96 @@ class _FormulaEditorSheetState extends ConsumerState<FormulaEditorSheet> {
 
   bool _loadVisualSource(String source) {
     final trimmed = source.trim();
-    if (trimmed.isEmpty) {
-      _syncingVisual = true;
-      try {
-        _visualController.clear();
-      } finally {
-        _syncingVisual = false;
-      }
-      return true;
-    }
+    final fallback = _fallbackController.text.trim().isEmpty
+        ? _accessibleText.describe(trimmed)
+        : _fallbackController.text.trim();
+    final compatibility = _compatibilityCache.inspectSource(
+      trimmed,
+      plainFallback: fallback,
+    );
 
-    try {
-      final expression = _parseVisualExpression(trimmed);
-      _syncingVisual = true;
-      try {
-        _visualController.updateValue(expression);
-      } finally {
-        _syncingVisual = false;
-      }
-      return true;
-    } catch (_) {
-      // The upstream TeX parser does not support every valid expression that
-      // EduSheet's own catalog inserts (notably relational templates such as
-      // Pythagoras). Restore those known-safe sources as the same editable leaf
-      // used at insertion time instead of forcing teachers into source mode.
-      final catalogTemplate = MathSymbolCatalog.findByTex(
-        trimmed,
-        category: MathCategory.templates,
-      );
-      if (catalogTemplate != null) {
+    switch (compatibility.visualStrategy) {
+      case MathVisualEditorStrategy.empty:
         _syncingVisual = true;
         try {
           _visualController.clear();
-          _visualController.addLeaf(trimmed);
         } finally {
           _syncingVisual = false;
         }
         return true;
-      }
-      return false;
-    }
-  }
-
-  Expression _parseVisualExpression(String source) {
-    try {
-      return TeXParser(source).parse();
-    } catch (_) {
-      // math_keyboard serializes variables as `{x}`, while older/imported
-      // EduSheet formulas can contain ordinary TeX variables such as `x+1`.
-      // Retry with only bare ASCII variable runs wrapped; commands (for
-      // example `\sqrt`) and already-braced variables remain untouched.
-      final normalized = source.replaceAllMapped(
-        RegExp(r'(?<![\\A-Za-z{])[A-Za-z]+(?![A-Za-z}])'),
-        (match) => '{${match.group(0)}}',
-      );
-      if (normalized == source) rethrow;
-      return TeXParser(normalized).parse();
+      case MathVisualEditorStrategy.dynamicStructure:
+        final dynamicStructure = const MathDynamicStructureCodec().tryParse(
+          trimmed,
+        );
+        if (dynamicStructure == null) return false;
+        _syncingVisual = true;
+        try {
+          _visualController.clear();
+          MathFieldEditorAdapter(_visualController).insertDynamicStructure(
+            dynamicStructure,
+            const MathInsertionContext(
+              powerMode: false,
+              subscriptMode: false,
+              symbolSizeLevel: 0,
+            ),
+          );
+        } finally {
+          _syncingVisual = false;
+        }
+        return true;
+      case MathVisualEditorStrategy.parser:
+      case MathVisualEditorStrategy.normalizedParser:
+        try {
+          final effectiveSource =
+              compatibility.normalizedVisualSource ?? trimmed;
+          final expression = TeXParser(effectiveSource).parse();
+          _syncingVisual = true;
+          try {
+            _visualController.updateValue(expression);
+          } finally {
+            _syncingVisual = false;
+          }
+          return true;
+        } catch (_) {
+          return false;
+        }
+      case MathVisualEditorStrategy.catalogSymbol:
+        final symbol = MathSymbolCatalog.findByTex(trimmed);
+        if (symbol == null) return false;
+        _syncingVisual = true;
+        try {
+          _visualController.clear();
+          MathFieldEditorAdapter(_visualController).insertSymbol(
+            symbol,
+            const MathInsertionContext(
+              powerMode: false,
+              subscriptMode: false,
+              symbolSizeLevel: 0,
+            ),
+          );
+        } finally {
+          _syncingVisual = false;
+        }
+        return true;
+      case MathVisualEditorStrategy.legacyCommand:
+        _syncingVisual = true;
+        try {
+          _visualController.clear();
+          MathFieldEditorAdapter(_visualController).insert(
+            trimmed,
+            const MathInsertionContext(
+              powerMode: false,
+              subscriptMode: false,
+              symbolSizeLevel: 0,
+            ),
+          );
+        } finally {
+          _syncingVisual = false;
+        }
+        return true;
+      case MathVisualEditorStrategy.sourceOnly:
+      case MathVisualEditorStrategy.unsupported:
+        return false;
     }
   }
 

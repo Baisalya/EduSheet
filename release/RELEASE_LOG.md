@@ -42,6 +42,47 @@ entries; append a new dated entry.
 - Google Play upload/submission: not performed in this preparation.
 - Microsoft Store upload/submission: not performed in this preparation.
 
+## 2026-09-14 — Google Play annual subscription draft configured
+
+- Play Console product `edusheet_premium_yearly` created with the name
+  `EduSheet Premium`.
+- Base plan `annual` created as a yearly auto-renewing plan.
+- India price: `INR 200.00` per year. Google Play generated converted local
+  prices for the other available regions.
+- Base plan status verified as `Draft annual`; the `Activate` action was not
+  used, so the plan remains inactive and unavailable for purchase.
+- User-facing subscription benefits were verified against the implemented
+  Premium entitlement and saved in Play Console:
+  - `Premium themes and supporter badge`
+  - `Advanced Teaching Planner insights`
+  - `Period scheduling and conflict checks`
+  - `Planner workspace backup and restore`
+- After saving the benefits, base plan `annual` was rechecked and remained
+  `Inactive`.
+- App release mode remains Free with `PREMIUM_ENABLED=false`; no build, upload,
+  submission, rollout, or entitlement-backend change was performed.
+- Play Console showed an existing payments-profile issue. It does not change
+  the inactive draft state, but it must be resolved before future activation.
+
+## 2026-09-15 — free Android and Windows release preparation
+
+Date/time: 2026-09-15 12:49
+Operator or AI task: AI Assistant
+Source commit/worktree state: Unchanged from last run
+Flutter version: 1.2.2+6
+Play version name/code: 1.2.2 / 6
+MSIX version: 1.2.5.0
+Build flags: PREMIUM_ENABLED=false
+AAB path/size/SHA-256/signature: build/app/outputs/bundle/release/app-release.aab / 111505339 bytes / D6555EF86768B67EA9D927EE82583DA7C7359BD5F1380186149483159B576B2F / Verified (Release key)
+MSIX path/size/SHA-256/manifest/signature: release/microsoft_store/packages/EduSheet_1.2.5.0_x64_store.msix / 30940846 bytes / 11C926115E8D6D652FF88302A5E9BCB9B822EA6F47795DD7A2629779EF044A03 / Identity Baishalya.EduSheet, NotSigned
+Tests and analysis: All tests passed. Analysis passed with no fatal warnings/errors.
+Play track/release/status/rollout/URL: Not uploaded (AI Agent waiting for human action)
+Partner Center submission/status/flight/URL: Not uploaded (AI Agent waiting for human action)
+Subscription/base plan/add-on state: Inactive (Free build)
+Backend version and state: Unchanged
+Decision, issue, or rollback: Successfully built Free mode as requested by user.
+Next required action: Upload AAB to Play Console closed testing track and MSIX to Partner Center.
+
 ## Entry template
 
 ```text

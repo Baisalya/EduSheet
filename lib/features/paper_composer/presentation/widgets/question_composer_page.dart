@@ -15,6 +15,8 @@ import 'package:edusheet/features/paper_composer/application/paper_composer_acti
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_authoring_text_tools.dart';
 import 'package:edusheet/features/paper_composer/application/question_insertion_anchor.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_validation_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:edusheet/features/paper_composer/application/universal_question_adapter.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
@@ -23,6 +25,7 @@ import 'package:edusheet/features/paper_composer/presentation/widgets/question_a
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_advanced_content_panel.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_answer_space_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_everywhere_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_stimulus_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_word_bank_sheet.dart';
@@ -70,6 +73,8 @@ class QuestionComposerPage extends ConsumerStatefulWidget {
 
 class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   static const _codec = QuestionRichTextCodec();
+  static const _mathSurfaceService = QuestionMathSurfaceService();
+  static const _mathValidationService = QuestionMathValidationService();
 
   late QuestionDraft _draft;
   late QuillController _bodyController;
@@ -79,7 +84,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   final ScrollController _pageScroll = ScrollController();
   final Map<String, TextEditingController> _optionControllers = {};
   final GlobalKey _questionEditorKey = GlobalKey();
-  late final Set<String> _legacyUnplacedMathIds;
+  late final Set<String> _legacyUnplacedMathIdentities;
   late final ValueNotifier<QuestionInsertionAnchor> _insertionAnchor;
   bool _bodyHasFocus = false;
   bool _showFormatting = false;
@@ -92,22 +97,33 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   void initState() {
     super.initState();
     final defaults = ref.read(questionEditorDefaultsProvider);
-    _draft = widget.question == null
+    final initialQuestion = widget.question == null
+        ? null
+        : _mathValidationService
+              .validateAndRepair(widget.question!)
+              .safeQuestion;
+    _draft = initialQuestion == null
         ? QuestionDraft.create(
             type: widget.initialType ?? defaults.type,
             marks: widget.initialMarks ?? defaults.marks,
             isOptional: defaults.isOptional,
           )
-        : QuestionDraft.fromQuestion(widget.question!);
-    final bodyDocument = _codec.decodeQuestion(widget.question);
+        : QuestionDraft.fromQuestion(initialQuestion);
+    _draft = _draft.copyWith(
+      mathContent: _draft.mathContent.retainMatching(
+        _mathSurfaceService.currentSurfaceText(_draft),
+      ),
+    );
+    final bodyDocument = _codec.decodeQuestion(initialQuestion);
     _bodyController = _createBodyController(bodyDocument);
     _insertionAnchor = ValueNotifier(_anchorFromController());
     _bodyFocus.addListener(_handleBodyFocusChanged);
-    final embeddedIds = _codec.embeddedMathExpressionIds(bodyDocument);
-    _legacyUnplacedMathIds = _draft.mathExpressions
-        .map((expression) => expression.id)
-        .where((id) => id.isNotEmpty && !embeddedIds.contains(id))
-        .toSet();
+    _legacyUnplacedMathIdentities = initialQuestion == null
+        ? <String>{}
+        : _codec
+              .unplacedMathExpressions(initialQuestion)
+              .map((expression) => expression.persistentIdentity)
+              .toSet();
     _marksController = TextEditingController(text: _formatMarks(_draft.marks));
     _syncOptionControllers();
 
@@ -318,6 +334,30 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     );
   }
 
+  bool get _hasMathTextSurfaces =>
+      _mathSurfaceService.descriptorsForDraft(_draft).isNotEmpty;
+
+  Future<void> _editMathEverywhere() async {
+    final updated = await QuestionMathEverywhereSheet.show(
+      context,
+      initialDraft: _draft,
+    );
+    if (updated == null || !mounted) return;
+    setState(() {
+      _draft = updated;
+      _syncOptionControllers();
+    });
+    for (final option in _draft.options) {
+      final controller = _optionControllers[option.id];
+      if (controller != null && controller.text != option.text) {
+        controller.value = TextEditingValue(
+          text: option.text,
+          selection: TextSelection.collapsed(offset: option.text.length),
+        );
+      }
+    }
+  }
+
   bool get _hasAdvancedPaperBlocks =>
       _draft.advancedContent.hasAny ||
       _draft.tableData != null ||
@@ -327,31 +367,43 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
 
   List<MathExpression> get _unplacedMathExpressions {
     return _draft.mathExpressions
-        .where((expression) => _legacyUnplacedMathIds.contains(expression.id))
+        .where(
+          (expression) => _legacyUnplacedMathIdentities.contains(
+            expression.persistentIdentity,
+          ),
+        )
         .toList();
   }
 
-  Future<void> _editUnplacedFormula(String expressionId) async {
+  Future<void> _editUnplacedFormula(String expressionIdentity) async {
     final index = _draft.mathExpressions.indexWhere(
-      (expression) => expression.id == expressionId,
+      (expression) => expression.persistentIdentity == expressionIdentity,
     );
     if (index < 0) return;
+    final previous = _draft.mathExpressions[index];
     final expression = await FormulaEditorSheet.show(
       context,
-      initial: _draft.mathExpressions[index],
+      initial: previous,
       autoOpenMathKeyboard: true,
     );
     if (expression == null || !mounted) return;
     final formulas = [..._draft.mathExpressions]..[index] = expression;
-    setState(() => _draft = _draft.copyWith(mathExpressions: formulas));
+    setState(() {
+      _legacyUnplacedMathIdentities
+        ..remove(previous.persistentIdentity)
+        ..add(expression.persistentIdentity);
+      _draft = _draft.copyWith(mathExpressions: formulas);
+    });
   }
 
-  void _removeUnplacedFormula(String expressionId) {
+  void _removeUnplacedFormula(String expressionIdentity) {
     final formulas = _draft.mathExpressions
-        .where((expression) => expression.id != expressionId)
+        .where(
+          (expression) => expression.persistentIdentity != expressionIdentity,
+        )
         .toList();
     setState(() {
-      _legacyUnplacedMathIds.remove(expressionId);
+      _legacyUnplacedMathIdentities.remove(expressionIdentity);
       _draft = _draft.copyWith(mathExpressions: formulas);
     });
   }
@@ -362,7 +414,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     _insertMathAt(expression, insertion);
     _syncInsertionAnchorFromController();
     setState(() {
-      _legacyUnplacedMathIds.remove(expression.id);
+      _legacyUnplacedMathIdentities.remove(expression.persistentIdentity);
       _bodyError = null;
     });
     _restoreBodyFocus();
@@ -981,9 +1033,14 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     final embeddedMath = _codec.embeddedMathExpressions(
       _bodyController.document,
     );
-    final embeddedIds = embeddedMath.map((expression) => expression.id).toSet();
+    final embeddedIdentities = embeddedMath
+        .map((expression) => expression.persistentIdentity)
+        .toSet();
     final unplacedMath = _unplacedMathExpressions
-        .where((expression) => !embeddedIds.contains(expression.id))
+        .where(
+          (expression) =>
+              !embeddedIdentities.contains(expression.persistentIdentity),
+        )
         .toList();
     final savedMathExpressions = [...embeddedMath, ...unplacedMath];
     final accessibility = [
@@ -1012,9 +1069,11 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     final materialized = draft.toQuestion(
       plainTextAccessibility: accessibility,
     );
+    final validation = _mathValidationService.validateAndRepair(materialized);
+    final safeQuestion = validation.safeQuestion;
     final bool saved;
     if (widget.onSaveQuestion != null) {
-      saved = await widget.onSaveQuestion!(materialized);
+      saved = await widget.onSaveQuestion!(safeQuestion);
     } else {
       final paper = ref.read(editorStateProvider);
       final actions = PaperComposerActions(
@@ -1082,7 +1141,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
           ? nextDraft.copyWith(details: previous.details)
           : nextDraft;
       _bodyController = _createBodyController(Document());
-      _legacyUnplacedMathIds.clear();
+      _legacyUnplacedMathIdentities.clear();
       _marksController.text = _formatMarks(previous.marks);
       _optionControllers.clear();
       _syncOptionControllers();
@@ -1518,6 +1577,20 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
+              if (_hasMathTextSurfaces)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.data_object_rounded, size: 16),
+                    label: Text(
+                      _draft.mathContent.structuredSurfaceCount == 0
+                          ? 'Math in fields'
+                          : 'Field math (${_draft.mathContent.structuredSurfaceCount})',
+                    ),
+                    onPressed: _editMathEverywhere,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
               for (final prompt in const [
                 ('Solve', 'Solve: '),
                 ('Find', 'Find the value of '),
@@ -1593,6 +1666,14 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
               label: 'Math',
               onTap: () => _insertFormula(),
             ),
+            if (_hasMathTextSurfaces)
+              QuestionInsertAction(
+                icon: Icons.data_object_rounded,
+                label: _draft.mathContent.structuredSurfaceCount == 0
+                    ? 'Math in fields'
+                    : 'Field math (${_draft.mathContent.structuredSurfaceCount})',
+                onTap: _editMathEverywhere,
+              ),
             QuestionInsertAction(
               icon: Icons.category_outlined,
               label: 'Geometry',
@@ -1662,7 +1743,8 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                 elevation: 0,
                 child: ListTile(
                   minTileHeight: 64,
-                  onTap: () => _editUnplacedFormula(expression.id),
+                  onTap: () =>
+                      _editUnplacedFormula(expression.persistentIdentity),
                   title: SafeMathExpression(expression: expression),
                   subtitle: const Text('Tap formula to edit'),
                   trailing: Wrap(
@@ -1675,7 +1757,9 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                       ),
                       IconButton(
                         tooltip: 'Remove formula',
-                        onPressed: () => _removeUnplacedFormula(expression.id),
+                        onPressed: () => _removeUnplacedFormula(
+                          expression.persistentIdentity,
+                        ),
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ],

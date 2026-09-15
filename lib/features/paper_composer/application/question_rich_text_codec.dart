@@ -2,36 +2,91 @@ import 'dart:convert';
 
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+
+class QuestionRichTextInspection {
+  final Document document;
+  final bool usedLegacyPlainText;
+  final bool malformedRichText;
+  final int malformedMathEmbedCount;
+
+  const QuestionRichTextInspection({
+    required this.document,
+    required this.usedLegacyPlainText,
+    required this.malformedRichText,
+    required this.malformedMathEmbedCount,
+  });
+
+  bool get needsRepair => malformedRichText || malformedMathEmbedCount > 0;
+}
 
 /// Centralizes compatibility with EduSheet's persisted Quill delta string.
 class QuestionRichTextCodec {
   const QuestionRichTextCodec();
 
-  Document decodeQuestion(Question? question) {
+  QuestionRichTextInspection inspectQuestion(Question? question) {
     if (question == null || question.text.trim().isEmpty) {
-      return Document();
+      return QuestionRichTextInspection(
+        document: Document(),
+        usedLegacyPlainText: false,
+        malformedRichText: false,
+        malformedMathEmbedCount: 0,
+      );
     }
 
     final value = question.text.trim();
     try {
       final decoded = jsonDecode(value);
       if (decoded is List) {
-        return Document.fromJson(
-          decoded
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList(),
-        );
+        var malformedMathEmbeds = 0;
+        final safeOperations = decoded.whereType<Map>().map((raw) {
+          final operation = Map<String, dynamic>.from(raw);
+          final insert = operation['insert'];
+          if (insert is Map &&
+              insert.containsKey(MathExpression.quillEmbedKey)) {
+            final expression = MathExpression.tryFromQuillEmbedData(
+              insert[MathExpression.quillEmbedKey],
+            );
+            if (expression == null) {
+              malformedMathEmbeds += 1;
+              operation['insert'] = '[formula]';
+            }
+          }
+          return operation;
+        }).toList();
+        try {
+          return QuestionRichTextInspection(
+            document: Document.fromJson(safeOperations),
+            usedLegacyPlainText: false,
+            malformedRichText: false,
+            malformedMathEmbedCount: malformedMathEmbeds,
+          );
+        } catch (_) {
+          return QuestionRichTextInspection(
+            document: _plainFallbackDocument(question),
+            usedLegacyPlainText: false,
+            malformedRichText: true,
+            malformedMathEmbedCount: malformedMathEmbeds,
+          );
+        }
       }
     } catch (_) {
       // Legacy plain text is intentionally supported below.
     }
 
-    final document = Document();
-    document.insert(0, question.text);
-    return document;
+    final expectsQuill = question.richTextFormat == 'quill-delta-json-v1';
+    final looksStructured = value.startsWith('[') || value.startsWith('{');
+    return QuestionRichTextInspection(
+      document: _plainFallbackDocument(question),
+      usedLegacyPlainText: !looksStructured,
+      malformedRichText: expectsQuill && looksStructured,
+      malformedMathEmbedCount: 0,
+    );
   }
+
+  Document decodeQuestion(Question? question) =>
+      inspectQuestion(question).document;
 
   String encode(Document document) => jsonEncode(document.toDelta().toJson());
 
@@ -63,7 +118,7 @@ class QuestionRichTextCodec {
       if (insert is! Map) continue;
       final expression = _expressionFromInsert(insert);
       if (expression == null) continue;
-      if (expression.id.isNotEmpty && !seen.add(expression.id)) continue;
+      if (!seen.add(expression.persistentIdentity)) continue;
       expressions.add(expression);
     }
     return expressions;
@@ -76,10 +131,32 @@ class QuestionRichTextCodec {
   }
 
   List<MathExpression> unplacedMathExpressions(Question question) {
-    final embeddedIds = embeddedMathExpressionIds(decodeQuestion(question));
+    final embeddedIdentities = embeddedMathExpressions(
+      decodeQuestion(question),
+    ).map((expression) => expression.persistentIdentity).toSet();
+    final surfaceIdentities = const QuestionMathSurfaceService()
+        .activeContentForQuestion(question)
+        .expressionIdentities;
     return question.mathExpressions
-        .where((expression) => !embeddedIds.contains(expression.id))
+        .where(
+          (expression) =>
+              !embeddedIdentities.contains(expression.persistentIdentity) &&
+              !surfaceIdentities.contains(expression.persistentIdentity),
+        )
         .toList();
+  }
+
+  MathExpression? expressionFromInsert(Map<dynamic, dynamic> insert) {
+    return _expressionFromInsert(insert);
+  }
+
+  Document _plainFallbackDocument(Question question) {
+    final fallback = question.plainTextAccessibility.trim().isNotEmpty
+        ? question.plainTextAccessibility
+        : question.text;
+    final document = Document();
+    document.insert(0, fallback);
+    return document;
   }
 
   MathExpression? _expressionFromInsert(Map<dynamic, dynamic> insert) {

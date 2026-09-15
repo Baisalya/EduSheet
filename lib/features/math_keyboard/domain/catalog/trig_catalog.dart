@@ -1,3 +1,4 @@
+import '../models/math_edit_command.dart';
 import '../models/math_symbol.dart';
 
 const List<MathSymbol> trigMathSymbols = <MathSymbol>[
@@ -7,6 +8,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'sin',
     tex: r'\sin',
+    editorCommand: MathEditCommands.sinCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -15,6 +17,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'cos',
     tex: r'\cos',
+    editorCommand: MathEditCommands.cosCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -23,6 +26,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'tan',
     tex: r'\tan',
+    editorCommand: MathEditCommands.tanCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -31,6 +35,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'csc',
     tex: r'\csc',
+    editorCommand: MathEditCommands.cscCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -39,6 +44,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'sec',
     tex: r'\sec',
+    editorCommand: MathEditCommands.secCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -47,6 +53,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'cot',
     tex: r'\cot',
+    editorCommand: MathEditCommands.cotCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -55,6 +62,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'sin²θ',
     tex: r'\sin^2 \theta',
+    editorCommand: MathEditCommands.sinSquaredTheta,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -63,6 +71,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'cos²θ',
     tex: r'\cos^2 \theta',
+    editorCommand: MathEditCommands.cosSquaredTheta,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -71,6 +80,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'tanθ',
     tex: r'\tan \theta',
+    editorCommand: MathEditCommands.tanTheta,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -79,6 +89,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'arcsin',
     tex: r'\arcsin',
+    editorCommand: MathEditCommands.arcsinCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -87,6 +98,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'arccos',
     tex: r'\arccos',
+    editorCommand: MathEditCommands.arccosCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -95,6 +107,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'arctan',
     tex: r'\arctan',
+    editorCommand: MathEditCommands.arctanCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -103,6 +116,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'sinh',
     tex: r'\sinh',
+    editorCommand: MathEditCommands.sinhCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -111,6 +125,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'cosh',
     tex: r'\cosh',
+    editorCommand: MathEditCommands.coshCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -119,6 +134,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'tanh',
     tex: r'\tanh',
+    editorCommand: MathEditCommands.tanhCall,
     category: MathCategory.trig,
   ),
   MathSymbol(
@@ -143,6 +159,7 @@ const List<MathSymbol> trigMathSymbols = <MathSymbol>[
     priority: 50,
     label: '°',
     tex: r'^{\circ}',
+    editorCommand: MathEditCommands.degree,
     category: MathCategory.trig,
   ),
 ];

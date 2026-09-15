@@ -1,12 +1,16 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show Offset;
+
+import 'package:edusheet/features/math_keyboard/domain/services/math_production_policy.dart';
 
 import 'package:archive/archive.dart';
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
@@ -14,6 +18,8 @@ import 'package:edusheet/features/geometry_builder/models/geometry_mark.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_shape.dart';
 import 'package:edusheet/features/pdf/application/paper_header_layout_factory.dart';
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_validation_service.dart';
 import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
@@ -24,10 +30,16 @@ import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/export_file_service.dart';
 import 'package:edusheet/features/pdf/services/office_text_formatter.dart';
+import 'package:edusheet/features/pdf/services/math/word_omml_math_typesetter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 
+import 'package:edusheet/features/math_keyboard/domain/services/math_compatibility_service.dart';
+
 class WordExportService {
+  static const _mathSurfaceService = QuestionMathSurfaceService();
+  static const _mathValidationService = QuestionMathValidationService();
+  static const _ommlTypesetter = WordOmmlMathTypesetter();
   static const _wordNamespace =
       'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
   static const _relationsNamespace =
@@ -44,11 +56,13 @@ class WordExportService {
     PaperTemplate template, {
     String? fileNameBase,
   }) async {
+    final validation = _mathValidationService.validateAndRepairPaper(paper);
+    final safePaper = validation.safePaper;
     final file = await ExportFileService.uniqueFile(
-      fileNameBase: fileNameBase ?? paper.title,
+      fileNameBase: fileNameBase ?? safePaper.title,
       extension: '.docx',
     );
-    final package = await _buildPackage(paper, template);
+    final package = await _buildPackage(safePaper, template);
     await file.writeAsBytes(package, flush: true);
     return file;
   }
@@ -212,7 +226,8 @@ class WordExportService {
         'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
         'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" '
         'xmlns:v="urn:schemas-microsoft-com:vml" '
-        'xmlns:o="urn:schemas-microsoft-com:office:office">',
+        'xmlns:o="urn:schemas-microsoft-com:office:office" '
+        'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">',
       )
       ..write('<w:body>');
 
@@ -625,13 +640,15 @@ class WordExportService {
     if (question.isWordContentBlock) {
       if (text.isNotEmpty) {
         buffer.write(
-          _paragraph(
-            text,
-            editableTag: SmartPaperDocxRoundTripService.questionTextTag(
-              question.id,
+          _paragraphRawContent(
+            _richTextMathInlineXml(
+              question.text,
+              fontSize: fontSize,
+              editableTag: SmartPaperDocxRoundTripService.questionTextTag(
+                question.id,
+              ),
             ),
             alignment: alignment,
-            fontSize: fontSize,
             spacingBefore: 40,
             spacingAfter: paragraphSpacing,
           ),
@@ -654,8 +671,10 @@ class WordExportService {
     final label = PaperStructureService.questionLabel(index, paper, section);
     if (question.instructions.trim().isNotEmpty) {
       buffer.write(
-        _paragraph(
-          question.instructions.trim(),
+        _paragraphMathSurface(
+          question,
+          QuestionMathSurfaceKey.instructions,
+          question.instructions,
           alignment: _wordAlignment(question.instructionAlignment.name),
           italic: true,
           bold: true,
@@ -665,28 +684,35 @@ class WordExportService {
         ),
       );
     }
-    buffer.write(
-      _paragraphRuns(
-        [
-          _Run('$label. ', bold: true, fontSize: fontSize),
+    final questionInline = StringBuffer()
+      ..write(_runXml(_Run('$label. ', bold: true, fontSize: fontSize)))
+      ..write(
+        _richTextMathInlineXml(
+          question.text,
+          fontSize: fontSize,
+          editableTag: SmartPaperDocxRoundTripService.questionTextTag(
+            question.id,
+          ),
+        ),
+      );
+    if (section.questionMarksPlacement == QuestionMarksPlacement.inline) {
+      questionInline.write(
+        _runXml(
           _Run(
-            text,
+            ' [${_marks(question.marks)}]',
+            bold: true,
             fontSize: fontSize,
-            editableTag: SmartPaperDocxRoundTripService.questionTextTag(
+            editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
               question.id,
             ),
           ),
-          if (section.questionMarksPlacement == QuestionMarksPlacement.inline)
-            _Run(
-              ' [${_marks(question.marks)}]',
-              bold: true,
-              fontSize: fontSize,
-              editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
-                question.id,
-              ),
-            )
-          else ...[
-            const _Run('\t'),
+        ),
+      );
+    } else {
+      questionInline
+        ..write(_runXml(const _Run('\t')))
+        ..write(
+          _runXml(
             _Run(
               '[${_marks(question.marks)}]',
               bold: true,
@@ -695,8 +721,12 @@ class WordExportService {
                 question.id,
               ),
             ),
-          ],
-        ],
+          ),
+        );
+    }
+    buffer.write(
+      _paragraphRawContent(
+        questionInline.toString(),
         alignment: alignment,
         spacingBefore: 80,
         spacingAfter: paragraphSpacing,
@@ -730,16 +760,10 @@ class WordExportService {
       );
     }
 
-    for (final expression in MathExpression.unplacedInRichText(
-      question.text,
-      question.mathExpressions,
-    )) {
+    for (final expression in _unplacedExportMath(question)) {
       buffer.write(
-        _paragraph(
-          expression.plainText.trim().isEmpty
-              ? expression.latex
-              : expression.plainText,
-          italic: true,
+        _mathExpressionParagraph(
+          expression,
           fontSize: fontSize,
           indentLeft: 360,
         ),
@@ -824,16 +848,23 @@ class WordExportService {
     required int indentLeft,
     required QuestionMarksPlacement marksPlacement,
     required int rightTabPosition,
+    int nestedDepth = 1,
   }) {
+    if (nestedDepth > MathProductionLimits.maxQuestionNestingDepth) {
+      return _paragraph(
+        '[Nested question depth limit reached]',
+        italic: true,
+        fontSize: fontSize * 0.85,
+        indentLeft: indentLeft,
+      );
+    }
     final buffer = StringBuffer();
-    final text = OfficeTextFormatter.questionText(
-      question.text,
-      geometryPlaceholder: '',
-    ).trim();
     if (question.instructions.trim().isNotEmpty) {
       buffer.write(
-        _paragraph(
-          question.instructions.trim(),
+        _paragraphMathSurface(
+          question,
+          QuestionMathSurfaceKey.instructions,
+          question.instructions,
           alignment: _wordAlignment(question.instructionAlignment.name),
           italic: true,
           bold: true,
@@ -843,39 +874,51 @@ class WordExportService {
         ),
       );
     }
-    final runs = <_Run>[
-      if (label.isNotEmpty) _Run('$label ', bold: true, fontSize: fontSize),
-      _Run(
-        text,
+    final inline = StringBuffer();
+    if (label.isNotEmpty) {
+      inline.write(_runXml(_Run('$label ', bold: true, fontSize: fontSize)));
+    }
+    inline.write(
+      _richTextMathInlineXml(
+        question.text,
         fontSize: fontSize,
         editableTag: SmartPaperDocxRoundTripService.questionTextTag(
           question.id,
         ),
       ),
-      if (marksPlacement == QuestionMarksPlacement.inline)
-        _Run(
-          ' [${_marks(question.marks)}]',
-          bold: true,
-          fontSize: fontSize,
-          editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
-            question.id,
-          ),
-        )
-      else ...[
-        const _Run('\t'),
-        _Run(
-          '[${_marks(question.marks)}]',
-          bold: true,
-          fontSize: fontSize,
-          editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
-            question.id,
+    );
+    if (marksPlacement == QuestionMarksPlacement.inline) {
+      inline.write(
+        _runXml(
+          _Run(
+            ' [${_marks(question.marks)}]',
+            bold: true,
+            fontSize: fontSize,
+            editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
+              question.id,
+            ),
           ),
         ),
-      ],
-    ];
+      );
+    } else {
+      inline
+        ..write(_runXml(const _Run('\t')))
+        ..write(
+          _runXml(
+            _Run(
+              '[${_marks(question.marks)}]',
+              bold: true,
+              fontSize: fontSize,
+              editableTag: SmartPaperDocxRoundTripService.questionMarksTag(
+                question.id,
+              ),
+            ),
+          ),
+        );
+    }
     buffer.write(
-      _paragraphRuns(
-        runs,
+      _paragraphRawContent(
+        inline.toString(),
         indentLeft: indentLeft,
         spacingBefore: 50,
         spacingAfter: 60,
@@ -901,16 +944,10 @@ class WordExportService {
       ),
     );
 
-    for (final expression in MathExpression.unplacedInRichText(
-      question.text,
-      question.mathExpressions,
-    )) {
+    for (final expression in _unplacedExportMath(question)) {
       buffer.write(
-        _paragraph(
-          expression.plainText.trim().isEmpty
-              ? expression.latex
-              : expression.plainText,
-          italic: true,
+        _mathExpressionParagraph(
+          expression,
           fontSize: fontSize,
           indentLeft: indentLeft + 240,
         ),
@@ -934,6 +971,7 @@ class WordExportService {
             indentLeft: indentLeft + 240,
             marksPlacement: marksPlacement,
             rightTabPosition: rightTabPosition,
+            nestedDepth: nestedDepth + 1,
           ),
         );
       }
@@ -962,6 +1000,7 @@ class WordExportService {
             indentLeft: indentLeft + 240,
             marksPlacement: marksPlacement,
             rightTabPosition: rightTabPosition,
+            nestedDepth: nestedDepth + 1,
           ),
         );
       }
@@ -1387,6 +1426,7 @@ class WordExportService {
     if (advanced.hasStimulus) {
       buffer.write(
         _stimulusXml(
+          question,
           advanced.stimulus!,
           fontSize: fontSize,
           indentLeft: indentLeft,
@@ -1407,8 +1447,10 @@ class WordExportService {
       );
       if (attachment.caption.trim().isNotEmpty) {
         buffer.write(
-          _paragraph(
-            attachment.caption.trim(),
+          _paragraphMathSurface(
+            question,
+            QuestionMathSurfaceKey.attachmentCaption(attachment.id),
+            attachment.caption,
             alignment: 'center',
             italic: true,
             fontSize: fontSize * 0.85,
@@ -1419,12 +1461,15 @@ class WordExportService {
     }
 
     if (question.tableData != null) {
-      buffer.write(_questionTableXml(question.tableData!, fontSize: fontSize));
+      buffer.write(
+        _questionTableXml(question, question.tableData!, fontSize: fontSize),
+      );
     }
 
     if (advanced.hasWordBank) {
       buffer.write(
         _wordBankXml(
+          question,
           advanced.wordBank,
           fontSize: fontSize,
           indentLeft: indentLeft,
@@ -1554,6 +1599,7 @@ class WordExportService {
   }
 
   static String _stimulusXml(
+    Question question,
     QuestionStimulus stimulus, {
     required double fontSize,
     required int indentLeft,
@@ -1561,24 +1607,26 @@ class WordExportService {
     final content = StringBuffer();
     if (stimulus.title.trim().isNotEmpty) {
       content.write(
-        _paragraph(
-          stimulus.title.trim(),
+        _paragraphMathSurface(
+          question,
+          QuestionMathSurfaceKey.stimulusTitle,
+          stimulus.title,
           bold: true,
           fontSize: fontSize,
           spacingAfter: 40,
         ),
       );
     }
-    for (final line in stimulus.text.split('\n')) {
-      content.write(
-        _paragraph(
-          line,
-          italic: stimulus.kind == QuestionStimulusKind.poem,
-          fontSize: fontSize,
-          spacingAfter: 25,
-        ),
-      );
-    }
+    content.write(
+      _paragraphMathSurface(
+        question,
+        QuestionMathSurfaceKey.stimulusText,
+        stimulus.text,
+        italic: stimulus.kind == QuestionStimulusKind.poem,
+        fontSize: fontSize,
+        spacingAfter: 25,
+      ),
+    );
     return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
         '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="A6A6A6"/>'
         '<w:left w:val="single" w:sz="4" w:color="A6A6A6"/>'
@@ -1588,20 +1636,35 @@ class WordExportService {
   }
 
   static String _wordBankXml(
+    Question question,
     List<String> items, {
     required double fontSize,
     required int indentLeft,
   }) {
-    final text = items.join('     ');
+    final content = StringBuffer();
+    for (final entry in items.asMap().entries) {
+      if (entry.key > 0) {
+        content.write(_runXml(_Run('     ', fontSize: fontSize)));
+      }
+      content.write(
+        _mathSurfaceInlineXml(
+          question,
+          QuestionMathSurfaceKey.wordBank(entry.key),
+          entry.value,
+          fontSize: fontSize,
+        ),
+      );
+    }
     return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
         '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="A6A6A6"/>'
         '<w:left w:val="single" w:sz="4" w:color="A6A6A6"/>'
         '<w:bottom w:val="single" w:sz="4" w:color="A6A6A6"/>'
         '<w:right w:val="single" w:sz="4" w:color="A6A6A6"/>'
-        '</w:tblBorders></w:tblPr><w:tr>${_tableCell(_paragraph(text, alignment: 'center', fontSize: fontSize, indentLeft: indentLeft, spacingAfter: 40))}</w:tr></w:tbl>';
+        '</w:tblBorders></w:tblPr><w:tr>${_tableCell(_paragraphRawContent(content.toString(), alignment: 'center', indentLeft: indentLeft, spacingAfter: 40))}</w:tr></w:tbl>';
   }
 
   static String _questionTableXml(
+    Question question,
     QuestionTable table, {
     required double fontSize,
   }) {
@@ -1613,8 +1676,10 @@ class WordExportService {
     final buffer = StringBuffer();
     if (table.caption.trim().isNotEmpty) {
       buffer.write(
-        _paragraph(
-          table.caption.trim(),
+        _paragraphMathSurface(
+          question,
+          QuestionMathSurfaceKey.tableCaption,
+          table.caption,
           alignment: 'center',
           bold: true,
           fontSize: fontSize,
@@ -1638,18 +1703,34 @@ class WordExportService {
         final text = index < table.headers.length ? table.headers[index] : '';
         buffer.write(
           _tableCell(
-            _paragraph(text, bold: true, fontSize: fontSize, spacingAfter: 30),
+            _paragraphMathSurface(
+              question,
+              QuestionMathSurfaceKey.tableHeader(index),
+              text,
+              bold: true,
+              fontSize: fontSize,
+              spacingAfter: 30,
+            ),
           ),
         );
       }
       buffer.write('</w:tr>');
     }
-    for (final row in table.rows) {
+    for (final rowEntry in table.rows.asMap().entries) {
+      final row = rowEntry.value;
       buffer.write('<w:tr>');
       for (var index = 0; index < columnCount; index++) {
         final text = index < row.length ? row[index] : '';
         buffer.write(
-          _tableCell(_paragraph(text, fontSize: fontSize, spacingAfter: 30)),
+          _tableCell(
+            _paragraphMathSurface(
+              question,
+              QuestionMathSurfaceKey.tableCell(rowEntry.key, index),
+              text,
+              fontSize: fontSize,
+              spacingAfter: 30,
+            ),
+          ),
         );
       }
       buffer.write('</w:tr>');
@@ -1666,38 +1747,47 @@ class WordExportService {
     final layout = QuestionOptionLayoutCodec.fromQuestion(question);
     final entries = question.options.asMap().entries.toList();
 
-    List<_Run> optionRuns(MapEntry<int, QuestionOption> entry) {
-      return [
+    String optionContent(MapEntry<int, QuestionOption> entry) {
+      final label = _runXml(
         _Run('${String.fromCharCode(65 + entry.key)}) ', fontSize: fontSize),
-        _Run(
-          entry.value.text,
-          fontSize: fontSize,
-          editableTag: SmartPaperDocxRoundTripService.questionOptionTag(
-            question.id,
-            entry.value.id,
-          ),
+      );
+      final body = _mathSurfaceInlineXml(
+        question,
+        QuestionMathSurfaceKey.option(entry.value.id),
+        entry.value.text,
+        fontSize: fontSize,
+        editableTag: SmartPaperDocxRoundTripService.questionOptionTag(
+          question.id,
+          entry.value.id,
         ),
-      ];
+      );
+      return '$label$body';
     }
 
     switch (layout) {
       case QuestionOptionLayout.vertical:
         return entries
             .map(
-              (entry) => _paragraphRuns(
-                optionRuns(entry),
+              (entry) => _paragraphRawContent(
+                optionContent(entry),
                 indentLeft: indentLeft,
                 spacingAfter: 40,
               ),
             )
             .join();
       case QuestionOptionLayout.inline:
-        final runs = <_Run>[];
+        final content = StringBuffer();
         for (var index = 0; index < entries.length; index++) {
-          if (index > 0) runs.add(_Run('     ', fontSize: fontSize));
-          runs.addAll(optionRuns(entries[index]));
+          if (index > 0) {
+            content.write(_runXml(_Run('     ', fontSize: fontSize)));
+          }
+          content.write(optionContent(entries[index]));
         }
-        return _paragraphRuns(runs, indentLeft: indentLeft, spacingAfter: 60);
+        return _paragraphRawContent(
+          content.toString(),
+          indentLeft: indentLeft,
+          spacingAfter: 60,
+        );
       case QuestionOptionLayout.twoColumn:
         final buffer = StringBuffer()
           ..write(
@@ -1706,12 +1796,15 @@ class WordExportService {
             '<w:left w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr>',
           );
         for (var index = 0; index < entries.length; index += 2) {
-          final left = _paragraphRuns(
-            optionRuns(entries[index]),
+          final left = _paragraphRawContent(
+            optionContent(entries[index]),
             spacingAfter: 30,
           );
           final right = index + 1 < entries.length
-              ? _paragraphRuns(optionRuns(entries[index + 1]), spacingAfter: 30)
+              ? _paragraphRawContent(
+                  optionContent(entries[index + 1]),
+                  spacingAfter: 30,
+                )
               : _paragraph('');
           buffer.write('<w:tr>${_tableCell(left)}${_tableCell(right)}</w:tr>');
         }
@@ -1839,6 +1932,218 @@ class WordExportService {
     return value == value.roundToDouble()
         ? value.toInt().toString()
         : value.toStringAsFixed(1);
+  }
+
+  static List<MathExpression> _unplacedExportMath(Question question) {
+    final surfaceExpressions = _mathSurfaceService
+        .activeContentForQuestion(question)
+        .expressions;
+    final surfaceIdentities = surfaceExpressions
+        .map(_mathExpressionIdentity)
+        .toSet();
+    return MathExpression.unplacedInRichText(
+          question.text,
+          question.mathExpressions,
+        )
+        .where((expression) {
+          return !surfaceIdentities.contains(
+            _mathExpressionIdentity(expression),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  static String _mathExpressionIdentity(MathExpression expression) {
+    return expression.id.isNotEmpty
+        ? 'id:${expression.id}'
+        : 'source:${expression.latex}\u0000${expression.plainText}';
+  }
+
+  static String _mathExpressionInlineXml(
+    MathExpression expression, {
+    required double fontSize,
+  }) {
+    final native = _ommlTypesetter.inlineSource(expression.latex);
+    if (native != null) return native;
+    final fallback = const MathCompatibilityService()
+        .inspectSource(expression.latex, plainFallback: expression.plainText)
+        .readableFallback;
+    return _runXml(_Run(fallback, italic: true, fontSize: fontSize));
+  }
+
+  static String _mathExpressionParagraph(
+    MathExpression expression, {
+    required double fontSize,
+    int indentLeft = 0,
+  }) {
+    return _paragraphRawContent(
+      _mathExpressionInlineXml(expression, fontSize: fontSize),
+      indentLeft: indentLeft,
+      spacingAfter: 80,
+    );
+  }
+
+  static String _mathSurfaceInlineXml(
+    Question question,
+    String surfaceKey,
+    String fallbackText, {
+    required double fontSize,
+    bool bold = false,
+    bool italic = false,
+    String? editableTag,
+  }) {
+    final document = _mathSurfaceService.activeDocument(
+      question,
+      surfaceKey,
+      fallbackText,
+    );
+    String content;
+    if (document == null) {
+      content = _runXml(
+        _Run(fallbackText, bold: bold, italic: italic, fontSize: fontSize),
+      );
+    } else {
+      final buffer = StringBuffer();
+      for (final part in document.parts) {
+        if (part.kind == QuestionMathInlinePartKind.text ||
+            part.expression == null) {
+          buffer.write(
+            _runXml(
+              _Run(part.text, bold: bold, italic: italic, fontSize: fontSize),
+            ),
+          );
+        } else {
+          buffer.write(
+            _mathExpressionInlineXml(part.expression!, fontSize: fontSize),
+          );
+        }
+      }
+      content = buffer.toString();
+    }
+    if (editableTag == null || editableTag.isEmpty) return content;
+    return '<w:sdt><w:sdtPr><w:tag w:val="${_xml(editableTag)}"/>'
+        '<w:alias w:val="EduSheet editable content"/></w:sdtPr>'
+        '<w:sdtContent>$content</w:sdtContent></w:sdt>';
+  }
+
+  static String _paragraphMathSurface(
+    Question question,
+    String surfaceKey,
+    String fallbackText, {
+    String alignment = 'left',
+    bool bold = false,
+    bool italic = false,
+    double fontSize = 12,
+    int spacingBefore = 0,
+    int spacingAfter = 120,
+    int indentLeft = 0,
+  }) {
+    return _paragraphRawContent(
+      _mathSurfaceInlineXml(
+        question,
+        surfaceKey,
+        fallbackText,
+        fontSize: fontSize,
+        bold: bold,
+        italic: italic,
+      ),
+      alignment: alignment,
+      spacingBefore: spacingBefore,
+      spacingAfter: spacingAfter,
+      indentLeft: indentLeft,
+    );
+  }
+
+  static String _richTextMathInlineXml(
+    String raw, {
+    required double fontSize,
+    String? editableTag,
+  }) {
+    final buffer = StringBuffer();
+    try {
+      final trimmed = raw.trimLeft();
+      final decoded = trimmed.startsWith('[') ? jsonDecode(trimmed) : null;
+      if (decoded is List) {
+        for (final rawOperation in decoded) {
+          if (rawOperation is! Map) continue;
+          final operation = Map<String, dynamic>.from(rawOperation);
+          final insert = operation['insert'];
+          final attributes = operation['attributes'] is Map
+              ? Map<String, dynamic>.from(operation['attributes'] as Map)
+              : const <String, dynamic>{};
+          if (insert is String) {
+            buffer.write(
+              _runXml(
+                _Run(
+                  insert,
+                  bold: attributes['bold'] == true,
+                  italic: attributes['italic'] == true,
+                  underline: attributes['underline'] == true,
+                  fontSize: fontSize,
+                ),
+              ),
+            );
+          } else if (insert is Map &&
+              insert.containsKey(MathExpression.quillEmbedKey)) {
+            final expression = MathExpression.tryFromQuillEmbedData(
+              insert[MathExpression.quillEmbedKey],
+            );
+            if (expression != null) {
+              buffer.write(
+                _mathExpressionInlineXml(expression, fontSize: fontSize),
+              );
+            }
+          }
+        }
+      } else {
+        buffer.write(
+          _runXml(
+            _Run(
+              OfficeTextFormatter.questionText(raw, geometryPlaceholder: ''),
+              fontSize: fontSize,
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      buffer.write(
+        _runXml(
+          _Run(
+            OfficeTextFormatter.questionText(raw, geometryPlaceholder: ''),
+            fontSize: fontSize,
+          ),
+        ),
+      );
+    }
+    final content = buffer.toString();
+    if (editableTag == null || editableTag.isEmpty) return content;
+    return '<w:sdt><w:sdtPr><w:tag w:val="${_xml(editableTag)}"/>'
+        '<w:alias w:val="EduSheet editable content"/></w:sdtPr>'
+        '<w:sdtContent>$content</w:sdtContent></w:sdt>';
+  }
+
+  static String _paragraphRawContent(
+    String content, {
+    String alignment = 'left',
+    int spacingBefore = 0,
+    int spacingAfter = 120,
+    int indentLeft = 0,
+    int? rightTabPosition,
+    bool keepNext = false,
+  }) {
+    final properties = StringBuffer()
+      ..write('<w:pPr>')
+      ..write('<w:jc w:val="$alignment"/>')
+      ..write('<w:spacing w:before="$spacingBefore" w:after="$spacingAfter"/>');
+    if (keepNext) properties.write('<w:keepNext/>');
+    if (rightTabPosition != null) {
+      properties.write(
+        '<w:tabs><w:tab w:val="right" w:pos="$rightTabPosition"/></w:tabs>',
+      );
+    }
+    if (indentLeft > 0) properties.write('<w:ind w:left="$indentLeft"/>');
+    properties.write('</w:pPr>');
+    return '<w:p>$properties$content</w:p>';
   }
 
   static String _paragraph(

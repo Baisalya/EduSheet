@@ -7,6 +7,7 @@ import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builde
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_expression_embed_builder.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -105,11 +106,12 @@ class WordRichTextEditor extends ConsumerStatefulWidget {
 
 class _WordRichTextEditorState extends ConsumerState<WordRichTextEditor> {
   static const _codec = QuestionRichTextCodec();
+  static const _mathSurfaceService = QuestionMathSurfaceService();
 
   late QuillController _controller;
   late final FocusNode _focusNode;
   late final ScrollController _scrollController;
-  late Set<String> _legacyUnplacedMathIds;
+  late Set<String> _legacyUnplacedMathIdentities;
   bool _syncingExternal = false;
   String? _lastEmittedText;
 
@@ -119,10 +121,9 @@ class _WordRichTextEditorState extends ConsumerState<WordRichTextEditor> {
     _controller = _createController(widget.question);
     _focusNode = FocusNode()..addListener(_handleFocus);
     _scrollController = ScrollController();
-    _legacyUnplacedMathIds = _codec
+    _legacyUnplacedMathIdentities = _codec
         .unplacedMathExpressions(widget.question)
-        .map((item) => item.id)
-        .where((id) => id.isNotEmpty)
+        .map((item) => item.persistentIdentity)
         .toSet();
     if (widget.autofocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -159,10 +160,9 @@ class _WordRichTextEditorState extends ConsumerState<WordRichTextEditor> {
     );
     _syncingExternal = true;
     _controller = _createController(widget.question);
-    _legacyUnplacedMathIds = _codec
+    _legacyUnplacedMathIdentities = _codec
         .unplacedMathExpressions(widget.question)
-        .map((item) => item.id)
-        .where((id) => id.isNotEmpty)
+        .map((item) => item.persistentIdentity)
         .toSet();
     _syncingExternal = false;
     previous.removeListener(_handleDocumentChanged);
@@ -211,14 +211,35 @@ class _WordRichTextEditorState extends ConsumerState<WordRichTextEditor> {
 
     final embedded = _codec.embeddedMathExpressions(_controller.document);
     final legacyUnplaced = widget.question.mathExpressions
-        .where((item) => _legacyUnplacedMathIds.contains(item.id))
+        .where(
+          (item) =>
+              _legacyUnplacedMathIdentities.contains(item.persistentIdentity),
+        )
         .toList();
+    final surfaceMath = _mathSurfaceService
+        .activeContentForQuestion(widget.question)
+        .expressions;
     final updated = widget.question.copyWith(
       text: encoded,
       plainTextAccessibility: _codec.accessibleText(_controller.document),
-      mathExpressions: [...embedded, ...legacyUnplaced],
+      mathExpressions: _dedupeMathExpressions([
+        ...embedded,
+        ...surfaceMath,
+        ...legacyUnplaced,
+      ]),
     );
     widget.onChanged(updated);
+  }
+
+  List<MathExpression> _dedupeMathExpressions(
+    Iterable<MathExpression> expressions,
+  ) {
+    final result = <MathExpression>[];
+    final seen = <String>{};
+    for (final expression in expressions) {
+      if (seen.add(expression.persistentIdentity)) result.add(expression);
+    }
+    return result;
   }
 
   (int, int) _selectionRange() {

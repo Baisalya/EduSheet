@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
+import '../providers/math_keyboard_controller.dart';
 
 class MathKeyboardActionBar extends ConsumerWidget {
   final bool compact;

@@ -1,3 +1,4 @@
+import '../models/math_edit_command.dart';
 import '../models/math_symbol.dart';
 
 const List<MathSymbol> bracketsMathSymbols = <MathSymbol>[
@@ -7,6 +8,7 @@ const List<MathSymbol> bracketsMathSymbols = <MathSymbol>[
     priority: 100,
     label: '()',
     tex: '(',
+    editorCommand: MathEditCommands.parentheses,
     category: MathCategory.brackets,
     isBuilder: true,
   ),
@@ -16,6 +18,7 @@ const List<MathSymbol> bracketsMathSymbols = <MathSymbol>[
     priority: 100,
     label: '[]',
     tex: '[',
+    editorCommand: MathEditCommands.squareBrackets,
     category: MathCategory.brackets,
     isBuilder: true,
   ),
@@ -25,6 +28,7 @@ const List<MathSymbol> bracketsMathSymbols = <MathSymbol>[
     priority: 100,
     label: '{}',
     tex: '{',
+    editorCommand: MathEditCommands.braces,
     category: MathCategory.brackets,
     isBuilder: true,
   ),
@@ -34,6 +38,7 @@ const List<MathSymbol> bracketsMathSymbols = <MathSymbol>[
     priority: 100,
     label: '⟨⟩',
     tex: r'\langle\rangle',
+    editorCommand: MathEditCommands.angleBrackets,
     category: MathCategory.brackets,
     isBuilder: true,
   ),
@@ -43,6 +48,7 @@ const List<MathSymbol> bracketsMathSymbols = <MathSymbol>[
     priority: 100,
     label: '⌊⌋',
     tex: r'\lfloor\rfloor',
+    editorCommand: MathEditCommands.floor,
     category: MathCategory.brackets,
     isBuilder: true,
   ),
@@ -52,6 +58,7 @@ const List<MathSymbol> bracketsMathSymbols = <MathSymbol>[
     priority: 100,
     label: '⌈⌉',
     tex: r'\lceil\rceil',
+    editorCommand: MathEditCommands.ceiling,
     category: MathCategory.brackets,
     isBuilder: true,
   ),

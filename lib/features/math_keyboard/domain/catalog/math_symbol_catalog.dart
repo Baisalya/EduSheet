@@ -13,6 +13,7 @@ import 'operators_catalog.dart';
 import 'physics_catalog.dart';
 import 'sets_catalog.dart';
 import 'statistics_catalog.dart';
+import 'symbol_universe_expansion_catalog.dart';
 import 'templates_catalog.dart';
 import 'trig_catalog.dart';
 
@@ -40,6 +41,7 @@ class MathSymbolCatalog {
     ...templatesMathSymbols,
     ...chemistryMathSymbols,
     ...miscMathSymbols,
+    ...symbolUniverseExpansionMathSymbols,
   ];
 
   static List<MathSymbol> forCategory(MathCategory category) {

@@ -1,3 +1,4 @@
+import '../models/math_edit_command.dart';
 import '../models/math_symbol.dart';
 
 const List<MathSymbol> chemistryMathSymbols = <MathSymbol>[
@@ -91,6 +92,7 @@ const List<MathSymbol> chemistryMathSymbols = <MathSymbol>[
     priority: 60,
     label: '⁺ charge',
     tex: r'^{+}',
+    editorCommand: MathEditCommands.positiveCharge,
     category: MathCategory.chemistry,
     isBuilder: true,
   ),
@@ -100,6 +102,7 @@ const List<MathSymbol> chemistryMathSymbols = <MathSymbol>[
     priority: 60,
     label: '⁻ charge',
     tex: r'^{-}',
+    editorCommand: MathEditCommands.negativeCharge,
     category: MathCategory.chemistry,
     isBuilder: true,
   ),
@@ -109,6 +112,7 @@ const List<MathSymbol> chemistryMathSymbols = <MathSymbol>[
     priority: 60,
     label: 'ⁿ⁺ charge',
     tex: r'^{n+}',
+    editorCommand: MathEditCommands.genericPositiveIon,
     category: MathCategory.chemistry,
     isBuilder: true,
   ),

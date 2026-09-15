@@ -10,10 +10,12 @@ import 'package:edusheet/features/paper_composer/application/word_shape_service.
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_surface_view.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/word_shape_preview.dart';
 import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
@@ -585,8 +587,10 @@ class _PreviewQuestionContent extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (question.instructions.trim().isNotEmpty) ...[
-          Text(
-            question.instructions.trim(),
+          QuestionMathSurfaceView(
+            question: question,
+            surfaceKey: QuestionMathSurfaceKey.instructions,
+            fallbackText: question.instructions.trim(),
             textAlign: question.instructionAlignment.textAlign,
             style: const TextStyle(
               fontSize: 12,
@@ -599,7 +603,7 @@ class _PreviewQuestionContent extends StatelessWidget {
         WordShapeFlowPreview(shapes: shapes, child: richText),
         if (advanced.hasStimulus) ...[
           const SizedBox(height: 7),
-          _PreviewStimulus(stimulus: advanced.stimulus!),
+          _PreviewStimulus(question: question, stimulus: advanced.stimulus!),
         ],
         for (final expression in _codec.unplacedMathExpressions(question))
           Padding(
@@ -609,15 +613,15 @@ class _PreviewQuestionContent extends StatelessWidget {
         if (question.attachments.isNotEmpty) ...[
           const SizedBox(height: 6),
           for (final attachment in question.attachments)
-            _PreviewAttachment(attachment: attachment),
+            _PreviewAttachment(question: question, attachment: attachment),
         ],
         if (question.tableData != null) ...[
           const SizedBox(height: 7),
-          _PreviewQuestionTable(table: question.tableData!),
+          _PreviewQuestionTable(question: question, table: question.tableData!),
         ],
         if (advanced.hasWordBank) ...[
           const SizedBox(height: 7),
-          _PreviewWordBank(items: advanced.wordBank),
+          _PreviewWordBank(question: question, items: advanced.wordBank),
         ],
         if (question.options.isNotEmpty) ...[
           const SizedBox(height: 5),
@@ -729,9 +733,10 @@ class _PreviewNestedQuestion extends StatelessWidget {
 }
 
 class _PreviewStimulus extends StatelessWidget {
+  final Question question;
   final QuestionStimulus stimulus;
 
-  const _PreviewStimulus({required this.stimulus});
+  const _PreviewStimulus({required this.question, required this.stimulus});
 
   @override
   Widget build(BuildContext context) {
@@ -745,14 +750,18 @@ class _PreviewStimulus extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (stimulus.title.trim().isNotEmpty) ...[
-            Text(
-              stimulus.title.trim(),
+            QuestionMathSurfaceView(
+              question: question,
+              surfaceKey: QuestionMathSurfaceKey.stimulusTitle,
+              fallbackText: stimulus.title.trim(),
               style: const TextStyle(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
           ],
-          Text(
-            stimulus.text,
+          QuestionMathSurfaceView(
+            question: question,
+            surfaceKey: QuestionMathSurfaceKey.stimulusText,
+            fallbackText: stimulus.text,
             style: TextStyle(
               fontStyle: stimulus.kind == QuestionStimulusKind.poem
                   ? FontStyle.italic
@@ -766,9 +775,10 @@ class _PreviewStimulus extends StatelessWidget {
 }
 
 class _PreviewWordBank extends StatelessWidget {
+  final Question question;
   final List<String> items;
 
-  const _PreviewWordBank({required this.items});
+  const _PreviewWordBank({required this.question, required this.items});
 
   @override
   Widget build(BuildContext context) {
@@ -779,16 +789,27 @@ class _PreviewWordBank extends StatelessWidget {
         alignment: WrapAlignment.center,
         spacing: 14,
         runSpacing: 5,
-        children: items.map((item) => Text(item)).toList(),
+        children: items
+            .asMap()
+            .entries
+            .map(
+              (entry) => QuestionMathSurfaceView(
+                question: question,
+                surfaceKey: QuestionMathSurfaceKey.wordBank(entry.key),
+                fallbackText: entry.value,
+              ),
+            )
+            .toList(),
       ),
     );
   }
 }
 
 class _PreviewAttachment extends StatelessWidget {
+  final Question question;
   final QuestionAttachment attachment;
 
-  const _PreviewAttachment({required this.attachment});
+  const _PreviewAttachment({required this.question, required this.attachment});
 
   @override
   Widget build(BuildContext context) {
@@ -814,9 +835,14 @@ class _PreviewAttachment extends StatelessWidget {
           if (attachment.caption.trim().isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 3),
-              child: Text(
-                attachment.caption.trim(),
+              child: QuestionMathSurfaceView(
+                question: question,
+                surfaceKey: QuestionMathSurfaceKey.attachmentCaption(
+                  attachment.id,
+                ),
+                fallbackText: attachment.caption.trim(),
                 textAlign: TextAlign.center,
+                alignment: WrapAlignment.center,
                 style: const TextStyle(
                   fontSize: 11,
                   fontStyle: FontStyle.italic,
@@ -830,9 +856,10 @@ class _PreviewAttachment extends StatelessWidget {
 }
 
 class _PreviewQuestionTable extends StatelessWidget {
+  final Question question;
   final QuestionTable table;
 
-  const _PreviewQuestionTable({required this.table});
+  const _PreviewQuestionTable({required this.question, required this.table});
 
   @override
   Widget build(BuildContext context) {
@@ -848,6 +875,8 @@ class _PreviewQuestionTable extends StatelessWidget {
           children: List.generate(
             columnCount,
             (index) => _PreviewTableCell(
+              question: question,
+              surfaceKey: QuestionMathSurfaceKey.tableHeader(index),
               text: index < table.headers.length ? table.headers[index] : '',
               bold: true,
             ),
@@ -855,13 +884,17 @@ class _PreviewQuestionTable extends StatelessWidget {
         ),
       );
     }
-    for (final row in table.rows) {
+    for (final rowEntry in table.rows.asMap().entries) {
+      final row = rowEntry.value;
       rows.add(
         TableRow(
           children: List.generate(
             columnCount,
-            (index) =>
-                _PreviewTableCell(text: index < row.length ? row[index] : ''),
+            (index) => _PreviewTableCell(
+              question: question,
+              surfaceKey: QuestionMathSurfaceKey.tableCell(rowEntry.key, index),
+              text: index < row.length ? row[index] : '',
+            ),
           ),
         ),
       );
@@ -873,9 +906,12 @@ class _PreviewQuestionTable extends StatelessWidget {
         if (table.caption.trim().isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              table.caption.trim(),
+            child: QuestionMathSurfaceView(
+              question: question,
+              surfaceKey: QuestionMathSurfaceKey.tableCaption,
+              fallbackText: table.caption.trim(),
               textAlign: TextAlign.center,
+              alignment: WrapAlignment.center,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
@@ -889,17 +925,26 @@ class _PreviewQuestionTable extends StatelessWidget {
 }
 
 class _PreviewTableCell extends StatelessWidget {
+  final Question question;
+  final String surfaceKey;
   final String text;
   final bool bold;
 
-  const _PreviewTableCell({required this.text, this.bold = false});
+  const _PreviewTableCell({
+    required this.question,
+    required this.surfaceKey,
+    required this.text,
+    this.bold = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(5),
-      child: Text(
-        text,
+      child: QuestionMathSurfaceView(
+        question: question,
+        surfaceKey: surfaceKey,
+        fallbackText: text,
         style: TextStyle(
           fontWeight: bold ? FontWeight.w800 : FontWeight.normal,
         ),
@@ -920,8 +965,16 @@ class _PreviewOptions extends StatelessWidget {
 
     Widget option(int index) {
       final entry = options[index];
-      return Text(
-        '${String.fromCharCode(65 + entry.key)}) ${entry.value.text}',
+      return Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('${String.fromCharCode(65 + entry.key)}) '),
+          QuestionMathSurfaceView(
+            question: question,
+            surfaceKey: QuestionMathSurfaceKey.option(entry.value.id),
+            fallbackText: entry.value.text,
+          ),
+        ],
       );
     }
 

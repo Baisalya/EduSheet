@@ -4,6 +4,7 @@ import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_expression_embed_builder.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -84,6 +85,39 @@ void main() {
       'legacy',
     ]);
   });
+
+  test(
+    'unplaced math excludes formulas owned by structured string surfaces',
+    () {
+      const surface = MathExpression(
+        id: 'surface',
+        latex: r'\sqrt{x}',
+        plainText: 'square root of x',
+      );
+      const legacy = MathExpression(
+        id: 'legacy',
+        latex: r'y^2',
+        plainText: 'y squared',
+      );
+      const document = QuestionMathInlineDocument(
+        parts: [QuestionMathInlinePart.math(surface)],
+      );
+      final content = QuestionMathContent(
+        surfaces: {QuestionMathSurfaceKey.instructions: document},
+      );
+      final question = Question(
+        id: 'q',
+        text: 'Question',
+        instructions: 'square root of x',
+        mathExpressions: const [surface, legacy],
+        metadata: content.writeToMetadata(const {}),
+      );
+
+      expect(codec.unplacedMathExpressions(question).map((item) => item.id), [
+        'legacy',
+      ]);
+    },
+  );
 
   test('accessibility text represents geometry embeds', () {
     final question = Question(

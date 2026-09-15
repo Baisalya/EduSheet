@@ -1,0 +1,18 @@
+EduSheet Teaching Planner — Phase 7 static validation
+Date: 2026-09-09
+
+Completed in build environment:
+- Legacy syllabus_manager_panes.dart has no remaining lib/test references and was removed.
+- SyllabusManagerScreen reduced from 1034 lines (Phase 5/6 baseline) to 738 lines before local dart-format.
+- Added SyllabusManagerController for create/archive/import/reorder coordination.
+- Added SyllabusNavigationPolicy for parent navigation + stale/archived selection validation.
+- Replaced brittle scrollUntilVisible(scrollable: ...) attachment tests with direct ListView scrolling + ensureVisible.
+- Added navigation policy regression tests.
+- Added one-command Teaching Planner syllabus release gate PowerShell script.
+- Changed-file relative imports resolve.
+- Changed Dart files passed delimiter balance scan.
+- Protected Insights / Track Progress / entitlement-capabilities / premium files are SHA-256 identical to Phase 5/6 Hotfix2 baseline.
+
+Flutter/Dart SDK is not installed in this build container, so flutter analyze/test could not be executed here.
+Run from project root on the developer machine:
+  powershell -ExecutionPolicy Bypass -File .\tool\run_teaching_planner_syllabus_release_gate.ps1

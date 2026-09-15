@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_mark.dart';
@@ -380,16 +382,19 @@ void main() {
     );
     final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
     final documentXml = _archiveText(archive, 'word/document.xml');
+    final renderedText = xml.XmlDocument.parse(
+      documentXml,
+    ).rootElement.innerText;
 
-    expect(documentXml, contains('Read the source and answer.'));
-    expect(documentXml, contains('Rainfall case study'));
-    expect(documentXml, contains('Village A received 40 mm of rain.'));
-    expect(documentXml, contains('increase     decrease     unchanged'));
-    expect(documentXml, contains('Observation table'));
-    expect(documentXml, contains('(a) '));
-    expect(documentXml, contains('Calculate the difference.'));
-    expect(documentXml, contains('OR'));
-    expect(documentXml, contains('Use a bar graph.'));
+    expect(renderedText, contains('Read the source and answer.'));
+    expect(renderedText, contains('Rainfall case study'));
+    expect(renderedText, contains('Village A received 40 mm of rain.'));
+    expect(renderedText, contains('increase     decrease     unchanged'));
+    expect(renderedText, contains('Observation table'));
+    expect(renderedText, contains('(a) '));
+    expect(renderedText, contains('Calculate the difference.'));
+    expect(renderedText, contains('OR'));
+    expect(renderedText, contains('Use a bar graph.'));
   });
 
   test(
@@ -755,6 +760,131 @@ void main() {
       expect(
         utf8.decode(bytes, allowMalformed: true),
         isNot(contains('[diagram]')),
+      );
+    },
+  );
+
+  test(
+    'Phase 8 Word export emits native OMML for inline booklet math',
+    () async {
+      const expression = MathExpression(
+        id: 'phase8-fraction',
+        latex: r'\frac{x+1}{\sqrt{y^2}}',
+        plainText: 'x plus 1 divided by square root of y squared',
+      );
+      final base = _samplePaper();
+      final question = base.sections.single.questions.single.copyWith(
+        text: jsonEncode([
+          {'insert': 'Evaluate '},
+          {
+            'insert': {
+              MathExpression.quillEmbedKey: expression.toQuillEmbedData(),
+            },
+          },
+          {'insert': '.\n'},
+        ]),
+        mathExpressions: const [expression],
+      );
+      final paper = base.copyWith(
+        sections: [
+          base.sections.single.copyWith(questions: [question]),
+        ],
+      );
+
+      final output = await WordExportService.export(paper, _sampleTemplate());
+      final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
+      final documentXml = _archiveText(archive, 'word/document.xml');
+
+      expect(
+        documentXml,
+        contains(
+          'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"',
+        ),
+      );
+      expect(documentXml, contains('<m:oMath>'));
+      expect(documentXml, contains('<m:f>'));
+      expect(documentXml, contains('<m:rad>'));
+      expect(documentXml, contains('Evaluate '));
+    },
+  );
+
+  test(
+    'Phase 8 PDF export accepts native fraction/root math in rich text',
+    () async {
+      const expression = MathExpression(
+        id: 'phase8-pdf-fraction',
+        latex: r'\frac{a}{b}+\sqrt{x}',
+        plainText: 'a over b plus square root x',
+      );
+      final base = _samplePaper();
+      final question = base.sections.single.questions.single.copyWith(
+        text: jsonEncode([
+          {'insert': 'Simplify '},
+          {
+            'insert': {
+              MathExpression.quillEmbedKey: expression.toQuillEmbedData(),
+            },
+          },
+          {'insert': '.\n'},
+        ]),
+        mathExpressions: const [expression],
+      );
+      final paper = base.copyWith(
+        sections: [
+          base.sections.single.copyWith(questions: [question]),
+        ],
+      );
+
+      final output = await QuestionPaperExportService.exportPdf(
+        paper: paper,
+        availableTemplates: [_sampleTemplate()],
+      );
+      expect(await output.exists(), isTrue);
+      expect(await output.length(), greaterThan(0));
+    },
+  );
+
+  test(
+    'Phase 8 Word export typesets Phase 7 option-surface math as OMML',
+    () async {
+      const expression = MathExpression(
+        id: 'phase8-option-fraction',
+        latex: r'\frac{1}{2}',
+        plainText: 'one half',
+      );
+      const document = QuestionMathInlineDocument(
+        parts: [
+          QuestionMathInlinePart.text('Value '),
+          QuestionMathInlinePart.math(expression),
+        ],
+      );
+      final base = _samplePaper();
+      final original = base.sections.single.questions.single;
+      final option = original.options.first.copyWith(text: 'Value one half');
+      final content = QuestionMathContent(surfaces: {'option:a': document});
+      final question = original.copyWith(
+        options: [option, original.options[1]],
+        mathExpressions: const [expression],
+        metadata: content.writeToMetadata(original.metadata),
+      );
+      final paper = base.copyWith(
+        sections: [
+          base.sections.single.copyWith(questions: [question]),
+        ],
+      );
+
+      final output = await WordExportService.export(paper, _sampleTemplate());
+      final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
+      final documentXml = _archiveText(archive, 'word/document.xml');
+
+      expect(documentXml, contains('Value '));
+      expect(documentXml, contains('<m:f>'));
+      expect(RegExp(r'<m:f>').allMatches(documentXml).length, 1);
+      expect(
+        documentXml,
+        contains(
+          'w:tag w:val="${SmartPaperDocxRoundTripService.questionOptionTag('q1', 'a')}"',
+        ),
       );
     },
   );

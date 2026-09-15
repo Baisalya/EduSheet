@@ -4,15 +4,19 @@ import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:edusheet/features/geometry_builder/models/geometry_shape.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
-import 'package:edusheet/features/math_keyboard/domain/catalog/math_symbol_catalog.dart';
-import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
-import 'package:edusheet/features/math_keyboard/domain/services/math_smart_palette.dart';
-import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
-import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_provider.dart';
-import 'package:edusheet/features/math_keyboard/presentation/widgets/math_key.dart';
-import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_action_bar.dart';
-import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_modal_presenter.dart';
-import 'package:edusheet/features/math_keyboard/presentation/widgets/math_symbol_search_sheet.dart';
+import '../../domain/catalog/math_symbol_catalog.dart';
+import '../../domain/models/math_dynamic_structure.dart';
+import '../../domain/models/math_symbol.dart';
+import '../../domain/services/math_smart_palette.dart';
+import '../providers/math_keyboard_controller.dart';
+import '../providers/math_keyboard_provider.dart';
+import '../shortcuts/math_keyboard_productivity_shortcuts.dart';
+import 'math_key.dart';
+import 'dynamic_math_structure_sheet.dart';
+import 'math_keyboard_action_bar.dart';
+import 'math_keyboard_modal_presenter.dart';
+import 'math_keyboard_motion.dart';
+import 'math_symbol_search_sheet.dart';
 
 class MathKeyboardView extends ConsumerStatefulWidget {
   const MathKeyboardView({super.key});
@@ -27,11 +31,13 @@ enum _MathKeyboardLocalPanel {
   structures,
   symbolActions,
   shapes,
+  shortcuts,
 }
 
 class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
   _MathKeyboardLocalPanel _localPanel = _MathKeyboardLocalPanel.keys;
   MathSymbol? _actionSymbol;
+  int _lastHandledPanelRequestSerial = 0;
 
   bool get _showingKeys => _localPanel == _MathKeyboardLocalPanel.keys;
 
@@ -55,6 +61,7 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
     final state = ref.watch(mathKeyboardControllerProvider);
     final controller = ref.read(mathKeyboardControllerProvider.notifier);
     final theme = Theme.of(context);
+    _handleRequestedPanel(state, controller);
 
     return Container(
       decoration: BoxDecoration(
@@ -89,7 +96,10 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
                   _buildQuickBar(context, state, controller, compact: compact),
                 Expanded(
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 160),
+                    duration: mathKeyboardMotionDuration(
+                      context,
+                      const Duration(milliseconds: 160),
+                    ),
                     child: switch (_localPanel) {
                       _MathKeyboardLocalPanel.categories =>
                         _buildCategoryBrowser(context, state, controller),
@@ -106,6 +116,10 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
                         context,
                         controller,
                       ),
+                      _MathKeyboardLocalPanel.shortcuts => _buildShortcutHelp(
+                        context,
+                        controller,
+                      ),
                       _MathKeyboardLocalPanel.keys =>
                         state.currentCategory == MathCategory.format
                             ? _buildQuillToolbar(context, state, ref)
@@ -115,12 +129,165 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
                     },
                   ),
                 ),
+                Semantics(
+                  key: ValueKey(
+                    'math-keyboard-status-${state.accessibilityStatusSerial}',
+                  ),
+                  container: true,
+                  liveRegion: true,
+                  label: state.accessibilityStatus,
+                  child: const SizedBox.shrink(),
+                ),
                 MathKeyboardActionBar(compact: compact),
               ],
             );
           },
         ),
       ),
+    );
+  }
+
+  void _handleRequestedPanel(
+    MathKeyboardStateData state,
+    MathKeyboardController controller,
+  ) {
+    if (state.panelRequest == MathKeyboardPanelRequest.none ||
+        state.panelRequestSerial == _lastHandledPanelRequestSerial) {
+      return;
+    }
+
+    final request = state.panelRequest;
+    final serial = state.panelRequestSerial;
+    _lastHandledPanelRequestSerial = serial;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      controller.consumePanelRequest(serial);
+      switch (request) {
+        case MathKeyboardPanelRequest.none:
+          return;
+        case MathKeyboardPanelRequest.search:
+          if (!_showingKeys) {
+            setState(() {
+              _localPanel = _MathKeyboardLocalPanel.keys;
+              _actionSymbol = null;
+            });
+          }
+          _showSymbolSearch(context, controller);
+          return;
+        case MathKeyboardPanelRequest.shortcuts:
+          _showLocalPanel(_MathKeyboardLocalPanel.shortcuts);
+          return;
+      }
+    });
+  }
+
+  Widget _buildShortcutHelp(
+    BuildContext context,
+    MathKeyboardController controller,
+  ) {
+    final theme = Theme.of(context);
+    return ListView(
+      key: const ValueKey('math-keyboard-shortcut-help'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Keyboard productivity',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Keep typing in the formula field while these shortcuts act on the active math cursor.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => _showKeys(controller),
+              icon: const Icon(Icons.keyboard_alt_outlined, size: 18),
+              label: const Text('Back to keys'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (final spec in MathKeyboardProductivityShortcuts.specs)
+          Semantics(
+            container: true,
+            label: '${spec.title}. Shortcut ${spec.keys}. ${spec.description}',
+            child: ExcludeSemantics(
+              child: Card(
+                margin: const EdgeInsets.only(bottom: 7),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minWidth: 92),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
+                            child: Text(
+                              spec.keys,
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              spec.title,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              spec.description,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -203,7 +370,7 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
             ),
           ),
           IconButton(
-            tooltip: 'Find symbol or formula',
+            tooltip: 'Find symbol or formula (Ctrl+K)',
             visualDensity: VisualDensity.compact,
             onPressed: () {
               if (!_showingKeys) {
@@ -216,6 +383,19 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
             },
             icon: const Icon(Icons.search_rounded, size: 20),
           ),
+          IconButton(
+            key: const ValueKey('math-keyboard-shortcuts-button'),
+            tooltip: 'Keyboard shortcuts (Ctrl+/)',
+            visualDensity: VisualDensity.compact,
+            onPressed: () {
+              if (_localPanel == _MathKeyboardLocalPanel.shortcuts) {
+                _showKeys(controller);
+              } else {
+                _showLocalPanel(_MathKeyboardLocalPanel.shortcuts);
+              }
+            },
+            icon: const Icon(Icons.keyboard_command_key_rounded, size: 19),
+          ),
           Expanded(
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
@@ -225,6 +405,7 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
               itemBuilder: (context, index) {
                 if (index == primary.length) {
                   return _CategoryPill(
+                    semanticLabel: 'More math categories',
                     icon: moreSelected
                         ? _categoryIcon(state.currentCategory)
                         : Icons.grid_view_rounded,
@@ -249,6 +430,8 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
 
                 final item = primary[index];
                 return _CategoryPill(
+                  semanticLabel:
+                      '${item.category == MathCategory.basic ? 'Common' : item.label} math category',
                   icon: item.icon,
                   label: item.label,
                   selected: state.currentCategory == item.category,
@@ -614,6 +797,69 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
       _showKeys(controller);
     }
 
+    Future<void> buildDynamic(MathDynamicStructureKind kind) async {
+      final spec = await showMathKeyboardPanel<MathDynamicStructureSpec>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => DynamicMathStructureSheet(initialKind: kind),
+      );
+      if (!mounted) return;
+      if (spec == null) {
+        controller.restoreActiveMathFocus();
+        return;
+      }
+      controller.insertDynamicStructure(spec);
+      _showKeys(controller);
+    }
+
+    const dynamicStructures =
+        <
+          ({
+            MathDynamicStructureKind kind,
+            String title,
+            String hint,
+            IconData icon,
+          })
+        >[
+          (
+            kind: MathDynamicStructureKind.matrix,
+            title: 'Matrix',
+            hint: 'Choose any rows × columns',
+            icon: Icons.grid_on_outlined,
+          ),
+          (
+            kind: MathDynamicStructureKind.determinant,
+            title: 'Determinant',
+            hint: 'Resizable determinant boxes',
+            icon: Icons.view_column_outlined,
+          ),
+          (
+            kind: MathDynamicStructureKind.augmentedMatrix,
+            title: 'Augmented matrix',
+            hint: 'Choose size and divider',
+            icon: Icons.table_chart_outlined,
+          ),
+          (
+            kind: MathDynamicStructureKind.piecewise,
+            title: 'Piecewise',
+            hint: 'Add as many cases as needed',
+            icon: Icons.call_split_rounded,
+          ),
+          (
+            kind: MathDynamicStructureKind.equationSystem,
+            title: 'Equation system',
+            hint: 'Variable number of equations',
+            icon: Icons.format_list_numbered_rounded,
+          ),
+          (
+            kind: MathDynamicStructureKind.alignedDerivation,
+            title: 'Aligned work',
+            hint: 'Multi-step =, ≤, ≥ or ⇒ work',
+            icon: Icons.segment_rounded,
+          ),
+        ];
+
     return ListView(
       key: const ValueKey('math-structure-browser'),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
@@ -709,6 +955,54 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
             );
           },
         ),
+        const SizedBox(height: 14),
+        Text(
+          'DYNAMIC STRUCTURES',
+          style: theme.textTheme.labelSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.8,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          'Choose the size or number of rows first. Every generated cell is an editable box.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 7),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+            final columns = textScale >= 1.6 && constraints.maxWidth < 520
+                ? 1
+                : constraints.maxWidth >= 760
+                ? 3
+                : 2;
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                mainAxisExtent: _structureCardExtent(context),
+              ),
+              itemCount: dynamicStructures.length,
+              itemBuilder: (context, index) {
+                final item = dynamicStructures[index];
+                return _DynamicStructureChoiceCard(
+                  key: ValueKey('math-dynamic-${item.kind.name}'),
+                  title: item.title,
+                  hint: item.hint,
+                  icon: item.icon,
+                  onTap: () => buildDynamic(item.kind),
+                );
+              },
+            );
+          },
+        ),
         if (templates.isNotEmpty) ...[
           const SizedBox(height: 14),
           LayoutBuilder(
@@ -796,7 +1090,7 @@ class _MathKeyboardViewState extends ConsumerState<MathKeyboardView> {
   double _structureCardExtent(BuildContext context) {
     final scaledLabelSize = MediaQuery.textScalerOf(context).scale(14);
     final scale = (scaledLabelSize / 14).clamp(1.0, 2.0);
-    if (scale >= 1.75) return 120;
+    if (scale >= 1.75) return 128;
     if (scale >= 1.4) return 96;
     if (scale >= 1.15) return 84;
     return 74;
@@ -1581,6 +1875,84 @@ class _MyKeysCard extends StatelessWidget {
   }
 }
 
+class _DynamicStructureChoiceCard extends StatelessWidget {
+  const _DynamicStructureChoiceCard({
+    super.key,
+    required this.title,
+    required this.hint,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String hint;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Semantics(
+      excludeSemantics: true,
+      button: true,
+      label: 'Build $title',
+      hint: hint,
+      onTap: onTap,
+      child: Material(
+        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(icon, color: theme.colorScheme.primary),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        hint,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StructureChoiceCard extends StatelessWidget {
   const _StructureChoiceCard({
     super.key,
@@ -1720,6 +2092,7 @@ class _SymbolActionCard extends StatelessWidget {
 }
 
 class _CategoryPill extends StatelessWidget {
+  final String semanticLabel;
   final IconData icon;
   final String label;
   final bool selected;
@@ -1727,6 +2100,7 @@ class _CategoryPill extends StatelessWidget {
   final VoidCallback onTap;
 
   const _CategoryPill({
+    required this.semanticLabel,
     required this.icon,
     required this.label,
     required this.selected,
@@ -1737,44 +2111,52 @@ class _CategoryPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Tooltip(
-      message: label,
-      child: Material(
-        color: selected
-            ? theme.colorScheme.primaryContainer
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
+    return Semantics(
+      excludeSemantics: true,
+      button: true,
+      selected: selected,
+      label: semanticLabel,
+      hint: selected ? 'Selected' : 'Activate this math category',
+      onTap: onTap,
+      child: Tooltip(
+        message: label,
+        child: Material(
+          color: selected
+              ? theme.colorScheme.primaryContainer
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: showLabel ? 9 : 10,
-              vertical: 6,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  icon,
-                  size: 18,
-                  color: selected
-                      ? theme.colorScheme.onPrimaryContainer
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-                if (showLabel) ...[
-                  const SizedBox(width: 5),
-                  Text(
-                    label,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: selected
-                          ? theme.colorScheme.onPrimaryContainer
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: onTap,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: showLabel ? 9 : 10,
+                vertical: 6,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    size: 18,
+                    color: selected
+                        ? theme.colorScheme.onPrimaryContainer
+                        : theme.colorScheme.onSurfaceVariant,
                   ),
+                  if (showLabel) ...[
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: selected
+                            ? theme.colorScheme.onPrimaryContainer
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

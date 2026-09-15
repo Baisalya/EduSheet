@@ -106,17 +106,18 @@ void main() {
       );
     });
 
-    test(
-      'catalogue keeps all existing placements while exposing canonical entries',
-      () {
-        expect(MathSymbolCatalog.symbols, hasLength(293));
-        expect(
-          MathSymbolCatalog.canonicalSymbols.length,
-          lessThan(MathSymbolCatalog.symbols.length),
-        );
-        expect(MathSymbolCatalog.forCategory(MathCategory.physics), isNotEmpty);
-      },
-    );
+    test('catalogue exposes one canonical entry per semantic id', () {
+      final canonicalSymbols = MathSymbolCatalog.canonicalSymbols;
+      final canonicalIds = canonicalSymbols.map((symbol) => symbol.id).toSet();
+
+      expect(canonicalSymbols, isNotEmpty);
+      expect(canonicalIds, hasLength(canonicalSymbols.length));
+      expect(
+        canonicalSymbols.length,
+        lessThan(MathSymbolCatalog.symbols.length),
+      );
+      expect(MathSymbolCatalog.forCategory(MathCategory.physics), isNotEmpty);
+    });
 
     test('builder mode is domain metadata instead of UI TeX matching', () {
       final power = MathSymbolCatalog.findByTex(r'^{}');

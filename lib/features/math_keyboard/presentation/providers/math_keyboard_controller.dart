@@ -6,14 +6,20 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../domain/catalog/math_symbol_catalog.dart';
+import '../../domain/models/math_dynamic_structure.dart';
 import '../../domain/models/math_symbol.dart';
+import '../../domain/services/math_dynamic_structure_codec.dart';
 import '../editing/math_editor_adapter.dart';
+import '../shortcuts/math_keyboard_productivity_shortcuts.dart';
 
 part 'math_keyboard_controller.g.dart';
 
 enum KeyboardType { system, math }
 
 enum FloatingElementType { shape, textBox }
+
+enum MathKeyboardPanelRequest { none, search, shortcuts }
 
 /// Keeps the custom keyboard and every editor that reserves room for it on the
 /// same window-dependent height. Using the raw requested height in one place
@@ -69,6 +75,10 @@ class MathKeyboardStateData {
   final int symbolSizeLevel; // -2 to +2 (small to large)
   final List<FloatingElement> floatingElements;
   final List<String> recentSymbols;
+  final String accessibilityStatus;
+  final int accessibilityStatusSerial;
+  final MathKeyboardPanelRequest panelRequest;
+  final int panelRequestSerial;
 
   MathKeyboardStateData({
     this.isVisible = false,
@@ -83,6 +93,10 @@ class MathKeyboardStateData {
     this.symbolSizeLevel = 0,
     this.floatingElements = const [],
     this.recentSymbols = const [],
+    this.accessibilityStatus = 'Math keyboard ready.',
+    this.accessibilityStatusSerial = 0,
+    this.panelRequest = MathKeyboardPanelRequest.none,
+    this.panelRequestSerial = 0,
   });
 
   MathKeyboardStateData copyWith({
@@ -100,6 +114,10 @@ class MathKeyboardStateData {
     int? symbolSizeLevel,
     List<FloatingElement>? floatingElements,
     List<String>? recentSymbols,
+    String? accessibilityStatus,
+    int? accessibilityStatusSerial,
+    MathKeyboardPanelRequest? panelRequest,
+    int? panelRequestSerial,
   }) {
     return MathKeyboardStateData(
       isVisible: isVisible ?? this.isVisible,
@@ -118,6 +136,11 @@ class MathKeyboardStateData {
       symbolSizeLevel: symbolSizeLevel ?? this.symbolSizeLevel,
       floatingElements: floatingElements ?? this.floatingElements,
       recentSymbols: recentSymbols ?? this.recentSymbols,
+      accessibilityStatus: accessibilityStatus ?? this.accessibilityStatus,
+      accessibilityStatusSerial:
+          accessibilityStatusSerial ?? this.accessibilityStatusSerial,
+      panelRequest: panelRequest ?? this.panelRequest,
+      panelRequestSerial: panelRequestSerial ?? this.panelRequestSerial,
     );
   }
 }
@@ -168,6 +191,9 @@ class MathKeyboardController extends _$MathKeyboardController {
       type: KeyboardType.math,
     );
     SystemChannels.textInput.invokeMethod('TextInput.hide');
+    _announce(
+      'Math keyboard active. Use Tab for the next formula box and Shift Tab for the previous box.',
+    );
   }
 
   /// Transfers an already-visible math session to a rebuilt editor owner.
@@ -217,10 +243,12 @@ class MathKeyboardController extends _$MathKeyboardController {
   void showMathKeyboard() {
     state = state.copyWith(isVisible: true, type: KeyboardType.math);
     SystemChannels.textInput.invokeMethod('TextInput.hide');
+    _announce('Math keyboard active.');
   }
 
   void showSystemKeyboard() {
     state = state.copyWith(isVisible: false, type: KeyboardType.system);
+    _announce('Normal text keyboard active.');
     // The UI (MathKeyboardField) will handle calling TextInput.show after a frame
     final node = state.activeFocusNode;
     if (node != null && node.canRequestFocus && node.context != null) {
@@ -230,6 +258,7 @@ class MathKeyboardController extends _$MathKeyboardController {
 
   void hideKeyboard() {
     state = state.copyWith(isVisible: false, type: KeyboardType.system);
+    _announce('Math keyboard closed.');
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
@@ -247,6 +276,7 @@ class MathKeyboardController extends _$MathKeyboardController {
 
   void setCategory(MathCategory category) {
     state = state.copyWith(currentCategory: category);
+    _announce('${_categoryAccessibilityLabel(category)} keys selected.');
   }
 
   void setHeight(double height) {
@@ -331,6 +361,7 @@ class MathKeyboardController extends _$MathKeyboardController {
       state.activeController,
     );
     if (adapter?.moveToNextSlot() ?? false) {
+      _announce('Moved to the next formula box.');
       restoreActiveMathFocus();
       return;
     }
@@ -338,7 +369,94 @@ class MathKeyboardController extends _$MathKeyboardController {
     final focusContext = state.activeFocusNode?.context;
     if (focusContext != null) {
       FocusScope.of(focusContext).nextFocus();
+      _announce('Moved to the next field.');
     }
+  }
+
+  void previousField() {
+    final adapter = MathEditorAdapterFactory.forController(
+      state.activeController,
+    );
+    if (adapter?.moveToPreviousSlot() ?? false) {
+      _announce('Moved to the previous formula box.');
+      restoreActiveMathFocus();
+      return;
+    }
+
+    final focusContext = state.activeFocusNode?.context;
+    if (focusContext != null) {
+      FocusScope.of(focusContext).previousFocus();
+      _announce('Moved to the previous field.');
+    }
+  }
+
+  void requestPanel(MathKeyboardPanelRequest request) {
+    if (request == MathKeyboardPanelRequest.none) return;
+    state = state.copyWith(
+      panelRequest: request,
+      panelRequestSerial: state.panelRequestSerial + 1,
+    );
+    _announce(
+      request == MathKeyboardPanelRequest.search
+          ? 'Opening math search.'
+          : 'Opening keyboard shortcuts.',
+    );
+  }
+
+  void consumePanelRequest(int serial) {
+    if (serial != state.panelRequestSerial) return;
+    state = state.copyWith(panelRequest: MathKeyboardPanelRequest.none);
+  }
+
+  bool handleProductivityCommand(MathKeyboardProductivityCommand command) {
+    final mathActive = state.isVisible && state.type == KeyboardType.math;
+    switch (command) {
+      case MathKeyboardProductivityCommand.toggleKeyboard:
+        if (mathActive) {
+          showSystemKeyboard();
+          return true;
+        }
+        final activeController = state.activeController;
+        final activeFocusNode = state.activeFocusNode;
+        if (activeController == null || activeFocusNode == null) return false;
+        showMathKeyboardFor(activeController, activeFocusNode);
+        return true;
+      case MathKeyboardProductivityCommand.search:
+        if (!mathActive) return false;
+        requestPanel(MathKeyboardPanelRequest.search);
+        return true;
+      case MathKeyboardProductivityCommand.showShortcuts:
+        if (!mathActive) return false;
+        requestPanel(MathKeyboardPanelRequest.shortcuts);
+        return true;
+      case MathKeyboardProductivityCommand.insertFraction:
+        return mathActive && insertStructureByTex(r'\frac{}{}');
+      case MathKeyboardProductivityCommand.insertSquareRoot:
+        return mathActive && insertStructureByTex(r'\sqrt{}');
+      case MathKeyboardProductivityCommand.insertPower:
+        return mathActive && insertStructureByTex(r'^{}');
+      case MathKeyboardProductivityCommand.insertSubscript:
+        return mathActive && insertStructureByTex(r'_{}');
+      case MathKeyboardProductivityCommand.systemKeyboard:
+        if (!mathActive) return false;
+        showSystemKeyboard();
+        return true;
+      case MathKeyboardProductivityCommand.nextSlot:
+        if (!mathActive || state.activeController == null) return false;
+        nextField();
+        return true;
+      case MathKeyboardProductivityCommand.previousSlot:
+        if (!mathActive || state.activeController == null) return false;
+        previousField();
+        return true;
+    }
+  }
+
+  bool insertStructureByTex(String source) {
+    final symbol = MathSymbolCatalog.findByTex(source);
+    if (symbol == null) return false;
+    insertStructure(symbol);
+    return true;
   }
 
   void clearRecentSymbols() {
@@ -387,7 +505,7 @@ class MathKeyboardController extends _$MathKeyboardController {
         restoreActiveMathFocus();
         return;
       case MathInputBehavior.insert:
-        _insertSource(symbol.tex);
+        _insertCatalogSymbol(symbol);
     }
   }
 
@@ -399,11 +517,43 @@ class MathKeyboardController extends _$MathKeyboardController {
   /// their existing quick power/subscript mode behavior is unchanged.
   void insertStructure(MathSymbol symbol) {
     state = state.copyWith(isPowerMode: false, isSubscriptMode: false);
-    _insertSource(symbol.tex);
+    _insertCatalogSymbol(symbol);
+  }
+
+  /// Inserts a runtime-sized structure such as an arbitrary matrix,
+  /// piecewise function, equation system, or aligned derivation.
+  void insertDynamicStructure(MathDynamicStructureSpec spec) {
+    if (!spec.isValid) return;
+    final adapter = MathEditorAdapterFactory.forController(
+      state.activeController,
+    );
+    if (adapter == null) return;
+
+    state = state.copyWith(isPowerMode: false, isSubscriptMode: false);
+    final instance = MathDynamicStructureInstance(spec: spec);
+    final document = const MathDynamicStructureCodec().compile(instance);
+    _rememberSymbol(document.tex);
+    adapter.insertDynamicStructure(instance, _currentInsertionContext());
+    _announce(
+      'Inserted ${_dynamicStructureAccessibilityLabel(spec.kind)}. Use Tab to move through its boxes.',
+    );
+    restoreActiveMathFocus();
   }
 
   /// Compatibility/raw insertion path for actions that are not catalogue keys.
   void insertText(String source) => _insertSource(source);
+
+  void _insertCatalogSymbol(MathSymbol symbol) {
+    final adapter = MathEditorAdapterFactory.forController(
+      state.activeController,
+    );
+    if (adapter == null) return;
+
+    _rememberSymbol(symbol.tex);
+    adapter.insertSymbol(symbol, _currentInsertionContext());
+    _announce('Inserted ${symbol.accessibilityLabel}.');
+    restoreActiveMathFocus();
+  }
 
   void _insertSource(String source) {
     final adapter = MathEditorAdapterFactory.forController(
@@ -416,16 +566,15 @@ class MathKeyboardController extends _$MathKeyboardController {
       state = state.copyWith(isPowerMode: false, isSubscriptMode: false);
     }
 
-    adapter.insert(
-      source,
-      MathInsertionContext(
-        powerMode: state.isPowerMode,
-        subscriptMode: state.isSubscriptMode,
-        symbolSizeLevel: state.symbolSizeLevel,
-      ),
-    );
+    adapter.insert(source, _currentInsertionContext());
     restoreActiveMathFocus();
   }
+
+  MathInsertionContext _currentInsertionContext() => MathInsertionContext(
+    powerMode: state.isPowerMode,
+    subscriptMode: state.isSubscriptMode,
+    symbolSizeLevel: state.symbolSizeLevel,
+  );
 
   void clearAll() {
     MathEditorAdapterFactory.forController(state.activeController)?.clear();
@@ -436,6 +585,48 @@ class MathKeyboardController extends _$MathKeyboardController {
     MathEditorAdapterFactory.forController(
       state.activeController,
     )?.deleteBackward();
+    _announce('Deleted the previous math item.');
     restoreActiveMathFocus();
+  }
+
+  String _categoryAccessibilityLabel(MathCategory category) =>
+      switch (category) {
+        MathCategory.recent => 'Recent math',
+        MathCategory.favorites => 'Favourite math',
+        MathCategory.basic => 'Common math',
+        MathCategory.functions => 'Algebra',
+        MathCategory.trig => 'Trigonometry',
+        MathCategory.calculus => 'Calculus',
+        MathCategory.geometry => 'Geometry',
+        MathCategory.physics => 'Physics',
+        MathCategory.chemistry => 'Chemistry',
+        MathCategory.statistics => 'Statistics',
+        MathCategory.matrices => 'Matrices',
+        MathCategory.greek => 'Greek symbols',
+        MathCategory.operators => 'Operators and signs',
+        MathCategory.brackets => 'Brackets',
+        MathCategory.arrows => 'Arrows',
+        MathCategory.sets => 'Sets',
+        MathCategory.templates => 'Formula templates',
+        MathCategory.format => 'Formatting',
+        MathCategory.misc => 'Extra math',
+      };
+
+  String _dynamicStructureAccessibilityLabel(MathDynamicStructureKind kind) =>
+      switch (kind) {
+        MathDynamicStructureKind.matrix => 'matrix structure',
+        MathDynamicStructureKind.determinant => 'determinant structure',
+        MathDynamicStructureKind.augmentedMatrix =>
+          'augmented matrix structure',
+        MathDynamicStructureKind.piecewise => 'piecewise function',
+        MathDynamicStructureKind.equationSystem => 'equation system',
+        MathDynamicStructureKind.alignedDerivation => 'aligned derivation',
+      };
+
+  void _announce(String message) {
+    state = state.copyWith(
+      accessibilityStatus: message,
+      accessibilityStatusSerial: state.accessibilityStatusSerial + 1,
+    );
   }
 }

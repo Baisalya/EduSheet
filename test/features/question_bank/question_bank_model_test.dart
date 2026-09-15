@@ -1,4 +1,6 @@
+import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -56,6 +58,55 @@ void main() {
       expect(restored.chapter, 'Atoms');
       expect(restored.tags, ['revision']);
       expect(restored.isFavorite, isTrue);
+    },
+  );
+
+  test(
+    'question bank round trip preserves structured math-surface metadata',
+    () {
+      const document = QuestionMathInlineDocument(
+        parts: [
+          QuestionMathInlinePart.text('Option '),
+          QuestionMathInlinePart.math(
+            MathExpression(
+              id: 'bank-math',
+              latex: r'\sqrt{x}',
+              plainText: 'square root of x',
+            ),
+          ),
+        ],
+      );
+      final content = QuestionMathContent(
+        surfaces: {'option:option-a': document},
+      );
+      final entry = QuestionBankQuestion.fromQuestion(
+        Question(
+          id: 'math-bank',
+          text: 'Choose one.',
+          options: [
+            QuestionOption(id: 'option-a', text: 'Option square root of x'),
+          ],
+          metadata: content.writeToMetadata(const {}),
+        ),
+      );
+
+      final restored = QuestionBankQuestion.fromJson(entry.toJson());
+      final restoredContent = QuestionMathContent.fromQuestion(
+        restored.question,
+      );
+
+      expect(restoredContent.structuredSurfaceCount, 1);
+      expect(
+        restoredContent
+            .documentFor(
+              'option:option-a',
+              currentFallback: restored.question.options.single.text,
+            )
+            ?.expressions
+            .single
+            .latex,
+        r'\sqrt{x}',
+      );
     },
   );
 }

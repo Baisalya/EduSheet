@@ -1,3 +1,4 @@
+import '../models/math_edit_command.dart';
 import '../models/math_symbol.dart';
 
 const List<MathSymbol> matricesMathSymbols = <MathSymbol>[
@@ -8,6 +9,7 @@ const List<MathSymbol> matricesMathSymbols = <MathSymbol>[
     label: '[2×2]',
     tex: r'\begin{pmatrix}  & \\  & \end{pmatrix}',
     category: MathCategory.matrices,
+    editorCommand: MathEditCommands.matrix2x2,
     isBuilder: true,
   ),
   MathSymbol(
@@ -17,6 +19,7 @@ const List<MathSymbol> matricesMathSymbols = <MathSymbol>[
     label: '[3×3]',
     tex: r'\begin{pmatrix}  &  & \\  &  & \\  &  & \end{pmatrix}',
     category: MathCategory.matrices,
+    editorCommand: MathEditCommands.matrix3x3,
     isBuilder: true,
   ),
   MathSymbol(
@@ -26,6 +29,7 @@ const List<MathSymbol> matricesMathSymbols = <MathSymbol>[
     label: '|A|',
     tex: r'\begin{vmatrix}  & \\  & \end{vmatrix}',
     category: MathCategory.matrices,
+    editorCommand: MathEditCommands.determinant2x2,
     isBuilder: true,
   ),
   MathSymbol(

@@ -1,3 +1,4 @@
+import '../models/math_edit_command.dart';
 import '../models/math_symbol.dart';
 
 const List<MathSymbol> statisticsMathSymbols = <MathSymbol>[
@@ -6,6 +7,7 @@ const List<MathSymbol> statisticsMathSymbols = <MathSymbol>[
     priority: 60,
     label: 'x̄',
     tex: r'\bar{x}',
+    editorCommand: MathEditCommands.emptyBar,
     category: MathCategory.statistics,
   ),
   MathSymbol(

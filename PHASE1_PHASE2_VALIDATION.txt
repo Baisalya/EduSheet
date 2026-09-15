@@ -1,0 +1,41 @@
+EduSheet Teaching Planner — Phase 1 + Phase 2 Validation
+Date: 2026-09-08
+
+Completed:
+- Generic resource ownership: Class / Subject / Unit / Chapter / Topic / Lesson Plan
+- Planner schema v7 with v6 lesson-resource migration
+- Backward-compatible lessonPlanId construction/access
+- Generic workspace resource queries
+- Owner-aware integrity and service validation
+- Reusable multi-file attachment service
+- Transactional planner metadata creation
+- Best-effort file rollback on failure
+- Central MIME/category resolver for image/PDF/video/document families
+- Reusable FilePicker byte-loading service
+- Existing Teaching Workspace switched to reusable multi-file pipeline
+
+Protected feature logic unchanged:
+- Planner Insights service
+- Track Progress screen/service behavior
+- Premium/subscription/entitlement model
+
+Environment checks completed:
+- Modified Dart files delimiter-structure scan: PASS
+- Teaching Planner local import resolution: PASS
+- Protected file SHA-256 comparison: PASS
+- Legacy TeachingResource constructor compatibility retained
+- Schema test expectations updated to v7
+
+Not executable in this environment:
+- flutter analyze
+- flutter test
+Reason: Flutter/Dart SDK is not installed in the execution environment.
+
+Recommended local gate:
+flutter analyze
+flutter test test/features/teaching_planner
+HOTFIX 2026-09-09
+- Removed const from TeachingResource constructor because its compatibility initializer/assert reads nullable owner members.
+- No const TeachingResource call sites exist in lib/ or test/.
+- This resolves analyzer invalid_constant errors at teaching_resource.dart:71/72/75; owner field remains defined and the integrity owner error was a cascade.
+

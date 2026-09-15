@@ -1,3 +1,4 @@
+import '../models/math_edit_command.dart';
 import '../models/math_symbol.dart';
 
 const List<MathSymbol> physicsMathSymbols = <MathSymbol>[
@@ -21,6 +22,7 @@ const List<MathSymbol> physicsMathSymbols = <MathSymbol>[
     priority: 60,
     label: 'v⃗',
     tex: r'\vec{v}',
+    editorCommand: MathEditCommands.emptyVector,
     category: MathCategory.physics,
     isBuilder: true,
   ),
@@ -30,6 +32,7 @@ const List<MathSymbol> physicsMathSymbols = <MathSymbol>[
     priority: 60,
     label: 'F⃗',
     tex: r'\vec{F}',
+    editorCommand: MathEditCommands.emptyVector,
     category: MathCategory.physics,
     isBuilder: true,
   ),
@@ -73,6 +76,7 @@ const List<MathSymbol> physicsMathSymbols = <MathSymbol>[
     priority: 60,
     label: '°C',
     tex: r'^{\circ}\text{C}',
+    editorCommand: MathEditCommands.degreeCelsiusLegacy,
     category: MathCategory.physics,
   ),
   MathSymbol(

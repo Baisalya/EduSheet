@@ -1,3 +1,4 @@
+import '../models/math_edit_command.dart';
 import '../models/math_symbol.dart';
 
 const List<MathSymbol> basicMathSymbols = <MathSymbol>[
@@ -189,6 +190,7 @@ const List<MathSymbol> basicMathSymbols = <MathSymbol>[
     priority: 10,
     label: '()',
     tex: '(',
+    editorCommand: MathEditCommands.parentheses,
     category: MathCategory.basic,
     isBuilder: true,
   ),
@@ -198,6 +200,7 @@ const List<MathSymbol> basicMathSymbols = <MathSymbol>[
     priority: 10,
     label: 'x²',
     tex: r'^{2}',
+    editorCommand: MathEditCommands.squared,
     category: MathCategory.basic,
     isBuilder: true,
   ),
@@ -207,6 +210,7 @@ const List<MathSymbol> basicMathSymbols = <MathSymbol>[
     priority: 10,
     label: 'x³',
     tex: r'^{3}',
+    editorCommand: MathEditCommands.cubed,
     category: MathCategory.basic,
     isBuilder: true,
   ),
@@ -218,6 +222,7 @@ const List<MathSymbol> basicMathSymbols = <MathSymbol>[
     priority: 10,
     label: 'xⁿ',
     tex: r'^{}',
+    editorCommand: MathEditCommands.superscriptSlot,
     inputBehavior: MathInputBehavior.powerMode,
     category: MathCategory.basic,
     isBuilder: true,
@@ -230,6 +235,7 @@ const List<MathSymbol> basicMathSymbols = <MathSymbol>[
     priority: 10,
     label: 'xᵢ',
     tex: r'_{}',
+    editorCommand: MathEditCommands.subscriptSlot,
     inputBehavior: MathInputBehavior.subscriptMode,
     category: MathCategory.basic,
     isBuilder: true,
@@ -240,6 +246,7 @@ const List<MathSymbol> basicMathSymbols = <MathSymbol>[
     priority: 10,
     label: '√',
     tex: r'\sqrt{}',
+    editorCommand: MathEditCommands.squareRoot,
     category: MathCategory.basic,
     isBuilder: true,
   ),
@@ -249,6 +256,7 @@ const List<MathSymbol> basicMathSymbols = <MathSymbol>[
     priority: 10,
     label: 'a⁄b',
     tex: r'\frac{}{}',
+    editorCommand: MathEditCommands.fraction,
     category: MathCategory.basic,
     isBuilder: true,
   ),

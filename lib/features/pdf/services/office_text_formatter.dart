@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 
+import 'package:edusheet/features/math_keyboard/domain/services/math_compatibility_service.dart';
+
 class OfficeTextFormatter {
   static String questionText(
     String text, {
@@ -22,8 +24,12 @@ class OfficeTextFormatter {
                     insert[MathExpression.quillEmbedKey],
                   );
                   if (expression != null) {
-                    final plain = expression.plainText.trim();
-                    return plain.isEmpty ? expression.latex : plain;
+                    return const MathCompatibilityService()
+                        .inspectSource(
+                          expression.latex,
+                          plainFallback: expression.plainText,
+                        )
+                        .readableFallback;
                   }
                   return '[formula]';
                 }

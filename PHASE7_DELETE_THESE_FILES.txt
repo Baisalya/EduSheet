@@ -1,0 +1,4 @@
+Delete this obsolete file when applying the Modified Files ZIP over an existing project:
+lib/features/teaching_planner/presentation/widgets/syllabus_manager_panes.dart
+
+The Full Project ZIP already has this file removed.

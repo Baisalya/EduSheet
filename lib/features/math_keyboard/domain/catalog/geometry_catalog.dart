@@ -1,3 +1,4 @@
+import '../models/math_edit_command.dart';
 import '../models/math_symbol.dart';
 
 const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
@@ -63,6 +64,7 @@ const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'v⃗',
     tex: r'\vec{v}',
+    editorCommand: MathEditCommands.emptyVector,
     category: MathCategory.geometry,
     isBuilder: true,
   ),
@@ -113,6 +115,7 @@ const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'AB̅',
     tex: r'\overline{AB}',
+    editorCommand: MathEditCommands.emptyOverline,
     category: MathCategory.geometry,
     isBuilder: true,
   ),
@@ -122,6 +125,7 @@ const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'AB⃗',
     tex: r'\overrightarrow{AB}',
+    editorCommand: MathEditCommands.emptyOverrightarrow,
     category: MathCategory.geometry,
     isBuilder: true,
   ),
@@ -131,6 +135,7 @@ const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
     priority: 50,
     label: 'AB↔',
     tex: r'\overleftrightarrow{AB}',
+    editorCommand: MathEditCommands.emptyOverleftrightarrow,
     category: MathCategory.geometry,
     isBuilder: true,
   ),
@@ -146,6 +151,7 @@ const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
     priority: 50,
     label: '⌒AB',
     tex: r'\widehat{AB}',
+    editorCommand: MathEditCommands.emptyWidehat,
     category: MathCategory.geometry,
   ),
   MathSymbol(
@@ -174,6 +180,7 @@ const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
     priority: 50,
     label: '°',
     tex: r'^{\circ}',
+    editorCommand: MathEditCommands.degree,
     category: MathCategory.geometry,
   ),
   MathSymbol(
@@ -181,6 +188,7 @@ const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
     priority: 50,
     label: '′',
     tex: r'^{\prime}',
+    editorCommand: MathEditCommands.prime,
     category: MathCategory.geometry,
   ),
   MathSymbol(
@@ -188,6 +196,7 @@ const List<MathSymbol> geometryMathSymbols = <MathSymbol>[
     priority: 50,
     label: '″',
     tex: r'^{\prime\prime}',
+    editorCommand: MathEditCommands.doublePrime,
     category: MathCategory.geometry,
   ),
   MathSymbol(

@@ -1,4 +1,6 @@
 import 'package:edusheet/features/math_keyboard/domain/catalog/math_symbol_catalog.dart';
+import 'package:edusheet/features/math_keyboard/domain/models/math_edit_command.dart';
+import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -152,5 +154,39 @@ void main() {
         reason: source,
       );
     }
+  });
+
+  test('controller preserves typed command metadata into visual adapter', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final visualController = MathFieldEditingController();
+    final focusNode = FocusNode();
+    addTearDown(visualController.dispose);
+    addTearDown(focusNode.dispose);
+
+    final keyboard = container.read(mathKeyboardControllerProvider.notifier);
+    keyboard.showMathKeyboardFor(visualController, focusNode);
+
+    const synthetic = MathSymbol(
+      id: 'test.controller.synthetic.fraction',
+      label: 'Synthetic fraction',
+      tex: r'\sourceMustNotDriveInsertion',
+      category: MathCategory.misc,
+      kind: MathEntryKind.structure,
+      isBuilder: true,
+      editorCommand: MathEditCommands.fraction,
+    );
+
+    keyboard.insertStructure(synthetic);
+    keyboard.insertText('m');
+    keyboard.nextField();
+    keyboard.insertText('n');
+
+    final value = visualController.currentEditingValue();
+    expect(value, contains(r'\frac'));
+    expect(value, contains('m'));
+    expect(value, contains('n'));
+    expect(value, isNot(contains(r'\sourceMustNotDriveInsertion')));
   });
 }

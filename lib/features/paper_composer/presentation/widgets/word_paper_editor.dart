@@ -3,7 +3,9 @@ import 'dart:math' as math;
 
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_direct_authoring_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
@@ -13,6 +15,7 @@ import 'package:edusheet/features/paper_composer/presentation/responsive/paper_p
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_text_field.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_surface_view.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/word_rich_text_editor.dart';
@@ -93,6 +96,7 @@ class WordPaperEditor extends StatefulWidget {
 }
 
 class _WordPaperEditorState extends State<WordPaperEditor> {
+  static const _mathSurfaceService = QuestionMathSurfaceService();
   late final WordRichTextSession _richTextSession;
   String? _activeSectionId;
   String? _pendingFocusQuestionId;
@@ -103,6 +107,13 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
   void initState() {
     super.initState();
     _richTextSession = WordRichTextSession();
+  }
+
+  void _replaceQuestion(String sectionId, Question question) {
+    widget.onReplaceQuestion(
+      sectionId,
+      _mathSurfaceService.reconcileQuestion(question),
+    );
   }
 
   @override
@@ -250,7 +261,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
         _activeSectionId = activeTarget.sectionId;
         _pendingFocusQuestionId = activeTarget.question.id;
       });
-      widget.onReplaceQuestion(activeTarget.sectionId, updated);
+      _replaceQuestion(activeTarget.sectionId, updated);
       _restoreActiveEditorFocus();
       return;
     }
@@ -273,7 +284,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
 
     final shape = WordShapeService.create(kind);
     if (activeTarget != null) {
-      widget.onReplaceQuestion(
+      _replaceQuestion(
         activeTarget.sectionId,
         WordShapeService.append(activeTarget.question, shape),
       );
@@ -344,7 +355,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
       initial: question.tableData,
     );
     if (table == null || !mounted) return;
-    widget.onReplaceQuestion(sectionId, question.copyWith(tableData: table));
+    _replaceQuestion(sectionId, question.copyWith(tableData: table));
   }
 
   Future<void> _editQuestionImage(
@@ -357,7 +368,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
       initial: current,
     );
     if (attachment == null || !mounted) return;
-    widget.onReplaceQuestion(
+    _replaceQuestion(
       sectionId,
       WordDirectAuthoringService.replaceImage(question, current.id, attachment),
     );
@@ -369,7 +380,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
     Question question,
     QuestionAttachment attachment,
   ) {
-    widget.onReplaceQuestion(
+    _replaceQuestion(
       sectionId,
       WordDirectAuthoringService.removeImage(question, attachment.id),
     );
@@ -911,7 +922,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
       autofocus: _pendingFocusQuestionId == question.id,
       session: _richTextSession,
       onActivated: () => _activate(section.id, question.id),
-      onChanged: (value) => widget.onReplaceQuestion(section.id, value),
+      onChanged: (value) => _replaceQuestion(section.id, value),
       onOpenFullEditor: () => widget.onEditQuestion(section.id, question),
       onDelete: () => widget.onDeleteQuestion(section.id, question.id),
       onEditTable: () => _editBlockTable(section.id, question),
@@ -1905,8 +1916,10 @@ class _WordQuestionBlock extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (question.instructions.trim().isNotEmpty) ...[
-                      Text(
-                        question.instructions.trim(),
+                      QuestionMathSurfaceView(
+                        question: question,
+                        surfaceKey: QuestionMathSurfaceKey.instructions,
+                        fallbackText: question.instructions.trim(),
                         textAlign: question.instructionAlignment.textAlign,
                         style: const TextStyle(
                           fontSize: 12,
@@ -1953,16 +1966,30 @@ class _WordQuestionBlock extends StatelessWidget {
                     if (advanced.hasStimulus) ...[
                       const SizedBox(height: 7),
                       if (advanced.stimulus!.title.trim().isNotEmpty)
-                        Text(
-                          advanced.stimulus!.title.trim(),
+                        QuestionMathSurfaceView(
+                          question: question,
+                          surfaceKey: QuestionMathSurfaceKey.stimulusTitle,
+                          fallbackText: advanced.stimulus!.title.trim(),
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
-                      Text(advanced.stimulus!.text.trim()),
+                      QuestionMathSurfaceView(
+                        question: question,
+                        surfaceKey: QuestionMathSurfaceKey.stimulusText,
+                        fallbackText: advanced.stimulus!.text.trim(),
+                        style: TextStyle(
+                          fontStyle:
+                              advanced.stimulus!.kind ==
+                                  QuestionStimulusKind.poem
+                              ? FontStyle.italic
+                              : FontStyle.normal,
+                        ),
+                      ),
                     ],
                     if (question.options.isNotEmpty) ...[
                       const SizedBox(height: 6),
                       for (var i = 0; i < question.options.length; i++)
                         _InlineOptionEditor(
+                          question: question,
                           label: '${String.fromCharCode(65 + i)})',
                           option: question.options[i],
                           onChanged: (value) {
@@ -1974,11 +2001,32 @@ class _WordQuestionBlock extends StatelessWidget {
                     ],
                     if (advanced.hasWordBank) ...[
                       const SizedBox(height: 6),
-                      Text('Word bank: ${advanced.wordBank.join(' • ')}'),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          const Text(
+                            'Word bank:',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          for (final entry in advanced.wordBank.asMap().entries)
+                            QuestionMathSurfaceView(
+                              question: question,
+                              surfaceKey: QuestionMathSurfaceKey.wordBank(
+                                entry.key,
+                              ),
+                              fallbackText: entry.value,
+                            ),
+                        ],
+                      ),
                     ],
                     if (question.tableData != null) ...[
                       const SizedBox(height: 8),
-                      _WordQuestionTable(table: question.tableData!),
+                      _WordQuestionTable(
+                        question: question,
+                        table: question.tableData!,
+                      ),
                       if (isWordBlock)
                         Align(
                           alignment: Alignment.centerLeft,
@@ -2011,6 +2059,7 @@ class _WordQuestionBlock extends StatelessWidget {
                       const SizedBox(height: 8),
                       for (final attachment in question.attachments)
                         _WordAttachmentPreview(
+                          question: question,
                           attachment: attachment,
                           onEdit: () => onEditImage(attachment),
                           onRemove: () => onRemoveImage(attachment),
@@ -2167,11 +2216,13 @@ class _WordPageBreakMarker extends StatelessWidget {
 }
 
 class _InlineOptionEditor extends StatefulWidget {
+  final Question question;
   final String label;
   final QuestionOption option;
   final ValueChanged<String> onChanged;
 
   const _InlineOptionEditor({
+    required this.question,
     required this.label,
     required this.option,
     required this.onChanged,
@@ -2221,16 +2272,28 @@ class _InlineOptionEditorState extends State<_InlineOptionEditor> {
             ),
           ),
           Expanded(
-            child: QuestionMathTextField(
-              controller: _controller,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: UnderlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(vertical: 3),
-              ),
-              onChanged: widget.onChanged,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                QuestionMathTextField(
+                  controller: _controller,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: UnderlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(vertical: 3),
+                  ),
+                  onChanged: widget.onChanged,
+                ),
+                QuestionMathSurfaceView(
+                  question: widget.question,
+                  surfaceKey: QuestionMathSurfaceKey.option(widget.option.id),
+                  fallbackText: widget.option.text,
+                  showFallback: false,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ),
           ),
         ],
@@ -2317,9 +2380,10 @@ class _InlineMarksEditorState extends State<_InlineMarksEditor> {
 }
 
 class _WordQuestionTable extends StatelessWidget {
+  final Question question;
   final QuestionTable table;
 
-  const _WordQuestionTable({required this.table});
+  const _WordQuestionTable({required this.question, required this.table});
 
   @override
   Widget build(BuildContext context) {
@@ -2336,6 +2400,8 @@ class _WordQuestionTable extends StatelessWidget {
           children: [
             for (var i = 0; i < columnCount; i++)
               _TableCellText(
+                question: question,
+                surfaceKey: QuestionMathSurfaceKey.tableHeader(i),
                 text: i < table.headers.length ? table.headers[i] : '',
                 bold: true,
               ),
@@ -2343,12 +2409,17 @@ class _WordQuestionTable extends StatelessWidget {
         ),
       );
     }
-    for (final row in table.rows) {
+    for (final rowEntry in table.rows.asMap().entries) {
+      final row = rowEntry.value;
       rows.add(
         TableRow(
           children: [
             for (var i = 0; i < columnCount; i++)
-              _TableCellText(text: i < row.length ? row[i] : ''),
+              _TableCellText(
+                question: question,
+                surfaceKey: QuestionMathSurfaceKey.tableCell(rowEntry.key, i),
+                text: i < row.length ? row[i] : '',
+              ),
           ],
         ),
       );
@@ -2360,8 +2431,10 @@ class _WordQuestionTable extends StatelessWidget {
         if (table.caption.trim().isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              table.caption.trim(),
+            child: QuestionMathSurfaceView(
+              question: question,
+              surfaceKey: QuestionMathSurfaceKey.tableCaption,
+              fallbackText: table.caption.trim(),
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
@@ -2376,17 +2449,26 @@ class _WordQuestionTable extends StatelessWidget {
 }
 
 class _TableCellText extends StatelessWidget {
+  final Question question;
+  final String surfaceKey;
   final String text;
   final bool bold;
 
-  const _TableCellText({required this.text, this.bold = false});
+  const _TableCellText({
+    required this.question,
+    required this.surfaceKey,
+    required this.text,
+    this.bold = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-      child: Text(
-        text,
+      child: QuestionMathSurfaceView(
+        question: question,
+        surfaceKey: surfaceKey,
+        fallbackText: text,
         style: bold ? const TextStyle(fontWeight: FontWeight.w700) : null,
       ),
     );
@@ -2394,14 +2476,16 @@ class _TableCellText extends StatelessWidget {
 }
 
 class _WordAttachmentPreview extends StatelessWidget {
+  final Question question;
   final QuestionAttachment attachment;
-  final VoidCallback onEdit;
-  final VoidCallback onRemove;
+  final VoidCallback? onEdit;
+  final VoidCallback? onRemove;
 
   const _WordAttachmentPreview({
+    required this.question,
     required this.attachment,
-    required this.onEdit,
-    required this.onRemove,
+    this.onEdit,
+    this.onRemove,
   });
 
   @override
@@ -2432,41 +2516,53 @@ class _WordAttachmentPreview extends StatelessWidget {
                 const Icon(Icons.image_outlined, size: 18),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text(
-                    description.isEmpty
-                        ? 'Attached image / diagram'
-                        : description,
-                  ),
+                  child: description.isEmpty
+                      ? const Text('Attached image / diagram')
+                      : QuestionMathSurfaceView(
+                          question: question,
+                          surfaceKey: QuestionMathSurfaceKey.attachmentCaption(
+                            attachment.id,
+                          ),
+                          fallbackText: description,
+                        ),
                 ),
               ],
             ),
           if (canShowImage && description.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 3),
-              child: Text(
-                description,
+              child: QuestionMathSurfaceView(
+                question: question,
+                surfaceKey: QuestionMathSurfaceKey.attachmentCaption(
+                  attachment.id,
+                ),
+                fallbackText: description,
                 textAlign: TextAlign.center,
+                alignment: WrapAlignment.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
-          if (attachment.kind == QuestionAttachmentKind.image)
+          if (attachment.kind == QuestionAttachmentKind.image &&
+              (onEdit != null || onRemove != null))
             Align(
               alignment: Alignment.centerLeft,
               child: Wrap(
                 spacing: 4,
                 children: [
-                  TextButton.icon(
-                    key: ValueKey('word-image-replace-${attachment.id}'),
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.swap_horiz_rounded, size: 16),
-                    label: const Text('Replace'),
-                  ),
-                  TextButton.icon(
-                    key: ValueKey('word-image-remove-${attachment.id}'),
-                    onPressed: onRemove,
-                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                    label: const Text('Remove'),
-                  ),
+                  if (onEdit != null)
+                    TextButton.icon(
+                      key: ValueKey('word-image-replace-${attachment.id}'),
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                      label: const Text('Replace'),
+                    ),
+                  if (onRemove != null)
+                    TextButton.icon(
+                      key: ValueKey('word-image-remove-${attachment.id}'),
+                      onPressed: onRemove,
+                      icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                      label: const Text('Remove'),
+                    ),
                 ],
               ),
             ),
@@ -2906,6 +3002,102 @@ class _WordShapePainter extends CustomPainter {
   }
 }
 
+class _WordReadOnlyQuestionSurfaces extends StatelessWidget {
+  final Question question;
+
+  const _WordReadOnlyQuestionSurfaces({required this.question});
+
+  @override
+  Widget build(BuildContext context) {
+    final advanced = QuestionAdvancedContent.fromQuestion(question);
+    final hasContent =
+        advanced.hasStimulus ||
+        question.options.isNotEmpty ||
+        advanced.hasWordBank ||
+        question.tableData != null ||
+        question.attachments.isNotEmpty;
+    if (!hasContent) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (advanced.hasStimulus) ...[
+            if (advanced.stimulus!.title.trim().isNotEmpty)
+              QuestionMathSurfaceView(
+                question: question,
+                surfaceKey: QuestionMathSurfaceKey.stimulusTitle,
+                fallbackText: advanced.stimulus!.title.trim(),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            QuestionMathSurfaceView(
+              question: question,
+              surfaceKey: QuestionMathSurfaceKey.stimulusText,
+              fallbackText: advanced.stimulus!.text.trim(),
+              style: TextStyle(
+                fontStyle: advanced.stimulus!.kind == QuestionStimulusKind.poem
+                    ? FontStyle.italic
+                    : FontStyle.normal,
+              ),
+            ),
+          ],
+          if (question.options.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            for (final entry in question.options.asMap().entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text('${String.fromCharCode(65 + entry.key)}) '),
+                    QuestionMathSurfaceView(
+                      question: question,
+                      surfaceKey: QuestionMathSurfaceKey.option(entry.value.id),
+                      fallbackText: entry.value.text,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          if (advanced.hasWordBank) ...[
+            const SizedBox(height: 5),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                const Text(
+                  'Word bank:',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                for (final entry in advanced.wordBank.asMap().entries)
+                  QuestionMathSurfaceView(
+                    question: question,
+                    surfaceKey: QuestionMathSurfaceKey.wordBank(entry.key),
+                    fallbackText: entry.value,
+                  ),
+              ],
+            ),
+          ],
+          if (question.tableData != null) ...[
+            const SizedBox(height: 6),
+            _WordQuestionTable(question: question, table: question.tableData!),
+          ],
+          if (question.attachments.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            for (final attachment in question.attachments)
+              _WordAttachmentPreview(
+                question: question,
+                attachment: attachment,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _NestedQuestionLine extends StatelessWidget {
   final String label;
   final Question question;
@@ -2938,8 +3130,10 @@ class _NestedQuestionLine extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (question.instructions.trim().isNotEmpty) ...[
-                  Text(
-                    question.instructions.trim(),
+                  QuestionMathSurfaceView(
+                    question: question,
+                    surfaceKey: QuestionMathSurfaceKey.instructions,
+                    fallbackText: question.instructions.trim(),
                     textAlign: question.instructionAlignment.textAlign,
                     style: const TextStyle(
                       fontSize: 12,
@@ -2968,6 +3162,7 @@ class _NestedQuestionLine extends StatelessWidget {
                     ],
                   ],
                 ),
+                _WordReadOnlyQuestionSurfaces(question: question),
               ],
             ),
           ),

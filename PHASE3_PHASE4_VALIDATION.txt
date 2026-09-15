@@ -1,0 +1,39 @@
+EduSheet Teaching Planner — Phase 3 + Phase 4 validation
+Date: 2026-09-09
+
+Implemented:
+- Minimal Create Syllabus first step (name + optional academic year)
+- Wide Windows master-detail syllabus editor
+- Android/narrow/free-form drill-down syllabus editor
+- Breadcrumb + system-back hierarchy navigation
+- Global compact search results for nested syllabus content
+- Wide outline search/filter expansion
+- Contextual add/edit/archive actions
+- Existing sibling reorder operations preserved
+- Existing syllabus JSON import preserved
+- Responsive widget-test targets expanded
+
+Protected and unchanged from the Phase 1 + Phase 2 Hotfix 1 baseline:
+- planner_insights_service.dart
+- planner_insights_backup_screen.dart
+- progress_tracker_screen.dart
+- progress_dashboard_cards.dart
+- teaching_planner_entitlement_adapter.dart
+- teaching_planner_capabilities.dart
+
+Static validation performed in this environment:
+- Changed Dart file delimiter/string/comment structural scan: PASS
+- Relative local import existence scan: PASS
+- Protected-module SHA-256 identity checks: PASS
+- Full-vs-baseline changed-file audit: scoped to syllabus presentation/filter/tests/docs
+
+Flutter/Dart SDK is not installed in this execution environment, so flutter analyze and flutter test could not be executed here.
+
+Run on the project machine:
+flutter clean
+flutter pub get
+dart format lib test
+flutter analyze
+flutter test test/features/teaching_planner/syllabus_manager_screen_test.dart
+flutter test test/features/teaching_planner
+flutter test

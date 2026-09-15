@@ -7,7 +7,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/services.dart';
 import 'core/constants/app_constants.dart';
 import 'shared/presentation/screens/home_screen.dart';
-import 'features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
+import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 import 'shared/presentation/providers/theme_provider.dart';
 import 'shared/presentation/widgets/app_update_gate.dart';
 import 'shared/presentation/widgets/adaptive_app_viewport.dart';

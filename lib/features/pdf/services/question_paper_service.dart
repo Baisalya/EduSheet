@@ -1,15 +1,20 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:edusheet/features/math_keyboard/domain/services/math_production_policy.dart';
+
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
+import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_svg_service.dart';
 import 'package:edusheet/features/omr/domain/models/omr_config.dart';
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_math_validation_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
 import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
@@ -22,13 +27,19 @@ import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/builders/header_builders.dart';
 import 'package:edusheet/features/pdf/services/pdf_export_theme_service.dart';
+import 'package:edusheet/features/pdf/services/math/pdf_math_typesetter.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
+import 'package:edusheet/features/math_keyboard/domain/services/math_compatibility_service.dart';
+
 class QuestionPaperService {
+  static const _mathSurfaceService = QuestionMathSurfaceService();
+  static const _mathValidationService = QuestionMathValidationService();
+  static const _pdfMathTypesetter = PdfMathTypesetter();
   static Future<pw.ThemeData> _loadTheme() {
     return PdfExportThemeService.loadTheme();
   }
@@ -71,10 +82,13 @@ class QuestionPaperService {
   }
 
   static Future<pw.Document> generateDocument(
-    Paper paper,
+    Paper inputPaper,
     PaperTemplate template, {
     PaperExportConfig? config,
   }) async {
+    final paper = _mathValidationService
+        .validateAndRepairPaper(inputPaper)
+        .safePaper;
     final usePaperLayout = config == null;
     final exportConfig = config ?? const PaperExportConfig();
     final configErrors = exportConfig.validate();
@@ -164,6 +178,7 @@ class QuestionPaperService {
 
     pdf.addPage(
       pw.MultiPage(
+        maxPages: MathProductionLimits.maxGeneratedPdfPages,
         pageTheme: pw.PageTheme(
           pageFormat: pageFormat,
           margin: pageMargins,
@@ -376,10 +391,12 @@ class QuestionPaperService {
         ? _buildSectionHeadingWidgets(section, template, paper, config)
         : <pw.Widget>[];
 
+    final isSingleColumn = template.paperLayout != PaperLayout.twoColumn;
+
     if (showHeading &&
         section.keepTogether &&
         entries.isNotEmpty &&
-        template.paperLayout != PaperLayout.twoColumn &&
+        isSingleColumn &&
         _canKeepSectionHeadingWith(entries.first.value, section)) {
       final firstEntry = entries.first;
       final firstQuestion = _buildQuestion(
@@ -391,7 +408,7 @@ class QuestionPaperService {
         config,
         questionImages,
       );
-      final remaining = entries.skip(1).toList();
+      final remaining = entries.skip(1).toList(growable: false);
       return pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -401,15 +418,14 @@ class QuestionPaperService {
               children: [...heading, firstQuestion],
             ),
           ),
-          if (remaining.isNotEmpty)
-            _buildQuestionEntries(
-              section,
-              remaining,
-              template,
-              paper,
-              config,
-              questionImages,
-            ),
+          ..._buildSingleColumnQuestionWidgets(
+            section,
+            remaining,
+            template,
+            paper,
+            config,
+            questionImages,
+          ),
         ],
       );
     }
@@ -418,14 +434,24 @@ class QuestionPaperService {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         ...heading,
-        _buildQuestionEntries(
-          section,
-          entries,
-          template,
-          paper,
-          config,
-          questionImages,
-        ),
+        if (isSingleColumn)
+          ..._buildSingleColumnQuestionWidgets(
+            section,
+            entries,
+            template,
+            paper,
+            config,
+            questionImages,
+          )
+        else
+          _buildQuestionEntries(
+            section,
+            entries,
+            template,
+            paper,
+            config,
+            questionImages,
+          ),
       ],
     );
   }
@@ -558,6 +584,27 @@ class QuestionPaperService {
     return question.plainTextAccessibility.length <= 480;
   }
 
+  static List<pw.Widget> _buildSingleColumnQuestionWidgets(
+    PaperSection section,
+    List<MapEntry<int, Question>> entries,
+    PaperTemplate template,
+    Paper paper,
+    PaperExportConfig config,
+    Map<String, pw.ImageProvider> questionImages,
+  ) => entries
+      .map(
+        (entry) => _buildQuestion(
+          PaperStructureService.numberedQuestionOrdinal(section, entry.key),
+          entry.value,
+          template,
+          paper,
+          section,
+          config,
+          questionImages,
+        ),
+      )
+      .toList(growable: false);
+
   static pw.Widget _buildQuestionEntries(
     PaperSection section,
     List<MapEntry<int, Question>> entries,
@@ -566,21 +613,14 @@ class QuestionPaperService {
     PaperExportConfig config,
     Map<String, pw.ImageProvider> questionImages,
   ) {
-    final questions = entries.map((entry) {
-      return _buildQuestion(
-        PaperStructureService.numberedQuestionOrdinal(section, entry.key),
-        entry.value,
-        template,
-        paper,
-        section,
-        config,
-        questionImages,
-      );
-    }).toList();
-
-    if (template.paperLayout != PaperLayout.twoColumn) {
-      return pw.Column(children: questions);
-    }
+    final questions = _buildSingleColumnQuestionWidgets(
+      section,
+      entries,
+      template,
+      paper,
+      config,
+      questionImages,
+    );
 
     return pw.LayoutBuilder(
       builder: (context, constraints) {
@@ -696,20 +736,54 @@ class QuestionPaperService {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text(
-                    answer.isEmpty ? 'Answer: Not provided' : 'Answer: $answer',
-                    style: pw.TextStyle(
-                      fontSize: fontSize,
-                      fontWeight: pw.FontWeight.bold,
+                  if (q.correctAnswer.trim().isNotEmpty)
+                    pw.Wrap(
+                      crossAxisAlignment: pw.WrapCrossAlignment.center,
+                      children: [
+                        pw.Text(
+                          'Answer: ',
+                          style: pw.TextStyle(
+                            fontSize: fontSize,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                        _mathSurfacePdf(
+                          q,
+                          QuestionMathSurfaceKey.correctAnswer,
+                          q.correctAnswer,
+                          fontSize: fontSize,
+                          bold: true,
+                        ),
+                      ],
+                    )
+                  else
+                    pw.Text(
+                      answer.isEmpty
+                          ? 'Answer: Not provided'
+                          : 'Answer: $answer',
+                      style: pw.TextStyle(
+                        fontSize: fontSize,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
                     ),
-                  ),
                   if (config.includesSolutions &&
                       q.explanation.trim().isNotEmpty)
                     pw.Padding(
                       padding: const pw.EdgeInsets.only(top: 4),
-                      child: pw.Text(
-                        'Explanation: ${q.explanation.trim()}',
-                        style: pw.TextStyle(fontSize: fontSize),
+                      child: pw.Wrap(
+                        crossAxisAlignment: pw.WrapCrossAlignment.center,
+                        children: [
+                          pw.Text(
+                            'Explanation: ',
+                            style: pw.TextStyle(fontSize: fontSize),
+                          ),
+                          _mathSurfacePdf(
+                            q,
+                            QuestionMathSurfaceKey.explanation,
+                            q.explanation,
+                            fontSize: fontSize,
+                          ),
+                        ],
                       ),
                     ),
                 ],
@@ -729,6 +803,7 @@ class QuestionPaperService {
     PaperExportConfig config,
     Map<String, pw.ImageProvider> questionImages, {
     bool inlineMarks = false,
+    int nestedDepth = 0,
   }) {
     final advanced = QuestionAdvancedContent.fromQuestion(question);
     final children = <pw.Widget>[];
@@ -737,14 +812,14 @@ class QuestionPaperService {
       children.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(bottom: 5),
-          child: pw.Text(
-            question.instructions.trim(),
+          child: _mathSurfacePdf(
+            question,
+            QuestionMathSurfaceKey.instructions,
+            question.instructions,
+            fontSize: fontSize * 0.9,
             textAlign: _pdfTextAlign(question.instructionAlignment),
-            style: pw.TextStyle(
-              fontSize: fontSize * 0.9,
-              fontStyle: pw.FontStyle.italic,
-              fontWeight: pw.FontWeight.bold,
-            ),
+            italic: true,
+            bold: true,
           ),
         ),
       );
@@ -781,25 +856,14 @@ class QuestionPaperService {
 
     if (advanced.hasStimulus) {
       children.add(pw.SizedBox(height: 6));
-      children.add(_buildStimulus(advanced.stimulus!, fontSize));
+      children.add(_buildStimulus(question, advanced.stimulus!, fontSize));
     }
 
-    for (final expression in MathExpression.unplacedInRichText(
-      question.text,
-      question.mathExpressions,
-    )) {
+    for (final expression in _unplacedExportMath(question)) {
       children.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(top: 5, bottom: 3),
-          child: pw.Text(
-            expression.plainText.trim().isEmpty
-                ? expression.latex
-                : expression.plainText,
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontStyle: pw.FontStyle.italic,
-            ),
-          ),
+          child: _mathExpressionPdf(expression, fontSize: fontSize),
         ),
       );
     }
@@ -822,13 +886,13 @@ class QuestionPaperService {
               if (attachment.caption.trim().isNotEmpty)
                 pw.Padding(
                   padding: const pw.EdgeInsets.only(top: 3),
-                  child: pw.Text(
-                    attachment.caption.trim(),
+                  child: _mathSurfacePdf(
+                    question,
+                    QuestionMathSurfaceKey.attachmentCaption(attachment.id),
+                    attachment.caption,
+                    fontSize: fontSize * 0.86,
                     textAlign: pw.TextAlign.center,
-                    style: pw.TextStyle(
-                      fontSize: fontSize * 0.86,
-                      fontStyle: pw.FontStyle.italic,
-                    ),
+                    italic: true,
                   ),
                 ),
             ],
@@ -841,7 +905,7 @@ class QuestionPaperService {
       children.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(top: 7),
-          child: _buildQuestionTable(question.tableData!, fontSize),
+          child: _buildQuestionTable(question, question.tableData!, fontSize),
         ),
       );
     }
@@ -850,7 +914,7 @@ class QuestionPaperService {
       children.add(
         pw.Padding(
           padding: const pw.EdgeInsets.only(top: 7),
-          child: _buildWordBank(advanced.wordBank, fontSize),
+          child: _buildWordBank(question, advanced.wordBank, fontSize),
         ),
       );
     }
@@ -876,52 +940,68 @@ class QuestionPaperService {
       );
     }
 
-    if (question.subQuestions.isNotEmpty) {
-      children.add(pw.SizedBox(height: 7));
-      for (final entry in question.subQuestions.asMap().entries) {
-        children.add(
-          _buildNestedQuestion(
-            label: QuestionAdvancedStructureService.partLabel(entry.key),
-            question: entry.value,
-            fontSize: fontSize,
-            section: section,
-            config: config,
-            questionImages: questionImages,
+    if ((question.subQuestions.isNotEmpty ||
+            question.internalChoices.isNotEmpty) &&
+        nestedDepth >= MathProductionLimits.maxQuestionNestingDepth) {
+      children.add(
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 7),
+          child: pw.Text(
+            '[Nested question depth limit reached]',
+            style: pw.TextStyle(fontSize: fontSize * 0.85),
           ),
-        );
-      }
-    }
-
-    if (question.internalChoices.isNotEmpty) {
-      children.add(pw.SizedBox(height: 7));
-      for (final entry in question.internalChoices.asMap().entries) {
-        if (entry.key > 0) {
+        ),
+      );
+    } else {
+      if (question.subQuestions.isNotEmpty) {
+        children.add(pw.SizedBox(height: 7));
+        for (final entry in question.subQuestions.asMap().entries) {
           children.add(
-            pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(vertical: 5),
-              child: pw.Align(
-                alignment: pw.Alignment.center,
-                child: pw.Text(
-                  'OR',
-                  style: pw.TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-              ),
+            _buildNestedQuestion(
+              label: QuestionAdvancedStructureService.partLabel(entry.key),
+              question: entry.value,
+              fontSize: fontSize,
+              section: section,
+              config: config,
+              questionImages: questionImages,
+              nestedDepth: nestedDepth + 1,
             ),
           );
         }
-        children.add(
-          _buildNestedQuestion(
-            label: '',
-            question: entry.value,
-            fontSize: fontSize,
-            section: section,
-            config: config,
-            questionImages: questionImages,
-          ),
-        );
+      }
+
+      if (question.internalChoices.isNotEmpty) {
+        children.add(pw.SizedBox(height: 7));
+        for (final entry in question.internalChoices.asMap().entries) {
+          if (entry.key > 0) {
+            children.add(
+              pw.Padding(
+                padding: const pw.EdgeInsets.symmetric(vertical: 5),
+                child: pw.Align(
+                  alignment: pw.Alignment.center,
+                  child: pw.Text(
+                    'OR',
+                    style: pw.TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }
+          children.add(
+            _buildNestedQuestion(
+              label: '',
+              question: entry.value,
+              fontSize: fontSize,
+              section: section,
+              config: config,
+              questionImages: questionImages,
+              nestedDepth: nestedDepth + 1,
+            ),
+          );
+        }
       }
     }
 
@@ -1153,6 +1233,7 @@ class QuestionPaperService {
     required PaperSection section,
     required PaperExportConfig config,
     required Map<String, pw.ImageProvider> questionImages,
+    required int nestedDepth,
   }) {
     final advanced = QuestionAdvancedContent.fromQuestion(question);
     return pw.Padding(
@@ -1184,6 +1265,7 @@ class QuestionPaperService {
                   inlineMarks:
                       section.questionMarksPlacement ==
                       QuestionMarksPlacement.inline,
+                  nestedDepth: nestedDepth,
                 ),
               ),
               if (section.questionMarksPlacement ==
@@ -1213,7 +1295,11 @@ class QuestionPaperService {
     );
   }
 
-  static pw.Widget _buildStimulus(QuestionStimulus stimulus, double fontSize) {
+  static pw.Widget _buildStimulus(
+    Question question,
+    QuestionStimulus stimulus,
+    double fontSize,
+  ) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(7),
       decoration: pw.BoxDecoration(
@@ -1225,29 +1311,31 @@ class QuestionPaperService {
           if (stimulus.title.trim().isNotEmpty)
             pw.Padding(
               padding: const pw.EdgeInsets.only(bottom: 3),
-              child: pw.Text(
-                stimulus.title.trim(),
-                style: pw.TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: pw.FontWeight.bold,
-                ),
+              child: _mathSurfacePdf(
+                question,
+                QuestionMathSurfaceKey.stimulusTitle,
+                stimulus.title,
+                fontSize: fontSize,
+                bold: true,
               ),
             ),
-          pw.Text(
+          _mathSurfacePdf(
+            question,
+            QuestionMathSurfaceKey.stimulusText,
             stimulus.text,
-            style: pw.TextStyle(
-              fontSize: fontSize,
-              fontStyle: stimulus.kind == QuestionStimulusKind.poem
-                  ? pw.FontStyle.italic
-                  : null,
-            ),
+            fontSize: fontSize,
+            italic: stimulus.kind == QuestionStimulusKind.poem,
           ),
         ],
       ),
     );
   }
 
-  static pw.Widget _buildWordBank(List<String> items, double fontSize) {
+  static pw.Widget _buildWordBank(
+    Question question,
+    List<String> items,
+    double fontSize,
+  ) {
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: pw.BoxDecoration(
@@ -1258,15 +1346,26 @@ class QuestionPaperService {
         spacing: 14,
         runSpacing: 4,
         children: items
+            .asMap()
+            .entries
             .map(
-              (item) => pw.Text(item, style: pw.TextStyle(fontSize: fontSize)),
+              (entry) => _mathSurfacePdf(
+                question,
+                QuestionMathSurfaceKey.wordBank(entry.key),
+                entry.value,
+                fontSize: fontSize,
+              ),
             )
             .toList(),
       ),
     );
   }
 
-  static pw.Widget _buildQuestionTable(QuestionTable table, double fontSize) {
+  static pw.Widget _buildQuestionTable(
+    Question question,
+    QuestionTable table,
+    double fontSize,
+  ) {
     final columnCount = table.headers.isNotEmpty
         ? table.headers.length
         : (table.rows.isEmpty ? 0 : table.rows.first.length);
@@ -1280,6 +1379,8 @@ class QuestionPaperService {
           children: List.generate(
             columnCount,
             (index) => _pdfTableCell(
+              question,
+              QuestionMathSurfaceKey.tableHeader(index),
               index < table.headers.length ? table.headers[index] : '',
               fontSize,
               bold: true,
@@ -1288,13 +1389,18 @@ class QuestionPaperService {
         ),
       );
     }
-    for (final row in table.rows) {
+    for (final rowEntry in table.rows.asMap().entries) {
+      final row = rowEntry.value;
       rows.add(
         pw.TableRow(
           children: List.generate(
             columnCount,
-            (index) =>
-                _pdfTableCell(index < row.length ? row[index] : '', fontSize),
+            (index) => _pdfTableCell(
+              question,
+              QuestionMathSurfaceKey.tableCell(rowEntry.key, index),
+              index < row.length ? row[index] : '',
+              fontSize,
+            ),
           ),
         ),
       );
@@ -1306,13 +1412,13 @@ class QuestionPaperService {
         if (table.caption.trim().isNotEmpty)
           pw.Padding(
             padding: const pw.EdgeInsets.only(bottom: 4),
-            child: pw.Text(
-              table.caption.trim(),
+            child: _mathSurfacePdf(
+              question,
+              QuestionMathSurfaceKey.tableCaption,
+              table.caption,
+              fontSize: fontSize,
               textAlign: pw.TextAlign.center,
-              style: pw.TextStyle(
-                fontSize: fontSize,
-                fontWeight: pw.FontWeight.bold,
-              ),
+              bold: true,
             ),
           ),
         pw.Table(
@@ -1324,18 +1430,20 @@ class QuestionPaperService {
   }
 
   static pw.Widget _pdfTableCell(
+    Question question,
+    String surfaceKey,
     String text,
     double fontSize, {
     bool bold = false,
   }) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(5),
-      child: pw.Text(
+      child: _mathSurfacePdf(
+        question,
+        surfaceKey,
         text,
-        style: pw.TextStyle(
-          fontSize: fontSize,
-          fontWeight: bold ? pw.FontWeight.bold : null,
-        ),
+        fontSize: fontSize,
+        bold: bold,
       ),
     );
   }
@@ -1351,9 +1459,11 @@ class QuestionPaperService {
         children: [
           pw.Text('$label) ', style: pw.TextStyle(fontSize: fontSize)),
           pw.Expanded(
-            child: pw.Text(
+            child: _mathSurfacePdf(
+              question,
+              QuestionMathSurfaceKey.option(entry.value.id),
               entry.value.text,
-              style: pw.TextStyle(fontSize: fontSize),
+              fontSize: fontSize,
             ),
           ),
         ],
@@ -1538,6 +1648,100 @@ class QuestionPaperService {
     }
   }
 
+  static List<MathExpression> _unplacedExportMath(Question question) {
+    final surfaceExpressions = _mathSurfaceService
+        .activeContentForQuestion(question)
+        .expressions;
+    final surfaceIdentities = surfaceExpressions
+        .map(_mathExpressionIdentity)
+        .toSet();
+    return MathExpression.unplacedInRichText(
+          question.text,
+          question.mathExpressions,
+        )
+        .where((expression) {
+          return !surfaceIdentities.contains(
+            _mathExpressionIdentity(expression),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  static String _mathExpressionIdentity(MathExpression expression) {
+    return expression.id.isNotEmpty
+        ? 'id:${expression.id}'
+        : 'source:${expression.latex}\u0000${expression.plainText}';
+  }
+
+  static pw.Widget _mathExpressionPdf(
+    MathExpression expression, {
+    required double fontSize,
+  }) {
+    final native = _pdfMathTypesetter.buildSource(
+      expression.latex,
+      fontSize: fontSize,
+    );
+    if (native != null) return native;
+    final fallback = const MathCompatibilityService()
+        .inspectSource(expression.latex, plainFallback: expression.plainText)
+        .readableFallback;
+    return pw.Text(
+      fallback,
+      style: pw.TextStyle(fontSize: fontSize, fontStyle: pw.FontStyle.italic),
+    );
+  }
+
+  static pw.Widget _mathSurfacePdf(
+    Question question,
+    String surfaceKey,
+    String fallbackText, {
+    required double fontSize,
+    pw.TextAlign textAlign = pw.TextAlign.left,
+    bool bold = false,
+    bool italic = false,
+  }) {
+    final document = _mathSurfaceService.activeDocument(
+      question,
+      surfaceKey,
+      fallbackText,
+    );
+    if (document == null) {
+      return pw.Text(
+        fallbackText,
+        textAlign: textAlign,
+        style: pw.TextStyle(
+          fontSize: fontSize,
+          fontWeight: bold ? pw.FontWeight.bold : null,
+          fontStyle: italic ? pw.FontStyle.italic : null,
+        ),
+      );
+    }
+    return pw.Wrap(
+      alignment: switch (textAlign) {
+        pw.TextAlign.center => pw.WrapAlignment.center,
+        pw.TextAlign.right => pw.WrapAlignment.end,
+        _ => pw.WrapAlignment.start,
+      },
+      crossAxisAlignment: pw.WrapCrossAlignment.center,
+      children: document.parts
+          .map((part) {
+            if (part.kind == QuestionMathInlinePartKind.text ||
+                part.expression == null) {
+              return pw.Text(
+                part.text,
+                style: pw.TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: bold ? pw.FontWeight.bold : null,
+                  fontStyle: italic ? pw.FontStyle.italic : null,
+                ),
+              );
+            }
+            return _mathExpressionPdf(part.expression!, fontSize: fontSize);
+          })
+          .toList(growable: false),
+    );
+  }
+
   static pw.Widget _parseRichTextToPdf(
     String text,
     double fontSize, {
@@ -1550,6 +1754,7 @@ class QuestionPaperService {
         if (decoded is List) {
           final children = <pw.Widget>[];
           final pending = <Map<String, dynamic>>[];
+          var hasBlockEmbed = false;
 
           void flushText() {
             if (pending.isEmpty) return;
@@ -1577,12 +1782,18 @@ class QuestionPaperService {
                 final expression = MathExpression.tryFromQuillEmbedData(
                   insert[MathExpression.quillEmbedKey],
                 );
-                final plain = expression?.plainText.trim() ?? '';
-                operation['insert'] = expression == null
-                    ? '[formula]'
-                    : (plain.isEmpty ? expression.latex : plain);
+                if (expression == null) {
+                  operation['insert'] = '[formula]';
+                } else {
+                  flushText();
+                  children.add(
+                    _mathExpressionPdf(expression, fontSize: fontSize),
+                  );
+                  continue;
+                }
               } else if (insert.containsKey('geometry')) {
                 flushText();
+                hasBlockEmbed = true;
                 children.add(
                   _geometryEmbedToPdf(
                     GeometryEmbedLayout.fromData(insert['geometry']),
@@ -1597,6 +1808,12 @@ class QuestionPaperService {
 
           if (children.isEmpty) return pw.SizedBox();
           if (children.length == 1) return children.single;
+          if (!hasBlockEmbed) {
+            return pw.Wrap(
+              crossAxisAlignment: pw.WrapCrossAlignment.center,
+              children: children,
+            );
+          }
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.stretch,
             children: children,

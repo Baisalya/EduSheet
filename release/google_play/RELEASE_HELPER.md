@@ -14,8 +14,9 @@ ask for that choice first. Never infer monetization from prepared billing code.
 - Target SDK: Android 16 / API 36
 - Customer price: Free
 - App premium flag: `PREMIUM_ENABLED=false`
-- Subscription product `edusheet_premium_yearly`: keep inactive/unpublished
-- Base plan `annual`: future use only
+- Subscription product `edusheet_premium_yearly`: created; keep inactive/unpublished
+- Base plan `annual`: draft/inactive, yearly auto-renewing
+- Annual price: India `INR 200.00`; other regions use Play-converted prices
 - Checkout, paywall, and entitlement verification: inactive in this build
 
 The current release is intentionally free. Do not add a purchase verifier URL

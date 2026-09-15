@@ -1,0 +1,523 @@
+import 'package:edusheet/features/math_keyboard/domain/models/math_symbol.dart';
+
+enum BookletEntryPath {
+  /// The question can be assembled from normal catalogue keys.
+  catalogBacked,
+
+  /// A complete ready-made expression exists, but its row/shape is fixed.
+  fixedTemplate,
+
+  /// The structure is generated from a runtime row/column/count specification
+  /// rather than a fixed catalogue placement.
+  dynamicBuilder,
+
+  /// The source is useful as an Advanced TeX regression case but there is no
+  /// direct first-class catalogue key for the complete construct.
+  advancedSource,
+
+  /// The current architecture has no dynamic first-class builder for this
+  /// family. Advanced source may still accept the TeX string.
+  architecturalGap,
+}
+
+class UniversalMathBookletCase {
+  final String id;
+  final String title;
+  final MathSubject subject;
+  final String latex;
+  final String plainText;
+  final BookletEntryPath entryPath;
+  final List<String> requiredCatalogSources;
+  final String? baselineNote;
+
+  const UniversalMathBookletCase({
+    required this.id,
+    required this.title,
+    required this.subject,
+    required this.latex,
+    required this.plainText,
+    required this.entryPath,
+    this.requiredCatalogSources = const <String>[],
+    this.baselineNote,
+  });
+}
+
+/// Representative regression corpus spanning the notation families already
+/// present in EduSheet plus deliberately documented first-class builder gaps.
+///
+/// This is not a claim that every expression below is fully typeset by every
+/// export surface. Phase 1 records the current entry/persistence/validation
+/// baseline; later phases upgrade editing and export guarantees.
+const universalMathBookletCorpus = <UniversalMathBookletCase>[
+  UniversalMathBookletCase(
+    id: 'arithmetic_fraction',
+    title: 'Fraction',
+    subject: MathSubject.arithmetic,
+    latex: r'\frac{3}{4}+\frac{5}{8}',
+    plainText: '3/4 + 5/8',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\frac{}{}', '+'],
+  ),
+  UniversalMathBookletCase(
+    id: 'arithmetic_nth_root',
+    title: 'Nth root',
+    subject: MathSubject.arithmetic,
+    latex: r'\sqrt[5]{32}=2',
+    plainText: 'fifth root of 32 equals 2',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\sqrt[]{}', '='],
+  ),
+  UniversalMathBookletCase(
+    id: 'algebra_scientific_notation',
+    title: 'Scientific notation',
+    subject: MathSubject.algebra,
+    latex: r'6.02\times 10^{23}',
+    plainText: '6.02 times 10 to the power 23',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'{}\times 10^{}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'algebra_recurring_decimal',
+    title: 'Recurring decimal',
+    subject: MathSubject.algebra,
+    latex: r'0.\overline{3}',
+    plainText: '0.3 recurring',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'0.\overline{3}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'algebra_quadratic_formula',
+    title: 'Quadratic formula',
+    subject: MathSubject.algebra,
+    latex: r'x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}',
+    plainText: 'quadratic formula',
+    entryPath: BookletEntryPath.fixedTemplate,
+    requiredCatalogSources: <String>[r'x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'algebra_two_equation_system',
+    title: 'Two simultaneous equations',
+    subject: MathSubject.algebra,
+    latex: r'\begin{cases} ax+by=c \\ dx+ey=f \end{cases}',
+    plainText: 'two simultaneous equations',
+    entryPath: BookletEntryPath.fixedTemplate,
+    requiredCatalogSources: <String>[
+      r'\begin{cases} ax+by=c \\ dx+ey=f \end{cases}',
+    ],
+    baselineNote: 'Current catalogue exposes a fixed two-row system template.',
+  ),
+  UniversalMathBookletCase(
+    id: 'trig_inverse',
+    title: 'Inverse trigonometry',
+    subject: MathSubject.trigonometry,
+    latex: r'\arcsin(x)+\arctan(y)',
+    plainText: 'arcsin x plus arctan y',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\arcsin', r'\arctan', '+'],
+  ),
+  UniversalMathBookletCase(
+    id: 'trig_hyperbolic',
+    title: 'Hyperbolic functions',
+    subject: MathSubject.trigonometry,
+    latex: r'\sinh(x)^2-\cosh(x)^2',
+    plainText: 'sinh squared x minus cosh squared x',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\sinh', r'\cosh', r'^{}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'calculus_bounded_integral',
+    title: 'Bounded integral',
+    subject: MathSubject.calculus,
+    latex: r'\int_{0}^{\pi}\sin(x)\,dx',
+    plainText: 'integral from 0 to pi of sine x dx',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\int_{}^{}', r'\sin', r'\pi'],
+  ),
+  UniversalMathBookletCase(
+    id: 'calculus_second_derivative',
+    title: 'Second derivative',
+    subject: MathSubject.calculus,
+    latex: r'\frac{d^2y}{dx^2}',
+    plainText: 'second derivative of y with respect to x',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\frac{d^2}{dx^2}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'calculus_vector_operator',
+    title: 'Vector calculus operators',
+    subject: MathSubject.calculus,
+    latex: r'\nabla f+\partial f',
+    plainText: 'nabla f plus partial f',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\nabla', r'\partial'],
+  ),
+  UniversalMathBookletCase(
+    id: 'calculus_limit',
+    title: 'Limit to infinity',
+    subject: MathSubject.calculus,
+    latex: r'\lim_{x \to \infty}\frac{1}{x}=0',
+    plainText: 'limit as x tends to infinity of 1 over x equals zero',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[
+      r'\lim_{x \to \infty}',
+      r'\frac{}{}',
+      r'\infty',
+    ],
+  ),
+  UniversalMathBookletCase(
+    id: 'calculus_product',
+    title: 'Finite product',
+    subject: MathSubject.calculus,
+    latex: r'\prod_{k=1}^{n}k',
+    plainText: 'product k from 1 to n',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\prod_{}^{}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'sets_number_systems',
+    title: 'Number systems',
+    subject: MathSubject.sets,
+    latex: r'\mathbb{N}\subset\mathbb{Z}\subset\mathbb{Q}\subset\mathbb{R}',
+    plainText: 'natural numbers subset integers subset rationals subset reals',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[
+      r'\mathbb{N}',
+      r'\mathbb{Z}',
+      r'\mathbb{Q}',
+      r'\mathbb{R}',
+      r'\subset',
+    ],
+  ),
+  UniversalMathBookletCase(
+    id: 'logic_quantifiers',
+    title: 'Logic quantifiers',
+    subject: MathSubject.logic,
+    latex: r'\forall x\in\mathbb{R}\;\exists y',
+    plainText: 'for all x in the reals there exists y',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\forall', r'\exists', r'\in'],
+  ),
+  UniversalMathBookletCase(
+    id: 'geometry_vector_segment',
+    title: 'Directed segment',
+    subject: MathSubject.geometry,
+    latex: r'\overrightarrow{AB}\perp\overline{CD}',
+    plainText: 'directed AB perpendicular to segment CD',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[
+      r'\overrightarrow{AB}',
+      r'\overline{AB}',
+      r'\perp',
+    ],
+  ),
+  UniversalMathBookletCase(
+    id: 'statistics_normal_distribution',
+    title: 'Normal distribution',
+    subject: MathSubject.statistics,
+    latex: r'X\sim N(\mu,\sigma^2)',
+    plainText: 'X follows a normal distribution',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'X\sim N(\mu,\sigma^2)'],
+  ),
+  UniversalMathBookletCase(
+    id: 'statistics_expectation',
+    title: 'Expected value',
+    subject: MathSubject.statistics,
+    latex: r'\mathbb{E}(X)',
+    plainText: 'expected value of X',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\mathbb{E}(X)'],
+  ),
+  UniversalMathBookletCase(
+    id: 'probability_union',
+    title: 'Probability union',
+    subject: MathSubject.probability,
+    latex: r'P(A\cup B)',
+    plainText: 'probability of A union B',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'P(A\cup B)'],
+  ),
+  UniversalMathBookletCase(
+    id: 'linear_algebra_matrix_2x2',
+    title: '2 by 2 matrix',
+    subject: MathSubject.linearAlgebra,
+    latex: r'\begin{pmatrix} a & b \\ c & d \end{pmatrix}',
+    plainText: '2 by 2 matrix',
+    entryPath: BookletEntryPath.fixedTemplate,
+    requiredCatalogSources: <String>[r'\begin{pmatrix}  & \\  & \end{pmatrix}'],
+    baselineNote: 'Rows and columns are fixed by the current template.',
+  ),
+  UniversalMathBookletCase(
+    id: 'linear_algebra_determinant_2x2',
+    title: '2 by 2 determinant',
+    subject: MathSubject.linearAlgebra,
+    latex: r'\begin{vmatrix} a & b \\ c & d \end{vmatrix}',
+    plainText: '2 by 2 determinant',
+    entryPath: BookletEntryPath.fixedTemplate,
+    requiredCatalogSources: <String>[r'\begin{vmatrix}  & \\  & \end{vmatrix}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'physics_kinematics',
+    title: 'Kinematics equation',
+    subject: MathSubject.physics,
+    latex: r'v^2 = u^2 + 2as',
+    plainText: 'v squared equals u squared plus 2 a s',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'v^2 = u^2 + 2as'],
+  ),
+  UniversalMathBookletCase(
+    id: 'physics_vector_force',
+    title: 'Vector force',
+    subject: MathSubject.physics,
+    latex: r'\vec{F}=m\vec{a}',
+    plainText: 'vector F equals m vector a',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\vec{F}', '='],
+  ),
+  UniversalMathBookletCase(
+    id: 'chemistry_equilibrium',
+    title: 'Chemical equilibrium',
+    subject: MathSubject.chemistry,
+    latex: r'\mathrm{N_2}+3\mathrm{H_2}\rightleftharpoons2\mathrm{NH_3}',
+    plainText: 'nitrogen plus hydrogen in equilibrium with ammonia',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\rightleftharpoons'],
+  ),
+  UniversalMathBookletCase(
+    id: 'chemistry_isotope',
+    title: 'Nuclide notation',
+    subject: MathSubject.chemistry,
+    latex: r'{}^{14}_{6}\mathrm{C}',
+    plainText: 'carbon 14 nuclide notation',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'{}^{A}_{Z}X'],
+  ),
+  UniversalMathBookletCase(
+    id: 'greek_upper_lower',
+    title: 'Greek upper and lower case',
+    subject: MathSubject.general,
+    latex: r'\alpha+\Omega',
+    plainText: 'alpha plus capital omega',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\alpha', r'\Omega'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase3_norm',
+    title: 'Norm',
+    subject: MathSubject.linearAlgebra,
+    latex: r'||v||',
+    plainText: 'norm of v',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'||{}||'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase3_combined_scripts',
+    title: 'Combined subscript and superscript',
+    subject: MathSubject.algebra,
+    latex: r'x_i^n',
+    plainText: 'x sub i to the power n',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'_{}^{}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase3_generic_derivative',
+    title: 'Generic derivative builder',
+    subject: MathSubject.calculus,
+    latex: r'\frac{d f(x)}{d x}',
+    plainText: 'derivative of f x with respect to x',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\frac{d{}}{d{}}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase3_generic_limit',
+    title: 'Generic limit condition',
+    subject: MathSubject.calculus,
+    latex: r'\lim_{x \to a}f(x)',
+    plainText: 'limit as x approaches a of f x',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\lim_{}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase3_inner_product',
+    title: 'Inner product builder',
+    subject: MathSubject.linearAlgebra,
+    latex: r'\langle u,v\rangle',
+    plainText: 'inner product of u and v',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\langle{},{}\rangle'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase3_evaluation_bar',
+    title: 'Evaluation bar with endpoints',
+    subject: MathSubject.calculus,
+    latex: r'F(x)|_{a}^{b}',
+    plainText: 'F x evaluated from a to b',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'|_{}^{}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase4_dynamic_matrix',
+    title: 'Arbitrary m by n matrix builder',
+    subject: MathSubject.linearAlgebra,
+    latex:
+        r'\begin{pmatrix} a&b&c&d \\ e&f&g&h \\ i&j&k&l \\ m&n&o&p \end{pmatrix}',
+    plainText: '4 by 4 matrix',
+    entryPath: BookletEntryPath.dynamicBuilder,
+    baselineNote:
+        'Phase 4 builds arbitrary matrix dimensions from a runtime structure spec.',
+  ),
+  UniversalMathBookletCase(
+    id: 'phase4_dynamic_piecewise',
+    title: 'Dynamic piecewise function rows',
+    subject: MathSubject.algebra,
+    latex: r'f(x)=\begin{cases}x^2&x<0\\0&x=0\\x+1&x>0\end{cases}',
+    plainText: 'three-row piecewise function',
+    entryPath: BookletEntryPath.dynamicBuilder,
+    baselineNote:
+        'Phase 4 generates expression/condition slot pairs for the requested case count.',
+  ),
+  UniversalMathBookletCase(
+    id: 'phase4_dynamic_aligned_derivation',
+    title: 'Aligned multi-step derivation',
+    subject: MathSubject.algebra,
+    latex: r'\begin{aligned}2x+4&=10\\2x&=6\\x&=3\end{aligned}',
+    plainText: 'aligned multi-step derivation',
+    entryPath: BookletEntryPath.dynamicBuilder,
+    baselineNote:
+        'Phase 4 generates two editable columns per derivation step with a configurable relation.',
+  ),
+  UniversalMathBookletCase(
+    id: 'phase4_dynamic_augmented_matrix',
+    title: 'Augmented matrix',
+    subject: MathSubject.linearAlgebra,
+    latex: r'\left[\begin{array}{ccc|c}1&0&2&5\\0&1&-1&3\end{array}\right]',
+    plainText: '2 by 4 augmented matrix',
+    entryPath: BookletEntryPath.dynamicBuilder,
+    baselineNote:
+        'Phase 4 lets the teacher choose matrix dimensions and the divider column.',
+  ),
+  UniversalMathBookletCase(
+    id: 'phase4_dynamic_equation_system',
+    title: 'Four-equation system',
+    subject: MathSubject.algebra,
+    latex: r'\begin{cases}x+y=1\\x-y=0\\z=2\\w=3\end{cases}',
+    plainText: 'system of four equations',
+    entryPath: BookletEntryPath.dynamicBuilder,
+    baselineNote:
+        'Phase 4 generates one editable equation slot for every requested row.',
+  ),
+  UniversalMathBookletCase(
+    id: 'phase5_binomial',
+    title: 'Binomial coefficient command',
+    subject: MathSubject.combinatorics,
+    latex: r'\binom{n}{r}',
+    plainText: 'n choose r',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\binom{}{}'],
+    baselineNote:
+        'Phase 5 promotes binomial coefficients to a two-slot structured composer command.',
+  ),
+  UniversalMathBookletCase(
+    id: 'phase5_mapsto',
+    title: 'Mapsto arrow',
+    subject: MathSubject.general,
+    latex: r'x\mapsto x^2',
+    plainText: 'x maps to x squared',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\mapsto'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase5_big_union',
+    title: 'Indexed big union',
+    subject: MathSubject.sets,
+    latex: r'\bigcup_{i=1}^{n}A_i',
+    plainText: 'big union of A i',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\bigcup_{}^{}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase5_greek_variant',
+    title: 'Variant Greek symbols',
+    subject: MathSubject.general,
+    latex: r'\varepsilon+\vartheta+\varphi',
+    plainText: 'variant epsilon plus variant theta plus variant phi',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\varepsilon', r'\vartheta', r'\varphi'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase5_modular_arithmetic',
+    title: 'Modular congruence',
+    subject: MathSubject.numberTheory,
+    latex: r'a\equiv b\pmod{n}',
+    plainText: 'a is congruent to b modulo n',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\equiv', r'\pmod{}'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase5_complex_conjugate',
+    title: 'Complex conjugate',
+    subject: MathSubject.complexNumbers,
+    latex: r'\overline{z}=a-bi',
+    plainText: 'complex conjugate of z equals a minus b i',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\overline{}', '='],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase5_divisibility',
+    title: 'Divisibility relation',
+    subject: MathSubject.numberTheory,
+    latex: r'a\mid b',
+    plainText: 'a divides b',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\mid'],
+  ),
+  UniversalMathBookletCase(
+    id: 'phase5_tensor_product',
+    title: 'Tensor product',
+    subject: MathSubject.linearAlgebra,
+    latex: r'V\otimes W',
+    plainText: 'V tensor product W',
+    entryPath: BookletEntryPath.catalogBacked,
+    requiredCatalogSources: <String>[r'\otimes'],
+  ),
+  UniversalMathBookletCase(
+    id: 'source_labeled_arrow',
+    title: 'Extensible labeled arrow',
+    subject: MathSubject.general,
+    latex: r'A\xrightarrow{f}B',
+    plainText: 'A maps to B by f',
+    entryPath: BookletEntryPath.advancedSource,
+    baselineNote:
+        'Phase 5 adds common arrow glyphs, but labeled extensible arrows remain Advanced Source pending Phase 6 compatibility verification.',
+  ),
+  UniversalMathBookletCase(
+    id: 'source_closed_surface_integral',
+    title: 'Closed surface integral',
+    subject: MathSubject.calculus,
+    latex: r'\oiint_S F\cdot dS',
+    plainText: 'closed surface integral over S',
+    entryPath: BookletEntryPath.advancedSource,
+    baselineNote:
+        'Rare integral variants remain Advanced Source until renderer support is measured in Phase 6.',
+  ),
+  UniversalMathBookletCase(
+    id: 'source_special_function',
+    title: 'Special function command',
+    subject: MathSubject.general,
+    latex: r'\operatorname{erf}(x)',
+    plainText: 'error function of x',
+    entryPath: BookletEntryPath.advancedSource,
+    baselineNote:
+        'Arbitrary named special functions remain source-driven rather than receiving one catalogue key per function.',
+  ),
+  UniversalMathBookletCase(
+    id: 'source_tensor_index_notation',
+    title: 'Dense tensor index notation',
+    subject: MathSubject.linearAlgebra,
+    latex: r'T^{\mu\nu}_{\alpha\beta}',
+    plainText: 'tensor T with upper and lower indices',
+    entryPath: BookletEntryPath.advancedSource,
+    baselineNote:
+        'Combined scripts are first-class, but domain-specific multi-index presets remain source-driven.',
+  ),
+];
