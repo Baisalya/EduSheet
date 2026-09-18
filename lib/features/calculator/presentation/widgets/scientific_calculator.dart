@@ -318,7 +318,9 @@ class _ModeButton extends StatelessWidget {
               child: Text(
                 label,
                 style: TextStyle(
-                  color: selected ? Colors.white : theme.colorScheme.onSurface,
+                  color: selected
+                      ? theme.colorScheme.onPrimary
+                      : theme.colorScheme.onSurface,
                   fontWeight: FontWeight.w900,
                   fontSize: 12,
                 ),
@@ -682,23 +684,21 @@ class _KeyColors {
 
   const _KeyColors(this.theme);
 
-  Color get number => theme.brightness == Brightness.dark
-      ? const Color(0xFF2F3338)
-      : const Color(0xFFFFFFFF);
+  Color get number => theme.colorScheme.surface;
 
-  Color get neutral => theme.brightness == Brightness.dark
-      ? const Color(0xFF252A30)
-      : const Color(0xFFE8EDF3);
+  Color get neutral => theme.colorScheme.surfaceContainerHigh;
 
-  Color get function => theme.brightness == Brightness.dark
-      ? const Color(0xFF1F3A3D)
-      : const Color(0xFFE0F2F1);
+  Color get function => Color.alphaBlend(
+    theme.colorScheme.tertiary.withValues(alpha: 0.10),
+    theme.colorScheme.surfaceContainerLow,
+  );
 
-  Color get constant => theme.brightness == Brightness.dark
-      ? const Color(0xFF3B3422)
-      : const Color(0xFFFFF3D6);
+  Color get constant => Color.alphaBlend(
+    theme.colorScheme.secondary.withValues(alpha: 0.10),
+    theme.colorScheme.surfaceContainerLow,
+  );
 
-  Color get operator => const Color(0xFF2563EB);
+  Color get operator => theme.colorScheme.primary;
   Color get equals => const Color(0xFF059669);
-  Color get danger => const Color(0xFFDC2626);
+  Color get danger => theme.colorScheme.error;
 }

@@ -18,7 +18,13 @@ import '../../data/teaching_pack_codec.dart';
 import '../../domain/models/lesson_plan.dart';
 import '../../domain/models/teaching_resource.dart';
 import '../../domain/models/teaching_resource_owner.dart';
+import '../design/teaching_planner_design_system.dart';
+import '../layout/teaching_planner_breakpoints.dart';
+import '../navigation/teaching_planner_navigation.dart';
 import '../providers/teaching_planner_provider.dart';
+import '../widgets/teaching_planner_page_shell.dart';
+import '../widgets/teaching_planner_responsive_content.dart';
+import '../widgets/teaching_planner_shared_components.dart';
 
 class TeachingWorkspaceScreen extends ConsumerStatefulWidget {
   const TeachingWorkspaceScreen({super.key, this.initialLessonId});
@@ -50,90 +56,89 @@ class _TeachingWorkspaceScreenState
         ? const <TeachingResource>[]
         : workspace.activeResourcesForLesson(selected.id);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Teaching workspace'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh workspace',
-            onPressed: () => ref.read(teachingPlannerProvider.notifier).load(),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: lessons.isEmpty
-            ? _NoLessons(onPlanLesson: () => Navigator.of(context).maybePop())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final padding = (constraints.maxWidth * 0.035)
-                      .clamp(12.0, 30.0)
-                      .toDouble();
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(padding, 16, padding, 36),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1240),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _WorkspaceHero(
-                              lesson: selected!,
-                              resourceCount: resources.length,
-                            ),
-                            const SizedBox(height: 16),
-                            _LessonPicker(
-                              lessons: lessons,
-                              value: selected.id,
-                              onChanged: (value) =>
-                                  setState(() => _lessonId = value),
-                            ),
-                            const SizedBox(height: 16),
-                            _QuickActions(
-                              onNote: () =>
-                                  _addNote(selected, mathFirst: false),
-                              onMath: () => _addNote(selected, mathFirst: true),
-                              onFile: () => _addFile(selected),
-                              onLink: () => _addLink(selected),
-                              onGeometry: () => _addGeometry(selected),
-                            ),
-                            const SizedBox(height: 20),
-                            _SectionTitle(
-                              title: 'Materials for this lesson',
-                              subtitle: resources.isEmpty
-                                  ? 'Add the notes, files and visuals you want ready before class.'
-                                  : '${resources.length} item${resources.length == 1 ? '' : 's'} ready for teaching.',
-                            ),
-                            const SizedBox(height: 12),
-                            if (resources.isEmpty)
-                              _EmptyResources(
-                                onAdd: () =>
-                                    _addNote(selected, mathFirst: false),
-                              )
-                            else
-                              _ResourceGrid(
-                                resources: resources,
-                                onOpen: (item) => _openResource(item),
-                                onEdit: (item) => _editResource(item),
-                                onArchive: (item) => _archiveResource(item),
-                              ),
-                            const SizedBox(height: 24),
-                            _TeachingPackCard(
-                              lesson: selected,
-                              resourceCount: resources.length,
-                              onExport: resources.isEmpty
-                                  ? null
-                                  : () => _exportPack(selected, resources),
-                              onImport: () => _importPack(selected),
-                            ),
-                          ],
+    return TeachingPlannerPageShell(
+      title: 'Teaching workspace',
+      currentDestination: TeachingPlannerDestination.workspace,
+      showGlobalNavigation: widget.initialLessonId == null,
+      actions: [
+        IconButton(
+          tooltip: 'Refresh workspace',
+          onPressed: () => ref.read(teachingPlannerProvider.notifier).load(),
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+      ],
+      body: lessons.isEmpty
+          ? _NoLessons(onPlanLesson: () => Navigator.of(context).maybePop())
+          : TeachingPlannerResponsiveContent(
+              maxWidth: 1240,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _WorkspaceHero(
+                    lesson: selected!,
+                    resourceCount: resources.length,
+                  ),
+                  const SizedBox(height: TeachingPlannerDesign.space16),
+                  TeachingPlannerResponsiveSplit(
+                    breakpoint: TeachingPlannerBreakpoints.twoPane,
+                    sideWidth: 300,
+                    sideFirstOnCompact: true,
+                    side: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _LessonPicker(
+                          lessons: lessons,
+                          value: selected.id,
+                          onChanged: (value) =>
+                              setState(() => _lessonId = value),
                         ),
-                      ),
+                        const SizedBox(height: TeachingPlannerDesign.space12),
+                        _QuickActions(
+                          onNote: () => _addNote(selected, mathFirst: false),
+                          onMath: () => _addNote(selected, mathFirst: true),
+                          onFile: () => _addFile(selected),
+                          onLink: () => _addLink(selected),
+                          onGeometry: () => _addGeometry(selected),
+                        ),
+                      ],
                     ),
-                  );
-                },
+                    primary: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TeachingPlannerSectionHeader(
+                          title: 'Materials for this lesson',
+                          subtitle: resources.isEmpty
+                              ? 'Add the notes, files and visuals you want ready before class.'
+                              : '${resources.length} item${resources.length == 1 ? '' : 's'} ready for teaching.',
+                          icon: Icons.inventory_2_outlined,
+                        ),
+                        const SizedBox(height: TeachingPlannerDesign.space12),
+                        if (resources.isEmpty)
+                          _EmptyResources(
+                            onAdd: () => _addNote(selected, mathFirst: false),
+                          )
+                        else
+                          _ResourceGrid(
+                            resources: resources,
+                            onOpen: (item) => _openResource(item),
+                            onEdit: (item) => _editResource(item),
+                            onArchive: (item) => _archiveResource(item),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: TeachingPlannerDesign.space20),
+                  _TeachingPackCard(
+                    lesson: selected,
+                    resourceCount: resources.length,
+                    onExport: resources.isEmpty
+                        ? null
+                        : () => _exportPack(selected, resources),
+                    onImport: () => _importPack(selected),
+                  ),
+                ],
               ),
-      ),
+            ),
     );
   }
 
@@ -256,8 +261,9 @@ class _TeachingWorkspaceScreenState
         break;
       case TeachingResourceKind.link:
         final uri = Uri.tryParse(item.url ?? '');
-        if (uri != null)
+        if (uri != null) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
         break;
       case TeachingResourceKind.file:
         final path = item.localRelativePath;
@@ -277,6 +283,14 @@ class _TeachingWorkspaceScreenState
           return;
         }
         await OpenFilex.open(file.path);
+        break;
+      case TeachingResourceKind.paper:
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Open linked papers from the syllabus Resources & Papers section.'),
+          ),
+        );
         break;
       case TeachingResourceKind.geometry:
         final json = item.geometryJson;
@@ -444,8 +458,9 @@ class _TeachingWorkspaceScreenState
           : picked.path != null
           ? await File(picked.path!).readAsString()
           : null;
-      if (source == null)
+      if (source == null) {
         throw const FormatException('Teaching Pack could not be read.');
+      }
       final pack = const TeachingPackCodec().decode(source);
       if (!mounted) return;
       final confirmed = await showDialog<bool>(
@@ -500,10 +515,11 @@ class _TeachingWorkspaceScreenState
           String? relativePath;
           if (sourceResource.kind == TeachingResourceKind.file) {
             final bytes = payload.fileBytes;
-            if (bytes == null)
+            if (bytes == null) {
               throw const FormatException(
                 'Teaching Pack file content is missing.',
               );
+            }
             relativePath = await store.writeBytes(
               resourceId: id,
               fileName: sourceResource.originalFileName ?? sourceResource.title,
@@ -584,56 +600,86 @@ class _WorkspaceHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.primaryContainer.withValues(alpha: 0.78),
-            theme.colorScheme.surface,
-          ],
-        ),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Wrap(
-        spacing: 18,
-        runSpacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        alignment: WrapAlignment.spaceBetween,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Column(
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return TeachingPlannerSurfaceCard(
+      tone: TeachingPlannerTone.teal,
+      tint: true,
+      borderRadius: TeachingPlannerDesign.radiusHero,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < TeachingPlannerBreakpoints.medium;
+          final copy = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const TeachingPlannerIconBadge(
+                    icon: Icons.inventory_2_outlined,
+                    tone: TeachingPlannerTone.teal,
+                    size: 46,
+                    iconSize: 24,
+                  ),
+                  const SizedBox(width: TeachingPlannerDesign.space12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Ready-to-teach desk',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: colors.teal,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: TeachingPlannerDesign.space4),
+                        Text(
+                          lesson.title,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: colors.ink,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: TeachingPlannerDesign.space12),
+              Text(
+                'Keep exactly what you need for class here: notes, PDFs, images, videos, links, math and geometry.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colors.inkMuted,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          );
+          final count = TeachingPlannerPill(
+            label: '$resourceCount resources',
+            icon: Icons.attach_file_rounded,
+            tone: TeachingPlannerTone.teal,
+          );
+          if (compact) {
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Ready-to-teach desk',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  lesson.title,
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Keep exactly what you need for class here: notes, PDFs, images, videos, links, math and geometry.',
-                ),
+                copy,
+                const SizedBox(height: TeachingPlannerDesign.space14),
+                count,
               ],
-            ),
-          ),
-          Chip(
-            avatar: const Icon(Icons.attach_file_rounded, size: 18),
-            label: Text('$resourceCount resources'),
-          ),
-        ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: copy),
+              const SizedBox(width: TeachingPlannerDesign.space20),
+              count,
+            ],
+          );
+        },
       ),
     );
   }
@@ -651,29 +697,42 @@ class _LessonPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Which lesson are you preparing?',
-        prefixIcon: Icon(Icons.menu_book_rounded),
-        border: OutlineInputBorder(),
-      ),
-      items: lessons
-          .map(
-            (lesson) => DropdownMenuItem<String>(
-              value: lesson.id,
-              child: Text(
-                lesson.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+    return TeachingPlannerSurfaceCard(
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const TeachingPlannerSectionHeader(
+            title: 'Lesson in focus',
+            subtitle: 'Switch workspace without leaving this screen.',
+            icon: Icons.menu_book_outlined,
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space12),
+          DropdownButtonFormField<String>(
+            initialValue: value,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Which lesson are you preparing?',
+              prefixIcon: Icon(Icons.menu_book_rounded),
             ),
-          )
-          .toList(),
-      onChanged: (value) {
-        if (value != null) onChanged(value);
-      },
+            items: lessons
+                .map(
+                  (lesson) => DropdownMenuItem<String>(
+                    value: lesson.id,
+                    child: Text(
+                      lesson.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) onChanged(value);
+            },
+          ),
+        ],
+      ),
     );
   }
 }
@@ -695,39 +754,32 @@ class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = [
-      _ActionData('Note', Icons.note_add_outlined, onNote),
-      _ActionData('Math note', Icons.functions_rounded, onMath),
-      _ActionData('File / media', Icons.attach_file_rounded, onFile),
-      _ActionData('Link', Icons.link_rounded, onLink),
-      _ActionData('Geometry', Icons.architecture_rounded, onGeometry),
+      _ActionData('Note', Icons.note_add_outlined, onNote, TeachingPlannerTone.primary),
+      _ActionData('Math note', Icons.functions_rounded, onMath, TeachingPlannerTone.purple),
+      _ActionData('File / media', Icons.attach_file_rounded, onFile, TeachingPlannerTone.teal),
+      _ActionData('Link', Icons.link_rounded, onLink, TeachingPlannerTone.orange),
+      _ActionData('Geometry', Icons.architecture_rounded, onGeometry, TeachingPlannerTone.coral),
     ];
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final itemWidth = width >= 900
-            ? (width - 48) / 5
-            : width >= 520
-            ? (width - 12) / 2
-            : width;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final action in actions)
-              SizedBox(
-                width: itemWidth,
-                child: FilledButton.tonalIcon(
-                  onPressed: action.onTap,
-                  icon: Icon(action.icon),
-                  label: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    child: Text(action.label),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const TeachingPlannerSectionHeader(
+          title: 'Add material',
+          subtitle: 'Use only the resource types needed for this lesson.',
+          icon: Icons.add_circle_outline_rounded,
+        ),
+        const SizedBox(height: TeachingPlannerDesign.space10),
+        for (var index = 0; index < actions.length; index++) ...[
+          TeachingPlannerActionTile(
+            icon: actions[index].icon,
+            label: actions[index].label,
+            onTap: actions[index].onTap,
+            tone: actions[index].tone,
+          ),
+          if (index != actions.length - 1)
+            const SizedBox(height: TeachingPlannerDesign.space8),
+        ],
+      ],
     );
   }
 }
@@ -748,12 +800,12 @@ class _ResourceGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 980
+        final columns = constraints.maxWidth >= TeachingPlannerBreakpoints.extraWide
             ? 3
-            : constraints.maxWidth >= 600
+            : constraints.maxWidth >= 680
             ? 2
             : 1;
-        const gap = 12.0;
+        const gap = TeachingPlannerDesign.space12;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         return Wrap(
           spacing: gap,
@@ -790,66 +842,64 @@ class _ResourceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    final tone = _toneForResource(item);
+    return TeachingPlannerSurfaceCard(
+      onTap: onOpen,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: theme.colorScheme.secondaryContainer,
-                    child: Icon(_iconFor(item)),
+              TeachingPlannerIconBadge(icon: _iconFor(item), tone: tone),
+              const SizedBox(width: TeachingPlannerDesign.space10),
+              Expanded(
+                child: Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w900,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  PopupMenuButton<String>(
-                    tooltip: 'Resource actions',
-                    onSelected: (value) {
-                      if (value == 'edit') onEdit();
-                      if (value == 'archive') onArchive();
-                    },
-                    itemBuilder: (_) => [
-                      if (item.kind != TeachingResourceKind.file)
-                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      const PopupMenuItem(
-                        value: 'archive',
-                        child: Text('Archive'),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                _resourceSummary(item),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  Chip(label: Text(_kindLabel(item))),
-                  Chip(label: Text(_roleLabel(item.role))),
+              PopupMenuButton<String>(
+                tooltip: 'Resource actions',
+                onSelected: (value) {
+                  if (value == 'edit') onEdit();
+                  if (value == 'archive') onArchive();
+                },
+                itemBuilder: (_) => [
+                  if (item.kind != TeachingResourceKind.file)
+                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  const PopupMenuItem(value: 'archive', child: Text('Archive')),
                 ],
               ),
             ],
           ),
-        ),
+          const SizedBox(height: TeachingPlannerDesign.space10),
+          Text(
+            _resourceSummary(item),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colors.inkMuted,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space12),
+          Wrap(
+            spacing: TeachingPlannerDesign.space8,
+            runSpacing: TeachingPlannerDesign.space8,
+            children: [
+              TeachingPlannerPill(label: _kindLabel(item), tone: tone),
+              TeachingPlannerPill(label: _roleLabel(item.role)),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -869,98 +919,65 @@ class _TeachingPackCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return TeachingPlannerSurfaceCard(
+      tone: TeachingPlannerTone.purple,
+      tint: true,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 720;
+          final compact = constraints.maxWidth < TeachingPlannerBreakpoints.medium;
           final text = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.inventory_2_outlined),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Shareable Teaching Pack',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ],
+              const TeachingPlannerSectionHeader(
+                icon: Icons.inventory_2_outlined,
+                title: 'Shareable Teaching Pack',
+                subtitle:
+                    'Package this lesson’s real resources into one .edtp file. The receiving teacher chooses where to add it; nothing is silently replaced.',
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Principal or teacher can package this lesson’s resources into one .edtp file. The receiving teacher chooses the lesson to add it to—nothing is silently replaced.',
-              ),
-              const SizedBox(height: 6),
+              const SizedBox(height: TeachingPlannerDesign.space10),
               Text(
                 '$resourceCount resources in “${lesson.title}”.',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.inkMuted,
+                ),
               ),
             ],
           );
-
-          Widget buildButtons({required bool stacked}) {
-            final openButton = OutlinedButton.icon(
-              onPressed: onImport,
-              icon: const Icon(Icons.file_open_outlined),
-              label: const Text('Open .edtp'),
-            );
-            final shareButton = FilledButton.icon(
-              onPressed: onExport,
-              icon: const Icon(Icons.ios_share_rounded),
-              label: const Text('Share this pack'),
-            );
-            if (stacked) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [openButton, const SizedBox(height: 10), shareButton],
-              );
-            }
-            return Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 10,
-              runSpacing: 10,
-              children: [openButton, shareButton],
-            );
-          }
-
-          if (wide) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          final buttons = Wrap(
+            alignment: WrapAlignment.end,
+            spacing: TeachingPlannerDesign.space10,
+            runSpacing: TeachingPlannerDesign.space10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onImport,
+                icon: const Icon(Icons.file_open_outlined),
+                label: const Text('Open .edtp'),
+              ),
+              FilledButton.icon(
+                onPressed: onExport,
+                icon: const Icon(Icons.ios_share_rounded),
+                label: const Text('Share this pack'),
+              ),
+            ],
+          );
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(flex: 3, child: text),
-                const SizedBox(width: 24),
-                Flexible(
-                  flex: 2,
-                  child: Align(
-                    alignment: Alignment.topRight,
-                    child: buildButtons(stacked: constraints.maxWidth < 880),
-                  ),
-                ),
+                text,
+                const SizedBox(height: TeachingPlannerDesign.space16),
+                buttons,
               ],
             );
           }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              text,
-              const SizedBox(height: 16),
-              buildButtons(stacked: constraints.maxWidth < 520),
+              Expanded(flex: 3, child: text),
+              const SizedBox(width: TeachingPlannerDesign.space20),
+              Flexible(flex: 2, child: buttons),
             ],
           );
         },
@@ -1022,7 +1039,6 @@ class _NoteResourceSheetState extends ConsumerState<_NoteResourceSheet> {
           controller: _title,
           decoration: const InputDecoration(
             labelText: 'Note title',
-            border: OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: 12),
@@ -1038,7 +1054,6 @@ class _NoteResourceSheetState extends ConsumerState<_NoteResourceSheet> {
               labelText: 'What should the teacher explain?',
               hintText:
                   'Key explanation, examples, formula steps, questions to ask…',
-              border: const OutlineInputBorder(),
               suffixIcon: IconButton(
                 tooltip: isMathActive
                     ? 'Math keyboard active'
@@ -1109,7 +1124,6 @@ class _LinkResourceSheetState extends State<_LinkResourceSheet> {
           controller: _title,
           decoration: const InputDecoration(
             labelText: 'Link title',
-            border: OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: 12),
@@ -1118,7 +1132,6 @@ class _LinkResourceSheetState extends State<_LinkResourceSheet> {
           keyboardType: TextInputType.url,
           decoration: const InputDecoration(
             labelText: 'https://…',
-            border: OutlineInputBorder(),
             prefixIcon: Icon(Icons.link_rounded),
           ),
         ),
@@ -1132,8 +1145,9 @@ class _LinkResourceSheetState extends State<_LinkResourceSheet> {
         final uri = Uri.tryParse(_url.text.trim());
         if (_title.text.trim().isEmpty ||
             uri == null ||
-            !(uri.isScheme('http') || uri.isScheme('https')))
+            !(uri.isScheme('http') || uri.isScheme('https'))) {
           return;
+        }
         Navigator.pop(
           context,
           _TextResourceDraft(
@@ -1156,41 +1170,23 @@ class _EditorShell extends StatelessWidget {
   final String title;
   final List<Widget> children;
   final VoidCallback onSave;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        8,
-        16,
-        16 + MediaQuery.viewInsetsOf(context).bottom,
+    final editing = title.toLowerCase().startsWith('edit');
+    return TeachingPlannerSheetFrame(
+      title: title,
+      subtitle:
+          'This resource stays attached to the selected lesson and is kept inside the local Teaching Planner workspace.',
+      icon: Icons.inventory_2_outlined,
+      action: FilledButton.icon(
+        onPressed: onSave,
+        icon: const Icon(Icons.check_rounded),
+        label: Text(editing ? 'Save changes' : 'Add to lesson'),
       ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 16),
-              ...children,
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                onPressed: onSave,
-                icon: const Icon(Icons.check_rounded),
-                label: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('Add to lesson'),
-                ),
-              ),
-            ],
-          ),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
       ),
     );
   }
@@ -1206,7 +1202,6 @@ class _RolePicker extends StatelessWidget {
       initialValue: value,
       decoration: const InputDecoration(
         labelText: 'Use this as',
-        border: OutlineInputBorder(),
       ),
       items: TeachingResourceRole.values
           .map(
@@ -1224,94 +1219,40 @@ class _RolePicker extends StatelessWidget {
 class _NoLessons extends StatelessWidget {
   const _NoLessons({required this.onPlanLesson});
   final VoidCallback onPlanLesson;
+
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.inventory_2_outlined, size: 64),
-            const SizedBox(height: 16),
-            Text(
-              'Create a lesson first',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Teaching materials live inside lessons, so every note or file stays connected to what you are going to teach.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onPlanLesson,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Plan a lesson'),
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) {
+    return TeachingPlannerResponsiveContent(
+      maxWidth: 620,
+      child: TeachingPlannerEmptyState(
+        icon: Icons.inventory_2_outlined,
+        title: 'Create a lesson first',
+        message:
+            'Teaching materials live inside lessons, so every note or file stays connected to what you are going to teach.',
+        actionLabel: 'Plan a lesson',
+        onAction: onPlanLesson,
+        tone: TeachingPlannerTone.teal,
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _EmptyResources extends StatelessWidget {
   const _EmptyResources({required this.onAdd});
   final VoidCallback onAdd;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          const Icon(Icons.auto_awesome_outlined, size: 38),
-          const SizedBox(height: 10),
-          const Text(
-            'Nothing to carry to class yet',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Start with a short teaching note. Add files, links, math or geometry only when you need them.',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 14),
-          OutlinedButton.icon(
-            onPressed: onAdd,
-            icon: const Icon(Icons.note_add_outlined),
-            label: const Text('Add first note'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, required this.subtitle});
-  final String title;
-  final String subtitle;
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        title,
-        style: Theme.of(
-          context,
-        ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-      ),
-      const SizedBox(height: 4),
-      Text(
-        subtitle,
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-      ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    return TeachingPlannerEmptyState(
+      icon: Icons.auto_awesome_outlined,
+      title: 'Nothing to carry to class yet',
+      message:
+          'Start with a short teaching note. Add files, links, math or geometry only when you need them.',
+      actionLabel: 'Add first note',
+      onAction: onAdd,
+      tone: TeachingPlannerTone.teal,
+    );
+  }
 }
 
 class _TextResourceDraft {
@@ -1326,10 +1267,21 @@ class _TextResourceDraft {
 }
 
 class _ActionData {
-  const _ActionData(this.label, this.icon, this.onTap);
+  const _ActionData(this.label, this.icon, this.onTap, this.tone);
   final String label;
   final IconData icon;
   final VoidCallback onTap;
+  final TeachingPlannerTone tone;
+}
+
+TeachingPlannerTone _toneForResource(TeachingResource item) {
+  return switch (item.kind) {
+    TeachingResourceKind.note => TeachingPlannerTone.primary,
+    TeachingResourceKind.file => TeachingPlannerTone.teal,
+    TeachingResourceKind.link => TeachingPlannerTone.orange,
+    TeachingResourceKind.paper => TeachingPlannerTone.primary,
+    TeachingResourceKind.geometry => TeachingPlannerTone.purple,
+  };
 }
 
 IconData _iconFor(TeachingResource item) {
@@ -1344,6 +1296,7 @@ IconData _iconFor(TeachingResource item) {
     TeachingResourceKind.note => Icons.sticky_note_2_outlined,
     TeachingResourceKind.file => Icons.insert_drive_file_outlined,
     TeachingResourceKind.link => Icons.link_rounded,
+    TeachingResourceKind.paper => Icons.description_outlined,
     TeachingResourceKind.geometry => Icons.architecture_rounded,
   };
 }
@@ -1360,6 +1313,7 @@ String _kindLabel(TeachingResource item) {
     TeachingResourceKind.note => 'Note',
     TeachingResourceKind.file => 'File',
     TeachingResourceKind.link => 'Link',
+    TeachingResourceKind.paper => 'Paper',
     TeachingResourceKind.geometry => 'Geometry',
   };
 }
@@ -1368,6 +1322,7 @@ String _resourceSummary(TeachingResource item) => switch (item.kind) {
   TeachingResourceKind.note => item.body ?? '',
   TeachingResourceKind.link => item.url ?? '',
   TeachingResourceKind.file => item.originalFileName ?? 'Attached file',
+  TeachingResourceKind.paper => 'Linked EduSheet saved paper',
   TeachingResourceKind.geometry => 'Editable EduSheet geometry diagram',
 };
 

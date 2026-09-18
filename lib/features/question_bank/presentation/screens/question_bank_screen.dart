@@ -14,14 +14,14 @@ class QuestionBankScreen extends ConsumerWidget {
     final state = ref.watch(questionBankProvider);
     final notifier = ref.read(questionBankProvider.notifier);
     final questions = state.filteredQuestions;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black,
+        foregroundColor: scheme.onSurface,
         title: const Text(
           'Question Bank',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -33,20 +33,14 @@ class QuestionBankScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
             child: Container(
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
+                color: scheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: Border.all(color: scheme.outlineVariant),
               ),
               child: TextField(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'Search questions or tags...',
-                  prefixIcon: Icon(Icons.search, color: Colors.blue),
+                  prefixIcon: Icon(Icons.search, color: scheme.primary),
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
@@ -68,12 +62,12 @@ class QuestionBankScreen extends ConsumerWidget {
                   label: const Text('Favorites'),
                   selected: state.showOnlyFavorites,
                   onSelected: (_) => notifier.toggleShowOnlyFavorites(),
-                  backgroundColor: Theme.of(context).colorScheme.surface,
+                  backgroundColor: scheme.surfaceContainerLow,
                   selectedColor: Colors.red.withValues(alpha: 0.1),
                   labelStyle: TextStyle(
                     color: state.showOnlyFavorites
                         ? Colors.red
-                        : (isDark ? Colors.white70 : Colors.black87),
+                        : scheme.onSurfaceVariant,
                     fontWeight: state.showOnlyFavorites
                         ? FontWeight.bold
                         : FontWeight.normal,
@@ -84,9 +78,7 @@ class QuestionBankScreen extends ConsumerWidget {
                   side: BorderSide(
                     color: state.showOnlyFavorites
                         ? Colors.red.withValues(alpha: 0.2)
-                        : (isDark
-                              ? Colors.white.withValues(alpha: 0.1)
-                              : Colors.grey[300]!),
+                        : scheme.outlineVariant,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -133,13 +125,13 @@ class QuestionBankScreen extends ConsumerWidget {
                         Icon(
                           Icons.search_off_rounded,
                           size: 64,
-                          color: Colors.grey[300],
+                          color: scheme.onSurfaceVariant.withValues(alpha: 0.38),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           'No questions found.',
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color: scheme.onSurfaceVariant,
                             fontSize: 16,
                           ),
                         ),
@@ -167,8 +159,8 @@ class QuestionBankScreen extends ConsumerWidget {
             builder: (context) => const AddEditQuestionScreen(),
           ),
         ),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: const Icon(Icons.add),
       ),
@@ -184,7 +176,9 @@ class _QuestionBankCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     Color diffColor;
     switch (q.difficulty) {
       case Difficulty.easy:
@@ -201,7 +195,7 @@ class _QuestionBankCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -210,7 +204,7 @@ class _QuestionBankCard extends StatelessWidget {
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -239,7 +233,7 @@ class _QuestionBankCard extends StatelessWidget {
                       q.isFavorite
                           ? Icons.favorite_rounded
                           : Icons.favorite_outline_rounded,
-                      color: q.isFavorite ? Colors.red : Colors.grey[400],
+                      color: q.isFavorite ? Colors.red : scheme.onSurfaceVariant,
                       size: 20,
                     ),
                     onPressed: () => notifier.toggleFavorite(q.question.id),
@@ -412,17 +406,13 @@ class _FilterDropdown<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.1)
-              : Colors.grey[300]!,
-        ),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: DropdownButton<T>(
         value: value,

@@ -13,11 +13,21 @@ import 'package:edusheet/features/editor/data/repositories/local_paper_repositor
 import 'package:edusheet/features/editor/services/autosave_coordinator.dart';
 import 'package:edusheet/features/editor/services/question_copy_service.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
+import 'package:edusheet/features/guided_experience/demo/guided_demo_controller.dart';
+import 'package:edusheet/features/guided_experience/demo/guided_demo_providers.dart';
 
 part 'editor_provider.g.dart';
 
-final paperRepositoryProvider = Provider<PaperRepository>((ref) {
+final productionPaperRepositoryProvider = Provider<PaperRepository>((ref) {
   return LocalPaperRepository();
+});
+
+final paperRepositoryProvider = Provider<PaperRepository>((ref) {
+  final demoSession = ref.watch(guidedDemoControllerProvider);
+  if (isPaperDemoActive(demoSession)) {
+    return ref.watch(demoPaperRepositoryProvider);
+  }
+  return ref.watch(productionPaperRepositoryProvider);
 });
 
 final savedPapersProvider = FutureProvider.autoDispose<List<Paper>>((ref) {
@@ -56,6 +66,17 @@ final editorSaveStatusProvider = StateProvider<AutosaveStatus>(
   (ref) => const AutosaveStatus(AutosavePhase.idle),
 );
 
+@immutable
+class EditorSessionSnapshot {
+  const EditorSessionSnapshot({
+    required this.paper,
+    required this.currentDocumentPersisted,
+  });
+
+  final Paper paper;
+  final bool currentDocumentPersisted;
+}
+
 @Riverpod(keepAlive: true)
 class EditorState extends _$EditorState {
   static const int _historyLimit = 50;
@@ -64,28 +85,18 @@ class EditorState extends _$EditorState {
     geometryResolver: GeometryDiagramRegistry.instance.diagramFor,
   );
 
-  late final AutosaveCoordinator<Paper> _autosave;
+  late AutosaveCoordinator<Paper> _autosave;
   final List<Paper> _undoStack = [];
   final List<Paper> _redoStack = [];
   bool _historyNavigation = false;
   final Set<String> _persistedDocumentIds = <String>{};
+  final Set<String> _unsavedEditedIds = <String>{};
 
   @override
   Paper build() {
     final repository = ref.read(paperRepositoryProvider);
-    _autosave = AutosaveCoordinator<Paper>(
-      save: (paper) async {
-        await repository.savePaper(paper);
-        _persistedDocumentIds.add(paper.id);
-      },
-      onStatus: (status) {
-        ref.read(editorSaveStatusProvider.notifier).state = status;
-        if (status.phase == AutosavePhase.saved) {
-          ref.invalidate(savedPapersProvider);
-        }
-      },
-    );
-    ref.onDispose(_autosave.dispose);
+    _autosave = _createAutosaveCoordinator(repository);
+    ref.onDispose(() => _autosave.dispose());
 
     listenSelf((previous, next) {
       if (previous != null && previous != next) {
@@ -93,6 +104,9 @@ class EditorState extends _$EditorState {
           _undoStack.add(previous);
           if (_undoStack.length > _historyLimit) _undoStack.removeAt(0);
           _redoStack.clear();
+          if (!_persistedDocumentIds.contains(next.id)) {
+            _unsavedEditedIds.add(next.id);
+          }
         }
         if (_shouldAutosave(next)) {
           _autosave.schedule(next);
@@ -104,6 +118,29 @@ class EditorState extends _$EditorState {
     });
 
     return _newPaper();
+  }
+
+  AutosaveCoordinator<Paper> _createAutosaveCoordinator(
+    PaperRepository repository,
+  ) {
+    return AutosaveCoordinator<Paper>(
+      save: (paper) async {
+        await repository.savePaper(paper);
+        _persistedDocumentIds.add(paper.id);
+        _unsavedEditedIds.remove(paper.id);
+      },
+      onStatus: (status) {
+        ref.read(editorSaveStatusProvider.notifier).state = status;
+        if (status.phase == AutosavePhase.saved) {
+          ref.invalidate(savedPapersProvider);
+        }
+      },
+    );
+  }
+
+  void _rebindAutosaveRepository(PaperRepository repository) {
+    _autosave.dispose();
+    _autosave = _createAutosaveCoordinator(repository);
   }
 
   Paper _newPaper() {
@@ -136,8 +173,30 @@ class EditorState extends _$EditorState {
   }
 
   bool _shouldAutosave(Paper paper) {
-    return _persistedDocumentIds.contains(paper.id) ||
-        _isMeaningfulDraft(paper);
+    // Existing saved papers keep professional autosave behavior. A brand-new
+    // paper is not written to Saved Papers until the teacher explicitly saves
+    // it once. This prevents ghost "New Paper" entries when Create Paper is
+    // opened and then closed.
+    return _persistedDocumentIds.contains(paper.id);
+  }
+
+  bool get isCurrentPaperPersisted =>
+      _persistedDocumentIds.contains(state.id);
+
+  bool get hasMeaningfulUnsavedDraft =>
+      !isCurrentPaperPersisted &&
+      _unsavedEditedIds.contains(state.id) &&
+      _isMeaningfulDraft(state);
+
+  void discardCurrentUnsavedPaper() {
+    if (isCurrentPaperPersisted) return;
+    final discardedId = state.id;
+    _autosave.discardPending(resetStatus: false);
+    _unsavedEditedIds.remove(discardedId);
+    _replaceWithoutHistory(_newPaper());
+    ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(
+      AutosavePhase.idle,
+    );
   }
 
   bool _isMeaningfulDraft(Paper paper) {
@@ -167,8 +226,14 @@ class EditorState extends _$EditorState {
     await _autosave.flush();
   }
 
+  Future<void> flushPendingAutosave() => _autosave.flush();
+
+  bool isPaperPersisted(String paperId) =>
+      _persistedDocumentIds.contains(paperId);
+
   void loadPaper(Paper paper) {
     _autosave.discardPending(resetStatus: false);
+    _unsavedEditedIds.remove(paper.id);
     _persistedDocumentIds.add(paper.id);
     _replaceWithoutHistory(paper);
     ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(
@@ -176,12 +241,108 @@ class EditorState extends _$EditorState {
     );
   }
 
-  void reset() {
-    _autosave.discardPending(resetStatus: false);
+  EditorSessionSnapshot captureSessionSnapshot() {
+    return EditorSessionSnapshot(
+      paper: state,
+      currentDocumentPersisted: _persistedDocumentIds.contains(state.id),
+    );
+  }
+
+  Future<EditorSessionSnapshot> prepareForDemoIsolation() async {
+    // Demo Mode temporarily rebinds the editor to an isolated repository.
+    // Preserve a meaningful real draft with an explicit safety checkpoint
+    // before that repository switch. This is intentionally narrower than
+    // normal autosave: an untouched brand-new paper is still not persisted,
+    // so opening Create Paper and leaving it never creates a ghost entry.
+    if (!isCurrentPaperPersisted && hasMeaningfulUnsavedDraft) {
+      _autosave.schedule(state);
+    }
+    await _autosave.flush();
+    if (_autosave.status.phase == AutosavePhase.failed) {
+      throw StateError(
+        'The current paper could not be saved before starting Demo Mode.',
+      );
+    }
+    return captureSessionSnapshot();
+  }
+
+  Future<EditorSessionSnapshot> enterDemoIsolation(
+    PaperRepository demoRepository,
+  ) async {
+    final snapshot = await prepareForDemoIsolation();
+    _rebindAutosaveRepository(demoRepository);
+    _persistedDocumentIds.clear();
+    _unsavedEditedIds.clear();
     _replaceWithoutHistory(_newPaper());
     ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(
       AutosavePhase.idle,
     );
+    return snapshot;
+  }
+
+  Future<void> exitDemoIsolation(
+    EditorSessionSnapshot snapshot,
+    PaperRepository productionRepository,
+  ) async {
+    await _autosave.flush();
+    _rebindAutosaveRepository(productionRepository);
+    restoreSessionSnapshot(snapshot);
+  }
+
+  void restoreSessionSnapshot(EditorSessionSnapshot snapshot) {
+    _autosave.discardPending(resetStatus: false);
+    _persistedDocumentIds.clear();
+    _unsavedEditedIds.clear();
+    if (snapshot.currentDocumentPersisted) {
+      _persistedDocumentIds.add(snapshot.paper.id);
+    }
+    _replaceWithoutHistory(snapshot.paper);
+    if (!_shouldAutosave(snapshot.paper)) {
+      ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(
+        AutosavePhase.idle,
+      );
+    }
+  }
+
+  void reset() {
+    _autosave.discardPending(resetStatus: false);
+    _unsavedEditedIds.clear();
+    _replaceWithoutHistory(_newPaper());
+    ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(
+      AutosavePhase.idle,
+    );
+  }
+
+  /// Starts a fresh paper from a syllabus context without saving it merely
+  /// because Class/Subject were prefilled. New papers require one explicit
+  /// Save; after that, normal autosave handles subsequent edits.
+  Future<String> startNewPaperForSyllabus({
+    String? className,
+    String? subjectName,
+  }) async {
+    await _autosave.flush();
+    _autosave.discardPending(resetStatus: false);
+    _unsavedEditedIds.clear();
+    final base = _newPaper();
+    final cleanClass = className?.trim() ?? '';
+    final cleanSubject = subjectName?.trim() ?? '';
+    final paper = base.copyWith(
+      headerFields: base.headerFields.map((field) {
+        final normalized = field.label.trim().toLowerCase();
+        if (normalized == 'class' && cleanClass.isNotEmpty) {
+          return field.copyWith(value: cleanClass, isPlaceholder: false);
+        }
+        if (normalized == 'subject' && cleanSubject.isNotEmpty) {
+          return field.copyWith(value: cleanSubject, isPlaceholder: false);
+        }
+        return field;
+      }).toList(growable: false),
+    );
+    _replaceWithoutHistory(paper);
+    ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(
+      AutosavePhase.idle,
+    );
+    return paper.id;
   }
 
   bool get canUndo => _undoStack.isNotEmpty;

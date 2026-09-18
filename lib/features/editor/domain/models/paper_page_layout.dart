@@ -9,6 +9,19 @@ enum PaperPageOrientation { portrait, landscape }
 
 enum PaperPageNumberPosition { footerCenter, footerRight, headerRight }
 
+/// Explicit document columns. `useTemplate` preserves the selected paper style
+/// for older papers while Word Mode can opt into a document-owned layout.
+enum PaperPageColumns { useTemplate, one, two, three }
+
+extension PaperPageColumnsCount on PaperPageColumns {
+  int? get explicitCount => switch (this) {
+    PaperPageColumns.useTemplate => null,
+    PaperPageColumns.one => 1,
+    PaperPageColumns.two => 2,
+    PaperPageColumns.three => 3,
+  };
+}
+
 class PaperPageMargins {
   final double topPoints;
   final double rightPoints;
@@ -76,6 +89,14 @@ class PaperPageLayout {
   final double lineSpacing;
   final double paragraphSpacingPoints;
   final PaperPageNumberPosition pageNumberPosition;
+  final PaperPageColumns columns;
+  final double columnSpacingPoints;
+  final String watermarkText;
+  final double watermarkOpacity;
+  final int pageBackgroundArgb;
+  final bool showRulers;
+  final bool showGrid;
+  final double gridSpacingPoints;
 
   const PaperPageLayout({
     this.pageSize = PaperPageSize.useTemplate,
@@ -86,6 +107,14 @@ class PaperPageLayout {
     this.lineSpacing = 1.15,
     this.paragraphSpacingPoints = 6,
     this.pageNumberPosition = PaperPageNumberPosition.footerCenter,
+    this.columns = PaperPageColumns.useTemplate,
+    this.columnSpacingPoints = 18,
+    this.watermarkText = '',
+    this.watermarkOpacity = 0.10,
+    this.pageBackgroundArgb = 0xFFFFFFFF,
+    this.showRulers = false,
+    this.showGrid = false,
+    this.gridSpacingPoints = 18,
   });
 
   static const defaults = PaperPageLayout();
@@ -99,6 +128,14 @@ class PaperPageLayout {
     double? lineSpacing,
     double? paragraphSpacingPoints,
     PaperPageNumberPosition? pageNumberPosition,
+    PaperPageColumns? columns,
+    double? columnSpacingPoints,
+    String? watermarkText,
+    double? watermarkOpacity,
+    int? pageBackgroundArgb,
+    bool? showRulers,
+    bool? showGrid,
+    double? gridSpacingPoints,
   }) {
     return PaperPageLayout(
       pageSize: pageSize ?? this.pageSize,
@@ -110,6 +147,14 @@ class PaperPageLayout {
       paragraphSpacingPoints:
           paragraphSpacingPoints ?? this.paragraphSpacingPoints,
       pageNumberPosition: pageNumberPosition ?? this.pageNumberPosition,
+      columns: columns ?? this.columns,
+      columnSpacingPoints: columnSpacingPoints ?? this.columnSpacingPoints,
+      watermarkText: watermarkText ?? this.watermarkText,
+      watermarkOpacity: watermarkOpacity ?? this.watermarkOpacity,
+      pageBackgroundArgb: pageBackgroundArgb ?? this.pageBackgroundArgb,
+      showRulers: showRulers ?? this.showRulers,
+      showGrid: showGrid ?? this.showGrid,
+      gridSpacingPoints: gridSpacingPoints ?? this.gridSpacingPoints,
     );
   }
 
@@ -122,6 +167,14 @@ class PaperPageLayout {
     'lineSpacing': lineSpacing,
     'paragraphSpacingPoints': paragraphSpacingPoints,
     'pageNumberPosition': pageNumberPosition.name,
+    'columns': columns.name,
+    'columnSpacingPoints': columnSpacingPoints,
+    'watermarkText': watermarkText,
+    'watermarkOpacity': watermarkOpacity,
+    'pageBackgroundArgb': pageBackgroundArgb,
+    'showRulers': showRulers,
+    'showGrid': showGrid,
+    'gridSpacingPoints': gridSpacingPoints,
   };
 
   factory PaperPageLayout.fromJson(Map<String, dynamic> json) {
@@ -174,6 +227,31 @@ class PaperPageLayout {
         PaperPageNumberPosition.values,
         json['pageNumberPosition'],
         PaperPageNumberPosition.footerCenter,
+      ),
+      columns: enumValue(
+        PaperPageColumns.values,
+        json['columns'],
+        PaperPageColumns.useTemplate,
+      ),
+      columnSpacingPoints: _bounded(
+        (json['columnSpacingPoints'] as num?)?.toDouble() ?? 18,
+        min: 0,
+        max: 72,
+      ),
+      watermarkText: json['watermarkText']?.toString() ?? '',
+      watermarkOpacity: _bounded(
+        (json['watermarkOpacity'] as num?)?.toDouble() ?? 0.10,
+        min: 0.02,
+        max: 0.35,
+      ),
+      pageBackgroundArgb: (json['pageBackgroundArgb'] as num?)?.toInt() ??
+          0xFFFFFFFF,
+      showRulers: json['showRulers'] == true,
+      showGrid: json['showGrid'] == true,
+      gridSpacingPoints: _bounded(
+        (json['gridSpacingPoints'] as num?)?.toDouble() ?? 18,
+        min: 6,
+        max: 72,
       ),
     );
   }

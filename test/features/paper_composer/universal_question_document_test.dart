@@ -66,4 +66,32 @@ void main() {
     expect(document.blocks.single.kind, UniversalQuestionBlockKind.prompt);
     expect(UniversalQuestionAdapter.authoringSummary(draft), 'Free writing');
   });
+
+  test('persisted question projects without constructing editor-only state', () {
+    final question = Question(
+      id: 'persisted',
+      text: 'Prompt',
+      options: [QuestionOption(id: 'a', text: 'A')],
+      tableData: const QuestionTable(
+        headers: ['x'],
+        rows: [
+          ['1'],
+        ],
+      ),
+    );
+
+    final persisted = UniversalQuestionAdapter.fromQuestion(question);
+    final authoring = UniversalQuestionAdapter.fromDraft(
+      QuestionDraft.fromQuestion(question),
+    );
+
+    expect(
+      persisted.blocks.map(
+        (block) => '${block.kind.name}:${block.id}:${block.itemCount}',
+      ),
+      authoring.blocks.map(
+        (block) => '${block.kind.name}:${block.id}:${block.itemCount}',
+      ),
+    );
+  });
 }

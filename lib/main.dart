@@ -6,12 +6,16 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/services.dart';
 import 'core/constants/app_constants.dart';
+import 'core/navigation/windows_escape_back_scope.dart';
 import 'shared/presentation/screens/home_screen.dart';
+import 'shared/design/app_theme.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_wrapper.dart';
 import 'shared/presentation/providers/theme_provider.dart';
 import 'shared/presentation/widgets/app_update_gate.dart';
 import 'shared/presentation/widgets/adaptive_app_viewport.dart';
 import 'shared/localization/edusheet_localizations.dart';
+import 'features/guided_experience/presentation/widgets/guide_overlay_host.dart';
+import 'features/guided_experience/presentation/widgets/smart_work_activity_host.dart';
 import 'features/pdf/services/question_paper_service.dart';
 import 'features/document_reader/domain/models/document_open_request.dart';
 import 'features/document_reader/presentation/providers/document_provider.dart';
@@ -155,76 +159,10 @@ class _MyAppState extends ConsumerState<MyApp> {
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       themeMode: themeSettings.mode,
-      theme: ThemeData(
-        // ...
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: Colors.grey[50],
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-        ),
-        cardTheme: CardThemeData(
-          color: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade200),
-          ),
-        ),
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
-          brightness: Brightness.dark,
-          surface: const Color(0xFF1A1C1E),
-          surfaceContainer: const Color(0xFF202225),
-        ),
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF111315),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF1A1C1E),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF1A1C1E),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
-          ),
-        ),
-      ),
+      theme: EduSheetTheme.light(seedColor: seedColor),
+      darkTheme: EduSheetTheme.dark(seedColor: seedColor),
+      themeAnimationDuration: const Duration(milliseconds: 240),
+      themeAnimationCurve: Curves.easeOutCubic,
       localizationsDelegates: const [
         EduSheetLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
@@ -233,8 +171,16 @@ class _MyAppState extends ConsumerState<MyApp> {
         FlutterQuillLocalizations.delegate,
       ],
       supportedLocales: const [Locale('en', 'US'), Locale('hi', 'IN')],
-      builder: (context, child) =>
-          AdaptiveAppViewport(child: MathKeyboardWrapper(child: child!)),
+      builder: (context, child) => AdaptiveAppViewport(
+        child: SmartWorkActivityHost(
+          child: WindowsEscapeBackScope(
+            navigatorKey: _navigatorKey,
+            child: GuideOverlayHost(
+              child: MathKeyboardWrapper(child: child!),
+            ),
+          ),
+        ),
+      ),
       home: const AppUpdateGate(child: HomeScreen()),
     );
   }

@@ -52,7 +52,7 @@ class _TextDocumentViewerState extends State<TextDocumentViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     return FutureBuilder<_TextPreviewData>(
       future: _future,
       builder: (context, snapshot) {
@@ -116,7 +116,7 @@ class _TextDocumentViewerState extends State<TextDocumentViewer> {
                         fontFamily: 'monospace',
                         fontSize: 13.5 * _fontScale,
                         height: 1.45,
-                        color: isDark ? Colors.white70 : Colors.black87,
+                        color: scheme.onSurface,
                       ),
                     ),
                   );

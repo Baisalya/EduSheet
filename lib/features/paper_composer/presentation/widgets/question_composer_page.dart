@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
@@ -6,6 +8,9 @@ import 'package:edusheet/features/geometry_builder/application/geometry_embed_la
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builder.dart';
+import 'package:edusheet/features/guided_experience/application/guided_experience_providers.dart';
+import 'package:edusheet/features/guided_experience/guides/create_paper_guide.dart';
+import 'package:edusheet/features/guided_experience/presentation/widgets/guide_anchor.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_expression_embed_builder.dart';
@@ -228,6 +233,13 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   void _handleBodyControllerChanged() {
     if (!mounted || !_bodyFocus.hasFocus) return;
     _syncInsertionAnchorFromController();
+    if (_bodyController.document.toPlainText().trim().isNotEmpty) {
+      unawaited(
+        ref
+            .read(guidedExperienceControllerProvider.notifier)
+            .notifyConditionSatisfied(CreatePaperGuideSteps.typeQuestion),
+      );
+    }
   }
 
   void _syncInsertionAnchorFromController() {
@@ -1022,6 +1034,26 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
         _structureError == null;
   }
 
+  Future<void> _notifyCreatePaperQuestionSaved() async {
+    final controller = ref.read(guidedExperienceControllerProvider.notifier);
+    var activeStep = ref.read(guidedExperienceControllerProvider).activeStep;
+
+    // A fast Save can legitimately happen while the optional authoring-tools
+    // explanation is still active. A successful real save is enough evidence
+    // to move past that informational step before satisfying the guarded save
+    // step; failed validation never reaches this method.
+    if (activeStep?.id == CreatePaperGuideSteps.authoringTools) {
+      await controller.advance();
+      activeStep = ref.read(guidedExperienceControllerProvider).activeStep;
+    }
+
+    if (activeStep?.id == CreatePaperGuideSteps.saveQuestion) {
+      await controller.notifyConditionSatisfied(
+        CreatePaperGuideSteps.saveQuestion,
+      );
+    }
+  }
+
   Future<void> _save({bool addAnother = false}) async {
     _setMarksFromText(_marksController.text);
     if (!_validate()) {
@@ -1109,6 +1141,11 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
     );
 
     if (!addAnother || widget.question != null) {
+      if (widget.question == null &&
+          widget.onSaveQuestion == null &&
+          !addAnother) {
+        unawaited(_notifyCreatePaperQuestionSaved());
+      }
       if (mounted) Navigator.pop(context, true);
       return;
     }
@@ -1435,133 +1472,139 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
 
   Widget _buildQuestionEditor(BuildContext context, bool compact) {
     final theme = Theme.of(context);
-    return Container(
-      key: _questionEditorKey,
-      decoration: BoxDecoration(
+    final radius = BorderRadius.circular(18);
+    final borderColor = _bodyError == null
+        ? theme.colorScheme.outlineVariant
+        : theme.colorScheme.error;
+
+    return GuideAnchor(
+      targetId: CreatePaperGuideTargets.questionEditor,
+      child: Material(
+        key: _questionEditorKey,
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: _bodyError == null
-              ? theme.colorScheme.outlineVariant
-              : theme.colorScheme.error,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(color: borderColor),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.edit_note_rounded, size: 20),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Question',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    if (!compact)
-                      IconButton(
-                        visualDensity: VisualDensity.compact,
-                        tooltip: _showFormatting
-                            ? 'Hide formatting'
-                            : 'Text formatting',
-                        onPressed: _toggleFormatting,
-                        icon: Icon(
-                          _showFormatting
-                              ? Icons.keyboard_arrow_up_rounded
-                              : Icons.format_bold_rounded,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.edit_note_rounded, size: 20),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Question',
+                          style: TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
+                      if (!compact)
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: _showFormatting
+                              ? 'Hide formatting'
+                              : 'Text formatting',
+                          onPressed: _toggleFormatting,
+                          icon: Icon(
+                            _showFormatting
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.format_bold_rounded,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ValueListenableBuilder<QuestionInsertionAnchor>(
+                    valueListenable: _insertionAnchor,
+                    builder: (context, anchor, _) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: QuestionInsertionStatus(
+                        anchor: anchor,
+                        isFocused: _bodyHasFocus,
+                        compact: compact,
+                        onTap: _returnToSavedInsertion,
+                      ),
+                    ),
+                  ),
+                  if (compact) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      'Tap in the question to move the cursor. Add, Math and Geometry below will use that exact position.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (_showFormatting) ...[
+              const Divider(height: 1),
+              QuillSimpleToolbar(
+                controller: _bodyController,
+                config: const QuillSimpleToolbarConfig(
+                  showFontFamily: false,
+                  showFontSize: false,
+                  showBoldButton: true,
+                  showItalicButton: true,
+                  showUnderLineButton: true,
+                  showStrikeThrough: false,
+                  showInlineCode: false,
+                  showColorButton: false,
+                  showBackgroundColorButton: false,
+                  showClearFormat: true,
+                  showHeaderStyle: false,
+                  showListNumbers: true,
+                  showListBullets: true,
+                  showListCheck: false,
+                  showCodeBlock: false,
+                  showQuote: false,
+                  showIndent: false,
+                  showLink: false,
+                  showUndo: false,
+                  showRedo: false,
+                  showDirection: false,
+                  showAlignmentButtons: false,
+                  showSubscript: false,
+                  showSuperscript: false,
+                  showSearchButton: false,
+                  multiRowsDisplay: false,
+                ),
+              ),
+            ],
+            const Divider(height: 1),
+            ConstrainedBox(
+              constraints: BoxConstraints(minHeight: compact ? 220 : 260),
+              child: QuillEditor(
+                controller: _bodyController,
+                focusNode: _bodyFocus,
+                scrollController: _bodyScroll,
+                config: QuillEditorConfig(
+                  placeholder:
+                      'Type the question exactly as students should read it…',
+                  padding: const EdgeInsets.all(14),
+                  // The page already owns vertical scrolling. Let the editor grow
+                  // with text/graphs instead of creating a second tiny scroll
+                  // viewport inside the question card. This keeps the caret and
+                  // the content being typed visually together after a diagram.
+                  scrollable: false,
+                  embedBuilders: [
+                    GeometryEmbedBuilder(),
+                    MathExpressionEmbedBuilder(onEdit: _editEmbeddedFormula),
                   ],
                 ),
-                const SizedBox(height: 4),
-                ValueListenableBuilder<QuestionInsertionAnchor>(
-                  valueListenable: _insertionAnchor,
-                  builder: (context, anchor, _) => Align(
-                    alignment: Alignment.centerLeft,
-                    child: QuestionInsertionStatus(
-                      anchor: anchor,
-                      isFocused: _bodyHasFocus,
-                      compact: compact,
-                      onTap: _returnToSavedInsertion,
-                    ),
-                  ),
-                ),
-                if (compact) ...[
-                  const SizedBox(height: 5),
-                  Text(
-                    'Tap in the question to move the cursor. Add, Math and Geometry below will use that exact position.',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (_showFormatting) ...[
-            const Divider(height: 1),
-            QuillSimpleToolbar(
-              controller: _bodyController,
-              config: const QuillSimpleToolbarConfig(
-                showFontFamily: false,
-                showFontSize: false,
-                showBoldButton: true,
-                showItalicButton: true,
-                showUnderLineButton: true,
-                showStrikeThrough: false,
-                showInlineCode: false,
-                showColorButton: false,
-                showBackgroundColorButton: false,
-                showClearFormat: true,
-                showHeaderStyle: false,
-                showListNumbers: true,
-                showListBullets: true,
-                showListCheck: false,
-                showCodeBlock: false,
-                showQuote: false,
-                showIndent: false,
-                showLink: false,
-                showUndo: false,
-                showRedo: false,
-                showDirection: false,
-                showAlignmentButtons: false,
-                showSubscript: false,
-                showSuperscript: false,
-                showSearchButton: false,
-                multiRowsDisplay: false,
               ),
             ),
           ],
-          const Divider(height: 1),
-          ConstrainedBox(
-            constraints: BoxConstraints(minHeight: compact ? 220 : 260),
-            child: QuillEditor(
-              controller: _bodyController,
-              focusNode: _bodyFocus,
-              scrollController: _bodyScroll,
-              config: QuillEditorConfig(
-                placeholder:
-                    'Type the question exactly as students should read it…',
-                padding: const EdgeInsets.all(14),
-                // The page already owns vertical scrolling. Let the editor grow
-                // with text/graphs instead of creating a second tiny scroll
-                // viewport inside the question card. This keeps the caret and
-                // the content being typed visually together after a diagram.
-                scrollable: false,
-                embedBuilders: [
-                  GeometryEmbedBuilder(),
-                  MathExpressionEmbedBuilder(onEdit: _editEmbeddedFormula),
-                ],
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1649,8 +1692,10 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
   }
 
   Widget _buildInsertBar(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return GuideAnchor(
+      targetId: CreatePaperGuideTargets.questionTools,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Wrap(
           spacing: 8,
@@ -1709,6 +1754,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -1870,9 +1916,10 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                     builder: (context, _) =>
                         ValueListenableBuilder<QuestionInsertionAnchor>(
                           valueListenable: _insertionAnchor,
-                          builder: (context, anchor, _) =>
-                              QuestionMobileAuthoringToolbar(
-                                anchor: anchor,
+                          builder: (context, anchor, _) => GuideAnchor(
+                            targetId: CreatePaperGuideTargets.questionTools,
+                            child: QuestionMobileAuthoringToolbar(
+                              anchor: anchor,
                                 formattingActive: _showFormatting,
                                 canUndo: _bodyController.hasUndo,
                                 canRedo: _bodyController.hasRedo,
@@ -1888,6 +1935,7 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                                 onUndo: _undoBody,
                                 onRedo: _redoBody,
                               ),
+                            ),
                         ),
                   ),
                 if (compact && !mathVisible) ...[
@@ -1922,20 +1970,23 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                     if (widget.question == null && widget.allowSaveAndNext)
                       const SizedBox(width: 8),
                     Expanded(
-                      child: compact
-                          ? FilledButton(
-                              onPressed: () => _save(),
-                              child: const Text('Save'),
-                            )
-                          : FilledButton.icon(
-                              onPressed: () => _save(),
-                              icon: const Icon(Icons.check_rounded),
-                              label: Text(
-                                widget.question == null
-                                    ? 'Save question'
-                                    : 'Save changes',
+                      child: GuideAnchor(
+                        targetId: CreatePaperGuideTargets.questionSave,
+                        child: compact
+                            ? FilledButton(
+                                onPressed: () => _save(),
+                                child: const Text('Save'),
+                              )
+                            : FilledButton.icon(
+                                onPressed: () => _save(),
+                                icon: const Icon(Icons.check_rounded),
+                                label: Text(
+                                  widget.question == null
+                                      ? 'Save question'
+                                      : 'Save changes',
+                                ),
                               ),
-                            ),
+                      ),
                     ),
                   ],
                 ),

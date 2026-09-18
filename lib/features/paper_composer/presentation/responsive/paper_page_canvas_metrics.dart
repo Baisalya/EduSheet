@@ -12,6 +12,7 @@ class PaperPageCanvasMetrics {
   final double pageMinHeight;
   final EdgeInsets pagePadding;
   final ({double width, double height}) pagePoints;
+  final int resolvedColumnCount;
 
   const PaperPageCanvasMetrics({
     required this.pageWidth,
@@ -19,12 +20,14 @@ class PaperPageCanvasMetrics {
     required this.pageMinHeight,
     required this.pagePadding,
     required this.pagePoints,
+    required this.resolvedColumnCount,
   });
 
   static PaperPageCanvasMetrics resolve({
     required PaperPageLayout layout,
     required PaperSize templatePageSize,
     required double viewportWidth,
+    bool templateTwoColumn = false,
   }) {
     final points = _resolvedPagePoints(layout, templatePageSize);
     final preferredWidth = (820 * points.width / 595.28)
@@ -48,6 +51,8 @@ class PaperPageCanvasMetrics {
         (margins.bottomPoints * scale).clamp(24, 160).toDouble(),
       ),
       pagePoints: points,
+      resolvedColumnCount:
+          layout.columns.explicitCount ?? (templateTwoColumn ? 2 : 1),
     );
   }
 

@@ -1,0 +1,14 @@
+EduSheet Question Document Phase 9 HarfBuzz Analyzer Hotfix
+
+Changed production/config files:
+- analysis_options.yaml
+- lib/features/pdf/services/shaping/pdf_complex_text_service.dart
+
+Source-level validation performed in the packaging environment:
+- PdfRect deprecated `.x` / `.y` accesses removed from the shaped PDF painter: PASS
+- Parenthesis/bracket/brace balance in pdf_complex_text_service.dart: PASS
+- Phase 9 gate script remains strict `flutter analyze --no-pub`: PASS
+- No test assertion or fidelity fixture relaxation: PASS
+- No constructor public API rename: PASS
+
+Flutter/Dart SDK is not available in the packaging container, so `flutter analyze` and Flutter tests were not executed here. The user's Windows Phase 9 gate remains the release authority.

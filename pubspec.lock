@@ -138,7 +138,7 @@ packages:
     source: hosted
     version: "8.12.6"
   characters:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: characters
       sha256: faf38497bda5ead2a8c7615f4f7939df04333478bf32e4173fcb06d428b5716b
@@ -338,7 +338,7 @@ packages:
     source: hosted
     version: "1.3.3"
   ffi:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: ffi
       sha256: "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
@@ -607,6 +607,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.3.2"
+  harfbuzz_ffi:
+    dependency: "direct main"
+    description:
+      name: harfbuzz_ffi
+      sha256: c54642245610297770d8972dafbc3e330d46772be2860f15977793b6aeb5b937
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.2"
   holding_gesture:
     dependency: transitive
     description:
@@ -988,6 +996,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.17.6"
+  native_toolchain_ninja:
+    dependency: transitive
+    description:
+      name: native_toolchain_ninja
+      sha256: "3d22b36191c6a1df9d8a7678fde395bd299e5bf2674ce9460ccb719d748228e5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2"
   nested:
     dependency: transitive
     description:
@@ -1128,18 +1144,18 @@ packages:
     dependency: "direct main"
     description:
       name: permission_handler
-      sha256: e6bcecadfe40df6b888141f23cbaf6ba6c3da49fb33f6ff887d060dd48544fbd
+      sha256: fe54465bcc62a4564c6e4db337bbaded6c0c0fa6e10487414436d163114784f6
       url: "https://pub.dev"
     source: hosted
-    version: "13.0.2"
+    version: "12.0.3"
   permission_handler_android:
     dependency: transitive
     description:
       name: permission_handler_android
-      sha256: b1ce660f4d0dcaffdf2605a19544c129fb5adda4e6fd039992ae356c4e437039
+      sha256: "1e3bc410ca1bf84662104b100eb126e066cb55791b7451307f9708d4007350e6"
       url: "https://pub.dev"
     source: hosted
-    version: "14.1.0"
+    version: "13.0.1"
   permission_handler_apple:
     dependency: transitive
     description:

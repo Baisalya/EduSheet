@@ -1,4 +1,5 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
 import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
 import 'package:uuid/uuid.dart';
 
@@ -32,13 +33,42 @@ class WordShapeService {
     return WordShapeObject(
       id: const Uuid().v4(),
       kind: kind,
-      width: lineLike ? 0.52 : 0.36,
-      height: lineLike ? 0.10 : 0.30,
+      width: lineLike || kind == WordShapeKind.geometry ? 0.52 : 0.36,
+      height: lineLike ? 0.10 : (kind == WordShapeKind.geometry ? 0.34 : 0.30),
+      aspectRatioLocked:
+          kind == WordShapeKind.ellipse || kind == WordShapeKind.geometry,
+      borderVisible: kind != WordShapeKind.geometry,
+      wrapMode:
+          kind == WordShapeKind.textBox ||
+              kind == WordShapeKind.callout ||
+              kind == WordShapeKind.geometry
+          ? WordTextWrapMode.inFrontOfText
+          : WordTextWrapMode.topAndBottom,
       text: switch (kind) {
         WordShapeKind.textBox => 'Text',
         WordShapeKind.callout => 'Callout',
         _ => '',
       },
+    );
+  }
+
+
+  static WordShapeObject createGeometry(GeometryDiagram diagram) {
+    final ratio = diagram.canvasSize.height <= 0
+        ? 1.5
+        : diagram.canvasSize.width / diagram.canvasSize.height;
+    const width = 0.52;
+    final height = (width / ratio).clamp(0.18, 0.56).toDouble();
+    return WordShapeObject(
+      id: const Uuid().v4(),
+      kind: WordShapeKind.geometry,
+      width: width,
+      height: height,
+      aspectRatioLocked: true,
+      borderVisible: false,
+      fillOpacity: 0,
+      wrapMode: WordTextWrapMode.inFrontOfText,
+      geometryDiagram: diagram,
     );
   }
 
@@ -51,6 +81,13 @@ class WordShapeService {
       for (final item in shapesOf(question))
         if (item.id == shape.id) shape else item,
     ]);
+  }
+
+  static Question replaceAll(
+    Question question,
+    List<WordShapeObject> shapes,
+  ) {
+    return _write(question, shapes);
   }
 
   static Question remove(Question question, String shapeId) {
@@ -95,7 +132,7 @@ class WordShapeService {
       metadata.remove(metadataVersionKey);
     } else {
       metadata[metadataKey] = shapes.map((item) => item.toJson()).toList();
-      metadata[metadataVersionKey] = 1;
+      metadata[metadataVersionKey] = 3;
     }
     return question.copyWith(metadata: metadata);
   }

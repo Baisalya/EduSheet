@@ -16,13 +16,12 @@ class FilePreviewScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF101214)
-          : const Color(0xFFF5F7FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        foregroundColor: isDark ? Colors.white : Colors.black87,
+        foregroundColor: scheme.onSurface,
         titleSpacing: 4,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -41,7 +40,7 @@ class FilePreviewScreen extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white54 : Colors.black54,
+                color: scheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -115,74 +114,79 @@ class _DocumentCapabilityStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final capability = document.capability;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     final color = _colorFor(document.type);
-    final compact = MediaQuery.sizeOf(context).width < 650;
 
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 42),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF171A1F) : Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark
-                ? Colors.white10
-                : Colors.black.withValues(alpha: 0.06),
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: Icon(_iconFor(document.type), size: 17, color: color),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  capability.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                if (!compact)
-                  Text(
-                    capability.description,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isDark ? Colors.white54 : Colors.black54,
-                      fontSize: 10.5,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (document.originalUri != null)
-            Tooltip(
-              message: 'Opened from another Android app or file manager',
-              child: Icon(
-                Icons.mobile_friendly,
-                size: 18,
-                color: isDark ? Colors.white38 : Colors.black38,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Use the strip's actual allocation rather than the outer MediaQuery.
+        // This keeps the capability chrome responsive inside split panes,
+        // Android free-form windows, resizable desktop panes and widget tests.
+        final compact = constraints.maxWidth < 650;
+        return Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 42),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            border: Border(
+              bottom: BorderSide(
+                color: scheme.outlineVariant,
               ),
             ),
-        ],
-      ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(_iconFor(document.type), size: 17, color: color),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      capability.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (!compact)
+                      Text(
+                        capability.description,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (document.originalUri != null)
+                Tooltip(
+                  message: 'Opened from another Android app or file manager',
+                  child: Icon(
+                    Icons.mobile_friendly,
+                    size: 18,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 

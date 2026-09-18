@@ -1,0 +1,10 @@
+EduSheet Guided Helper Robot
+
+This animation is an original local asset created specifically for the EduSheet
+Guided Experience feature. It was not downloaded, traced, or adapted from a
+third-party animation library or marketplace.
+
+Copyright (c) 2026 EduSheet / Baisalya.
+Commercial use, modification, redistribution, and bundling with EduSheet are
+permitted by the project owner. No attribution or runtime network access is
+required.

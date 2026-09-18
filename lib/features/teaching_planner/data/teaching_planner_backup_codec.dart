@@ -2,23 +2,28 @@ import 'dart:convert';
 
 import '../domain/models/teaching_planner_workspace.dart';
 import '../domain/models/teaching_resource.dart';
+import 'portable_paper_snapshot.dart';
 import 'teaching_planner_document_codec.dart';
 
 class TeachingPlannerBackupPayload {
   final TeachingPlannerWorkspace workspace;
   final Map<String, List<int>> resourceFiles;
+  final Map<String, PortablePaperSnapshot> paperSnapshots;
+  final int version;
 
   const TeachingPlannerBackupPayload({
     required this.workspace,
     this.resourceFiles = const {},
+    this.paperSnapshots = const {},
+    required this.version,
   });
 }
 
 /// Codec for portable EduSheet Teaching Planner files.
 ///
-/// v2 embeds every Teaching Planner file resource by stable resource id, so
-/// lesson and syllabus attachments remain genuinely portable in one `.eds`.
-/// v1 (Phase 18) files remain readable.
+/// v3 embeds linked native EduSheet papers and every local file referenced by
+/// those papers, in addition to the planner attachment bytes introduced in v2.
+/// v2 and v1 remain readable for backward compatibility.
 class TeachingPlannerBackupCodec {
   const TeachingPlannerBackupCodec({
     TeachingPlannerDocumentCodec documentCodec =
@@ -28,7 +33,7 @@ class TeachingPlannerBackupCodec {
   final TeachingPlannerDocumentCodec _documentCodec;
 
   static const String format = 'edusheet.teaching-planner-backup';
-  static const int version = 2;
+  static const int version = 3;
   static const String fileExtension = 'eds';
   static const String magicHeader = 'EDUSHEET-PLANNER/1';
 
@@ -36,17 +41,37 @@ class TeachingPlannerBackupCodec {
     TeachingPlannerWorkspace workspace, {
     DateTime? exportedAt,
     Map<String, List<int>> resourceFiles = const {},
+    Map<String, PortablePaperSnapshot> paperSnapshots = const {},
+    int targetVersion = version,
   }) {
+    if (targetVersion != 2 && targetVersion != 3) {
+      throw const FormatException(
+        'EduSheet can export only portable planner versions 2 or 3.',
+      );
+    }
     _validateEmbeddedFileSet(workspace, resourceFiles.keys.toSet());
+    if (targetVersion >= 3) {
+      _validatePaperSnapshotSet(workspace, paperSnapshots);
+    } else if (paperSnapshots.isNotEmpty) {
+      throw const FormatException(
+        'Planner v2 cannot contain native paper snapshots.',
+      );
+    }
+
     final payload = {
       'format': format,
-      'version': version,
+      'version': targetVersion,
       'exportedAt': (exportedAt ?? DateTime.now()).toUtc().toIso8601String(),
       'document': _documentCodec.encode(workspace, updatedAt: exportedAt),
       if (resourceFiles.isNotEmpty)
         'resourceFiles': {
           for (final entry in resourceFiles.entries)
             entry.key: base64Encode(entry.value),
+        },
+      if (targetVersion >= 3 && paperSnapshots.isNotEmpty)
+        'paperSnapshots': {
+          for (final entry in paperSnapshots.entries)
+            entry.key: entry.value.toJson(),
         },
     };
     final json = const JsonEncoder.withIndent('  ').convert(payload);
@@ -96,9 +121,36 @@ class TeachingPlannerBackupCodec {
     if (fileVersion >= 2) {
       _validateEmbeddedFileSet(workspace, resourceFiles.keys.toSet());
     }
+
+    final paperSnapshots = <String, PortablePaperSnapshot>{};
+    if (fileVersion >= 3) {
+      final raw = json['paperSnapshots'];
+      if (raw != null) {
+        if (raw is! Map) {
+          throw const FormatException(
+            'Planner paperSnapshots must be an object.',
+          );
+        }
+        for (final entry in raw.entries) {
+          if (entry.value is! Map) {
+            throw const FormatException(
+              'Portable paper snapshot payload is invalid.',
+            );
+          }
+          paperSnapshots[entry.key.toString()] = PortablePaperSnapshot.fromJson(
+            Map<String, dynamic>.from(entry.value as Map),
+          );
+        }
+      }
+      _validatePaperSnapshotSet(workspace, paperSnapshots);
+    }
+
     return TeachingPlannerBackupPayload(
       workspace: workspace,
       resourceFiles: Map<String, List<int>>.unmodifiable(resourceFiles),
+      paperSnapshots:
+          Map<String, PortablePaperSnapshot>.unmodifiable(paperSnapshots),
+      version: fileVersion,
     );
   }
 
@@ -124,24 +176,52 @@ class TeachingPlannerBackupCodec {
     }
   }
 
+  static void _validatePaperSnapshotSet(
+    TeachingPlannerWorkspace workspace,
+    Map<String, PortablePaperSnapshot> snapshots,
+  ) {
+    final requiredIds = <String>{};
+    for (final resource in workspace.resources) {
+      if (resource.kind != TeachingResourceKind.paper) continue;
+      final linkedId = resource.linkedPaperId?.trim() ?? '';
+      if (linkedId.isEmpty) {
+        throw const FormatException(
+          'Portable .eds contains a paper resource without a saved-paper id.',
+        );
+      }
+      requiredIds.add(linkedId);
+    }
+
+    final embeddedIds = snapshots.keys.toSet();
+    if (requiredIds.difference(embeddedIds).isNotEmpty) {
+      throw const FormatException(
+        'Portable .eds file is missing one or more linked paper snapshots.',
+      );
+    }
+    if (embeddedIds.difference(requiredIds).isNotEmpty) {
+      throw const FormatException(
+        'Portable .eds contains paper snapshots that are not linked by the planner.',
+      );
+    }
+    for (final entry in snapshots.entries) {
+      if (entry.value.paper.id != entry.key) {
+        throw const FormatException(
+          'Portable paper snapshot id does not match its planner link.',
+        );
+      }
+    }
+  }
+
   int _version(Object? value) {
-    if (value is int) {
-      return value;
-    }
-    if (value is num) {
-      return value.toInt();
-    }
+    if (value is int) return value;
+    if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '') ?? -1;
   }
 
   Object? _normalizeDocument(Object? value) {
-    if (value is! Map) {
-      return value;
-    }
+    if (value is! Map) return value;
     final document = Map<String, dynamic>.from(value);
-    if (document['workspace'] is Map) {
-      return document;
-    }
+    if (document['workspace'] is Map) return document;
 
     const workspaceKeys = <String>{
       'classes',

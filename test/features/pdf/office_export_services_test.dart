@@ -602,6 +602,10 @@ void main() {
           text: 'Important note',
           wrapMode: WordTextWrapMode.squareLeft,
           zIndex: 4,
+          borderVisible: false,
+          fillOpacity: 0.5,
+          padding: 11,
+          textBoxSizing: WordTextBoxSizing.autoHeight,
         ),
       );
       question = WordShapeService.append(
@@ -634,6 +638,10 @@ void main() {
       expect(documentXml, contains('z-index:-251658240'));
       expect(documentXml, contains('z-index:251658248'));
       expect(documentXml, contains('endarrow="block"'));
+      expect(documentXml, contains('stroked="f"'));
+      expect(documentXml, contains('<v:fill opacity="0.50"/>'));
+      expect(documentXml, contains('inset="11.0pt,11.0pt,11.0pt,11.0pt"'));
+      expect(documentXml, contains('mso-fit-shape-to-text:t'));
     },
   );
 
@@ -666,6 +674,73 @@ void main() {
     );
     expect(await output.exists(), isTrue);
     expect(await output.length(), greaterThan(0));
+  });
+
+  test(
+    'Phase 5+6 Word export keeps floating geometry vector and page-relative',
+    () async {
+      final diagram = _phase4cGeometryDiagram();
+      var question = _samplePaper().sections.single.questions.single;
+      question = WordShapeService.append(
+        question,
+        WordShapeService.createGeometry(diagram).copyWith(
+          id: 'floating-geometry',
+          x: 0.22,
+          y: 0.18,
+          width: 0.48,
+          height: 0.32,
+          anchorMode: WordObjectAnchorMode.fixedOnPage,
+          fixedPageIndex: 1,
+        ),
+      );
+      final base = _samplePaper();
+      final paper = base.copyWith(
+        sections: [base.sections.single.copyWith(questions: [question])],
+      );
+
+      final output = await WordExportService.export(paper, _sampleTemplate());
+      final archive = ZipDecoder().decodeBytes(await output.readAsBytes());
+      final documentXml = _archiveText(archive, 'word/document.xml');
+
+      expect(
+        documentXml,
+        contains('edusheet_geometry_object_floating-geometry'),
+      );
+      expect(documentXml, contains('<v:group'));
+      expect(documentXml, contains('mso-position-horizontal-relative:page'));
+      expect(documentXml, contains('mso-position-vertical-relative:page'));
+      expect(documentXml, contains('endarrow="block"'));
+      expect(documentXml, isNot(contains('[diagram]')));
+    },
+  );
+
+  test('Phase 6 PDF export accepts floating canonical geometry', () async {
+    final diagram = _phase4cGeometryDiagram();
+    var question = _samplePaper().sections.single.questions.single;
+    question = WordShapeService.append(
+      question,
+      WordShapeService.createGeometry(diagram).copyWith(
+        id: 'floating-pdf-geometry',
+        borderVisible: true,
+        fillOpacity: 0.2,
+        padding: 8,
+      ),
+    );
+    final base = _samplePaper();
+    final paper = base.copyWith(
+      sections: [base.sections.single.copyWith(questions: [question])],
+    );
+
+    final output = await QuestionPaperExportService.exportPdf(
+      paper: paper,
+      availableTemplates: [_sampleTemplate()],
+    );
+    expect(await output.exists(), isTrue);
+    expect(await output.length(), greaterThan(0));
+    expect(
+      utf8.decode(await output.readAsBytes(), allowMalformed: true),
+      isNot(contains('[diagram]')),
+    );
   });
 
   test(

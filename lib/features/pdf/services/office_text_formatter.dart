@@ -1,49 +1,48 @@
-import 'dart:convert';
-
-import 'package:edusheet/features/editor/domain/models/math_expression.dart';
-
 import 'package:edusheet/features/math_keyboard/domain/services/math_compatibility_service.dart';
+
+import 'package:edusheet/features/paper_composer/application/question_print_content_projection.dart';
 
 class OfficeTextFormatter {
   static String questionText(
     String text, {
     String geometryPlaceholder = '[diagram]',
   }) {
-    try {
-      final trimmed = text.trimLeft();
-      if (trimmed.startsWith('[')) {
-        final data = jsonDecode(trimmed) as List<dynamic>;
-        return data
-            .map((op) {
-              if (op is! Map<String, dynamic>) return '';
-              final insert = op['insert'];
-              if (insert is String) return insert;
-              if (insert is Map) {
-                if (insert.containsKey(MathExpression.quillEmbedKey)) {
-                  final expression = MathExpression.tryFromQuillEmbedData(
-                    insert[MathExpression.quillEmbedKey],
-                  );
-                  if (expression != null) {
-                    return const MathCompatibilityService()
-                        .inspectSource(
-                          expression.latex,
-                          plainFallback: expression.plainText,
-                        )
-                        .readableFallback;
-                  }
-                  return '[formula]';
-                }
-                if (insert.containsKey('geometry')) return geometryPlaceholder;
-              }
-              return ' ';
-            })
-            .join()
-            .replaceAll('\n', ' ')
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
+    final projection = QuestionPrintContentProjection.fromRichText(text);
+    if (projection.isStructuredRichText) {
+      final buffer = StringBuffer();
+      for (final object in projection.objects) {
+        switch (object.kind) {
+          case QuestionPrintContentKind.richText:
+            for (final operation in object.operations) {
+              final insert = operation['insert'];
+              if (insert is String) buffer.write(insert);
+            }
+            break;
+          case QuestionPrintContentKind.mathExpression:
+            final expression = object.mathExpression;
+            if (expression == null) {
+              buffer.write('[formula]');
+            } else {
+              buffer.write(
+                const MathCompatibilityService()
+                    .inspectSource(
+                      expression.latex,
+                      plainFallback: expression.plainText,
+                    )
+                    .readableFallback,
+              );
+            }
+            break;
+          case QuestionPrintContentKind.geometry:
+            buffer.write(geometryPlaceholder);
+            break;
+        }
       }
-    } catch (_) {
-      // Fall through to plain text.
+      return buffer
+          .toString()
+          .replaceAll('\n', ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
     }
 
     return text.replaceAll(RegExp(r'\s+'), ' ').trim();

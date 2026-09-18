@@ -13,7 +13,7 @@ import '../models/geometry_shape.dart';
 /// points/shapes/marks that Geometry Studio paints instead of substituting a
 /// generic "[diagram]" placeholder.
 class GeometrySvgService {
-  String toSvg(GeometryDiagram diagram) {
+  String toSvg(GeometryDiagram diagram, {bool includeText = true}) {
     final width = diagram.canvasSize.width;
     final height = diagram.canvasSize.height;
     final buffer = StringBuffer()
@@ -26,33 +26,35 @@ class GeometrySvgService {
 
     final pointMap = diagram.pointMap;
     for (final shape in diagram.shapes) {
-      _writeShape(buffer, shape, pointMap);
+      _writeShape(buffer, shape, pointMap, includeText: includeText);
     }
     for (final mark in diagram.marks) {
       _writeMark(buffer, mark, pointMap);
     }
-    for (final point in diagram.points) {
-      if (point.label.trim().isEmpty) continue;
-      final label = point.labelPosition;
-      final rotationDegrees = point.labelRotation * 180 / math.pi;
-      buffer.writeln(
-        '<text x="${_fmt(label.dx)}" y="${_fmt(label.dy)}" '
-        'font-size="${_fmt(point.labelFontSize)}" font-family="Helvetica" '
-        'font-weight="${point.labelBold ? '700' : '400'}" '
-        'transform="rotate(${_fmt(rotationDegrees)} ${_fmt(label.dx)} ${_fmt(label.dy)})">'
-        '${_escape(point.label)}</text>',
-      );
-    }
-    for (final label in diagram.labels) {
-      if (label.text.trim().isEmpty) continue;
-      final rotationDegrees = label.rotation * 180 / math.pi;
-      buffer.writeln(
-        '<text x="${_fmt(label.position.dx)}" y="${_fmt(label.position.dy)}" '
-        'font-size="${_fmt(label.fontSize)}" font-family="Helvetica" '
-        'font-weight="${label.isBold ? '700' : '400'}" '
-        'transform="rotate(${_fmt(rotationDegrees)} ${_fmt(label.position.dx)} ${_fmt(label.position.dy)})">'
-        '${_escape(label.text)}</text>',
-      );
+    if (includeText) {
+      for (final point in diagram.points) {
+        if (point.label.trim().isEmpty) continue;
+        final label = point.labelPosition;
+        final rotationDegrees = point.labelRotation * 180 / math.pi;
+        buffer.writeln(
+          '<text x="${_fmt(label.dx)}" y="${_fmt(label.dy)}" '
+          'font-size="${_fmt(point.labelFontSize)}" font-family="Helvetica" '
+          'font-weight="${point.labelBold ? '700' : '400'}" '
+          'transform="rotate(${_fmt(rotationDegrees)} ${_fmt(label.dx)} ${_fmt(label.dy)})">'
+          '${_escape(point.label)}</text>',
+        );
+      }
+      for (final label in diagram.labels) {
+        if (label.text.trim().isEmpty) continue;
+        final rotationDegrees = label.rotation * 180 / math.pi;
+        buffer.writeln(
+          '<text x="${_fmt(label.position.dx)}" y="${_fmt(label.position.dy)}" '
+          'font-size="${_fmt(label.fontSize)}" font-family="Helvetica" '
+          'font-weight="${label.isBold ? '700' : '400'}" '
+          'transform="rotate(${_fmt(rotationDegrees)} ${_fmt(label.position.dx)} ${_fmt(label.position.dy)})">'
+          '${_escape(label.text)}</text>',
+        );
+      }
     }
     buffer.writeln('</svg>');
     return buffer.toString();
@@ -61,8 +63,9 @@ class GeometrySvgService {
   void _writeShape(
     StringBuffer buffer,
     GeometryShape shape,
-    Map<String, GeometryPoint> pointMap,
-  ) {
+    Map<String, GeometryPoint> pointMap, {
+    required bool includeText,
+  }) {
     final points = shape.pointIds
         .map((id) => pointMap[id]?.position)
         .whereType<Offset>()
@@ -112,8 +115,10 @@ class GeometrySvgService {
         if (points.length >= 4) {
           _arrow(buffer, points[1], points[0]);
           _arrow(buffer, points[2], points[3]);
-          _text(buffer, 'x', points[3] + const Offset(8, -8), size: 12);
-          _text(buffer, 'y', points[0] + const Offset(8, 12), size: 12);
+          if (includeText) {
+            _text(buffer, 'x', points[3] + const Offset(8, -8), size: 12);
+            _text(buffer, 'y', points[0] + const Offset(8, 12), size: 12);
+          }
         }
       case GeometryShapeType.cube:
         if (points.length >= 8) {

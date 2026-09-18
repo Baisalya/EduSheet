@@ -10,6 +10,7 @@ import 'package:edusheet/features/document_reader/presentation/screens/file_prev
 import 'package:edusheet/features/document_reader/presentation/widgets/viewers/presentation_document_viewer.dart';
 import 'package:edusheet/features/document_reader/presentation/widgets/viewers/spreadsheet_document_viewer.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -60,6 +61,122 @@ void main() {
     );
     expect(find.text('Present'), findsOneWidget);
     expect(find.text('1'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Present mode plays object cue before advancing slide', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final document = _document('animated.pptx', '.pptx');
+    final parser = _FakeAnimatedPresentationParser();
+
+    await pumpAt(
+      tester,
+      const Size(1280, 800),
+      PresentationDocumentViewer(document: document, parserService: parser),
+    );
+
+    await tester.tap(find.text('Present'));
+    await tester.pumpAndSettle();
+    expect(find.text('Animated entrance'), findsNothing);
+    expect(find.text('1 / 2'), findsOneWidget);
+
+    await tester.tapAt(const Offset(640, 400));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 140));
+    expect(find.text('Animated entrance'), findsOneWidget);
+    expect(find.text('1 / 2'), findsOneWidget);
+
+    await tester.tapAt(const Offset(640, 400));
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 2'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Present mode stays overflow-safe on a 320px phone and auto-hides chrome', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final document = _document('lesson.pptx', '.pptx');
+    final parser = _FakePresentationParser();
+
+    await pumpAt(
+      tester,
+      const Size(320, 720),
+      PresentationDocumentViewer(document: document, parserService: parser),
+    );
+
+    await tester.tap(find.text('Play'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('presentation-mode-stage')), findsOneWidget);
+    expect(find.byKey(const Key('presentation-mode-controls')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 220));
+    final controls = find.byKey(const Key('presentation-mode-controls'));
+    final opacityFinder = find.ancestor(
+      of: controls,
+      matching: find.byType(AnimatedOpacity),
+    );
+    expect(tester.widget<AnimatedOpacity>(opacityFinder.first).opacity, 0);
+
+    await tester.longPress(find.byKey(const Key('presentation-mode-stage')));
+    await tester.pump();
+    expect(tester.widget<AnimatedOpacity>(opacityFinder.first).opacity, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Present mode slide overview can jump directly to a slide', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final document = _document('lesson.pptx', '.pptx');
+    final parser = _FakePresentationParser();
+
+    await pumpAt(
+      tester,
+      const Size(390, 844),
+      PresentationDocumentViewer(document: document, parserService: parser),
+    );
+
+    await tester.tap(find.text('Play'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Slide overview'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('presentation-slide-overview')), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('presentation-overview-slide-1')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Second slide'), findsOneWidget);
+    expect(find.text('2 / 2'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Present mode supports black-screen keyboard pause', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final document = _document('lesson.pptx', '.pptx');
+    final parser = _FakePresentationParser();
+
+    await pumpAt(
+      tester,
+      const Size(1280, 800),
+      PresentationDocumentViewer(document: document, parserService: parser),
+    );
+    await tester.tap(find.text('Present'));
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pump();
+    expect(find.byKey(const Key('presentation-blank-screen')), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+    await tester.pump();
+    expect(find.byKey(const Key('presentation-blank-screen')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -192,6 +309,59 @@ class _FakePresentationParser extends PresentationParserService {
               height: 0.2,
               hasBounds: true,
               text: 'Second slide',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _FakeAnimatedPresentationParser extends PresentationParserService {
+  @override
+  Future<PresentationDocument> load(File file) async {
+    return const PresentationDocument(
+      slideWidth: 1600,
+      slideHeight: 900,
+      slides: [
+        PresentationSlide(
+          number: 1,
+          hasNativeAnimations: true,
+          animations: [
+            PresentationAnimationStep(
+              targetObjectId: '2',
+              kind: PresentationAnimationKind.fadeIn,
+              trigger: PresentationAnimationTrigger.onClick,
+              duration: Duration(milliseconds: 100),
+            ),
+          ],
+          elements: [
+            PresentationElement(
+              type: PresentationElementType.text,
+              objectId: '2',
+              left: 0.1,
+              top: 0.12,
+              width: 0.8,
+              height: 0.2,
+              hasBounds: true,
+              text: 'Animated entrance',
+              fontSizePoints: 32,
+              bold: true,
+            ),
+          ],
+        ),
+        PresentationSlide(
+          number: 2,
+          elements: [
+            PresentationElement(
+              type: PresentationElementType.text,
+              objectId: '3',
+              left: 0.1,
+              top: 0.3,
+              width: 0.8,
+              height: 0.2,
+              hasBounds: true,
+              text: 'After animation',
             ),
           ],
         ),

@@ -961,6 +961,7 @@ class TeachingPlannerService {
     String? mimeType,
     String? localRelativePath,
     int? sizeBytes,
+    String? linkedPaperId,
     Map<String, dynamic>? geometryJson,
   }) {
     final targetOwner = _resolveResourceOwner(
@@ -973,6 +974,7 @@ class TeachingPlannerService {
     final cleanOriginalName = _optionalText(originalFileName);
     final cleanMimeType = _optionalText(mimeType);
     final cleanRelativePath = _optionalText(localRelativePath);
+    final cleanLinkedPaperId = _optionalText(linkedPaperId);
     if (sizeBytes != null) _requireNonNegative(sizeBytes, 'Resource size');
     _validateResourcePayload(
       kind: kind,
@@ -980,10 +982,23 @@ class TeachingPlannerService {
       url: cleanUrl,
       originalFileName: cleanOriginalName,
       localRelativePath: cleanRelativePath,
+      linkedPaperId: cleanLinkedPaperId,
       geometryJson: geometryJson,
     );
     return _repository.update((workspace) {
       _validateResourceOwner(workspace, targetOwner);
+      if (kind == TeachingResourceKind.paper &&
+          workspace.resources.any(
+            (item) =>
+                !item.isArchived &&
+                item.owner == targetOwner &&
+                item.kind == TeachingResourceKind.paper &&
+                item.linkedPaperId == cleanLinkedPaperId,
+          )) {
+        throw const TeachingPlannerOperationException(
+          'This saved paper is already linked here.',
+        );
+      }
       final id = resourceId ?? _idGenerator();
       if (workspace.resourceById(id) != null) {
         throw const TeachingPlannerOperationException(
@@ -1006,6 +1021,7 @@ class TeachingPlannerService {
             mimeType: cleanMimeType,
             localRelativePath: cleanRelativePath,
             sizeBytes: sizeBytes,
+            linkedPaperId: cleanLinkedPaperId,
             geometryJson: geometryJson == null
                 ? null
                 : Map<String, dynamic>.from(geometryJson),
@@ -1100,6 +1116,7 @@ class TeachingPlannerService {
             : existing.url,
         originalFileName: existing.originalFileName,
         localRelativePath: existing.localRelativePath,
+        linkedPaperId: existing.linkedPaperId,
         geometryJson: existing.kind == TeachingResourceKind.geometry
             ? geometryJson
             : existing.geometryJson,
@@ -1162,6 +1179,7 @@ class TeachingPlannerService {
           url: item.url,
           originalFileName: item.originalFileName,
           localRelativePath: item.localRelativePath,
+          linkedPaperId: item.linkedPaperId,
           geometryJson: item.geometryJson,
         );
         normalized.add(
@@ -1177,6 +1195,7 @@ class TeachingPlannerService {
             mimeType: _optionalText(item.mimeType),
             localRelativePath: _optionalText(item.localRelativePath),
             sizeBytes: item.sizeBytes,
+            linkedPaperId: _optionalText(item.linkedPaperId),
             geometryJson: item.geometryJson == null
                 ? null
                 : Map<String, dynamic>.from(item.geometryJson!),
@@ -1282,6 +1301,7 @@ class TeachingPlannerService {
     required String? url,
     required String? originalFileName,
     required String? localRelativePath,
+    required String? linkedPaperId,
     required Map<String, dynamic>? geometryJson,
   }) {
     switch (kind) {
@@ -1300,6 +1320,9 @@ class TeachingPlannerService {
       case TeachingResourceKind.file:
         _requiredName(originalFileName ?? '', 'File name');
         _requiredName(localRelativePath ?? '', 'Stored file path');
+        break;
+      case TeachingResourceKind.paper:
+        _requiredName(linkedPaperId ?? '', 'Saved paper');
         break;
       case TeachingResourceKind.geometry:
         if (geometryJson == null) {

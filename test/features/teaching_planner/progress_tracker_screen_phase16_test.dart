@@ -3,6 +3,7 @@ import 'package:edusheet/features/teaching_planner/domain/models/planner_chapter
 import 'package:edusheet/features/teaching_planner/domain/models/planner_class.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/planner_subject.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/planner_topic.dart';
+import 'package:edusheet/features/teaching_planner/domain/models/teaching_planner_capabilities.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/teaching_planner_workspace.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/teaching_status.dart';
 import 'package:edusheet/features/teaching_planner/domain/repositories/teaching_planner_repository.dart';
@@ -80,6 +81,7 @@ void main() {
   for (final size in const [
     Size(360, 800),
     Size(412, 915),
+    Size(600, 900),
     Size(900, 700),
     Size(1366, 768),
   ]) {
@@ -94,6 +96,9 @@ void main() {
               teachingPlannerRepositoryProvider.overrideWithValue(
                 _MemoryRepository(workspace),
               ),
+              teachingPlannerCapabilitiesProvider.overrideWithValue(
+                TeachingPlannerCapabilities.free(),
+              ),
             ],
             child: MaterialApp(
               theme: ThemeData(useMaterial3: true),
@@ -102,20 +107,53 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Progress Tracking'), findsWidgets);
-        expect(find.text('Syllabus completion'), findsOneWidget);
-        expect(find.text('Topic status distribution'), findsOneWidget);
-        expect(find.text('Priority-wise progress'), findsOneWidget);
-        expect(find.text('Quick insights'), findsOneWidget);
-        // Phase 19 intentionally shows an upcoming lesson in both the dashboard
-        // and the editable teaching-progress panel. The responsive contract is
-        // that the lesson remains reachable, not that its title is globally unique.
+        expect(find.text('Progress & Insights'), findsWidgets);
+        expect(find.text('Overall Progress'), findsOneWidget);
+        expect(find.text('Subject-wise Progress'), findsOneWidget);
+        expect(find.text('Backlog Alerts'), findsOneWidget);
+        expect(find.text('Teaching focus'), findsOneWidget);
+        expect(find.text('Advanced teaching insights'), findsOneWidget);
+        // A lesson may appear in a dashboard alert and the editable progress
+        // panel. The responsive contract is reachability, not global uniqueness.
         expect(find.text('Equation lesson'), findsWidgets);
         expect(find.text('Linear equations'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
   }
+
+  testWidgets('lesson progress opens the shared teaching session editor', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 915));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teachingPlannerRepositoryProvider.overrideWithValue(
+            _MemoryRepository(workspace),
+          ),
+          teachingPlannerCapabilitiesProvider.overrideWithValue(
+            TeachingPlannerCapabilities.free(),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: const ProgressTrackerScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final edit = find.byTooltip('Update lesson progress');
+    await tester.ensureVisible(edit);
+    await tester.tap(edit);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('lesson-session-save')), findsOneWidget);
+    expect(find.text('Teaching session'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _MemoryRepository implements TeachingPlannerRepository {

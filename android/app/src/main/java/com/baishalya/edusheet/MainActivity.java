@@ -12,6 +12,9 @@ import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.webkit.MimeTypeMap;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 
 import androidx.annotation.NonNull;
 
@@ -32,9 +35,14 @@ import io.flutter.plugin.common.MethodChannel;
 public class MainActivity extends FlutterActivity {
     private static final String DOCUMENT_CHANNEL = "edusheet/document_intents";
     private static final String PDF_RENDERER_CHANNEL = "edusheet/pdf_renderer";
+    private static final String PRESENTATION_MODE_CHANNEL = "edusheet/presentation_mode";
     private static final long MAX_INCOMING_DOCUMENT_BYTES = 1024L * 1024L * 1024L;
     private static final long INCOMING_CACHE_RETENTION_MS = 72L * 60L * 60L * 1000L;
+    private static final long PDF_PAGE_CACHE_RETENTION_MS = 24L * 60L * 60L * 1000L;
     private MethodChannel documentChannel;
+    private Integer presentationPreviousSystemBarsAppearance;
+    private Integer presentationPreviousSystemBarsBehavior;
+    private Integer presentationPreviousSystemUiVisibility;
 
     @Override
     public void configureFlutterEngine(@NonNull FlutterEngine flutterEngine) {
@@ -89,6 +97,84 @@ public class MainActivity extends FlutterActivity {
                         result.error("RENDER_FAILED", exception.getMessage(), null);
                     }
                 });
+
+
+        new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), PRESENTATION_MODE_CHANNEL)
+                .setMethodCallHandler((call, result) -> {
+                    switch (call.method) {
+                        case "enterImmersive":
+                            enterPresentationImmersiveMode();
+                            result.success(null);
+                            return;
+                        case "exitImmersive":
+                            exitPresentationImmersiveMode();
+                            result.success(null);
+                            return;
+                        default:
+                            result.notImplemented();
+                    }
+                });
+    }
+
+    private void enterPresentationImmersiveMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller == null) return;
+            if (presentationPreviousSystemBarsAppearance == null) {
+                presentationPreviousSystemBarsAppearance = controller.getSystemBarsAppearance();
+                presentationPreviousSystemBarsBehavior = controller.getSystemBarsBehavior();
+            }
+            int lightBarsMask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            controller.setSystemBarsAppearance(0, lightBarsMask);
+            controller.setSystemBarsBehavior(
+                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            );
+            controller.hide(WindowInsets.Type.systemBars());
+            return;
+        }
+
+        View decorView = getWindow().getDecorView();
+        if (presentationPreviousSystemUiVisibility == null) {
+            presentationPreviousSystemUiVisibility = decorView.getSystemUiVisibility();
+        }
+        decorView.setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        );
+    }
+
+    private void exitPresentationImmersiveMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller == null) return;
+            controller.show(WindowInsets.Type.systemBars());
+            if (presentationPreviousSystemBarsAppearance != null) {
+                int lightBarsMask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                        | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                controller.setSystemBarsAppearance(
+                        presentationPreviousSystemBarsAppearance,
+                        lightBarsMask
+                );
+                presentationPreviousSystemBarsAppearance = null;
+            }
+            if (presentationPreviousSystemBarsBehavior != null) {
+                controller.setSystemBarsBehavior(presentationPreviousSystemBarsBehavior);
+                presentationPreviousSystemBarsBehavior = null;
+            }
+            return;
+        }
+
+        if (presentationPreviousSystemUiVisibility != null) {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    presentationPreviousSystemUiVisibility
+            );
+            presentationPreviousSystemUiVisibility = null;
+        }
     }
 
     @Override
@@ -353,6 +439,7 @@ public class MainActivity extends FlutterActivity {
         if (!outputDir.exists() && !outputDir.mkdirs()) {
             throw new IOException("Unable to create OCR page cache.");
         }
+        cleanupPdfPageCache(outputDir);
 
         File runDir = new File(outputDir, String.valueOf(System.currentTimeMillis()));
         if (!runDir.exists() && !runDir.mkdirs()) {
@@ -360,6 +447,7 @@ public class MainActivity extends FlutterActivity {
         }
 
         List<String> paths = new ArrayList<>();
+        boolean completed = false;
         try (ParcelFileDescriptor descriptor = ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY);
              PdfRenderer renderer = new PdfRenderer(descriptor)) {
             for (int pageIndex = 0; pageIndex < renderer.getPageCount(); pageIndex++) {
@@ -382,8 +470,38 @@ public class MainActivity extends FlutterActivity {
                     paths.add(imageFile.getAbsolutePath());
                 }
             }
+            completed = true;
+        } finally {
+            if (!completed) {
+                deleteRecursively(runDir);
+            }
         }
 
         return paths;
+    }
+
+    private void cleanupPdfPageCache(File outputDir) {
+        File[] runDirectories = outputDir.listFiles();
+        if (runDirectories == null) return;
+        long cutoff = System.currentTimeMillis() - PDF_PAGE_CACHE_RETENTION_MS;
+        for (File runDirectory : runDirectories) {
+            if (runDirectory.lastModified() < cutoff) {
+                deleteRecursively(runDirectory);
+            }
+        }
+    }
+
+    private void deleteRecursively(File file) {
+        if (file == null || !file.exists()) return;
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
     }
 }

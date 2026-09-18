@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_print_content_projection.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 class QuestionRichTextInspection {
@@ -93,30 +94,19 @@ class QuestionRichTextCodec {
   String plainText(Document document) => document.toPlainText().trim();
 
   String accessibleText(Document document) {
-    final buffer = StringBuffer();
-    for (final operation in document.toDelta().toJson()) {
-      final insert = operation['insert'];
-      if (insert is String) {
-        buffer.write(insert);
-      } else if (insert is Map) {
-        if (insert.containsKey('geometry')) buffer.write('[diagram]');
-        final expression = _expressionFromInsert(insert);
-        if (expression != null) {
-          final fallback = expression.plainText.trim();
-          buffer.write(fallback.isEmpty ? expression.latex : fallback);
-        }
-      }
-    }
-    return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+    return QuestionPrintContentProjection.fromOperations(
+      document.toDelta().toJson(),
+    ).accessibleText;
   }
 
   List<MathExpression> embeddedMathExpressions(Document document) {
     final expressions = <MathExpression>[];
     final seen = <String>{};
-    for (final operation in document.toDelta().toJson()) {
-      final insert = operation['insert'];
-      if (insert is! Map) continue;
-      final expression = _expressionFromInsert(insert);
+    final projection = QuestionPrintContentProjection.fromOperations(
+      document.toDelta().toJson(),
+    );
+    for (final object in projection.objects) {
+      final expression = object.mathExpression;
       if (expression == null) continue;
       if (!seen.add(expression.persistentIdentity)) continue;
       expressions.add(expression);

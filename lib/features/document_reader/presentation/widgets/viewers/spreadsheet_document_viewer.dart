@@ -146,9 +146,9 @@ class _SpreadsheetToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: isDark ? const Color(0xFF1B1F26) : Colors.white,
+      color: scheme.surface,
       child: Column(
         children: [
           SizedBox(
@@ -197,7 +197,7 @@ class _SpreadsheetToolbar extends StatelessWidget {
                   return ChoiceChip(
                     selected: selectedIndex == index,
                     onSelected: (_) => onSelected(index),
-                    selectedColor: Colors.green.withValues(alpha: 0.18),
+                    selectedColor: scheme.primaryContainer,
                     label: Text(
                       workbook.sheets[index].name,
                       maxLines: 1,

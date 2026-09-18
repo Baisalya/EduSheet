@@ -7,11 +7,33 @@ import '../../domain/models/lesson_plan.dart';
 import '../../domain/models/planner_chapter.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
 import '../../domain/models/teaching_status.dart';
+import '../design/teaching_planner_design_system.dart';
+import '../layout/teaching_planner_breakpoints.dart';
+import '../navigation/teaching_planner_navigation.dart';
 import '../providers/teaching_planner_provider.dart';
+import '../widgets/teaching_planner_page_shell.dart';
+import '../widgets/teaching_planner_responsive_content.dart';
+import '../widgets/teaching_planner_shared_components.dart';
+import 'lesson_detail_screen.dart';
 import 'teaching_workspace_screen.dart';
 
 class LessonPlannerScreen extends ConsumerStatefulWidget {
-  const LessonPlannerScreen({super.key});
+  const LessonPlannerScreen({
+    super.key,
+    this.openCreateOnStart = false,
+    this.returnAfterInitialCreate = false,
+    this.initialClassId,
+    this.initialSubjectId,
+    this.initialChapterId,
+    this.initialPlannedDate,
+  });
+
+  final bool openCreateOnStart;
+  final bool returnAfterInitialCreate;
+  final String? initialClassId;
+  final String? initialSubjectId;
+  final String? initialChapterId;
+  final DateTime? initialPlannedDate;
 
   @override
   ConsumerState<LessonPlannerScreen> createState() =>
@@ -22,6 +44,7 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
   final _searchController = TextEditingController();
   String? _classFilter;
   TeachingProgressStatus? _statusFilter;
+  bool _initialCreateScheduled = false;
 
   @override
   void dispose() {
@@ -35,19 +58,30 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
     final workspace = state.workspace;
     final lessons = _filteredLessons(workspace);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Lesson Planner'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh lesson plans',
-            onPressed: state.isLoading
-                ? null
-                : () => ref.read(teachingPlannerProvider.notifier).load(),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
+    if (widget.openCreateOnStart &&
+        !_initialCreateScheduled &&
+        _canCreateLesson(workspace)) {
+      _initialCreateScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _openEditor(ref.read(teachingPlannerProvider).workspace);
+      });
+    }
+
+    return TeachingPlannerPageShell(
+      title: 'Lesson Planner',
+      currentDestination: TeachingPlannerDestination.lessons,
+      showGlobalNavigation:
+          !widget.returnAfterInitialCreate && widget.initialPlannedDate == null,
+      actions: [
+        IconButton(
+          tooltip: 'Refresh lesson plans',
+          onPressed: state.isLoading
+              ? null
+              : () => ref.read(teachingPlannerProvider.notifier).load(),
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: workspace.activeClasses.isEmpty
             ? null
@@ -55,107 +89,89 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
         icon: const Icon(Icons.add_rounded),
         label: const Text('Lesson'),
       ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final padding = (constraints.maxWidth * 0.035).clamp(12.0, 28.0);
-            final wide = constraints.maxWidth >= 900;
-            return SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.fromLTRB(padding, 16, padding, 96),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1280),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _LessonHeader(
-                        workspace: workspace,
-                        onCreate: workspace.activeClasses.isEmpty
-                            ? null
-                            : () => _openEditor(workspace),
+      body: TeachingPlannerResponsiveContent(
+        bottomPadding: 96,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _LessonHeader(
+              workspace: workspace,
+              onCreate: workspace.activeClasses.isEmpty
+                  ? null
+                  : () => _openEditor(workspace),
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space16),
+            if (state.errorMessage != null) ...[
+              TeachingPlannerSurfaceCard(
+                tone: TeachingPlannerTone.coral,
+                tint: true,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const TeachingPlannerIconBadge(
+                      icon: Icons.error_outline_rounded,
+                      tone: TeachingPlannerTone.coral,
+                    ),
+                    const SizedBox(width: TeachingPlannerDesign.space12),
+                    Expanded(
+                      child: Text(
+                        state.errorMessage!,
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                      const SizedBox(height: 16),
-                      if (state.errorMessage != null) ...[
-                        MaterialBanner(
-                          content: Text(state.errorMessage!),
-                          actions: [
-                            TextButton(
-                              onPressed: () => ref
-                                  .read(teachingPlannerProvider.notifier)
-                                  .load(),
-                              child: const Text('Retry'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      _Filters(
-                        workspace: workspace,
-                        controller: _searchController,
-                        classFilter: _classFilter,
-                        statusFilter: _statusFilter,
-                        onSearchChanged: (_) => setState(() {}),
-                        onClassChanged: (value) =>
-                            setState(() => _classFilter = value),
-                        onStatusChanged: (value) =>
-                            setState(() => _statusFilter = value),
-                      ),
-                      const SizedBox(height: 16),
-                      if (wide)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: 260,
-                              child: _LessonSummary(workspace: workspace),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _LessonList(
-                                workspace: workspace,
-                                lessons: lessons,
-                                onEdit: (lesson) =>
-                                    _openEditor(workspace, lesson: lesson),
-                                onArchive: _archiveLesson,
-                                onMaterials: (lesson) =>
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => TeachingWorkspaceScreen(
-                                          initialLessonId: lesson.id,
-                                        ),
-                                      ),
-                                    ),
-                              ),
-                            ),
-                          ],
-                        )
-                      else ...[
-                        _LessonSummary(workspace: workspace),
-                        const SizedBox(height: 16),
-                        _LessonList(
-                          workspace: workspace,
-                          lessons: lessons,
-                          onEdit: (lesson) =>
-                              _openEditor(workspace, lesson: lesson),
-                          onArchive: _archiveLesson,
-                          onMaterials: (lesson) => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TeachingWorkspaceScreen(
-                                initialLessonId: lesson.id,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          ref.read(teachingPlannerProvider.notifier).load(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: TeachingPlannerDesign.space16),
+            ],
+            _Filters(
+              workspace: workspace,
+              controller: _searchController,
+              classFilter: _classFilter,
+              statusFilter: _statusFilter,
+              onSearchChanged: (_) => setState(() {}),
+              onClassChanged: (value) =>
+                  setState(() => _classFilter = value),
+              onStatusChanged: (value) =>
+                  setState(() => _statusFilter = value),
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space16),
+            TeachingPlannerResponsiveSplit(
+              sideWidth: 280,
+              side: _LessonSummary(workspace: workspace),
+              primary: _LessonList(
+                workspace: workspace,
+                lessons: lessons,
+                onOpen: _openLessonDetail,
+                onEdit: (lesson) => _openEditor(workspace, lesson: lesson),
+                onArchive: _archiveLesson,
+                onMaterials: (lesson) => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        TeachingWorkspaceScreen(initialLessonId: lesson.id),
                   ),
                 ),
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  bool _canCreateLesson(TeachingPlannerWorkspace workspace) {
+    final activeClassIds = workspace.activeClasses.map((item) => item.id).toSet();
+    final activeSubjects = workspace.subjects.where(
+      (item) => !item.isArchived && activeClassIds.contains(item.classId),
+    );
+    final activeSubjectIds = activeSubjects.map((item) => item.id).toSet();
+    return workspace.chapters.any(
+      (item) => !item.isArchived && activeSubjectIds.contains(item.subjectId),
     );
   }
 
@@ -185,8 +201,14 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (context) =>
-          _LessonEditorSheet(workspace: workspace, lesson: lesson),
+      builder: (context) => _LessonEditorSheet(
+        workspace: workspace,
+        lesson: lesson,
+        initialClassId: lesson == null ? widget.initialClassId : null,
+        initialSubjectId: lesson == null ? widget.initialSubjectId : null,
+        initialChapterId: lesson == null ? widget.initialChapterId : null,
+        initialPlannedDate: lesson == null ? widget.initialPlannedDate : null,
+      ),
     );
     if (draft == null || !mounted) return;
     final notifier = ref.read(teachingPlannerProvider.notifier);
@@ -222,13 +244,29 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
             notes: draft.notes,
             status: draft.status,
           );
-    if (!mounted || saved) return;
+    if (!mounted) return;
+    if (saved) {
+      if (lesson == null &&
+          widget.openCreateOnStart &&
+          widget.returnAfterInitialCreate) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
     final message = ref.read(teachingPlannerProvider).errorMessage;
     if (message != null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
     }
+  }
+
+  void _openLessonDetail(LessonPlan lesson) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => LessonDetailScreen(lessonId: lesson.id),
+      ),
+    );
   }
 
   Future<void> _archiveLesson(LessonPlan lesson) async {
@@ -265,45 +303,107 @@ class _LessonHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Card(
-      color: scheme.secondaryContainer.withValues(alpha: .45),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Wrap(
-          spacing: 16,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Icon(Icons.menu_book_rounded, size: 38, color: scheme.secondary),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 700),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return TeachingPlannerSurfaceCard(
+      tone: TeachingPlannerTone.primary,
+      tint: true,
+      borderRadius: TeachingPlannerDesign.radiusHero,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < TeachingPlannerBreakpoints.medium;
+          final copy = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Text(
-                    'Turn syllabus into teachable lessons',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  const TeachingPlannerIconBadge(
+                    icon: Icons.menu_book_rounded,
+                    size: 46,
+                    iconSize: 24,
                   ),
-                  SizedBox(height: 5),
-                  Text(
-                    'Attach every lesson to the real class, subject, chapter and topics. Plan objectives, periods, materials, activities, homework and notes.',
+                  const SizedBox(width: TeachingPlannerDesign.space12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Plan lessons',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: colors.primary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: TeachingPlannerDesign.space4),
+                        Text(
+                          'Turn syllabus into teachable lessons',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: colors.ink,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -.3,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-            FilledButton.icon(
-              onPressed: onCreate,
-              icon: const Icon(Icons.add_rounded),
-              label: Text(
-                workspace.activeClasses.isEmpty
-                    ? 'Add syllabus first'
-                    : 'New lesson',
+              const SizedBox(height: TeachingPlannerDesign.space12),
+              Text(
+                'Keep every lesson connected to the real class, subject, chapter and topics. Plan objectives, periods, materials, activities, homework and notes without changing the syllabus structure.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colors.inkMuted,
+                  height: 1.4,
+                ),
               ),
+              const SizedBox(height: TeachingPlannerDesign.space14),
+              Wrap(
+                spacing: TeachingPlannerDesign.space8,
+                runSpacing: TeachingPlannerDesign.space8,
+                children: [
+                  TeachingPlannerPill(
+                    label: '${workspace.activeClasses.length} classes',
+                    icon: Icons.school_outlined,
+                    tone: TeachingPlannerTone.primary,
+                  ),
+                  TeachingPlannerPill(
+                    label: '${workspace.activeLessonPlans.length} lessons',
+                    icon: Icons.event_note_rounded,
+                    tone: TeachingPlannerTone.teal,
+                  ),
+                ],
+              ),
+            ],
+          );
+
+          final action = FilledButton.icon(
+            onPressed: onCreate,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(
+              workspace.activeClasses.isEmpty ? 'Add syllabus first' : 'New lesson',
             ),
-          ],
-        ),
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                copy,
+                const SizedBox(height: TeachingPlannerDesign.space16),
+                action,
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: copy),
+              const SizedBox(width: TeachingPlannerDesign.space20),
+              action,
+            ],
+          );
+        },
       ),
     );
   }
@@ -329,62 +429,96 @@ class _Filters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 220, maxWidth: 430),
-              child: TextField(
+    return TeachingPlannerSurfaceCard(
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const TeachingPlannerSectionHeader(
+            title: 'Find a lesson',
+            subtitle: 'Search by lesson, objective or syllabus context, then narrow by class or status.',
+            icon: Icons.filter_alt_outlined,
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 680;
+              final search = TextField(
                 controller: controller,
                 onChanged: onSearchChanged,
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search_rounded),
                   labelText: 'Search lessons',
-                  isDense: true,
                 ),
-              ),
-            ),
-            DropdownButton<String?>(
-              value: classFilter,
-              hint: const Text('All classes'),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('All classes'),
-                ),
-                ...workspace.activeClasses.map(
-                  (item) => DropdownMenuItem<String?>(
-                    value: item.id,
-                    child: Text(item.name),
+              );
+              final classDropdown = DropdownButtonFormField<String?>(
+                initialValue: classFilter,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Class'),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('All classes'),
                   ),
-                ),
-              ],
-              onChanged: onClassChanged,
-            ),
-            DropdownButton<TeachingProgressStatus?>(
-              value: statusFilter,
-              hint: const Text('All statuses'),
-              items: [
-                const DropdownMenuItem<TeachingProgressStatus?>(
-                  value: null,
-                  child: Text('All statuses'),
-                ),
-                ...TeachingProgressStatus.values.map(
-                  (status) => DropdownMenuItem<TeachingProgressStatus?>(
-                    value: status,
-                    child: Text(_statusLabel(status)),
+                  ...workspace.activeClasses.map(
+                    (item) => DropdownMenuItem<String?>(
+                      value: item.id,
+                      child: Text(
+                        item.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
-                ),
-              ],
-              onChanged: onStatusChanged,
-            ),
-          ],
-        ),
+                ],
+                onChanged: onClassChanged,
+              );
+              final statusDropdown = DropdownButtonFormField<TeachingProgressStatus?>(
+                initialValue: statusFilter,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: [
+                  const DropdownMenuItem<TeachingProgressStatus?>(
+                    value: null,
+                    child: Text('All statuses'),
+                  ),
+                  ...TeachingProgressStatus.values.map(
+                    (status) => DropdownMenuItem<TeachingProgressStatus?>(
+                      value: status,
+                      child: Text(_statusLabel(status)),
+                    ),
+                  ),
+                ],
+                onChanged: onStatusChanged,
+              );
+
+              if (compact) {
+                return Column(
+                  children: [
+                    search,
+                    const SizedBox(height: TeachingPlannerDesign.space10),
+                    Row(
+                      children: [
+                        Expanded(child: classDropdown),
+                        const SizedBox(width: TeachingPlannerDesign.space10),
+                        Expanded(child: statusDropdown),
+                      ],
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(flex: 2, child: search),
+                  const SizedBox(width: TeachingPlannerDesign.space12),
+                  Expanded(child: classDropdown),
+                  const SizedBox(width: TeachingPlannerDesign.space12),
+                  Expanded(child: statusDropdown),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -404,53 +538,106 @@ class _LessonSummary extends StatelessWidget {
       0,
       (sum, item) => sum + item.plannedPeriods,
     );
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Lesson overview',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-            ),
-            const SizedBox(height: 14),
-            _SummaryRow(label: 'Active lessons', value: '${lessons.length}'),
-            _SummaryRow(label: 'Completed', value: '$completed'),
-            _SummaryRow(label: 'Planned periods', value: '$plannedPeriods'),
-          ],
-        ),
+    return TeachingPlannerSurfaceCard(
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const TeachingPlannerSectionHeader(
+            title: 'Lesson overview',
+            subtitle: 'Live totals from your active lesson plans.',
+            icon: Icons.insights_outlined,
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space14),
+          _SummaryMetric(
+            label: 'Active lessons',
+            value: '${lessons.length}',
+            icon: Icons.menu_book_outlined,
+            tone: TeachingPlannerTone.primary,
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space10),
+          _SummaryMetric(
+            label: 'Completed',
+            value: '$completed',
+            icon: Icons.task_alt_rounded,
+            tone: TeachingPlannerTone.teal,
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space10),
+          _SummaryMetric(
+            label: 'Planned periods',
+            value: '$plannedPeriods',
+            icon: Icons.schedule_outlined,
+            tone: TeachingPlannerTone.purple,
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({required this.label, required this.value});
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.tone,
+  });
+
   final String label;
   final String value;
+  final IconData icon;
+  final TeachingPlannerTone tone;
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Row(
-      children: [
-        Expanded(child: Text(label)),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return Container(
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space12),
+      decoration: BoxDecoration(
+        color: tone.background(colors),
+        borderRadius: BorderRadius.circular(TeachingPlannerDesign.radiusMedium),
+        border: Border.all(
+          color: tone.foreground(colors).withValues(alpha: .14),
+        ),
+      ),
+      child: Row(
+        children: [
+          TeachingPlannerIconBadge(icon: icon, tone: tone, size: 36, iconSize: 19),
+          const SizedBox(width: TeachingPlannerDesign.space10),
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colors.inkMuted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: colors.ink,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _LessonList extends StatelessWidget {
   const _LessonList({
     required this.workspace,
     required this.lessons,
+    required this.onOpen,
     required this.onEdit,
     required this.onArchive,
     required this.onMaterials,
   });
   final TeachingPlannerWorkspace workspace;
   final List<LessonPlan> lessons;
+  final ValueChanged<LessonPlan> onOpen;
   final ValueChanged<LessonPlan> onEdit;
   final ValueChanged<LessonPlan> onArchive;
   final ValueChanged<LessonPlan> onMaterials;
@@ -458,120 +645,180 @@ class _LessonList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (lessons.isEmpty) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+      return const TeachingPlannerEmptyState(
+        icon: Icons.event_note_outlined,
+        title: 'No matching lessons',
+        message: 'Create a lesson or change the current filters.',
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TeachingPlannerSectionHeader(
+          title: 'Lessons',
+          subtitle: '${lessons.length} matching lesson${lessons.length == 1 ? '' : 's'}',
+          icon: Icons.view_agenda_outlined,
+        ),
+        const SizedBox(height: TeachingPlannerDesign.space12),
+        for (var index = 0; index < lessons.length; index++) ...[
+          _LessonCard(
+            workspace: workspace,
+            lesson: lessons[index],
+            onOpen: () => onOpen(lessons[index]),
+            onEdit: () => onEdit(lessons[index]),
+            onArchive: () => onArchive(lessons[index]),
+            onMaterials: () => onMaterials(lessons[index]),
+          ),
+          if (index != lessons.length - 1)
+            const SizedBox(height: TeachingPlannerDesign.space12),
+        ],
+      ],
+    );
+  }
+}
+
+class _LessonCard extends StatelessWidget {
+  const _LessonCard({
+    required this.workspace,
+    required this.lesson,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onArchive,
+    required this.onMaterials,
+  });
+
+  final TeachingPlannerWorkspace workspace;
+  final LessonPlan lesson;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+  final VoidCallback onArchive;
+  final VoidCallback onMaterials;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    final plannerClass = workspace.classById(lesson.classId)?.name ?? 'Class';
+    final subject = workspace.subjectById(lesson.subjectId)?.name ?? 'Subject';
+    final chapter = workspace.chapterById(lesson.chapterId)?.title ?? 'Chapter';
+    final tone = _toneForStatus(lesson.status);
+
+    return TeachingPlannerSurfaceCard(
+      key: ValueKey('lesson-card-${lesson.id}'),
+      onTap: onOpen,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.event_note_outlined, size: 42),
-              SizedBox(height: 10),
-              Text(
-                'No matching lessons',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              TeachingPlannerIconBadge(
+                icon: Icons.menu_book_rounded,
+                tone: tone,
+                size: 42,
+                iconSize: 21,
               ),
-              SizedBox(height: 4),
-              Text(
-                'Create a lesson or change the current filters.',
-                textAlign: TextAlign.center,
+              const SizedBox(width: TeachingPlannerDesign.space12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lesson.title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: colors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: TeachingPlannerDesign.space4),
+                    Text(
+                      '$plannerClass • $subject • $chapter',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.inkMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Lesson actions',
+                onSelected: (value) => value == 'edit' ? onEdit() : onArchive(),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  PopupMenuItem(value: 'archive', child: Text('Archive')),
+                ],
               ),
             ],
           ),
-        ),
-      );
-    }
-    return Column(
-      children: lessons.map((lesson) {
-        final plannerClass =
-            workspace.classById(lesson.classId)?.name ?? 'Class';
-        final subject =
-            workspace.subjectById(lesson.subjectId)?.name ?? 'Subject';
-        final chapter =
-            workspace.chapterById(lesson.chapterId)?.title ?? 'Chapter';
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            lesson.title,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 17,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text('$plannerClass • $subject • $chapter'),
-                        ],
-                      ),
-                    ),
-                    PopupMenuButton<String>(
-                      onSelected: (value) =>
-                          value == 'edit' ? onEdit(lesson) : onArchive(lesson),
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(value: 'edit', child: Text('Edit')),
-                        PopupMenuItem(value: 'archive', child: Text('Archive')),
-                      ],
-                    ),
-                  ],
+          const SizedBox(height: TeachingPlannerDesign.space12),
+          Wrap(
+            spacing: TeachingPlannerDesign.space8,
+            runSpacing: TeachingPlannerDesign.space8,
+            children: [
+              TeachingPlannerPill(
+                label: _dateLabel(lesson.plannedDate),
+                icon: Icons.calendar_today_outlined,
+              ),
+              TeachingPlannerPill(
+                label: '${lesson.plannedPeriods} periods',
+                icon: Icons.schedule_outlined,
+                tone: TeachingPlannerTone.purple,
+              ),
+              TeachingPlannerPill(
+                label: _statusLabel(lesson.status),
+                tone: tone,
+              ),
+              if (lesson.topicIds.isNotEmpty)
+                TeachingPlannerPill(
+                  label: '${lesson.topicIds.length} topics',
+                  icon: Icons.topic_outlined,
+                  tone: TeachingPlannerTone.teal,
                 ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    Chip(
-                      label: Text(_dateLabel(lesson.plannedDate)),
-                      avatar: const Icon(
-                        Icons.calendar_today_outlined,
-                        size: 16,
-                      ),
-                    ),
-                    Chip(
-                      label: Text('${lesson.plannedPeriods} periods'),
-                      avatar: const Icon(Icons.schedule_outlined, size: 16),
-                    ),
-                    Chip(label: Text(_statusLabel(lesson.status))),
-                    if (lesson.topicIds.isNotEmpty)
-                      Chip(label: Text('${lesson.topicIds.length} topics')),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  lesson.objective,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: () => onMaterials(lesson),
-                    icon: const Icon(Icons.inventory_2_outlined),
-                    label: const Text('Teaching materials'),
-                  ),
-                ),
-              ],
+            ],
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space12),
+          Text(
+            lesson.objective,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colors.ink,
+              height: 1.4,
             ),
           ),
-        );
-      }).toList(),
+          const SizedBox(height: TeachingPlannerDesign.space12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: onMaterials,
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: const Text('Teaching materials'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class _LessonEditorSheet extends StatefulWidget {
-  const _LessonEditorSheet({required this.workspace, this.lesson});
+  const _LessonEditorSheet({
+    required this.workspace,
+    this.lesson,
+    this.initialClassId,
+    this.initialSubjectId,
+    this.initialChapterId,
+    this.initialPlannedDate,
+  });
   final TeachingPlannerWorkspace workspace;
   final LessonPlan? lesson;
+  final String? initialClassId;
+  final String? initialSubjectId;
+  final String? initialChapterId;
+  final DateTime? initialPlannedDate;
   @override
   State<_LessonEditorSheet> createState() => _LessonEditorSheetState();
 }
@@ -603,15 +850,21 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
     _activities = TextEditingController(text: lesson?.activities ?? '');
     _homework = TextEditingController(text: lesson?.homework ?? '');
     _notes = TextEditingController(text: lesson?.notes ?? '');
-    _classId =
-        lesson?.classId ??
-        (widget.workspace.activeClasses.isEmpty
-            ? null
-            : widget.workspace.activeClasses.first.id);
-    _subjectId = lesson?.subjectId;
-    _chapterId = lesson?.chapterId;
+    final requestedClassId = widget.initialClassId;
+    final requestedClassExists = requestedClassId != null &&
+        widget.workspace.activeClasses.any((item) => item.id == requestedClassId);
+    _classId = lesson?.classId ??
+        (requestedClassExists
+            ? requestedClassId
+            : widget.workspace.activeClasses.isEmpty
+                ? null
+                : widget.workspace.activeClasses.first.id);
+    _subjectId = lesson?.subjectId ?? widget.initialSubjectId;
+    _chapterId = lesson?.chapterId ?? widget.initialChapterId;
     _topicIds = {...?lesson?.topicIds};
-    _date = lesson?.plannedDate.toLocal() ?? DateTime.now();
+    _date = lesson?.plannedDate.toLocal() ??
+        widget.initialPlannedDate?.toLocal() ??
+        DateTime.now();
     _status = lesson?.status ?? TeachingProgressStatus.planned;
     _normalizeSelections();
   }
@@ -670,187 +923,257 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
     final topics = _chapterId == null
         ? const []
         : widget.workspace.activeTopicsForChapter(_chapterId!);
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final editing = widget.lesson != null;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + bottomInset),
-      child: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                widget.lesson == null ? 'Create lesson' : 'Edit lesson',
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _classId,
-                decoration: const InputDecoration(labelText: 'Class'),
-                items: widget.workspace.activeClasses
-                    .map(
-                      (item) => DropdownMenuItem<String>(
-                        value: item.id,
-                        child: Text(item.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() {
-                  _classId = value;
-                  _subjectId = null;
-                  _chapterId = null;
-                  _topicIds.clear();
-                  _normalizeSelections();
-                }),
-                validator: (value) => value == null ? 'Choose a class.' : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _subjectId,
-                decoration: const InputDecoration(labelText: 'Subject'),
-                items: subjects
-                    .map(
-                      (item) => DropdownMenuItem<String>(
-                        value: item.id,
-                        child: Text(item.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() {
-                  _subjectId = value;
-                  _chapterId = null;
-                  _topicIds.clear();
-                  _normalizeSelections();
-                }),
-                validator: (value) =>
-                    value == null ? 'Choose a subject.' : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _chapterId,
-                decoration: const InputDecoration(labelText: 'Chapter'),
-                items: chapters
-                    .map(
-                      (item) => DropdownMenuItem<String>(
-                        value: item.id,
-                        child: Text(item.title),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() {
-                  _chapterId = value;
-                  _topicIds.clear();
-                }),
-                validator: (value) =>
-                    value == null ? 'Choose a chapter.' : null,
-              ),
-              if (topics.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                const Text(
-                  'Topics (optional)',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: topics
+    return TeachingPlannerSheetFrame(
+      title: editing ? 'Edit lesson' : 'Create lesson',
+      subtitle:
+          'Link the lesson to the existing syllabus, then add only the teaching details you actually need.',
+      icon: Icons.edit_calendar_rounded,
+      action: FilledButton.icon(
+        onPressed: _submit,
+        icon: const Icon(Icons.save_outlined),
+        label: Text(editing ? 'Save lesson' : 'Create lesson'),
+      ),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const TeachingPlannerSectionHeader(
+              title: 'Syllabus link',
+              subtitle: 'Choose the real class, subject and chapter for this lesson.',
+              icon: Icons.account_tree_outlined,
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 660;
+                final classField = DropdownButtonFormField<String>(
+                  key: const ValueKey('lesson-editor-class-field'),
+                  initialValue: _classId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Class'),
+                  items: widget.workspace.activeClasses
                       .map(
-                        (topic) => FilterChip(
-                          selected: _topicIds.contains(topic.id),
-                          label: Text(topic.title),
-                          onSelected: (selected) => setState(
-                            () => selected
-                                ? _topicIds.add(topic.id)
-                                : _topicIds.remove(topic.id),
+                        (item) => DropdownMenuItem<String>(
+                          value: item.id,
+                          child: Text(
+                            item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       )
                       .toList(),
+                  onChanged: (value) => setState(() {
+                    _classId = value;
+                    _subjectId = null;
+                    _chapterId = null;
+                    _topicIds.clear();
+                    _normalizeSelections();
+                  }),
+                  validator: (value) => value == null ? 'Choose a class.' : null,
+                );
+                final subjectField = DropdownButtonFormField<String>(
+                  key: const ValueKey('lesson-editor-subject-field'),
+                  initialValue: _subjectId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Subject'),
+                  items: subjects
+                      .map(
+                        (item) => DropdownMenuItem<String>(
+                          value: item.id,
+                          child: Text(
+                            item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() {
+                    _subjectId = value;
+                    _chapterId = null;
+                    _topicIds.clear();
+                    _normalizeSelections();
+                  }),
+                  validator: (value) => value == null ? 'Choose a subject.' : null,
+                );
+                final chapterField = DropdownButtonFormField<String>(
+                  key: const ValueKey('lesson-editor-chapter-field'),
+                  initialValue: _chapterId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Chapter'),
+                  items: chapters
+                      .map(
+                        (item) => DropdownMenuItem<String>(
+                          value: item.id,
+                          child: Text(
+                            item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() {
+                    _chapterId = value;
+                    _topicIds.clear();
+                  }),
+                  validator: (value) => value == null ? 'Choose a chapter.' : null,
+                );
+
+                if (compact) {
+                  return Column(
+                    children: [
+                      classField,
+                      const SizedBox(height: TeachingPlannerDesign.space10),
+                      subjectField,
+                      const SizedBox(height: TeachingPlannerDesign.space10),
+                      chapterField,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: classField),
+                    const SizedBox(width: TeachingPlannerDesign.space10),
+                    Expanded(child: subjectField),
+                    const SizedBox(width: TeachingPlannerDesign.space10),
+                    Expanded(child: chapterField),
+                  ],
+                );
+              },
+            ),
+            if (topics.isNotEmpty) ...[
+              const SizedBox(height: TeachingPlannerDesign.space14),
+              Text(
+                'Topics (optional)',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _title,
-                decoration: const InputDecoration(labelText: 'Lesson title'),
-                validator: _required,
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _objective,
-                minLines: 2,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Learning objective',
-                ),
-                validator: _required,
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: TeachingPlannerDesign.space8),
               Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today_outlined),
-                    label: Text(_dateLabel(_date)),
-                  ),
-                  SizedBox(
-                    width: 160,
-                    child: TextFormField(
-                      controller: _periods,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Periods'),
-                      validator: (value) {
-                        final parsed = int.tryParse(value?.trim() ?? '');
-                        return parsed == null || parsed < 0
-                            ? 'Enter 0 or more.'
-                            : null;
-                      },
-                    ),
-                  ),
-                  SizedBox(
-                    width: 190,
-                    child: DropdownButtonFormField<TeachingProgressStatus>(
-                      initialValue: _status,
-                      decoration: const InputDecoration(labelText: 'Status'),
-                      items: TeachingProgressStatus.values
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(_statusLabel(value)),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) =>
-                          setState(() => _status = value ?? _status),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _optionalField(_materials, 'Materials / resources'),
-              const SizedBox(height: 12),
-              _optionalField(_activities, 'Teaching activities'),
-              const SizedBox(height: 12),
-              _optionalField(_homework, 'Homework / follow-up'),
-              const SizedBox(height: 12),
-              _optionalField(_notes, 'Teacher notes'),
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                onPressed: _submit,
-                icon: const Icon(Icons.save_outlined),
-                label: Text(
-                  widget.lesson == null ? 'Create lesson' : 'Save lesson',
-                ),
+                spacing: TeachingPlannerDesign.space8,
+                runSpacing: TeachingPlannerDesign.space8,
+                children: topics
+                    .map(
+                      (topic) => FilterChip(
+                        selected: _topicIds.contains(topic.id),
+                        label: Text(topic.title),
+                        onSelected: (selected) => setState(
+                          () => selected
+                              ? _topicIds.add(topic.id)
+                              : _topicIds.remove(topic.id),
+                        ),
+                      ),
+                    )
+                    .toList(),
               ),
             ],
-          ),
+            const SizedBox(height: TeachingPlannerDesign.space20),
+            const TeachingPlannerSectionHeader(
+              title: 'Teaching plan',
+              subtitle: 'Title, objective, timing and status stay editable without changing syllabus data.',
+              icon: Icons.fact_check_outlined,
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space12),
+            TextFormField(
+              controller: _title,
+              decoration: const InputDecoration(labelText: 'Lesson title'),
+              validator: _required,
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space10),
+            TextFormField(
+              controller: _objective,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Learning objective'),
+              validator: _required,
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 620;
+                final dateButton = OutlinedButton.icon(
+                  onPressed: _pickDate,
+                  icon: const Icon(Icons.calendar_today_outlined),
+                  label: Text(_dateLabel(_date)),
+                );
+                final periodsField = TextFormField(
+                  controller: _periods,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Periods'),
+                  validator: (value) {
+                    final parsed = int.tryParse(value?.trim() ?? '');
+                    return parsed == null || parsed < 0
+                        ? 'Enter 0 or more.'
+                        : null;
+                  },
+                );
+                final statusField = DropdownButtonFormField<TeachingProgressStatus>(
+                  initialValue: _status,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: TeachingProgressStatus.values
+                      .map(
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: Text(
+                            _statusLabel(value),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _status = value ?? _status),
+                );
+                if (compact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      dateButton,
+                      const SizedBox(height: TeachingPlannerDesign.space10),
+                      Row(
+                        children: [
+                          Expanded(child: periodsField),
+                          const SizedBox(width: TeachingPlannerDesign.space10),
+                          Expanded(child: statusField),
+                        ],
+                      ),
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    dateButton,
+                    const SizedBox(width: TeachingPlannerDesign.space10),
+                    SizedBox(width: 150, child: periodsField),
+                    const SizedBox(width: TeachingPlannerDesign.space10),
+                    Expanded(child: statusField),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space20),
+            const TeachingPlannerSectionHeader(
+              title: 'Optional teaching details',
+              subtitle: 'Use the fields that are useful for this lesson; blank fields remain blank.',
+              icon: Icons.notes_rounded,
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space12),
+            _optionalField(_materials, 'Materials / resources'),
+            const SizedBox(height: TeachingPlannerDesign.space10),
+            _optionalField(_activities, 'Teaching activities'),
+            const SizedBox(height: TeachingPlannerDesign.space10),
+            _optionalField(_homework, 'Homework / follow-up'),
+            const SizedBox(height: TeachingPlannerDesign.space10),
+            _optionalField(_notes, 'Teacher notes'),
+          ],
         ),
       ),
     );
@@ -881,8 +1204,9 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
     if (!_formKey.currentState!.validate() ||
         _classId == null ||
         _subjectId == null ||
-        _chapterId == null)
+        _chapterId == null) {
       return;
+    }
     Navigator.pop(
       context,
       _LessonDraft(
@@ -934,6 +1258,14 @@ class _LessonDraft {
   final String? notes;
   final TeachingProgressStatus status;
 }
+
+TeachingPlannerTone _toneForStatus(TeachingProgressStatus status) => switch (status) {
+  TeachingProgressStatus.planned => TeachingPlannerTone.primary,
+  TeachingProgressStatus.inProgress => TeachingPlannerTone.orange,
+  TeachingProgressStatus.completed => TeachingPlannerTone.teal,
+  TeachingProgressStatus.skipped => TeachingPlannerTone.neutral,
+  TeachingProgressStatus.rescheduled => TeachingPlannerTone.purple,
+};
 
 String _statusLabel(TeachingProgressStatus status) => switch (status) {
   TeachingProgressStatus.planned => 'Planned',

@@ -51,6 +51,29 @@ void main() {
   );
 
   test(
+    'valid rich text preserves explicit accessibility wording verbatim',
+    () {
+      final question = Question(
+        id: 'accessible-verbatim',
+        text: jsonEncode([
+          {'insert': 'Second page verification with √x, θ and π.\n'},
+        ]),
+        richTextFormat: 'quill-delta-json-v1',
+        plainTextAccessibility:
+            'Second page verification with square root x theta and pi.',
+      );
+
+      final result = service.validateAndRepair(question);
+
+      expect(result.issues, isEmpty);
+      expect(
+        result.safeQuestion.plainTextAccessibility,
+        'Second page verification with square root x theta and pi.',
+      );
+    },
+  );
+
+  test(
     'malformed body math embed becomes readable fallback instead of crash',
     () {
       final text = jsonEncode([

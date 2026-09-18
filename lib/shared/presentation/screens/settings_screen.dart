@@ -1,8 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/config/app_config.dart';
+import '../../../features/guided_experience/application/guide_catalog_providers.dart';
+import '../../../features/guided_experience/application/guided_experience_providers.dart';
+import '../../../features/guided_experience/domain/guide_progress.dart';
+import '../../../features/guided_experience/domain/guide_ids.dart';
+import '../../../features/guided_experience/demo/guided_demo_screen.dart';
+import '../../../features/guided_experience/demo/guided_demo_session.dart';
 import '../../../features/premium/application/premium_controller.dart';
 import '../../../features/premium/presentation/screens/premium_screen.dart';
 import '../providers/app_info_provider.dart';
@@ -23,14 +31,14 @@ class SettingsScreen extends ConsumerWidget {
     final themeSettings = ref.watch(themeProvider);
     final premium = ref.watch(premiumProvider);
     final appInfo = ref.watch(appInfoProvider);
+    final contextualHelp = ref.watch(contextualHelpControllerProvider);
+    final guidedExperience = ref.watch(guidedExperienceControllerProvider);
+    final guideCatalog = ref.watch(guideCatalogProvider);
     final isDark = themeSettings.mode == ThemeMode.dark;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black,
         title: const Text(
           'Settings',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -57,10 +65,12 @@ class SettingsScreen extends ConsumerWidget {
                 children: [
                   ListTile(
                     title: const Text(
-                      'Dark Mode',
+                      'Night mode',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: const Text('Toggle day and night mode'),
+                    subtitle: const Text(
+                      'Switch the complete app between Day and Night surfaces',
+                    ),
                     trailing: Switch(
                       value: isDark,
                       onChanged: (_) {
@@ -99,6 +109,103 @@ class SettingsScreen extends ConsumerWidget {
                       ref.read(themeProvider.notifier).setAccent(accent);
                     },
                   ),
+                  const SizedBox(height: 16),
+                  _ThemeLivePreview(isDark: isDark),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            _SettingsSection(
+              title: 'Guides & Help',
+              icon: Icons.auto_awesome_rounded,
+              color: Colors.deepPurple,
+              child: Column(
+                children: [
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.assistant_outlined),
+                    title: const Text(
+                      'Smart Work Assistant',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text(
+                      'On by default. After about 1 minute of inactivity, the mini helper can suggest the next useful step.',
+                    ),
+                    trailing: Switch(
+                      value: contextualHelp.helperEnabled,
+                      onChanged: contextualHelp.isLoading ||
+                              !contextualHelp.isInitialized
+                          ? null
+                          : (value) {
+                              ref
+                                  .read(contextualHelpControllerProvider.notifier)
+                                  .setHelperEnabled(value);
+                            },
+                    ),
+                  ),
+                  if (guideCatalog.isNotEmpty) ...[
+                    const Divider(height: 20),
+                    for (var index = 0; index < guideCatalog.length; index++) ...[
+                      if (index > 0) const Divider(height: 1, indent: 48),
+                      _SettingsActionCard(
+                        title: guideCatalog[index].title,
+                        subtitle: _guideReplaySubtitle(
+                          guideCatalog[index].description,
+                          guidedExperience.progressFor(
+                            guideCatalog[index].definition.id,
+                          )?.status,
+                        ),
+                        icon: Icons.replay_rounded,
+                        color: Colors.deepPurple,
+                        onTap: () {
+                          final entry = guideCatalog[index];
+                          final progress = guidedExperience.progressFor(
+                            entry.definition.id,
+                          );
+                          final controller = ref.read(
+                            guidedExperienceControllerProvider.notifier,
+                          );
+                          if (progress?.status == GuideProgressStatus.completed) {
+                            unawaited(
+                              controller.replayGuide(entry.definition),
+                            );
+                          } else {
+                            // Settings always returns to Home. Restart an
+                            // unfinished guide from its real Home entry point
+                            // instead of resuming a deep step whose target is
+                            // not mounted yet.
+                            unawaited(
+                              controller.startGuide(
+                                entry.definition,
+                                restart: true,
+                              ),
+                            );
+                          }
+                          Navigator.of(context).maybePop();
+                        },
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            final feature = _demoFeatureForGuide(
+                              guideCatalog[index].definition.id,
+                            );
+                            if (feature == null) return;
+                            Navigator.of(context).push<void>(
+                              MaterialPageRoute<void>(
+                                builder: (_) => GuidedDemoScreen(
+                                  feature: feature,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.science_outlined),
+                          label: const Text('Try safe demo'),
+                        ),
+                      ),
+                    ],
+                  ],
                 ],
               ),
             ),
@@ -232,6 +339,37 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  GuidedDemoFeature? _demoFeatureForGuide(GuideId guideId) {
+    if (guideId == GuideId.createPaper) {
+      return GuidedDemoFeature.createPaper;
+    }
+    if (guideId == GuideId.createSyllabus) {
+      return GuidedDemoFeature.createSyllabus;
+    }
+    return null;
+  }
+
+  String _guideReplaySubtitle(
+    String description,
+    GuideProgressStatus? status,
+  ) {
+    final stateLabel = switch (status) {
+      GuideProgressStatus.completed => 'Completed',
+      GuideProgressStatus.inProgress => 'In progress',
+      GuideProgressStatus.skipped => 'Skipped',
+      GuideProgressStatus.notStarted => 'Not started',
+      null => 'Not started',
+    };
+    final actionLabel = switch (status) {
+      GuideProgressStatus.completed => 'Show again',
+      GuideProgressStatus.inProgress => 'Restart guide',
+      GuideProgressStatus.skipped => 'Start guide',
+      GuideProgressStatus.notStarted => 'Start guide',
+      null => 'Start guide',
+    };
+    return '$description • $stateLabel • $actionLabel';
   }
 
   Future<void> _openSupportEmail(BuildContext context) async {
@@ -704,6 +842,106 @@ class _AccentPicker extends StatelessWidget {
   }
 }
 
+class _ThemeLivePreview extends StatelessWidget {
+  const _ThemeLivePreview({required this.isDark});
+
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                  color: scheme.onPrimaryContainer,
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Live workspace preview',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: scheme.onSurface,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      '${isDark ? 'Night' : 'Day'} mode • buttons, focus, navigation and surfaces',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  height: 9,
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SettingsSection extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -719,20 +957,14 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withValues(alpha: 0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -790,7 +1022,7 @@ class _SettingsActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: isComingSoon
           ? () {
@@ -859,14 +1091,17 @@ class _SettingsActionCard extends StatelessWidget {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: isDark ? Colors.grey.shade400 : Colors.grey[600],
+                      color: scheme.onSurfaceVariant,
                       fontSize: 12,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: Colors.grey[400]),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: scheme.onSurfaceVariant,
+            ),
           ],
         ),
       ),

@@ -1,5 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:edusheet/features/math_keyboard/domain/services/math_production_policy.dart';
 
@@ -10,11 +10,14 @@ import 'package:edusheet/features/editor/domain/models/question_option_layout.da
 import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
+import 'package:edusheet/features/geometry_builder/models/geometry_shape.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_svg_service.dart';
 import 'package:edusheet/features/omr/domain/models/omr_config.dart';
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_math_validation_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_print_content_projection.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
 import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
@@ -27,6 +30,7 @@ import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/builders/header_builders.dart';
 import 'package:edusheet/features/pdf/services/pdf_export_theme_service.dart';
+import 'package:edusheet/features/pdf/services/shaping/pdf_complex_text_service.dart';
 import 'package:edusheet/features/pdf/services/math/pdf_math_typesetter.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
@@ -36,16 +40,142 @@ import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
 import 'package:edusheet/features/math_keyboard/domain/services/math_compatibility_service.dart';
 
+
+class _PdfGeometryLabel {
+  const _PdfGeometryLabel({
+    required this.text,
+    required this.x,
+    required this.y,
+    required this.fontSize,
+    this.rotation = 0,
+    this.bold = false,
+  });
+
+  final String text;
+  final double x;
+  final double y;
+  final double fontSize;
+  final double rotation;
+  final bool bold;
+}
+
 class QuestionPaperService {
   static const _mathSurfaceService = QuestionMathSurfaceService();
   static const _mathValidationService = QuestionMathValidationService();
   static const _pdfMathTypesetter = PdfMathTypesetter();
-  static Future<pw.ThemeData> _loadTheme() {
-    return PdfExportThemeService.loadTheme();
+  static Future<pw.ThemeData> _loadTheme({bool requireUnicode = false}) {
+    return PdfExportThemeService.loadTheme(requireUnicode: requireUnicode);
   }
 
   static void preloadTheme() {
     _loadTheme();
+  }
+
+  static bool _paperRequiresUnicodeFonts(Paper paper) {
+    return paper.toJson().toString().runes.any((rune) => rune > 0x7F);
+  }
+
+  static pw.Widget _pdfText(
+    String text, {
+    double fontSize = 12,
+    PdfColor color = PdfColors.black,
+    pw.TextAlign textAlign = pw.TextAlign.left,
+    pw.FontWeight? fontWeight,
+    pw.FontStyle? fontStyle,
+    double? lineHeight,
+    double? letterSpacing,
+    bool underline = false,
+    int? maxLines,
+  }) {
+    return PdfComplexTextService.text(
+      text,
+      fontSize: fontSize,
+      color: color,
+      textAlign: textAlign,
+      fontWeight: fontWeight,
+      fontStyle: fontStyle,
+      lineHeight: lineHeight,
+      letterSpacing: letterSpacing,
+      underline: underline,
+      maxLines: maxLines,
+    );
+  }
+
+  static String _operationsPlainText(List<Map<String, dynamic>> operations) {
+    final buffer = StringBuffer();
+    for (final operation in operations) {
+      final insert = operation['insert'];
+      if (insert is String) {
+        buffer.write(insert);
+      }
+    }
+    return buffer.toString();
+  }
+
+  static pw.Widget _complexRichOperationsToPdf(
+    List<Map<String, dynamic>> operations,
+    double fontSize, {
+    required pw.TextAlign textAlign,
+  }) {
+    final lines = <List<pw.Widget>>[<pw.Widget>[]];
+
+    void addText(String value, Map<dynamic, dynamic>? attributes) {
+      if (value.isEmpty) return;
+      final bold = attributes?['bold'] == true;
+      final italic = attributes?['italic'] == true;
+      final underline = attributes?['underline'] == true;
+      final parts = value.split('\n');
+      for (var partIndex = 0; partIndex < parts.length; partIndex++) {
+        final part = parts[partIndex];
+        for (final match in RegExp(r'\s+|\S+').allMatches(part)) {
+          lines.last.add(
+            _pdfText(
+              match.group(0)!,
+              fontSize: fontSize,
+              fontWeight: bold ? pw.FontWeight.bold : null,
+              fontStyle: italic ? pw.FontStyle.italic : null,
+              underline: underline,
+            ),
+          );
+        }
+        if (partIndex < parts.length - 1) {
+          lines.add(<pw.Widget>[]);
+        }
+      }
+    }
+
+    for (final operation in operations) {
+      final insert = operation['insert'];
+      if (insert is! String) continue;
+      final rawAttributes = operation['attributes'];
+      addText(
+        insert,
+        rawAttributes is Map ? rawAttributes : null,
+      );
+    }
+
+    final wrapAlignment = switch (textAlign) {
+      pw.TextAlign.center => pw.WrapAlignment.center,
+      pw.TextAlign.right || pw.TextAlign.end => pw.WrapAlignment.end,
+      _ => pw.WrapAlignment.start,
+    };
+    final lineWidgets = lines
+        .map(
+          (line) => line.isEmpty
+              ? pw.SizedBox(height: fontSize * 1.2)
+              : pw.Wrap(
+                  alignment: wrapAlignment,
+                  crossAxisAlignment: pw.WrapCrossAlignment.center,
+                  children: line,
+                ),
+        )
+        .toList(growable: false);
+    if (lineWidgets.isEmpty) return pw.SizedBox();
+    if (lineWidgets.length == 1) return lineWidgets.single;
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: lineWidgets,
+    );
   }
 
   static PdfPageFormat _getPageFormat(PaperSize size) {
@@ -95,7 +225,17 @@ class QuestionPaperService {
     if (configErrors.isNotEmpty) {
       throw ArgumentError(configErrors.join(' '));
     }
-    final theme = await _loadTheme();
+    final templateStaticText = PaperHeaderLayoutFactory.resolve(template)
+        .elements
+        .map((element) => element.content)
+        .join(' ');
+    final complexScriptText = '${paper.toJson()} $templateStaticText';
+    if (PdfComplexTextService.containsComplexScript(complexScriptText)) {
+      await PdfComplexTextService.ensureInitialized();
+    }
+    final theme = await _loadTheme(
+      requireUnicode: _paperRequiresUnicodeFonts(paper),
+    );
     final pdf = pw.Document(theme: theme);
 
     // Pre-load standard logos in parallel
@@ -183,21 +323,53 @@ class QuestionPaperService {
           pageFormat: pageFormat,
           margin: pageMargins,
           buildBackground: (context) {
-            if (template.hasBorder) {
-              return pw.FullPage(
-                ignoreMargins: true,
-                child: pw.Container(
-                  margin: const pw.EdgeInsets.all(10),
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(
-                      color: template.primaryColor,
-                      width: 1,
+            final watermark = paper.pageLayout.watermarkText.trim();
+            return pw.FullPage(
+              ignoreMargins: true,
+              child: pw.Stack(
+                children: [
+                  pw.Positioned(left: 0, top: 0, right: 0, bottom: 0,
+                    child: pw.Container(
+                      color: _pdfColorWithOpacity(
+                        paper.pageLayout.pageBackgroundArgb,
+                        1,
+                      ),
                     ),
                   ),
-                ),
-              );
-            }
-            return pw.SizedBox();
+                  if (watermark.isNotEmpty)
+                    pw.Positioned(left: 0, top: 0, right: 0, bottom: 0,
+                      child: pw.Center(
+                        child: pw.Transform.rotate(
+                          angle: -math.pi / 5,
+                          child: _pdfText(
+                            watermark,
+                            maxLines: 1,
+                            fontSize: 54,
+                            fontWeight: pw.FontWeight.bold,
+                            letterSpacing: 3,
+                            color: _pdfColorWithOpacity(
+                              0xFF000000,
+                              paper.pageLayout.watermarkOpacity,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (template.hasBorder)
+                    pw.Positioned(left: 0, top: 0, right: 0, bottom: 0,
+                      child: pw.Container(
+                        margin: const pw.EdgeInsets.all(10),
+                        decoration: pw.BoxDecoration(
+                          border: pw.Border.all(
+                            color: template.primaryColor,
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
           },
         ),
         header: (context) {
@@ -228,9 +400,10 @@ class QuestionPaperService {
             decoration: const pw.BoxDecoration(
               border: pw.Border(bottom: pw.BorderSide(width: 0.5)),
             ),
-            child: pw.Text(
+            child: _pdfText(
               parts.join('  •  '),
-              style: pw.TextStyle(fontSize: 9 * exportConfig.fontScale),
+              fontSize: 9 * exportConfig.fontScale,
+              textAlign: rightAligned ? pw.TextAlign.right : pw.TextAlign.center,
             ),
           );
         },
@@ -256,9 +429,12 @@ class QuestionPaperService {
                         .toDouble()
                   : 6,
             ),
-            child: pw.Text(
+            child: _pdfText(
               parts.join('  •  '),
-              style: const pw.TextStyle(fontSize: 9),
+              fontSize: 9,
+              textAlign: pageNumberPosition == PaperPageNumberPosition.footerRight
+                  ? pw.TextAlign.right
+                  : pw.TextAlign.center,
             ),
           );
         },
@@ -300,13 +476,11 @@ class QuestionPaperService {
           if (paper.instruction.trim().isNotEmpty)
             pw.Padding(
               padding: const pw.EdgeInsets.only(top: 8, bottom: 8),
-              child: pw.Text(
+              child: _pdfText(
                 paper.instruction.trim(),
-                style: pw.TextStyle(
-                  fontSize: template.questionFontSize,
-                  fontStyle: pw.FontStyle.italic,
-                  fontWeight: pw.FontWeight.bold,
-                ),
+                fontSize: template.questionFontSize,
+                fontStyle: pw.FontStyle.italic,
+                fontWeight: pw.FontWeight.bold,
                 textAlign: _pdfTextAlign(paper.instructionAlignment),
               ),
             ),
@@ -378,6 +552,11 @@ class QuestionPaperService {
     return widgets;
   }
 
+  static int _resolvedColumnCount(Paper paper, PaperTemplate template) {
+    return paper.pageLayout.columns.explicitCount ??
+        (template.paperLayout == PaperLayout.twoColumn ? 2 : 1);
+  }
+
   static pw.Widget _buildSectionSegment(
     PaperSection section,
     List<MapEntry<int, Question>> entries,
@@ -391,7 +570,8 @@ class QuestionPaperService {
         ? _buildSectionHeadingWidgets(section, template, paper, config)
         : <pw.Widget>[];
 
-    final isSingleColumn = template.paperLayout != PaperLayout.twoColumn;
+    final columnCount = _resolvedColumnCount(paper, template);
+    final isSingleColumn = columnCount == 1;
 
     if (showHeading &&
         section.keepTogether &&
@@ -451,6 +631,7 @@ class QuestionPaperService {
             paper,
             config,
             questionImages,
+            columnCount: columnCount,
           ),
       ],
     );
@@ -479,18 +660,16 @@ class QuestionPaperService {
           ? pw.Row(
               children: [
                 pw.Expanded(
-                  child: pw.Text(
+                  child: _pdfText(
                     headingText,
                     textAlign: _pdfTextAlign(section.headingAlignment),
-                    style: pw.TextStyle(
-                      fontSize: headingFontSize,
-                      fontWeight: section.headingBold
-                          ? pw.FontWeight.bold
-                          : pw.FontWeight.normal,
-                      color: template.type == TemplateType.coaching
-                          ? template.primaryColor
-                          : PdfColors.black,
-                    ),
+                    fontSize: headingFontSize,
+                    fontWeight: section.headingBold
+                        ? pw.FontWeight.bold
+                        : pw.FontWeight.normal,
+                    color: template.type == TemplateType.coaching
+                        ? template.primaryColor
+                        : PdfColors.black,
                   ),
                 ),
                 if (marksText != null) ...[
@@ -505,21 +684,19 @@ class QuestionPaperService {
                 ],
               ],
             )
-          : pw.Text(
+          : _pdfText(
               section.sectionMarksDisplay == SectionMarksDisplay.inline &&
                       marksText != null
                   ? '$headingText ($marksText)'
                   : headingText,
               textAlign: _pdfTextAlign(section.headingAlignment),
-              style: pw.TextStyle(
-                fontSize: headingFontSize,
-                fontWeight: section.headingBold
-                    ? pw.FontWeight.bold
-                    : pw.FontWeight.normal,
-                color: template.type == TemplateType.coaching
-                    ? template.primaryColor
-                    : PdfColors.black,
-              ),
+              fontSize: headingFontSize,
+              fontWeight: section.headingBold
+                  ? pw.FontWeight.bold
+                  : pw.FontWeight.normal,
+              color: template.type == TemplateType.coaching
+                  ? template.primaryColor
+                  : PdfColors.black,
             ),
     );
 
@@ -534,13 +711,11 @@ class QuestionPaperService {
                 .clamp(2, 18)
                 .toDouble(),
           ),
-          child: pw.Text(
+          child: _pdfText(
             '${section.showInstructionLabel ? 'Instruction: ' : ''}${section.instruction}',
             textAlign: _pdfTextAlign(section.instructionAlignment),
-            style: pw.TextStyle(
-              fontStyle: pw.FontStyle.italic,
-              fontSize: 12 * config.fontScale,
-            ),
+            fontStyle: pw.FontStyle.italic,
+            fontSize: 12 * config.fontScale,
           ),
         ),
       if (answerRule != null)
@@ -550,13 +725,11 @@ class QuestionPaperService {
                 .clamp(2, 18)
                 .toDouble(),
           ),
-          child: pw.Text(
+          child: _pdfText(
             answerRule,
             textAlign: _pdfTextAlign(section.answerRuleAlignment),
-            style: pw.TextStyle(
-              fontSize: 11 * config.fontScale,
-              fontWeight: pw.FontWeight.bold,
-            ),
+            fontSize: 11 * config.fontScale,
+            fontWeight: pw.FontWeight.bold,
           ),
         ),
       if (section.showBottomDivider) pw.Divider(),
@@ -611,8 +784,9 @@ class QuestionPaperService {
     PaperTemplate template,
     Paper paper,
     PaperExportConfig config,
-    Map<String, pw.ImageProvider> questionImages,
-  ) {
+    Map<String, pw.ImageProvider> questionImages, {
+    required int columnCount,
+  }) {
     final questions = _buildSingleColumnQuestionWidgets(
       section,
       entries,
@@ -627,8 +801,10 @@ class QuestionPaperService {
         final contentWidth = constraints?.maxWidth.isFinite == true
             ? constraints!.maxWidth
             : CustomLayout.designWidth;
-        final gap = 16.0;
-        final columnWidth = (contentWidth - gap) / 2;
+        final gap = paper.pageLayout.columnSpacingPoints.clamp(0, 72).toDouble();
+        final safeCount = columnCount.clamp(1, 3);
+        final columnWidth =
+            (contentWidth - gap * (safeCount - 1)) / safeCount;
 
         return pw.Wrap(
           spacing: gap,
@@ -757,14 +933,12 @@ class QuestionPaperService {
                       ],
                     )
                   else
-                    pw.Text(
+                    _pdfText(
                       answer.isEmpty
                           ? 'Answer: Not provided'
                           : 'Answer: $answer',
-                      style: pw.TextStyle(
-                        fontSize: fontSize,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
+                      fontSize: fontSize,
+                      fontWeight: pw.FontWeight.bold,
                     ),
                   if (config.includesSolutions &&
                       q.explanation.trim().isNotEmpty)
@@ -1130,14 +1304,24 @@ class QuestionPaperService {
     final height = (baseHeight * (shape.height / 0.30))
         .clamp(18.0, compact ? 70.0 : 120.0)
         .toDouble();
-    final border = pw.Border.all(color: PdfColors.black, width: 0.8);
+    final strokeColor = PdfColor.fromInt(shape.strokeColorArgb);
+    final fillColor = shape.fillOpacity > 0
+        ? _pdfColorWithOpacity(shape.fillColorArgb, shape.fillOpacity)
+        : null;
+    final border = shape.borderVisible
+        ? pw.Border.all(
+            color: strokeColor,
+            width: (shape.strokeWidth * 0.5).clamp(0.2, 4).toDouble(),
+          )
+        : null;
+    final decoration = pw.BoxDecoration(border: border, color: fillColor);
 
     switch (shape.kind) {
       case WordShapeKind.rectangle:
         return pw.Container(
           width: width,
           height: height,
-          decoration: pw.BoxDecoration(border: border),
+          decoration: decoration,
         );
       case WordShapeKind.roundedRectangle:
         return pw.Container(
@@ -1145,6 +1329,7 @@ class QuestionPaperService {
           height: height,
           decoration: pw.BoxDecoration(
             border: border,
+            color: fillColor,
             borderRadius: pw.BorderRadius.circular(8),
           ),
         );
@@ -1154,6 +1339,7 @@ class QuestionPaperService {
           height: height,
           decoration: pw.BoxDecoration(
             border: border,
+            color: fillColor,
             borderRadius: pw.BorderRadius.circular(height / 2),
           ),
         );
@@ -1162,54 +1348,231 @@ class QuestionPaperService {
           width: width,
           height: 8,
           alignment: pw.Alignment.center,
-          child: pw.Container(
-            width: width,
-            height: 0.8,
-            color: PdfColors.black,
-          ),
+          child: shape.borderVisible
+              ? pw.Container(
+                  width: width,
+                  height: math.max(0.4, shape.strokeWidth * 0.5),
+                  color: strokeColor,
+                )
+              : pw.SizedBox(),
         );
       case WordShapeKind.arrow:
-        return _buildPdfArrow(width, fontSize, startHead: false, endHead: true);
+        return _buildPdfArrow(
+          width,
+          fontSize,
+          color: strokeColor,
+          visible: shape.borderVisible,
+          startHead: false,
+          endHead: true,
+        );
       case WordShapeKind.doubleArrow:
-        return _buildPdfArrow(width, fontSize, startHead: true, endHead: true);
+        return _buildPdfArrow(
+          width,
+          fontSize,
+          color: strokeColor,
+          visible: shape.borderVisible,
+          startHead: true,
+          endHead: true,
+        );
       case WordShapeKind.textBox:
         return pw.Container(
           width: width,
           height: height,
-          padding: const pw.EdgeInsets.all(5),
+          padding: pw.EdgeInsets.all(shape.padding.clamp(0, 32).toDouble()),
           alignment: pw.Alignment.center,
-          decoration: pw.BoxDecoration(border: border),
-          child: pw.Text(
+          decoration: decoration,
+          child: _pdfText(
             shape.text,
             textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(fontSize: fontSize * 0.9),
+            fontSize: fontSize * 0.9,
           ),
         );
       case WordShapeKind.callout:
         return pw.Container(
           width: width,
           height: height,
-          padding: const pw.EdgeInsets.all(5),
+          padding: pw.EdgeInsets.all(shape.padding.clamp(0, 32).toDouble()),
           alignment: pw.Alignment.center,
           decoration: pw.BoxDecoration(
             border: border,
+            color: fillColor,
             borderRadius: pw.BorderRadius.circular(6),
           ),
-          child: pw.Text(
+          child: _pdfText(
             shape.text,
             textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(fontSize: fontSize * 0.9),
+            fontSize: fontSize * 0.9,
+          ),
+        );
+      case WordShapeKind.geometry:
+        final diagram = shape.geometryDiagram;
+        if (diagram == null) {
+          return pw.Container(
+            width: width,
+            height: height,
+            decoration: decoration,
+            alignment: pw.Alignment.center,
+            child: pw.Text('[diagram]'),
+          );
+        }
+        final inset = shape.padding.clamp(0, 32).toDouble();
+        final innerWidth = math.max(1.0, width - inset * 2);
+        final innerHeight = math.max(1.0, height - inset * 2);
+        return pw.Container(
+          width: width,
+          height: height,
+          padding: pw.EdgeInsets.all(inset),
+          decoration: decoration,
+          child: _geometryDiagramPdf(
+            diagram.copyWith(showGrid: false),
+            width: innerWidth,
+            height: innerHeight,
           ),
         );
     }
   }
 
+  /// Renders geometry vectors without SVG text, then overlays every label with
+  /// normal PDF text. The PDF package otherwise resolves SVG `font-family`
+  /// through its built-in Helvetica face, which is not Unicode-safe and emits
+  /// warnings for Indic/math labels. Overlay text inherits the document's
+  /// Unicode-capable [pw.ThemeData], keeping geometry labels on the same font
+  /// path as question text.
+  static pw.Widget _geometryDiagramPdf(
+    GeometryDiagram diagram, {
+    required double width,
+    required double height,
+  }) {
+    final canvasWidth = math.max(1.0, diagram.canvasSize.width);
+    final canvasHeight = math.max(1.0, diagram.canvasSize.height);
+    final scale = math.min(width / canvasWidth, height / canvasHeight);
+    final renderedWidth = canvasWidth * scale;
+    final renderedHeight = canvasHeight * scale;
+    final offsetX = (width - renderedWidth) / 2;
+    final offsetY = (height - renderedHeight) / 2;
+    final labels = _geometryPdfLabels(diagram);
+
+    return pw.SizedBox(
+      width: width,
+      height: height,
+      child: pw.Stack(
+        children: [
+          pw.Positioned(
+            left: offsetX,
+            top: offsetY,
+            child: pw.SvgImage(
+              svg: GeometrySvgService().toSvg(
+                diagram,
+                includeText: false,
+              ),
+              width: renderedWidth,
+              height: renderedHeight,
+              fit: pw.BoxFit.fill,
+            ),
+          ),
+          for (final label in labels)
+            pw.Positioned(
+              left: offsetX + label.x * scale,
+              top: math.max(
+                0.0,
+                offsetY + label.y * scale - label.fontSize * scale * 0.82,
+              ),
+              child: pw.Transform.rotate(
+                angle: label.rotation,
+                child: _pdfText(
+                  label.text,
+                  fontSize: (label.fontSize * scale).clamp(6.0, 36.0),
+                  fontWeight: label.bold
+                      ? pw.FontWeight.bold
+                      : pw.FontWeight.normal,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static List<_PdfGeometryLabel> _geometryPdfLabels(GeometryDiagram diagram) {
+    final labels = <_PdfGeometryLabel>[];
+    for (final point in diagram.points) {
+      final text = point.label.trim();
+      if (text.isEmpty) continue;
+      final position = point.labelPosition;
+      labels.add(
+        _PdfGeometryLabel(
+          text: text,
+          x: position.dx,
+          y: position.dy,
+          fontSize: point.labelFontSize,
+          rotation: point.labelRotation,
+          bold: point.labelBold,
+        ),
+      );
+    }
+    for (final label in diagram.labels) {
+      final text = label.text.trim();
+      if (text.isEmpty) continue;
+      labels.add(
+        _PdfGeometryLabel(
+          text: text,
+          x: label.position.dx,
+          y: label.position.dy,
+          fontSize: label.fontSize,
+          rotation: label.rotation,
+          bold: label.isBold,
+        ),
+      );
+    }
+
+    final pointMap = diagram.pointMap;
+    for (final shape in diagram.shapes) {
+      if (shape.type != GeometryShapeType.coordinateAxes ||
+          shape.pointIds.length < 4) {
+        continue;
+      }
+      final yEnd = pointMap[shape.pointIds[0]]?.position;
+      final xEnd = pointMap[shape.pointIds[3]]?.position;
+      if (xEnd != null) {
+        labels.add(
+          _PdfGeometryLabel(
+            text: 'x',
+            x: xEnd.dx + 8,
+            y: xEnd.dy - 8,
+            fontSize: 12,
+          ),
+        );
+      }
+      if (yEnd != null) {
+        labels.add(
+          _PdfGeometryLabel(
+            text: 'y',
+            x: yEnd.dx + 8,
+            y: yEnd.dy + 12,
+            fontSize: 12,
+          ),
+        );
+      }
+    }
+    return labels;
+  }
+
+  static PdfColor _pdfColorWithOpacity(int argb, double opacity) {
+    final red = ((argb >> 16) & 0xFF) / 255.0;
+    final green = ((argb >> 8) & 0xFF) / 255.0;
+    final blue = (argb & 0xFF) / 255.0;
+    return PdfColor(red, green, blue, opacity.clamp(0.0, 1.0).toDouble());
+  }
+
   static pw.Widget _buildPdfArrow(
     double width,
     double fontSize, {
+    required PdfColor color,
+    required bool visible,
     required bool startHead,
     required bool endHead,
   }) {
+    if (!visible) return pw.SizedBox(width: width, height: 18);
     return pw.SizedBox(
       width: width,
       height: 18,
@@ -1217,10 +1580,16 @@ class QuestionPaperService {
         crossAxisAlignment: pw.CrossAxisAlignment.center,
         children: [
           if (startHead)
-            pw.Text('<', style: pw.TextStyle(fontSize: fontSize * 0.9)),
-          pw.Expanded(child: pw.Container(height: 0.8, color: PdfColors.black)),
+            pw.Text(
+              '<',
+              style: pw.TextStyle(fontSize: fontSize * 0.9, color: color),
+            ),
+          pw.Expanded(child: pw.Container(height: 0.8, color: color)),
           if (endHead)
-            pw.Text('>', style: pw.TextStyle(fontSize: fontSize * 0.9)),
+            pw.Text(
+              '>',
+              style: pw.TextStyle(fontSize: fontSize * 0.9, color: color),
+            ),
         ],
       ),
     );
@@ -1489,9 +1858,9 @@ class QuestionPaperService {
           runSpacing: 5,
           children: entries
               .map(
-                (entry) => pw.Text(
+                (entry) => _pdfText(
                   '${String.fromCharCode(65 + entry.key)}) ${entry.value.text}',
-                  style: pw.TextStyle(fontSize: fontSize),
+                  fontSize: fontSize,
                 ),
               )
               .toList(),
@@ -1554,25 +1923,21 @@ class QuestionPaperService {
       child: pw.Column(
         mainAxisAlignment: pw.MainAxisAlignment.center,
         children: [
-          pw.Text(
+          _pdfText(
             paper.schoolName,
             textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(
-              fontSize: 24 * config.fontScale,
-              fontWeight: pw.FontWeight.bold,
-            ),
+            fontSize: 24 * config.fontScale,
+            fontWeight: pw.FontWeight.bold,
           ),
           pw.SizedBox(height: 28),
-          pw.Text(
+          _pdfText(
             paper.title,
             textAlign: pw.TextAlign.center,
-            style: pw.TextStyle(
-              fontSize: 30 * config.fontScale,
-              fontWeight: pw.FontWeight.bold,
-              color: config.colourMode == ExportColourMode.grayscale
-                  ? PdfColors.black
-                  : template.primaryColor,
-            ),
+            fontSize: 30 * config.fontScale,
+            fontWeight: pw.FontWeight.bold,
+            color: config.colourMode == ExportColourMode.grayscale
+                ? PdfColors.black
+                : template.primaryColor,
           ),
           if (config.outputMode == PaperOutputMode.multipleSet) ...[
             pw.SizedBox(height: 16),
@@ -1706,14 +2071,12 @@ class QuestionPaperService {
       fallbackText,
     );
     if (document == null) {
-      return pw.Text(
+      return _pdfText(
         fallbackText,
         textAlign: textAlign,
-        style: pw.TextStyle(
-          fontSize: fontSize,
-          fontWeight: bold ? pw.FontWeight.bold : null,
-          fontStyle: italic ? pw.FontStyle.italic : null,
-        ),
+        fontSize: fontSize,
+        fontWeight: bold ? pw.FontWeight.bold : null,
+        fontStyle: italic ? pw.FontStyle.italic : null,
       );
     }
     return pw.Wrap(
@@ -1727,13 +2090,11 @@ class QuestionPaperService {
           .map((part) {
             if (part.kind == QuestionMathInlinePartKind.text ||
                 part.expression == null) {
-              return pw.Text(
+              return _pdfText(
                 part.text,
-                style: pw.TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: bold ? pw.FontWeight.bold : null,
-                  fontStyle: italic ? pw.FontStyle.italic : null,
-                ),
+                fontSize: fontSize,
+                fontWeight: bold ? pw.FontWeight.bold : null,
+                fontStyle: italic ? pw.FontStyle.italic : null,
               );
             }
             return _mathExpressionPdf(part.expression!, fontSize: fontSize);
@@ -1747,87 +2108,81 @@ class QuestionPaperService {
     double fontSize, {
     pw.TextAlign textAlign = pw.TextAlign.left,
   }) {
-    try {
-      final trimmed = text.trimLeft();
-      if (trimmed.startsWith('[')) {
-        final decoded = jsonDecode(trimmed);
-        if (decoded is List) {
-          final children = <pw.Widget>[];
-          final pending = <Map<String, dynamic>>[];
-          var hasBlockEmbed = false;
+    final projection = QuestionPrintContentProjection.fromRichText(text);
+    if (projection.isStructuredRichText) {
+      try {
+        final children = <pw.Widget>[];
+        var hasBlockEmbed = false;
 
-          void flushText() {
-            if (pending.isEmpty) return;
-            final converter = QuillDeltaToHtmlConverter(List.of(pending));
-            final html = converter.convert();
-            final document = html_parser.parse(html);
-            final body = document.body;
-            if (body != null) {
-              children.add(
-                pw.RichText(
-                  textAlign: textAlign,
-                  text: pw.TextSpan(children: _domToTextSpans(body, fontSize)),
-                ),
-              );
-            }
-            pending.clear();
-          }
-
-          for (final raw in decoded) {
-            if (raw is! Map) continue;
-            final operation = Map<String, dynamic>.from(raw);
-            final insert = operation['insert'];
-            if (insert is Map) {
-              if (insert.containsKey(MathExpression.quillEmbedKey)) {
-                final expression = MathExpression.tryFromQuillEmbedData(
-                  insert[MathExpression.quillEmbedKey],
-                );
-                if (expression == null) {
-                  operation['insert'] = '[formula]';
-                } else {
-                  flushText();
-                  children.add(
-                    _mathExpressionPdf(expression, fontSize: fontSize),
-                  );
-                  continue;
-                }
-              } else if (insert.containsKey('geometry')) {
-                flushText();
-                hasBlockEmbed = true;
+        for (final object in projection.objects) {
+          switch (object.kind) {
+            case QuestionPrintContentKind.richText:
+              if (object.operations.isEmpty) continue;
+              final plainText = _operationsPlainText(object.operations);
+              if (PdfComplexTextService.containsComplexScript(plainText)) {
                 children.add(
-                  _geometryEmbedToPdf(
-                    GeometryEmbedLayout.fromData(insert['geometry']),
+                  _complexRichOperationsToPdf(
+                    object.operations,
+                    fontSize,
+                    textAlign: textAlign,
                   ),
                 );
-                continue;
+                break;
               }
-            }
-            pending.add(operation);
+              final converter = QuillDeltaToHtmlConverter(object.operations);
+              final html = converter.convert();
+              final document = html_parser.parse(html);
+              final body = document.body;
+              if (body != null) {
+                children.add(
+                  pw.RichText(
+                    textAlign: textAlign,
+                    text: pw.TextSpan(
+                      children: _domToTextSpans(body, fontSize),
+                    ),
+                  ),
+                );
+              }
+              break;
+            case QuestionPrintContentKind.mathExpression:
+              final expression = object.mathExpression;
+              if (expression != null) {
+                children.add(
+                  _mathExpressionPdf(expression, fontSize: fontSize),
+                );
+              }
+              break;
+            case QuestionPrintContentKind.geometry:
+              final layout = object.geometryLayout;
+              if (layout != null) {
+                hasBlockEmbed = true;
+                children.add(_geometryEmbedToPdf(layout));
+              }
+              break;
           }
-          flushText();
+        }
 
-          if (children.isEmpty) return pw.SizedBox();
-          if (children.length == 1) return children.single;
-          if (!hasBlockEmbed) {
-            return pw.Wrap(
-              crossAxisAlignment: pw.WrapCrossAlignment.center,
-              children: children,
-            );
-          }
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        if (children.isEmpty) return pw.SizedBox();
+        if (children.length == 1) return children.single;
+        if (!hasBlockEmbed) {
+          return pw.Wrap(
+            crossAxisAlignment: pw.WrapCrossAlignment.center,
             children: children,
           );
         }
+        return pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: children,
+        );
+      } catch (_) {
+        // Export must never lose a question because one legacy rich-text
+        // operation is malformed. Fall back to plain text below.
       }
-    } catch (_) {
-      // Fallback to plain text below. Export must never lose the rest of a
-      // question merely because one legacy rich-text operation is malformed.
     }
-    return pw.Text(
+    return _pdfText(
       text,
       textAlign: textAlign,
-      style: pw.TextStyle(fontSize: fontSize),
+      fontSize: fontSize,
     );
   }
 
@@ -1868,11 +2223,10 @@ class QuestionPaperService {
         child: pw.Container(
           width: figureWidth,
           height: figureHeight,
-          child: pw.SvgImage(
-            svg: GeometrySvgService().toSvg(diagram.copyWith(showGrid: false)),
+          child: _geometryDiagramPdf(
+            diagram.copyWith(showGrid: false),
             width: figureWidth,
             height: figureHeight,
-            fit: pw.BoxFit.contain,
           ),
         ),
       ),

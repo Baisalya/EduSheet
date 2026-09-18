@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:edusheet/features/word_converter/domain/models/conversion_job.dart';
 import 'package:edusheet/features/word_converter/services/word_converter_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +37,22 @@ void main() {
     }
   });
 
+  test('convertDocxToPdf does not inject the source filename as content', () async {
+    final input = await _writeSimpleDocx(tempDir);
+
+    final output = await WordConverterService.convertDocxToPdf(input.path);
+    final document = sf.PdfDocument(inputBytes: await output.readAsBytes());
+    try {
+      final text = sf.PdfTextExtractor(document).extractText();
+      final normalizedText = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      expect(normalizedText, contains('Professional Title'));
+      expect(normalizedText, contains('Body paragraph'));
+      expect(normalizedText, isNot(contains('source_filename_must_not_appear')));
+    } finally {
+      document.dispose();
+    }
+  });
+
   test('convertPdfToDocxExact embeds one image per PDF page', () async {
     final input = await _writePdfWithText(tempDir);
     final imagePaths = await _writeRenderedPageImages(tempDir, 2);
@@ -65,8 +82,12 @@ void main() {
     expect(documentXml, contains('<a:blip r:embed="rId1"/>'));
     expect(documentXml, contains('<a:blip r:embed="rId2"/>'));
     expect(documentXml, contains('<wp:extent'));
-    expect(documentXml, contains('<w:br w:type="page"/>'));
+    expect(documentXml, contains('<w:type w:val="nextPage"/>'));
+    expect(RegExp(r'<w:sectPr>').allMatches(documentXml).length, 2);
     expect(documentXml, contains('w:top="0"'));
+    for (final imagePath in imagePaths) {
+      expect(await File(imagePath).exists(), isFalse);
+    }
   });
 
   test('convertPdfToDocxExact fails cleanly without page rendering', () async {
@@ -78,13 +99,13 @@ void main() {
         isA<FormatException>().having(
           (error) => error.message,
           'message',
-          contains('Exact PDF conversion is unavailable'),
+          contains('Preserve Appearance is unavailable'),
         ),
       ),
     );
   });
 
-  test('convertPdfToDocx creates editable docx text with page break', () async {
+  test('convertPdfToDocx creates structured editable docx with page sections', () async {
     final input = await _writePdfWithText(tempDir);
 
     final output = await WordConverterService.convertPdfToDocx(input.path);
@@ -95,10 +116,11 @@ void main() {
     expect(p.extension(output.path), '.docx');
     expect(names, contains('[Content_Types].xml'));
     expect(names, contains('word/document.xml'));
+    expect(names, contains('word/styles.xml'));
     expect(documentXml, contains('First page title'));
     expect(documentXml, contains('First page body'));
     expect(documentXml, contains('Second page text'));
-    expect(documentXml, contains('<w:br w:type="page"/>'));
+    expect(documentXml, contains('<w:type w:val="nextPage"/>'));
   });
 
   test('convertPdfToDocx rejects PDFs without selectable text', () async {
@@ -115,6 +137,77 @@ void main() {
       ),
     );
   });
+
+  test('custom output path is respected and progress is reported', () async {
+    final input = File(p.join(tempDir.path, 'notes.txt'));
+    await input.writeAsString('Alpha\nBeta', flush: true);
+    final destination = p.join(tempDir.path, 'chosen_name.docx');
+    final stages = <ConversionStage>[];
+
+    final output = await WordConverterService.convertTextToDocx(
+      input.path,
+      outputPath: destination,
+      onProgress: (progress) => stages.add(progress.stage),
+    );
+
+    expect(output.path, destination);
+    expect(await output.exists(), isTrue);
+    expect(stages, contains(ConversionStage.readingSource));
+    expect(stages, contains(ConversionStage.writingOutput));
+    expect(stages.last, ConversionStage.completed);
+  });
+
+  test('cancellation cleans partial output', () async {
+    final input = File(p.join(tempDir.path, 'cancel.txt'));
+    await input.writeAsString('Cancel me safely', flush: true);
+    final destination = p.join(tempDir.path, 'cancelled.docx');
+    await File(destination).writeAsString('ORIGINAL', flush: true);
+    final token = ConversionCancellationToken();
+
+    expect(
+      () => WordConverterService.convertTextToDocx(
+        input.path,
+        outputPath: destination,
+        cancellationToken: token,
+        onProgress: (progress) {
+          if (progress.stage == ConversionStage.writingOutput) {
+            token.cancel();
+          }
+        },
+      ),
+      throwsA(isA<ConversionCancelledException>()),
+    );
+    expect(await File(destination).readAsString(), 'ORIGINAL');
+  });
+
+  test('inspectSource reports PDF page count and source size', () async {
+    final input = await _writePdfWithText(tempDir);
+    final info = await WordConverterService.inspectSource(input.path);
+
+    expect(info.pageCount, 2);
+    expect(info.sizeBytes, greaterThan(0));
+    expect(info.name, p.basename(input.path));
+  });
+
+}
+
+Future<File> _writeSimpleDocx(Directory directory) async {
+  final archive = Archive()
+    ..addFile(
+      ArchiveFile.string(
+        'word/document.xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body>'
+        '<w:p><w:r><w:rPr><w:b/><w:sz w:val="32"/></w:rPr><w:t>Professional Title</w:t></w:r></w:p>'
+        '<w:p><w:r><w:t>Body paragraph</w:t></w:r></w:p>'
+        '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>'
+        '</w:body></w:document>',
+      ),
+    );
+  final file = File(p.join(directory.path, 'source_filename_must_not_appear.docx'));
+  await file.writeAsBytes(ZipEncoder().encode(archive), flush: true);
+  return file;
 }
 
 Future<List<String>> _writeRenderedPageImages(

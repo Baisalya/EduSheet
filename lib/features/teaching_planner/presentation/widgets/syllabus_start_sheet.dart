@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../guided_experience/guides/create_syllabus_guide.dart';
+import '../../../guided_experience/presentation/widgets/guide_anchor.dart';
+
+import '../design/teaching_planner_design_system.dart';
+import 'teaching_planner_responsive_content.dart';
+import 'teaching_planner_shared_components.dart';
+
 class SyllabusStartSheet extends StatefulWidget {
   const SyllabusStartSheet({super.key});
 
@@ -21,60 +28,53 @@ class _SyllabusStartSheetState extends State<SyllabusStartSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        8,
-        20,
-        20 + MediaQuery.viewInsetsOf(context).bottom,
+    return TeachingPlannerSheetFrame(
+      title: 'Create syllabus',
+      subtitle:
+          'Start simple with the class name. The real subject, unit, chapter and topic structure can be added next.',
+      icon: Icons.account_tree_outlined,
+      maxWidth: 620,
+      action: FilledButton.icon(
+        onPressed: _submit,
+        icon: const Icon(Icons.arrow_forward_rounded),
+        label: const Text('Create and continue'),
       ),
-      child: SingleChildScrollView(
+      child: GuideAnchor(
+        targetId: CreateSyllabusGuideTargets.syllabusForm,
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Create syllabus',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+            const TeachingPlannerSectionHeader(
+              title: 'Class details',
+              subtitle:
+                  'Only the fields already supported by Teaching Planner are shown here.',
+              icon: Icons.school_outlined,
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space12),
+            TextFormField(
+              controller: _nameController,
+              autofocus: true,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Class / syllabus name',
+                hintText: 'Example: Class 10',
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Start simple. Give this class syllabus a name and optionally an academic year. You can add the structure next.',
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Enter a class or syllabus name.'
+                  : null,
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space10),
+            TextFormField(
+              controller: _yearController,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Academic year (optional)',
+                hintText: 'Example: 2026–27',
               ),
-              const SizedBox(height: 18),
-              TextFormField(
-                controller: _nameController,
-                autofocus: true,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Class / syllabus name',
-                  hintText: 'Example: Class 10',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Enter a class or syllabus name.'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _yearController,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  labelText: 'Academic year (optional)',
-                  hintText: 'Example: 2026–27',
-                  border: OutlineInputBorder(),
-                ),
-                onFieldSubmitted: (_) => _submit(),
-              ),
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                onPressed: _submit,
-                icon: const Icon(Icons.arrow_forward_rounded),
-                label: const Text('Create and continue'),
-              ),
+              onFieldSubmitted: (_) => _submit(),
+            ),
             ],
           ),
         ),

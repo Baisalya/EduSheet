@@ -13,7 +13,7 @@ class TeachingPlannerSchemaException implements Exception {
 class TeachingPlannerDocumentCodec {
   const TeachingPlannerDocumentCodec();
 
-  static const int currentSchemaVersion = 7;
+  static const int currentSchemaVersion = 8;
 
   Map<String, dynamic> encode(
     TeachingPlannerWorkspace workspace, {
@@ -78,6 +78,11 @@ class TeachingPlannerDocumentCodec {
     if (fromVersion == currentSchemaVersion) {
       return Map<String, dynamic>.from(source);
     }
+    if (fromVersion == 7) {
+      final migrated = _deepCopyMap(source);
+      migrated['schemaVersion'] = currentSchemaVersion;
+      return migrated;
+    }
     if (fromVersion == 6) {
       final migrated = _deepCopyMap(source);
       final workspace = migrated['workspace'];
@@ -101,8 +106,8 @@ class TeachingPlannerDocumentCodec {
           }).toList();
         }
       }
-      migrated['schemaVersion'] = currentSchemaVersion;
-      return migrated;
+      migrated['schemaVersion'] = 7;
+      return _migrate(migrated, fromVersion: 7);
     }
     if (fromVersion == 5) {
       final migrated = _deepCopyMap(source);

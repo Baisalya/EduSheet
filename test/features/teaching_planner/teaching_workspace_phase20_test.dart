@@ -14,7 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   final now = DateTime.utc(2026, 9, 8);
 
-  test('schema 5 migrates to schema 7 with an empty resource collection', () {
+  test('schema 5 migrates to schema 8 with an empty resource collection', () {
     const codec = TeachingPlannerDocumentCodec();
     final workspace = codec.decode({
       'schemaVersion': 5,
@@ -29,7 +29,7 @@ void main() {
       },
     });
     expect(workspace.resources, isEmpty);
-    expect(codec.encode(workspace)['schemaVersion'], 7);
+    expect(codec.encode(workspace)['schemaVersion'], 8);
   });
 
   test(

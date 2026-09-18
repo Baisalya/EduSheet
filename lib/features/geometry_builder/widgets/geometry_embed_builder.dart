@@ -18,7 +18,9 @@ class GeometryEmbedBuilder extends EmbedBuilder {
         GeometryDiagramRegistry.instance.diagramFor(layout.id) ??
         layout.diagram;
     if (diagram == null) {
-      return Text('{{geometry:${layout.id}}}');
+      return Text(
+        embedContext.readOnly ? '[diagram]' : '{{geometry:${layout.id}}}',
+      );
     }
     if (GeometryDiagramRegistry.instance.diagramFor(layout.id) == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -226,38 +228,17 @@ class _InteractiveGeometryWrapperState
                     child: Stack(
                       alignment: Alignment.bottomRight,
                       children: [
-                        Container(
+                        _GeometryPrintableFigure(
+                          diagram: _diagram,
                           height: _currentHeight,
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _isSelected
-                                  ? theme.colorScheme.primary
-                                  : Colors.black.withValues(alpha: 0.12),
-                              width: _isSelected ? 2 : 1,
-                            ),
-                            boxShadow: [
-                              if (_isSelected)
-                                BoxShadow(
-                                  color: theme.colorScheme.primary.withValues(
-                                    alpha: 0.12,
-                                  ),
-                                  blurRadius: 12,
-                                ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(7),
-                            child: CustomPaint(
-                              painter: GeometryPainter(
-                                diagram: _diagram.copyWith(showGrid: false),
-                                showPointHandles: false,
-                              ),
-                              child: const SizedBox.expand(),
-                            ),
-                          ),
+                          editorBackgroundColor:
+                              widget.interactive &&
+                                  theme.brightness == Brightness.dark
+                              ? Colors.white
+                              : null,
+                          selectionColor: widget.interactive && _isSelected
+                              ? theme.colorScheme.primary
+                              : null,
                         ),
                         if (widget.interactive && _isSelected)
                           _ResizeHandle(
@@ -285,20 +266,19 @@ class _InteractiveGeometryWrapperState
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(top: 4, left: 4),
-                child: Text(
-                  widget.interactive && _isSelected
-                      ? 'Drag sideways to position • drag corner to resize • double-tap to edit'
-                      : '${_diagram.name} • ${_wrapMode.label}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontStyle: FontStyle.italic,
+              if (widget.interactive && _isSelected)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, left: 4),
+                  child: Text(
+                    'Drag sideways to position • drag corner to resize • double-tap to edit',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         );
@@ -388,6 +368,51 @@ class _InteractiveGeometryWrapperState
           ),
         ],
       ),
+    );
+  }
+}
+
+
+class _GeometryPrintableFigure extends StatelessWidget {
+  final GeometryDiagram diagram;
+  final double height;
+  final Color? editorBackgroundColor;
+  final Color? selectionColor;
+
+  const _GeometryPrintableFigure({
+    required this.diagram,
+    required this.height,
+    this.editorBackgroundColor,
+    this.selectionColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget content = CustomPaint(
+      key: ValueKey('geometry-printable-${diagram.id}'),
+      painter: GeometryPainter(
+        diagram: diagram.copyWith(showGrid: false),
+        showPointHandles: false,
+      ),
+      child: SizedBox(height: height, width: double.infinity),
+    );
+
+    // Dark editor surfaces need a neutral authoring canvas because the
+    // geometry painter intentionally uses print-safe black strokes. This
+    // backing is editor-only; read-only preview remains transparent.
+    if (editorBackgroundColor != null) {
+      content = ColoredBox(color: editorBackgroundColor!, child: content);
+    }
+
+    // Selection treatment is authoring-only. Read-only preview receives the
+    // raw printable figure with no card, rounded frame, template name or
+    // wrap-mode caption.
+    if (selectionColor == null) return content;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: selectionColor!, width: 2),
+      ),
+      child: content,
     );
   }
 }

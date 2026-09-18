@@ -1,9 +1,17 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+import 'package:edusheet/features/editor/presentation/widgets/paper_rename_dialog.dart';
 import 'package:edusheet/features/editor/services/autosave_coordinator.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+import 'package:edusheet/features/guided_experience/application/guided_experience_providers.dart';
+import 'package:edusheet/features/guided_experience/domain/contextual_help.dart';
+import 'package:edusheet/features/guided_experience/domain/guide_progress.dart';
+import 'package:edusheet/features/guided_experience/guides/create_paper_guide.dart';
+import 'package:edusheet/features/guided_experience/presentation/widgets/contextual_help_prompt.dart';
+import 'package:edusheet/features/guided_experience/presentation/widgets/guide_anchor.dart';
 import 'package:edusheet/features/paper_composer/application/paper_composer_actions.dart';
 import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
 import 'package:edusheet/features/paper_composer/presentation/responsive/paper_composer_breakpoints.dart';
@@ -36,6 +44,8 @@ import 'package:uuid/uuid.dart';
 
 enum _PaperEditingMode { smart, word }
 
+enum _UnsavedPaperExitAction { cancel, discard, save }
+
 class PaperComposerScreen extends ConsumerStatefulWidget {
   const PaperComposerScreen({super.key});
 
@@ -49,6 +59,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   final Map<String, GlobalKey> _sectionKeys = {};
   final Map<String, GlobalKey> _questionKeys = {};
   _PaperEditingMode _editingMode = _PaperEditingMode.smart;
+  bool _exitApproved = false;
 
   @override
   void dispose() {
@@ -58,6 +69,46 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
 
   PaperComposerActions get _actions =>
       PaperComposerActions(ref.read(editorStateProvider.notifier));
+
+  void _showCreatePaperGuide(
+    Paper paper, {
+    bool persistFirstUse = false,
+  }) {
+    if (_editingMode != _PaperEditingMode.smart) {
+      setState(() => _editingMode = _PaperEditingMode.smart);
+    }
+
+    final stepId = paper.sections.isEmpty
+        ? CreatePaperGuideSteps.openPaperSetup
+        : _questionCount(paper) == 0
+        ? CreatePaperGuideSteps.writeFirstQuestion
+        : CreatePaperGuideSteps.questionBank;
+    final guideState = ref.read(guidedExperienceControllerProvider);
+    final existingProgress = guideState.progressFor(
+      createPaperGuideDefinition.id,
+    );
+    final controller = ref.read(guidedExperienceControllerProvider.notifier);
+    final replayCompletedGuide = !persistFirstUse &&
+        existingProgress?.status == GuideProgressStatus.completed;
+
+    if (replayCompletedGuide) {
+      unawaited(
+        controller.replayGuide(
+          createPaperGuideDefinition,
+          startAtStepId: stepId,
+        ),
+      );
+      return;
+    }
+
+    unawaited(
+      controller.startGuide(
+        createPaperGuideDefinition,
+        restart: true,
+        startAtStepId: stepId,
+      ),
+    );
+  }
 
   GlobalKey _keyForSection(String sectionId) {
     return _sectionKeys.putIfAbsent(sectionId, () => GlobalKey());
@@ -79,6 +130,77 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         duration: Duration(milliseconds: 800),
       ),
     );
+  }
+
+  Future<void> _renameCurrentPaper(Paper paper) async {
+    final renamed = await showPaperRenameDialog(
+      context,
+      initialTitle: paper.title == 'New Paper' ? '' : paper.title,
+    );
+    final cleanTitle = renamed?.trim();
+    if (!mounted ||
+        cleanTitle == null ||
+        cleanTitle.isEmpty ||
+        cleanTitle == paper.title) {
+      return;
+    }
+    ref.read(editorStateProvider.notifier).updateTitle(cleanTitle);
+  }
+
+  Future<void> _handleUnsavedExit() async {
+    final editor = ref.read(editorStateProvider.notifier);
+    if (!editor.hasMeaningfulUnsavedDraft) {
+      _exitApproved = true;
+      editor.discardCurrentUnsavedPaper();
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    final action = await showDialog<_UnsavedPaperExitAction>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Save this paper?'),
+        content: const Text(
+          'This paper has not been saved yet. Save it before leaving, or discard these changes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              _UnsavedPaperExitAction.cancel,
+            ),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              _UnsavedPaperExitAction.discard,
+            ),
+            child: const Text('Discard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              _UnsavedPaperExitAction.save,
+            ),
+            child: const Text('Save & exit'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null || action == _UnsavedPaperExitAction.cancel) {
+      return;
+    }
+
+    if (action == _UnsavedPaperExitAction.save) {
+      await editor.savePaper();
+      ref.invalidate(savedPapersProvider);
+    } else {
+      editor.discardCurrentUnsavedPaper();
+    }
+    if (!mounted) return;
+    setState(() => _exitApproved = true);
+    Navigator.of(context).pop();
   }
 
   void _addSection() {
@@ -654,6 +776,14 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
       paper.templateId,
       ref.watch(templateProvider).all,
     );
+    final guidedState = ref.watch(guidedExperienceControllerProvider);
+    final createPaperProgress = guidedState.progressFor(
+      createPaperGuideDefinition.id,
+    );
+    final createPaperGuideCompleted =
+        createPaperProgress?.status == GuideProgressStatus.completed;
+    final createPaperFirstUse = createPaperProgress == null ||
+        createPaperProgress.status == GuideProgressStatus.notStarted;
 
     _sectionKeys.removeWhere(
       (id, key) => !paper.sections.any((section) => section.id == id),
@@ -665,21 +795,37 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     };
     _questionKeys.removeWhere((id, key) => !questionIds.contains(id));
 
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
-          _saveNow();
-        },
+    final blockRoutePop = !_exitApproved && editor.hasMeaningfulUnsavedDraft;
+
+    return PopScope<void>(
+      canPop: !blockRoutePop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          if (!_exitApproved) {
+            final currentEditor = ref.read(editorStateProvider.notifier);
+            if (!currentEditor.isCurrentPaperPersisted) {
+              currentEditor.discardCurrentUnsavedPaper();
+            }
+          }
+          return;
+        }
+        unawaited(_handleUnsavedExit());
       },
-      child: Focus(
-        autofocus: true,
-        child: LayoutBuilder(
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
+            _saveNow();
+          },
+        },
+        child: Focus(
+          autofocus: true,
+          child: LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
             final compact = PaperComposerBreakpoints.isCompact(width);
             final expanded = PaperComposerBreakpoints.isExpanded(width);
 
-            return Scaffold(
+            final scaffold = Scaffold(
               appBar: _buildAppBar(
                 context,
                 paper,
@@ -871,8 +1017,21 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                     )
                   : null,
             );
+            return ContextualHelpOffer(
+              suggestion: createPaperContextualSuggestion,
+              signals: ContextualHelpSignals(
+                currentScreen: GuidedScreenContext.createPaper,
+                hasIncompleteAction: _questionCount(paper) == 0,
+                isFirstTimeUse: createPaperFirstUse,
+                relatedGuideCompleted: createPaperGuideCompleted,
+              ),
+              onShowMe: () =>
+                  _showCreatePaperGuide(paper, persistFirstUse: true),
+              child: scaffold,
+            );
           },
         ),
+      ),
       ),
     );
   }
@@ -962,6 +1121,11 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         ],
       ),
       actions: [
+        IconButton(
+          tooltip: 'Show Create Paper guide',
+          onPressed: () => _showCreatePaperGuide(paper),
+          icon: const Icon(Icons.help_outline_rounded),
+        ),
         if (!compact) ...[
           IconButton(
             tooltip: 'Undo',
@@ -980,96 +1144,128 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
             onPressed: () => _showCompactOutline(paper),
             icon: const Icon(Icons.segment_rounded),
           ),
-        IconButton(
-          tooltip: 'Preview paper',
-          onPressed: () => _openPreview(paper),
-          icon: const Icon(Icons.visibility_outlined),
+        GuideAnchor(
+          targetId: CreatePaperGuideTargets.preview,
+          reportPointerActivation: true,
+          child: IconButton(
+            tooltip: 'Preview paper',
+            onPressed: () => _openPreview(paper),
+            icon: const Icon(Icons.visibility_outlined),
+          ),
         ),
-        if (expanded) ...[
-          OutlinedButton.icon(
-            onPressed: () => _exportPdf(paper),
-            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-            label: const Text('PDF'),
+        if (expanded)
+          GuideAnchor(
+            targetId: CreatePaperGuideTargets.outputOptions,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _exportPdf(paper),
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                  label: const Text('PDF'),
+                ),
+                const SizedBox(width: 6),
+                FilledButton.icon(
+                  onPressed: () => _exportWord(paper),
+                  icon: const Icon(Icons.description_outlined, size: 18),
+                  label: const Text('Word'),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 6),
-          FilledButton.icon(
-            onPressed: () => _exportWord(paper),
-            icon: const Icon(Icons.description_outlined, size: 18),
-            label: const Text('Word'),
-          ),
-        ],
         if (!compact)
           TextButton.icon(
             onPressed: _saveNow,
             icon: const Icon(Icons.save_outlined),
             label: const Text('Save'),
           ),
-        PopupMenuButton<_PaperMenuAction>(
-          tooltip: 'Paper actions',
-          onSelected: (value) {
-            switch (value) {
-              case _PaperMenuAction.details:
-                PaperDetailsSheet.show(context, paper);
-                break;
-              case _PaperMenuAction.style:
-                PaperStyleSheet.show(
-                  context,
-                  selectedTemplateId: paper.templateId,
-                );
-                break;
-              case _PaperMenuAction.exportPdf:
-                _exportPdf(paper);
-                break;
-              case _PaperMenuAction.exportWord:
-                _exportWord(paper);
-                break;
-              case _PaperMenuAction.save:
-                _saveNow();
-                break;
-            }
+        Builder(
+          builder: (context) {
+            final menu = PopupMenuButton<_PaperMenuAction>(
+              tooltip: 'Paper actions',
+              onSelected: (value) {
+                switch (value) {
+                  case _PaperMenuAction.details:
+                    PaperDetailsSheet.show(context, paper);
+                    break;
+                  case _PaperMenuAction.rename:
+                    _renameCurrentPaper(paper);
+                    break;
+                  case _PaperMenuAction.style:
+                    PaperStyleSheet.show(
+                      context,
+                      selectedTemplateId: paper.templateId,
+                    );
+                    break;
+                  case _PaperMenuAction.exportPdf:
+                    _exportPdf(paper);
+                    break;
+                  case _PaperMenuAction.exportWord:
+                    _exportWord(paper);
+                    break;
+                  case _PaperMenuAction.save:
+                    _saveNow();
+                    break;
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _PaperMenuAction.details,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.tune_rounded),
+                    title: Text('Paper setup'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _PaperMenuAction.rename,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.drive_file_rename_outline_rounded),
+                    title: Text('Rename paper'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _PaperMenuAction.style,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.style_outlined),
+                    title: Text('Appearance'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _PaperMenuAction.exportPdf,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.picture_as_pdf_outlined),
+                    title: Text('Export PDF'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _PaperMenuAction.exportWord,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.description_outlined),
+                    title: Text('Export Word'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _PaperMenuAction.save,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.save_outlined),
+                    title: Text('Save now'),
+                  ),
+                ),
+              ],
+            );
+            return expanded
+                ? menu
+                : GuideAnchor(
+                    targetId: CreatePaperGuideTargets.outputOptions,
+                    child: menu,
+                  );
           },
-          itemBuilder: (context) => const [
-            PopupMenuItem(
-              value: _PaperMenuAction.details,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.tune_rounded),
-                title: Text('Paper setup'),
-              ),
-            ),
-            PopupMenuItem(
-              value: _PaperMenuAction.style,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.style_outlined),
-                title: Text('Appearance'),
-              ),
-            ),
-            PopupMenuItem(
-              value: _PaperMenuAction.exportPdf,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.picture_as_pdf_outlined),
-                title: Text('Export PDF'),
-              ),
-            ),
-            PopupMenuItem(
-              value: _PaperMenuAction.exportWord,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.description_outlined),
-                title: Text('Export Word'),
-              ),
-            ),
-            PopupMenuItem(
-              value: _PaperMenuAction.save,
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.save_outlined),
-                title: Text('Save now'),
-              ),
-            ),
-          ],
         ),
         const SizedBox(width: 4),
       ],
@@ -1138,6 +1334,12 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                         sectionReorderIndex: index,
                         onAddQuestion: () => _openQuestion(section.id),
                         onAddFromBank: () => _addFromQuestionBank(section),
+                        newQuestionGuideTargetId: index == 0
+                            ? CreatePaperGuideTargets.writeFirstQuestion
+                            : null,
+                        questionBankGuideTargetId: index == 0
+                            ? CreatePaperGuideTargets.questionBank
+                            : null,
                         onEditQuestion: (question) =>
                             _openQuestion(section.id, question: question),
                         onDuplicateQuestion: (question) =>
@@ -1207,20 +1409,28 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  FilledButton.icon(
-                    onPressed: _startFirstQuestion,
-                    icon: const Icon(Icons.edit_note_rounded),
-                    label: const Text('Write first question'),
+                  GuideAnchor(
+                    targetId: CreatePaperGuideTargets.writeFirstQuestion,
+                    reportPointerActivation: true,
+                    child: FilledButton.icon(
+                      onPressed: _startFirstQuestion,
+                      icon: const Icon(Icons.edit_note_rounded),
+                      label: const Text('Write first question'),
+                    ),
                   ),
                   OutlinedButton.icon(
                     onPressed: _startFromQuestionBank,
                     icon: const Icon(Icons.inventory_2_outlined),
                     label: const Text('Choose from Question Bank'),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: () => PaperDetailsSheet.show(context, paper),
-                    icon: const Icon(Icons.tune_rounded),
-                    label: const Text('Set paper details'),
+                  GuideAnchor(
+                    targetId: CreatePaperGuideTargets.paperSetupEntry,
+                    reportPointerActivation: true,
+                    child: OutlinedButton.icon(
+                      onPressed: () => PaperDetailsSheet.show(context, paper),
+                      icon: const Icon(Icons.tune_rounded),
+                      label: const Text('Set paper details'),
+                    ),
                   ),
                 ],
               ),
@@ -1248,4 +1458,4 @@ extension _IterableFirstOrNull<T> on Iterable<T> {
   }
 }
 
-enum _PaperMenuAction { details, style, exportPdf, exportWord, save }
+enum _PaperMenuAction { details, rename, style, exportPdf, exportWord, save }

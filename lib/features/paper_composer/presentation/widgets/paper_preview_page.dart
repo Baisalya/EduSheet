@@ -5,15 +5,18 @@ import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/safe_math_expression.dart';
 import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_document_projection.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
-import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+import 'package:edusheet/features/guided_experience/guides/create_paper_guide.dart';
+import 'package:edusheet/features/guided_experience/presentation/widgets/guide_anchor.dart';
 import 'package:edusheet/features/paper_composer/application/question_rich_text_codec.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
 import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/editor/domain/models/question_option_layout.dart';
 import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/paper_page_design_surface.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_surface_view.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/word_shape_preview.dart';
@@ -44,14 +47,26 @@ class PaperPreviewPage extends ConsumerWidget {
       layout: paper.pageLayout,
       templatePageSize: template.paperSize,
       viewportWidth: MediaQuery.sizeOf(context).width,
+      templateTwoColumn: template.paperLayout == PaperLayout.twoColumn,
     );
     final pageWidth = pageMetrics.pageWidth;
     final previewPadding = pageMetrics.pagePadding;
     final pageMinHeight = pageMetrics.pageMinHeight;
+    final resolvedColumnCount = pageMetrics.resolvedColumnCount;
+    final columnGap = (paper.pageLayout.columnSpacingPoints * pageMetrics.pageScale)
+        .clamp(6.0, 96.0)
+        .toDouble();
     final marksDiagnostics = PaperMarksTeacherDiagnostics.fromPaper(paper);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Paper preview')),
+      appBar: AppBar(
+        leading: GuideAnchor(
+          targetId: CreatePaperGuideTargets.previewBack,
+          reportPointerActivation: true,
+          child: BackButton(onPressed: () => Navigator.of(context).maybePop()),
+        ),
+        title: const Text('Paper preview'),
+      ),
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -68,16 +83,16 @@ class PaperPreviewPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
               ],
-              ConstrainedBox(
-                key: const Key('paper-preview-document'),
-                constraints: BoxConstraints(
-                  maxWidth: pageWidth,
-                  minHeight: pageMinHeight,
-                ),
-                child: Container(
-                  padding: previewPadding,
+              GuideAnchor(
+                targetId: CreatePaperGuideTargets.previewDocument,
+                child: ConstrainedBox(
+                  key: const Key('paper-preview-document'),
+                  constraints: BoxConstraints(
+                    maxWidth: pageWidth,
+                    minHeight: pageMinHeight,
+                  ),
+                  child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
                     border: template.hasBorder
                         ? Border.all(
@@ -93,7 +108,17 @@ class PaperPreviewPage extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  child: Theme(
+                  clipBehavior: Clip.antiAlias,
+                  child: PaperPageDesignSurface(
+                    layout: paper.pageLayout,
+                    pageScale: pageMetrics.pageScale,
+                    pagePadding: previewPadding,
+                    resolvedColumnCount: resolvedColumnCount,
+                    compact: true,
+                    showEditorChrome: false,
+                    child: Padding(
+                      padding: previewPadding,
+                      child: Theme(
                     data: ThemeData.light(useMaterial3: true),
                     child: DefaultTextStyle(
                       style: TextStyle(
@@ -132,7 +157,8 @@ class PaperPreviewPage extends ConsumerWidget {
                             _PreviewSection(
                               paper: paper,
                               section: section,
-                              template: template,
+                              columnCount: resolvedColumnCount,
+                              columnGap: columnGap,
                             ),
                           if (paper.footerText.trim().isNotEmpty ||
                               (paper.showPageNumbers &&
@@ -147,6 +173,9 @@ class PaperPreviewPage extends ConsumerWidget {
                     ),
                   ),
                 ),
+              ),
+              ),
+              ),
               ),
             ],
           ),
@@ -267,12 +296,14 @@ class _TeacherMarksNotice extends StatelessWidget {
 class _PreviewSection extends StatelessWidget {
   final Paper paper;
   final PaperSection section;
-  final PaperTemplate template;
+  final int columnCount;
+  final double columnGap;
 
   const _PreviewSection({
     required this.paper,
     required this.section,
-    required this.template,
+    required this.columnCount,
+    required this.columnGap,
   });
 
   @override
@@ -362,51 +393,35 @@ class _PreviewSection extends StatelessWidget {
             ),
           if (section.showBottomDivider) const Divider(height: 22),
           SizedBox(height: section.spacing.afterPoints),
-          if (template.paperLayout == PaperLayout.twoColumn &&
-              !hasManualPageBreak)
-            for (var index = 0; index < questions.length; index += 2)
+          if (columnCount > 1 && !hasManualPageBreak)
+            for (var index = 0; index < questions.length; index += columnCount)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: _PreviewQuestion(
-                        paper: paper,
-                        question: questions[index],
-                        label: questions[index].isWordContentBlock
-                            ? ''
-                            : PaperStructureService.questionLabel(
-                                PaperStructureService.numberedQuestionOrdinal(
-                                  section,
-                                  index,
-                                ),
-                                paper,
-                                section,
-                              ),
-                        section: section,
-                      ),
-                    ),
-                    const SizedBox(width: 22),
-                    Expanded(
-                      child: index + 1 < questions.length
-                          ? _PreviewQuestion(
-                              paper: paper,
-                              question: questions[index + 1],
-                              label: questions[index + 1].isWordContentBlock
-                                  ? ''
-                                  : PaperStructureService.questionLabel(
-                                      PaperStructureService.numberedQuestionOrdinal(
+                    for (var offset = 0; offset < columnCount; offset++) ...[
+                      if (offset > 0) SizedBox(width: columnGap),
+                      Expanded(
+                        child: index + offset < questions.length
+                            ? _PreviewQuestion(
+                                paper: paper,
+                                question: questions[index + offset],
+                                label: questions[index + offset].isWordContentBlock
+                                    ? ''
+                                    : PaperStructureService.questionLabel(
+                                        PaperStructureService.numberedQuestionOrdinal(
+                                          section,
+                                          index + offset,
+                                        ),
+                                        paper,
                                         section,
-                                        index + 1,
                                       ),
-                                      paper,
-                                      section,
-                                    ),
-                              section: section,
-                            )
-                          : const SizedBox(),
-                    ),
+                                section: section,
+                              )
+                            : const SizedBox(),
+                      ),
+                    ],
                   ],
                 ),
               )
@@ -516,33 +531,21 @@ class _PreviewQuestion extends StatelessWidget {
 class _PreviewPageBreak extends StatelessWidget {
   final String label;
 
-  const _PreviewPageBreak({this.label = 'Page break'});
+  const _PreviewPageBreak({this.label = 'Manual page boundary'});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          Expanded(child: Divider(color: theme.colorScheme.outlineVariant)),
-          const SizedBox(width: 8),
-          Icon(
-            Icons.insert_page_break_outlined,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: Divider(color: theme.colorScheme.outlineVariant)),
-        ],
+    return Semantics(
+      label: label,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Divider(
+          key: const Key('paper-preview-page-break-seam'),
+          color: theme.colorScheme.outlineVariant,
+          height: 1,
+          thickness: 1,
+        ),
       ),
     );
   }
@@ -563,8 +566,9 @@ class _PreviewQuestionContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final advanced = QuestionAdvancedContent.fromQuestion(question);
-    final shapes = WordShapeService.shapesOf(question);
+    final document = QuestionDocumentProjection.fromQuestion(question);
+    final advanced = document.advancedContent;
+    final shapes = document.wordShapes;
     final richText = inlineMarks
         ? Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -572,7 +576,7 @@ class _PreviewQuestionContent extends StatelessWidget {
               Expanded(
                 child: QuestionRichTextPreview(
                   question: question,
-                  maxHeight: 220,
+                  maxHeight: null,
                 ),
               ),
               const SizedBox(width: 5),
@@ -582,7 +586,7 @@ class _PreviewQuestionContent extends StatelessWidget {
               ),
             ],
           )
-        : QuestionRichTextPreview(question: question, maxHeight: 220);
+        : QuestionRichTextPreview(question: question, maxHeight: null);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

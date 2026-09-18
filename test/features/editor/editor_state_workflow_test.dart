@@ -27,6 +27,54 @@ void main() {
     expect(paper.headerFields.every((field) => field.isPlaceholder), isTrue);
   });
 
+  test('new paper edits stay unsaved until first explicit save', () async {
+    final repository = _MemoryPaperRepository();
+    final container = ProviderContainer(
+      overrides: [paperRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    final editor = container.read(editorStateProvider.notifier);
+    final id = container.read(editorStateProvider).id;
+    editor.updateTitle('Draft exam');
+    editor.addSection();
+
+    await Future<void>.delayed(const Duration(milliseconds: 750));
+    await editor.flushPendingAutosave();
+
+    expect(editor.isPaperPersisted(id), isFalse);
+    expect(editor.hasMeaningfulUnsavedDraft, isTrue);
+    expect(repository.papers, isEmpty);
+
+    await editor.savePaper();
+    expect(editor.isPaperPersisted(id), isTrue);
+    expect(repository.papers.single.id, id);
+
+    editor.updateTitle('Draft exam revised');
+    await editor.flushPendingAutosave();
+    expect(repository.papers.single.title, 'Draft exam revised');
+  });
+
+  test('discarding an unsaved paper leaves no Saved Paper entry', () async {
+    final repository = _MemoryPaperRepository();
+    final container = ProviderContainer(
+      overrides: [paperRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    final editor = container.read(editorStateProvider.notifier);
+    final discardedId = container.read(editorStateProvider).id;
+    editor.updateTitle('Temporary draft');
+    expect(editor.hasMeaningfulUnsavedDraft, isTrue);
+
+    editor.discardCurrentUnsavedPaper();
+    await editor.flushPendingAutosave();
+
+    expect(repository.papers, isEmpty);
+    expect(container.read(editorStateProvider).id, isNot(discardedId));
+    expect(editor.hasMeaningfulUnsavedDraft, isFalse);
+  });
+
   test('moves a question between sections and restores it with undo', () {
     final repository = _MemoryPaperRepository();
     final container = ProviderContainer(

@@ -7,7 +7,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 class QuestionRichTextPreview extends StatefulWidget {
   final Question question;
-  final double maxHeight;
+  final double? maxHeight;
 
   const QuestionRichTextPreview({
     super.key,
@@ -56,21 +56,28 @@ class _QuestionRichTextPreviewState extends State<QuestionRichTextPreview> {
   @override
   Widget build(BuildContext context) {
     final accessibleText = _codec.accessibleText(_controller.document);
-    final editor = ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: widget.maxHeight),
-      child: IgnorePointer(
-        child: QuillEditor.basic(
-          controller: _controller,
-          config: QuillEditorConfig(
-            padding: EdgeInsets.zero,
-            embedBuilders: [
-              GeometryEmbedBuilder(),
-              const MathExpressionEmbedBuilder(),
-            ],
-          ),
+    final quillEditor = IgnorePointer(
+      child: QuillEditor.basic(
+        controller: _controller,
+        config: QuillEditorConfig(
+          padding: EdgeInsets.zero,
+          // Paper preview must grow with printable geometry instead of putting
+          // a hidden scrolling/clipping viewport around the question. Compact
+          // cards can still opt into a bounded preview via [maxHeight].
+          scrollable: widget.maxHeight != null,
+          embedBuilders: [
+            GeometryEmbedBuilder(),
+            const MathExpressionEmbedBuilder(),
+          ],
         ),
       ),
     );
+    final editor = widget.maxHeight == null
+        ? quillEditor
+        : ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: widget.maxHeight!),
+            child: quillEditor,
+          );
 
     if (accessibleText.isEmpty) return editor;
 

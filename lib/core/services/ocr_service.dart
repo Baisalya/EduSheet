@@ -33,10 +33,15 @@ class OCRService {
   }
 
   Future<String> recognizeTextAuto(String imagePath) async {
-    final englishText = await recognizeTextStrict(imagePath);
-    final hindiText = await recognizeTextStrict(imagePath, isHindi: true);
+    return (await recognizeStructuredTextAuto(imagePath)).text;
+  }
 
-    return _score(hindiText) > _score(englishText) ? hindiText : englishText;
+  Future<RecognizedText> recognizeStructuredTextAuto(String imagePath) async {
+    final inputImage = InputImage.fromFilePath(imagePath);
+    final english = await _englishRecognizer.processImage(inputImage);
+    final hindi = await _hindiRecognizer.processImage(inputImage);
+
+    return _score(hindi.text) > _score(english.text) ? hindi : english;
   }
 
   int _score(String text) {

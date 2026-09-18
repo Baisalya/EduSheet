@@ -161,8 +161,9 @@ List<String> _stringList(Object? value) {
   return List.unmodifiable(
     value.map((item) {
       final text = item.toString().trim();
-      if (text.isEmpty)
+      if (text.isEmpty) {
         throw const FormatException('topicIds cannot contain empty ids.');
+      }
       return text;
     }),
   );

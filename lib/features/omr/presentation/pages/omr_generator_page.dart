@@ -13,14 +13,14 @@ class OmrGeneratorPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(omrProvider);
     final notifier = ref.read(omrProvider.notifier);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black,
+        foregroundColor: scheme.onSurface,
         title: const Text(
           'OMR Sheet Generator',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -93,12 +93,12 @@ class OmrGeneratorPage extends ConsumerWidget {
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                gradient: const LinearGradient(
-                  colors: [Colors.blue, Colors.blueAccent],
+                gradient: LinearGradient(
+                  colors: [scheme.primary, scheme.secondary],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.blue.withValues(alpha: 0.3),
+                    color: scheme.primary.withValues(alpha: 0.28),
                     blurRadius: 12,
                     offset: const Offset(0, 6),
                   ),
@@ -106,11 +106,11 @@ class OmrGeneratorPage extends ConsumerWidget {
               ),
               child: ElevatedButton.icon(
                 onPressed: () => OmrPdfService.generateAndPreview(config),
-                icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
-                label: const Text(
+                icon: Icon(Icons.picture_as_pdf, color: scheme.onPrimary),
+                label: Text(
                   'Generate & Export PDF',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: scheme.onPrimary,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
@@ -178,7 +178,7 @@ class OmrGeneratorPage extends ConsumerWidget {
                     : Icon(
                         Icons.add_a_photo_outlined,
                         size: 32,
-                        color: Colors.grey[400],
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
               ),
               if (config.schoolLogo != null)
@@ -297,13 +297,15 @@ class _OmrCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withValues(alpha: 0.1)),
+        border: Border.all(color: scheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
@@ -334,7 +336,7 @@ class _OmrCard extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
                     letterSpacing: 0.5,
-                    color: isDark ? Colors.white : Colors.black87,
+                    color: scheme.onSurface,
                   ),
                 ),
               ],
@@ -360,20 +362,16 @@ class _ModernSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: value
-            ? Colors.blue.withValues(alpha: 0.05)
-            : (isDark ? Colors.white.withValues(alpha: 0.02) : Colors.grey[50]),
+            ? scheme.primaryContainer.withValues(alpha: 0.48)
+            : scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: value
-              ? Colors.blue.withValues(alpha: 0.1)
-              : (isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.grey[200]!),
+          color: value ? scheme.primary : scheme.outlineVariant,
         ),
       ),
       child: SwitchListTile(
@@ -382,9 +380,7 @@ class _ModernSwitch extends StatelessWidget {
           style: TextStyle(
             fontSize: 14,
             fontWeight: value ? FontWeight.bold : FontWeight.w500,
-            color: value
-                ? Colors.blue[700]
-                : (isDark ? Colors.white70 : Colors.black87),
+            color: value ? scheme.primary : scheme.onSurface,
           ),
         ),
         value: value,

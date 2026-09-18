@@ -4,6 +4,7 @@ import 'package:edusheet/features/teaching_planner/domain/models/planner_class.d
 import 'package:edusheet/features/teaching_planner/domain/models/planner_priority.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/planner_subject.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/planner_topic.dart';
+import 'package:edusheet/features/teaching_planner/domain/models/teaching_planner_capabilities.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/teaching_planner_workspace.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/teaching_status.dart';
 import 'package:edusheet/features/teaching_planner/domain/repositories/teaching_planner_repository.dart';
@@ -130,6 +131,9 @@ void main() {
           teachingPlannerRepositoryProvider.overrideWithValue(
             _MemoryRepository(workspace),
           ),
+          teachingPlannerCapabilitiesProvider.overrideWithValue(
+            TeachingPlannerCapabilities.pro(),
+          ),
         ],
         child: MaterialApp(
           theme: ThemeData(useMaterial3: true),
@@ -139,13 +143,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(AnimatedProgressRing), findsWidgets);
-    expect(find.text('Syllabus completion'), findsOneWidget);
-    expect(find.text('Lessons taught'), findsOneWidget);
+    expect(find.text('Overall Progress'), findsOneWidget);
+    expect(find.text('Subject-wise Progress'), findsOneWidget);
+    expect(find.text('Upcoming teaching'), findsOneWidget);
+    expect(find.text('Backlog Alerts'), findsOneWidget);
+    expect(find.text('Teaching focus'), findsOneWidget);
     expect(find.text('Progress over time'), findsOneWidget);
     expect(find.text('Topic status distribution'), findsOneWidget);
     expect(find.text('Priority-wise progress'), findsOneWidget);
-    expect(find.text('Upcoming work (next 7 days)'), findsOneWidget);
-    expect(find.text('Quick insights'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

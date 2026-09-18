@@ -38,8 +38,9 @@ class LessonScheduleService {
         final a = lessons[i];
         final b = lessons[j];
         if (a.classId != b.classId ||
-            _day(a.plannedDate) != _day(b.plannedDate))
+            _day(a.plannedDate) != _day(b.plannedDate)) {
           continue;
+        }
         final aStart = a.startPeriod!;
         final bStart = b.startPeriod!;
         final aEnd = aStart + (a.plannedPeriods > 0 ? a.plannedPeriods : 1) - 1;

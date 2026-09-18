@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../../guided_experience/guides/create_syllabus_guide.dart';
+import '../../../guided_experience/presentation/widgets/guide_anchor.dart';
+
 import '../../domain/models/planner_class.dart';
 import '../../domain/models/planner_priority.dart';
 import '../../domain/models/planner_subject.dart';
 import '../../domain/models/planner_topic.dart';
 import '../../domain/models/planner_unit.dart';
 import '../../domain/models/planner_chapter.dart';
+import '../design/teaching_planner_design_system.dart';
+import 'teaching_planner_responsive_content.dart';
+import 'teaching_planner_shared_components.dart';
 
 class SyllabusEntitySheet extends StatefulWidget {
   const SyllabusEntitySheet({
@@ -137,137 +143,200 @@ class _SyllabusEntitySheetState extends State<SyllabusEntitySheet> {
       SyllabusEntityKind.topic =>
         widget.topicValue == null ? 'Add topic' : 'Edit topic',
     };
+    final isTimed = kind == SyllabusEntityKind.unit ||
+        kind == SyllabusEntityKind.chapter ||
+        kind == SyllabusEntityKind.topic;
+    final actionLabel = widget.isEditing
+        ? 'Save changes'
+        : kind == SyllabusEntityKind.classValue
+        ? 'Create'
+        : 'Add';
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        8,
-        20,
-        20 + MediaQuery.viewInsetsOf(context).bottom,
+    return TeachingPlannerSheetFrame(
+      title: title,
+      subtitle:
+          'Edit only the fields already supported by the syllabus model. Existing hierarchy and planner logic stay unchanged.',
+      icon: _iconForKind(kind),
+      maxWidth: 680,
+      action: FilledButton.icon(
+        onPressed: _submit,
+        icon: const Icon(Icons.check_rounded),
+        label: Text(actionLabel),
       ),
-      child: SingleChildScrollView(
-        child: Form(
+      child: _guideFormAnchor(
+        kind,
+        Form(
           key: _formKey,
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 16),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TeachingPlannerSectionHeader(
+              title: _sectionTitle(kind),
+              subtitle: _sectionSubtitle(kind),
+              icon: _iconForKind(kind),
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space12),
+            TextFormField(
+              controller: _nameController,
+              autofocus: true,
+              textInputAction: TextInputAction.next,
+              decoration: InputDecoration(labelText: _nameLabel(kind)),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Enter a name.'
+                  : null,
+            ),
+            if (kind == SyllabusEntityKind.classValue ||
+                kind == SyllabusEntityKind.subject) ...[
+              const SizedBox(height: TeachingPlannerDesign.space10),
               TextFormField(
-                controller: _nameController,
-                autofocus: true,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(labelText: _nameLabel(kind)),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Enter a name.'
-                    : null,
+                controller: _secondaryController,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: kind == SyllabusEntityKind.classValue
+                      ? 'Academic year (optional)'
+                      : 'Subject code (optional)',
+                ),
               ),
-              if (kind == SyllabusEntityKind.classValue ||
-                  kind == SyllabusEntityKind.subject) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _secondaryController,
-                  textInputAction: TextInputAction.done,
-                  decoration: InputDecoration(
-                    labelText: kind == SyllabusEntityKind.classValue
-                        ? 'Academic year (optional)'
-                        : 'Subject code (optional)',
+            ],
+            if (isTimed) ...[
+              const SizedBox(height: TeachingPlannerDesign.space10),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 520;
+                  final periodField = TextFormField(
+                    controller: _periodController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Planned periods',
+                      helperText: 'Use 0 when the duration is not known yet.',
+                    ),
+                    validator: (value) {
+                      final periods = int.tryParse(value?.trim() ?? '');
+                      if (periods == null || periods < 0) {
+                        return 'Enter a whole number 0 or greater.';
+                      }
+                      return null;
+                    },
+                  );
+                  final priorityField = DropdownButtonFormField<PlannerPriority>(
+                    initialValue: _priority,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Priority'),
+                    items: const [
+                      DropdownMenuItem(
+                        value: PlannerPriority.low,
+                        child: Text('Low'),
+                      ),
+                      DropdownMenuItem(
+                        value: PlannerPriority.normal,
+                        child: Text('Normal'),
+                      ),
+                      DropdownMenuItem(
+                        value: PlannerPriority.high,
+                        child: Text('High'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _priority = value);
+                      }
+                    },
+                  );
+                  if (compact) {
+                    return Column(
+                      children: [
+                        periodField,
+                        const SizedBox(height: TeachingPlannerDesign.space10),
+                        priorityField,
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: periodField),
+                      const SizedBox(width: TeachingPlannerDesign.space10),
+                      Expanded(child: priorityField),
+                    ],
+                  );
+                },
+              ),
+            ],
+            if (kind == SyllabusEntityKind.chapter) ...[
+              const SizedBox(height: TeachingPlannerDesign.space10),
+              DropdownButtonFormField<String>(
+                initialValue: _unitSelection,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Unit (optional)'),
+                items: [
+                  const DropdownMenuItem(
+                    value: _rootUnit,
+                    child: Text('No unit / subject-level chapter'),
                   ),
-                ),
-              ],
-              if (kind == SyllabusEntityKind.unit ||
-                  kind == SyllabusEntityKind.chapter ||
-                  kind == SyllabusEntityKind.topic) ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _periodController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Planned periods',
-                    helperText: 'Use 0 when the duration is not known yet.',
-                  ),
-                  validator: (value) {
-                    final periods = int.tryParse(value?.trim() ?? '');
-                    if (periods == null || periods < 0) {
-                      return 'Enter a whole number 0 or greater.';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<PlannerPriority>(
-                  initialValue: _priority,
-                  decoration: const InputDecoration(labelText: 'Priority'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: PlannerPriority.low,
-                      child: Text('Low'),
-                    ),
-                    DropdownMenuItem(
-                      value: PlannerPriority.normal,
-                      child: Text('Normal'),
-                    ),
-                    DropdownMenuItem(
-                      value: PlannerPriority.high,
-                      child: Text('High'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _priority = value);
-                    }
-                  },
-                ),
-              ],
-              if (kind == SyllabusEntityKind.chapter) ...[
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _unitSelection,
-                  decoration: const InputDecoration(
-                    labelText: 'Unit (optional)',
-                  ),
-                  items: [
-                    const DropdownMenuItem(
-                      value: _rootUnit,
-                      child: Text('No unit / subject-level chapter'),
-                    ),
-                    ...widget.units.map(
-                      (unit) => DropdownMenuItem(
-                        value: unit.id,
-                        child: Text(
-                          unit.title,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                  ...widget.units.map(
+                    (unit) => DropdownMenuItem(
+                      value: unit.id,
+                      child: Text(
+                        unit.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ],
-                  onChanged: (value) =>
-                      setState(() => _unitSelection = value ?? _rootUnit),
-                ),
-              ],
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                onPressed: _submit,
-                icon: const Icon(Icons.check_rounded),
-                label: Text(
-                  widget.isEditing
-                      ? 'Save changes'
-                      : kind == SyllabusEntityKind.classValue
-                      ? 'Create'
-                      : 'Add',
-                ),
+                  ),
+                ],
+                onChanged: (value) =>
+                    setState(() => _unitSelection = value ?? _rootUnit),
               ),
+            ],
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _guideFormAnchor(SyllabusEntityKind kind, Widget child) {
+    return switch (kind) {
+      SyllabusEntityKind.subject => GuideAnchor(
+          targetId: CreateSyllabusGuideTargets.subjectForm,
+          child: child,
+        ),
+      SyllabusEntityKind.chapter => GuideAnchor(
+          targetId: CreateSyllabusGuideTargets.chapterForm,
+          child: child,
+        ),
+      _ => child,
+    };
+  }
+
+  static IconData _iconForKind(SyllabusEntityKind kind) {
+    return switch (kind) {
+      SyllabusEntityKind.classValue => Icons.school_outlined,
+      SyllabusEntityKind.subject => Icons.menu_book_outlined,
+      SyllabusEntityKind.unit => Icons.folder_outlined,
+      SyllabusEntityKind.chapter => Icons.library_books_outlined,
+      SyllabusEntityKind.topic => Icons.topic_outlined,
+    };
+  }
+
+  static String _sectionTitle(SyllabusEntityKind kind) {
+    return switch (kind) {
+      SyllabusEntityKind.classValue => 'Class details',
+      SyllabusEntityKind.subject => 'Subject details',
+      SyllabusEntityKind.unit => 'Unit details',
+      SyllabusEntityKind.chapter => 'Chapter details',
+      SyllabusEntityKind.topic => 'Topic details',
+    };
+  }
+
+  static String _sectionSubtitle(SyllabusEntityKind kind) {
+    return switch (kind) {
+      SyllabusEntityKind.classValue => 'Name the class and optionally keep its academic year.',
+      SyllabusEntityKind.subject => 'Name the subject and optionally keep its existing subject code.',
+      SyllabusEntityKind.unit => 'Keep the unit title, planned periods and priority together.',
+      SyllabusEntityKind.chapter => 'Keep the chapter linked to its real unit or subject level.',
+      SyllabusEntityKind.topic => 'Keep the topic title, planned periods and priority together.',
+    };
   }
 
   void _submit() {

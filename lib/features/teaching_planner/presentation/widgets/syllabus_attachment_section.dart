@@ -2,79 +2,121 @@ import 'package:flutter/material.dart';
 
 import '../../application/teaching_resource_file_metadata.dart';
 import '../../domain/models/teaching_resource.dart';
+import '../design/teaching_planner_design_system.dart';
+import '../layout/teaching_planner_breakpoints.dart';
+import 'teaching_planner_shared_components.dart';
 
 class SyllabusAttachmentSection extends StatelessWidget {
   const SyllabusAttachmentSection({
     super.key,
     required this.resources,
+    this.onCreatePaper,
+    this.onAttachSavedPaper,
+    this.createPaperEnabled = true,
+    this.attachSavedPaperEnabled = true,
     required this.onAddFiles,
     required this.onOpen,
     required this.onRemove,
   });
 
   final List<TeachingResource> resources;
+  final VoidCallback? onCreatePaper;
+  final VoidCallback? onAttachSavedPaper;
+  final bool createPaperEnabled;
+  final bool attachSavedPaperEnabled;
   final VoidCallback onAddFiles;
   final ValueChanged<TeachingResource> onOpen;
   final ValueChanged<TeachingResource> onRemove;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       key: const ValueKey('syllabus-attachments-section'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Attachments',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Add images, PDFs, documents or videos. EduSheet keeps a private copy and includes it in portable .eds files.',
-                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            FilledButton.tonalIcon(
-              onPressed: onAddFiles,
-              icon: const Icon(Icons.attach_file_rounded),
-              label: const Text('Add files'),
-            ),
-          ],
+        const KeyedSubtree(
+          key: ValueKey('syllabus-resources-papers-section'),
+          child: TeachingPlannerSectionHeader(
+            title: 'Resources & Papers',
+          subtitle:
+              'Create or attach an EduSheet paper here, or keep Word, PDF, images and other teaching files with this syllabus item.',
+            icon: Icons.folder_copy_outlined,
+          ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: TeachingPlannerDesign.space12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final actions = <Widget>[
+              FilledButton.icon(
+                key: const ValueKey('syllabus-create-paper-button'),
+                onPressed: createPaperEnabled ? onCreatePaper : null,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Create New Paper'),
+              ),
+              FilledButton.tonalIcon(
+                key: const ValueKey('syllabus-attach-saved-paper-button'),
+                onPressed: attachSavedPaperEnabled ? onAttachSavedPaper : null,
+                icon: const Icon(Icons.link_rounded),
+                label: const Text('Attach Saved Paper'),
+              ),
+              OutlinedButton.icon(
+                key: const ValueKey('syllabus-add-file-button'),
+                onPressed: onAddFiles,
+                icon: const Icon(Icons.attach_file_rounded),
+                label: const Text('Add files'),
+              ),
+            ];
+            if (constraints.maxWidth < TeachingPlannerBreakpoints.compact) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var index = 0; index < actions.length; index++) ...[
+                    actions[index],
+                    if (index != actions.length - 1)
+                      const SizedBox(height: TeachingPlannerDesign.space8),
+                  ],
+                ],
+              );
+            }
+            return Wrap(
+              spacing: TeachingPlannerDesign.space8,
+              runSpacing: TeachingPlannerDesign.space8,
+              children: actions,
+            );
+          },
+        ),
+        const SizedBox(height: TeachingPlannerDesign.space12),
         if (resources.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: Text(
-              'No files attached yet.',
-              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+          const TeachingPlannerSurfaceCard(
+            tint: true,
+            tone: TeachingPlannerTone.neutral,
+            padding: EdgeInsets.all(TeachingPlannerDesign.space14),
+            child: Row(
+              children: [
+                TeachingPlannerIconBadge(
+                  icon: Icons.folder_open_outlined,
+                  tone: TeachingPlannerTone.neutral,
+                  size: 36,
+                  iconSize: 18,
+                ),
+                SizedBox(width: TeachingPlannerDesign.space10),
+                Expanded(
+                  child: Text(
+                    'No papers or files here yet. You can add them when you need them.',
+                  ),
+                ),
+              ],
             ),
           )
         else
           LayoutBuilder(
             builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 900
+              final columns = constraints.maxWidth >= 980
                   ? 3
-                  : constraints.maxWidth >= 560
+                  : constraints.maxWidth >= 600
                   ? 2
                   : 1;
-              const gap = 10.0;
+              const gap = TeachingPlannerDesign.space10;
               final width =
                   (constraints.maxWidth - gap * (columns - 1)) / columns;
               return Wrap(
@@ -84,17 +126,98 @@ class SyllabusAttachmentSection extends StatelessWidget {
                   for (final resource in resources)
                     SizedBox(
                       width: width,
-                      child: _AttachmentCard(
-                        resource: resource,
-                        onOpen: () => onOpen(resource),
-                        onRemove: () => onRemove(resource),
-                      ),
+                      child: resource.kind == TeachingResourceKind.paper
+                          ? _PaperResourceCard(
+                              resource: resource,
+                              onOpen: () => onOpen(resource),
+                              onRemove: () => onRemove(resource),
+                            )
+                          : _AttachmentCard(
+                              resource: resource,
+                              onOpen: () => onOpen(resource),
+                              onRemove: () => onRemove(resource),
+                            ),
                     ),
                 ],
               );
             },
           ),
       ],
+    );
+  }
+}
+
+class _PaperResourceCard extends StatelessWidget {
+  const _PaperResourceCard({
+    required this.resource,
+    required this.onOpen,
+    required this.onRemove,
+  });
+
+  final TeachingResource resource;
+  final VoidCallback onOpen;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return TeachingPlannerSurfaceCard(
+      key: ValueKey('syllabus-paper-${resource.linkedPaperId}'),
+      onTap: onOpen,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space12),
+      child: Row(
+        children: [
+          const TeachingPlannerIconBadge(
+            icon: Icons.description_outlined,
+            tone: TeachingPlannerTone.primary,
+            size: 40,
+            iconSize: 20,
+          ),
+          const SizedBox(width: TeachingPlannerDesign.space10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  resource.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: TeachingPlannerDesign.space4),
+                Text(
+                  'EduSheet paper • Saved Papers',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.inkMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Open paper',
+            onPressed: onOpen,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Paper actions',
+            onSelected: (value) {
+              if (value == 'remove') onRemove();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'remove',
+                child: Text('Remove from syllabus'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -112,78 +235,84 @@ class _AttachmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final colors = TeachingPlannerTheme.colorsOf(context);
     final category = TeachingResourceFileMetadata.categoryFor(
       fileName: resource.originalFileName ?? resource.title,
       mimeType: resource.mimeType,
     );
-    return Material(
-      color: theme.colorScheme.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: theme.colorScheme.secondaryContainer,
-                foregroundColor: theme.colorScheme.onSecondaryContainer,
-                child: Icon(_iconForCategory(category)),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      resource.originalFileName ?? resource.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${_categoryLabel(category)} • ${_formatBytes(resource.sizeBytes)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Open attachment',
-                onPressed: onOpen,
-                icon: const Icon(Icons.open_in_new_rounded),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'Attachment actions',
-                onSelected: (value) {
-                  if (value == 'remove') {
-                    onRemove();
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'remove',
-                    child: Text('Remove from syllabus'),
+    final tone = _toneForCategory(category);
+    return TeachingPlannerSurfaceCard(
+      onTap: onOpen,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space12),
+      child: Row(
+        children: [
+          TeachingPlannerIconBadge(
+            icon: _iconForCategory(category),
+            tone: tone,
+            size: 40,
+            iconSize: 20,
+          ),
+          const SizedBox(width: TeachingPlannerDesign.space10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  resource.originalFileName ?? resource.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w800,
                   ),
-                ],
+                ),
+                const SizedBox(height: TeachingPlannerDesign.space4),
+                Text(
+                  '${_categoryLabel(category)} • ${_formatBytes(resource.sizeBytes)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.inkMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Open file',
+            onPressed: onOpen,
+            icon: const Icon(Icons.open_in_new_rounded),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'File actions',
+            onSelected: (value) {
+              if (value == 'remove') onRemove();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'remove',
+                child: Text('Remove from syllabus'),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
+}
+
+TeachingPlannerTone _toneForCategory(TeachingResourceFileCategory category) {
+  return switch (category) {
+    TeachingResourceFileCategory.image => TeachingPlannerTone.teal,
+    TeachingResourceFileCategory.pdf => TeachingPlannerTone.coral,
+    TeachingResourceFileCategory.video => TeachingPlannerTone.purple,
+    TeachingResourceFileCategory.audio => TeachingPlannerTone.orange,
+    TeachingResourceFileCategory.document => TeachingPlannerTone.primary,
+    TeachingResourceFileCategory.spreadsheet => TeachingPlannerTone.teal,
+    TeachingResourceFileCategory.presentation => TeachingPlannerTone.purple,
+    TeachingResourceFileCategory.text => TeachingPlannerTone.primary,
+    TeachingResourceFileCategory.other => TeachingPlannerTone.neutral,
+  };
 }
 
 IconData _iconForCategory(TeachingResourceFileCategory category) {
@@ -215,20 +344,12 @@ String _categoryLabel(TeachingResourceFileCategory category) {
 }
 
 String _formatBytes(int? bytes) {
-  if (bytes == null) {
-    return 'Unknown size';
-  }
-  if (bytes < 1024) {
-    return '$bytes B';
-  }
+  if (bytes == null) return 'Unknown size';
+  if (bytes < 1024) return '$bytes B';
   final kb = bytes / 1024;
-  if (kb < 1024) {
-    return '${kb.toStringAsFixed(kb >= 100 ? 0 : 1)} KB';
-  }
+  if (kb < 1024) return '${kb.toStringAsFixed(kb >= 100 ? 0 : 1)} KB';
   final mb = kb / 1024;
-  if (mb < 1024) {
-    return '${mb.toStringAsFixed(mb >= 100 ? 0 : 1)} MB';
-  }
+  if (mb < 1024) return '${mb.toStringAsFixed(mb >= 100 ? 0 : 1)} MB';
   final gb = mb / 1024;
   return '${gb.toStringAsFixed(gb >= 100 ? 0 : 1)} GB';
 }

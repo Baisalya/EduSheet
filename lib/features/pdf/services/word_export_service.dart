@@ -20,6 +20,7 @@ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.da
 import 'package:edusheet/features/paper_composer/application/question_advanced_structure_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
 import 'package:edusheet/features/paper_composer/application/question_math_validation_service.dart';
+import 'package:edusheet/features/paper_composer/application/question_print_content_projection.dart';
 import 'package:edusheet/features/paper_composer/application/smart_paper_docx_round_trip_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
@@ -81,6 +82,7 @@ class WordExportService {
     final relationshipBase = imageParts.length + 1;
     final hasHeader =
         paper.headerText.trim().isNotEmpty ||
+        paper.pageLayout.watermarkText.trim().isNotEmpty ||
         (paper.showPageNumbers &&
             paper.pageLayout.pageNumberPosition ==
                 PaperPageNumberPosition.headerRight);
@@ -228,6 +230,9 @@ class WordExportService {
         'xmlns:v="urn:schemas-microsoft-com:vml" '
         'xmlns:o="urn:schemas-microsoft-com:office:office" '
         'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">',
+      )
+      ..write(
+        '<w:background w:color="${_hexColor(paper.pageLayout.pageBackgroundArgb)}"/>',
       )
       ..write('<w:body>');
 
@@ -1029,7 +1034,8 @@ class WordExportService {
     required double fontSize,
     required int indentLeft,
   }) {
-    final embeds = geometryEmbedsFromQuillText(richText);
+    final projection = QuestionPrintContentProjection.fromRichText(richText);
+    final embeds = projection.geometryEmbeds.toList(growable: false);
     if (embeds.isEmpty) return '';
     final buffer = StringBuffer();
     for (final rawLayout in embeds) {
@@ -1499,8 +1505,12 @@ class WordExportService {
   }) {
     final widthPt = (shape.width * 420).clamp(46, 320).toDouble();
     final heightPt = (shape.height * 250).clamp(14, 180).toDouble();
-    final leftPt = (shape.x * 360).clamp(0, 300).toDouble();
-    final topPt = (shape.y * 180).clamp(0, 140).toDouble();
+    final leftPt = (shape.x * (shape.isFixedOnPage ? 420 : 360))
+        .clamp(0, shape.isFixedOnPage ? 420 : 300)
+        .toDouble();
+    final topPt = (shape.y * (shape.isFixedOnPage ? 620 : 180))
+        .clamp(0, shape.isFixedOnPage ? 620 : 140)
+        .toDouble();
     final layer = switch (shape.wrapMode) {
       WordTextWrapMode.behindText => -251658240,
       WordTextWrapMode.inFrontOfText => 251658240 + shape.zIndex,
@@ -1514,16 +1524,53 @@ class WordExportService {
       topPt: topPt,
       layer: layer,
     );
+    if (shape.kind == WordShapeKind.geometry) {
+      final diagram = shape.geometryDiagram;
+      if (diagram == null) {
+        return _paragraph('[diagram]', italic: true, fontSize: fontSize * 0.9);
+      }
+      final groupId = _xml('edusheet_geometry_object_${shape.id}');
+      final canvasWidth = math.max(1, diagram.canvasSize.width.round());
+      final canvasHeight = math.max(1, diagram.canvasSize.height.round());
+      final frameStroke = shape.borderVisible
+          ? 'strokecolor="${_vmlColor(shape.strokeColorArgb)}" '
+                'strokeweight="${shape.strokeWidth.toStringAsFixed(1)}pt"'
+          : 'stroked="f"';
+      final frameFill = shape.fillOpacity > 0
+          ? 'fillcolor="${_vmlColor(shape.fillColorArgb)}"'
+          : 'filled="f"';
+      final frame = shape.borderVisible || shape.fillOpacity > 0
+          ? '<v:rect style="position:absolute;left:0;top:0;width:$canvasWidth;height:$canvasHeight" '
+                '$frameStroke $frameFill/>'
+          : '';
+      return '<w:p><w:r><w:pict>'
+          '<v:group id="$groupId" coordorigin="0,0" '
+          'coordsize="$canvasWidth,$canvasHeight" style="$style" '
+          'filled="f" stroked="f">'
+          '$frame${_geometryVmlContent(diagram, fontSize: fontSize)}'
+          '</v:group></w:pict></w:r></w:p>';
+    }
+
+    final strokeColor = _vmlColor(shape.strokeColorArgb);
+    final fillColor = _vmlColor(shape.fillColorArgb);
+    final strokeAttributes = shape.borderVisible
+        ? 'strokecolor="$strokeColor" strokeweight="${shape.strokeWidth.toStringAsFixed(1)}pt"'
+        : 'stroked="f"';
+    final fillAttributes = shape.fillOpacity > 0
+        ? 'fillcolor="$fillColor"'
+        : 'filled="f"';
+    final fillXml = shape.fillOpacity > 0 && shape.fillOpacity < 1
+        ? '<v:fill opacity="${shape.fillOpacity.toStringAsFixed(2)}"/>'
+        : '';
     final strokeXml = switch (shape.kind) {
       WordShapeKind.arrow => '<v:stroke endarrow="block"/>',
       WordShapeKind.doubleArrow =>
         '<v:stroke startarrow="block" endarrow="block"/>',
       _ => '',
     };
-    final textXml =
-        (shape.kind == WordShapeKind.textBox ||
-            shape.kind == WordShapeKind.callout)
-        ? '<v:textbox inset="4pt,2pt,4pt,2pt"><w:txbxContent>'
+    final inset = shape.padding.clamp(0, 32).toStringAsFixed(1);
+    final textXml = shape.isTextContainer
+        ? '<v:textbox inset="${inset}pt,${inset}pt,${inset}pt,${inset}pt"><w:txbxContent>'
               '${_paragraph(shape.text, alignment: 'center', fontSize: fontSize * 0.9, spacingAfter: 0)}'
               '</w:txbxContent></v:textbox>'
         : '';
@@ -1531,21 +1578,22 @@ class WordExportService {
 
     final shapeXml = switch (shape.kind) {
       WordShapeKind.rectangle =>
-        '<v:rect id="$id" style="$style" fillcolor="white" strokecolor="black">$strokeXml</v:rect>',
+        '<v:rect id="$id" style="$style" $fillAttributes $strokeAttributes>$fillXml$strokeXml</v:rect>',
       WordShapeKind.textBox =>
-        '<v:rect id="$id" style="$style" fillcolor="white" strokecolor="black">$textXml</v:rect>',
+        '<v:rect id="$id" style="$style" $fillAttributes $strokeAttributes>$fillXml$textXml</v:rect>',
       WordShapeKind.roundedRectangle =>
-        '<v:roundrect id="$id" arcsize="18%" style="$style" fillcolor="white" strokecolor="black">$strokeXml</v:roundrect>',
+        '<v:roundrect id="$id" arcsize="18%" style="$style" $fillAttributes $strokeAttributes>$fillXml$strokeXml</v:roundrect>',
       WordShapeKind.ellipse =>
-        '<v:oval id="$id" style="$style" fillcolor="white" strokecolor="black">$strokeXml</v:oval>',
+        '<v:oval id="$id" style="$style" $fillAttributes $strokeAttributes>$fillXml$strokeXml</v:oval>',
       WordShapeKind.line =>
-        '<v:line id="$id" from="0,0" to="100,0" style="$style" strokecolor="black"/>',
+        '<v:line id="$id" from="0,0" to="100,0" style="$style" $strokeAttributes/>',
       WordShapeKind.arrow =>
-        '<v:line id="$id" from="0,0" to="100,0" style="$style" strokecolor="black">$strokeXml</v:line>',
+        '<v:line id="$id" from="0,0" to="100,0" style="$style" $strokeAttributes>$strokeXml</v:line>',
       WordShapeKind.doubleArrow =>
-        '<v:line id="$id" from="0,0" to="100,0" style="$style" strokecolor="black">$strokeXml</v:line>',
+        '<v:line id="$id" from="0,0" to="100,0" style="$style" $strokeAttributes>$strokeXml</v:line>',
       WordShapeKind.callout =>
-        '<v:roundrect id="$id" arcsize="12%" style="$style" fillcolor="white" strokecolor="black">$textXml</v:roundrect>',
+        '<v:roundrect id="$id" arcsize="12%" style="$style" $fillAttributes $strokeAttributes>$fillXml$textXml</v:roundrect>',
+      WordShapeKind.geometry => '',
     };
 
     final alignment = switch (shape.wrapMode) {
@@ -1555,6 +1603,11 @@ class WordExportService {
     };
     return '<w:p><w:pPr><w:jc w:val="$alignment"/></w:pPr>'
         '<w:r><w:pict>$shapeXml</w:pict></w:r></w:p>';
+  }
+
+  static String _vmlColor(int argb) {
+    final rgb = argb & 0x00FFFFFF;
+    return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
   }
 
   static String _wordShapeStyle(
@@ -1571,28 +1624,38 @@ class WordExportService {
     final rotation = shape.rotationDegrees == 0
         ? ''
         : 'rotation:${shape.rotationDegrees.toStringAsFixed(1)};';
+    final textSizing = shape.isTextContainer &&
+            shape.textBoxSizing == WordTextBoxSizing.autoHeight
+        ? 'mso-fit-shape-to-text:t;'
+        : '';
+    if (shape.isFixedOnPage) {
+      return 'position:absolute;margin-left:${leftPt.toStringAsFixed(1)}pt;'
+          'margin-top:${topPt.toStringAsFixed(1)}pt;$size$rotation$textSizing;'
+          'z-index:$layer;mso-position-horizontal-relative:page;'
+          'mso-position-vertical-relative:page;mso-wrap-style:none';
+    }
     switch (shape.wrapMode) {
       case WordTextWrapMode.inline:
-        return 'position:relative;$size$rotation;z-index:$layer';
+        return 'position:relative;$size$rotation$textSizing;z-index:$layer';
       case WordTextWrapMode.squareLeft:
-        return 'position:relative;float:left;$size$rotation;z-index:$layer;'
+        return 'position:relative;float:left;$size$rotation$textSizing;z-index:$layer;'
             'mso-wrap-distance-left:0pt;mso-wrap-distance-right:8pt;'
             'mso-wrap-style:square';
       case WordTextWrapMode.squareRight:
-        return 'position:relative;float:right;$size$rotation;z-index:$layer;'
+        return 'position:relative;float:right;$size$rotation$textSizing;z-index:$layer;'
             'mso-wrap-distance-left:8pt;mso-wrap-distance-right:0pt;'
             'mso-wrap-style:square';
       case WordTextWrapMode.topAndBottom:
-        return 'position:relative;$size$rotation;z-index:$layer;'
+        return 'position:relative;$size$rotation$textSizing;z-index:$layer;'
             'mso-wrap-style:topAndBottom';
       case WordTextWrapMode.behindText:
         return 'position:absolute;margin-left:${leftPt.toStringAsFixed(1)}pt;'
-            'margin-top:${topPt.toStringAsFixed(1)}pt;$size$rotation;'
+            'margin-top:${topPt.toStringAsFixed(1)}pt;$size$rotation$textSizing;'
             'z-index:$layer;mso-position-horizontal-relative:text;'
             'mso-position-vertical-relative:text;mso-wrap-style:none';
       case WordTextWrapMode.inFrontOfText:
         return 'position:absolute;margin-left:${leftPt.toStringAsFixed(1)}pt;'
-            'margin-top:${topPt.toStringAsFixed(1)}pt;$size$rotation;'
+            'margin-top:${topPt.toStringAsFixed(1)}pt;$size$rotation$textSizing;'
             'z-index:$layer;mso-position-horizontal-relative:text;'
             'mso-position-vertical-relative:text;mso-wrap-style:none';
     }
@@ -2301,6 +2364,12 @@ class WordExportService {
         ? ' w:orient="landscape"'
         : '';
 
+    final columnCount = paper.pageLayout.columns.explicitCount ??
+        (template.paperLayout == PaperLayout.twoColumn ? 2 : 1);
+    final columnSpacing = _pointsToTwips(
+      paper.pageLayout.columnSpacingPoints.clamp(0, 72).toDouble(),
+    );
+
     return '<w:sectPr>${refs.toString()}'
         '<w:pgSz w:w="${page.width}" w:h="${page.height}"$orient/>'
         '<w:pgMar w:top="${_pointsToTwips(margins.topPoints)}" '
@@ -2310,7 +2379,7 @@ class WordExportService {
         'w:header="${_pointsToTwips(paper.pageLayout.headerDistancePoints)}" '
         'w:footer="${_pointsToTwips(paper.pageLayout.footerDistancePoints)}" '
         'w:gutter="0"/>'
-        '<w:cols w:space="720"/>$border</w:sectPr>';
+        '<w:cols w:num="$columnCount" w:space="$columnSpacing"/>$border</w:sectPr>';
   }
 
   static _PageSize _resolvedPageSizeTwips(
@@ -2461,6 +2530,7 @@ class WordExportService {
 
   static String _headerPartXml(Paper paper) {
     final text = paper.headerText.trim();
+    final watermark = paper.pageLayout.watermarkText.trim();
     final includePageNumber =
         paper.showPageNumbers &&
         paper.pageLayout.pageNumberPosition ==
@@ -2471,9 +2541,30 @@ class WordExportService {
       pageNumberAlignment: 'right',
       textAlignment: 'left',
     );
+    final watermarkXml = watermark.isEmpty ? '' : _watermarkVml(paper);
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<w:hdr xmlns:w="$_wordNamespace" xmlns:r="$_relationsNamespace">'
-        '$body</w:hdr>';
+        '<w:hdr xmlns:w="$_wordNamespace" xmlns:r="$_relationsNamespace" '
+        'xmlns:v="urn:schemas-microsoft-com:vml" '
+        'xmlns:o="urn:schemas-microsoft-com:office:office">'
+        '$watermarkXml$body</w:hdr>';
+  }
+
+  static String _watermarkVml(Paper paper) {
+    final text = _xml(paper.pageLayout.watermarkText.trim());
+    final opacity = paper.pageLayout.watermarkOpacity.clamp(0.02, 0.35);
+    final shade = (255 - opacity * 210).round().clamp(176, 247).toInt();
+    final component = shade.toRadixString(16).padLeft(2, '0').toUpperCase();
+    final textColor = '$component$component$component';
+    return '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:pict>'
+        '<v:shape id="EduSheetWatermark" o:allowincell="f" stroked="f" filled="f" '
+        'style="position:absolute;width:420pt;height:90pt;'
+        'rotation:325;z-index:-251654144;mso-position-horizontal:center;'
+        'mso-position-horizontal-relative:page;mso-position-vertical:center;'
+        'mso-position-vertical-relative:page">'
+        '<v:textbox inset="0,0,0,0"><w:txbxContent><w:p><w:pPr>'
+        '<w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:color w:val="$textColor"/>'
+        '<w:sz w:val="72"/><w:b/></w:rPr><w:t>$text</w:t></w:r></w:p>'
+        '</w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>';
   }
 
   static String _footerPartXml(Paper paper) {
@@ -2643,6 +2734,11 @@ class WordExportService {
       default:
         return 'image/png';
     }
+  }
+
+  static String _hexColor(int argb) {
+    final rgb = argb & 0x00FFFFFF;
+    return rgb.toRadixString(16).padLeft(6, '0').toUpperCase();
   }
 
   static String _xml(String value) {

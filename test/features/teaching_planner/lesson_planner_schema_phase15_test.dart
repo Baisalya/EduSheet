@@ -16,6 +16,6 @@ void main() {
       },
     });
     expect(workspace.lessonPlans, isEmpty);
-    expect(codec.encode(workspace)['schemaVersion'], 7);
+    expect(codec.encode(workspace)['schemaVersion'], 8);
   });
 }

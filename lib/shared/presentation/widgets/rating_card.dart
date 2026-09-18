@@ -30,41 +30,54 @@ class _RatingCardState extends State<RatingCard> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    const gold = Color(0xFFF3A712);
+    final warmSurface = Color.alphaBlend(
+      gold.withValues(alpha: theme.brightness == Brightness.dark ? 0.10 : 0.08),
+      scheme.surface,
+    );
+    final warmSurfaceStrong = Color.alphaBlend(
+      gold.withValues(alpha: theme.brightness == Brightness.dark ? 0.17 : 0.13),
+      scheme.surfaceContainerLow,
+    );
+
     final leading = Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.75),
+        color: scheme.surface.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: gold.withValues(alpha: 0.25)),
       ),
-      child: const Icon(Icons.star_rounded, color: Color(0xFFF3A712), size: 30),
+      child: const Icon(Icons.star_rounded, color: gold, size: 30),
     );
 
-    const details = Column(
+    final details = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.star_rounded, size: 15, color: Color(0xFFF3A712)),
-            Icon(Icons.star_rounded, size: 15, color: Color(0xFFF3A712)),
-            Icon(Icons.star_rounded, size: 15, color: Color(0xFFF3A712)),
-            Icon(Icons.star_rounded, size: 15, color: Color(0xFFF3A712)),
-            Icon(Icons.star_rounded, size: 15, color: Color(0xFFF3A712)),
+            Icon(Icons.star_rounded, size: 15, color: gold),
+            Icon(Icons.star_rounded, size: 15, color: gold),
+            Icon(Icons.star_rounded, size: 15, color: gold),
+            Icon(Icons.star_rounded, size: 15, color: gold),
+            Icon(Icons.star_rounded, size: 15, color: gold),
           ],
         ),
-        SizedBox(height: 4),
+        const SizedBox(height: 4),
         Text(
           'Enjoying EduSheet?',
           style: TextStyle(
-            color: Color(0xFF4A3210),
+            color: scheme.onSurface,
             fontWeight: FontWeight.w900,
             fontSize: 16,
           ),
         ),
-        SizedBox(height: 2),
+        const SizedBox(height: 2),
         Text(
           'A quick store rating helps more teachers find it.',
-          style: TextStyle(color: Color(0xFF72531F), fontSize: 12),
+          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
         ),
       ],
     );
@@ -72,17 +85,17 @@ class _RatingCardState extends State<RatingCard> {
     final rateButton = FilledButton(
       onPressed: _opening ? null : _rateApp,
       style: FilledButton.styleFrom(
-        backgroundColor: const Color(0xFF5A3D0B),
-        foregroundColor: Colors.white,
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
         padding: const EdgeInsets.symmetric(horizontal: 14),
       ),
       child: _opening
-          ? const SizedBox(
+          ? SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Colors.white,
+                color: scheme.onPrimary,
               ),
             )
           : const Text('Rate', style: TextStyle(fontWeight: FontWeight.w800)),
@@ -97,14 +110,12 @@ class _RatingCardState extends State<RatingCard> {
           padding: EdgeInsets.all(compact ? 14 : 18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFFFF4D3), Color(0xFFFFE4AA)],
+              colors: [warmSurface, warmSurfaceStrong],
             ),
-            border: Border.all(
-              color: const Color(0xFFFFC857).withValues(alpha: 0.6),
-            ),
+            border: Border.all(color: gold.withValues(alpha: 0.32)),
           ),
           child: compact
               ? Column(
@@ -115,7 +126,7 @@ class _RatingCardState extends State<RatingCard> {
                       children: [
                         leading,
                         const SizedBox(width: 12),
-                        const Expanded(child: details),
+                        Expanded(child: details),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -126,7 +137,7 @@ class _RatingCardState extends State<RatingCard> {
                   children: [
                     leading,
                     const SizedBox(width: 14),
-                    const Expanded(child: details),
+                    Expanded(child: details),
                     const SizedBox(width: 8),
                     rateButton,
                   ],

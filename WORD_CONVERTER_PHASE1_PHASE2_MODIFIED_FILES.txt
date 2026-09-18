@@ -1,0 +1,11 @@
+lib/features/word_converter/domain/models/conversion_document.dart
+lib/features/word_converter/services/docx_conversion_parser.dart
+lib/features/word_converter/services/docx_pdf_renderer.dart
+lib/features/word_converter/services/word_converter_service.dart
+lib/features/word_converter/presentation/screens/word_converter_screen.dart
+test/features/word_converter/docx_conversion_parser_test.dart
+test/features/word_converter/word_converter_service_test.dart
+test/features/word_converter/word_converter_screen_test.dart
+tool/run_word_converter_phase12_gate.ps1
+WORD_CONVERTER_PHASE1_PHASE2_HANDOFF.md
+WORD_CONVERTER_PHASE1_PHASE2_MODIFIED_FILES.txt

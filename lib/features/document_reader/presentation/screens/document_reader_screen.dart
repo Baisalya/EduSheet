@@ -27,14 +27,16 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(documentProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black,
+        foregroundColor: scheme.onSurface,
         title: const Text(
           'Reader',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -50,9 +52,9 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
       body: Column(
         children: [
           _buildReaderHero(state, isDark),
-          _buildSearchBar(isDark),
+          _buildSearchBar(),
           _buildFilterChips(),
-          Expanded(child: _buildDocumentList(state, isDark)),
+          Expanded(child: _buildDocumentList(state)),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -113,6 +115,7 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
   }
 
   Widget _buildReaderHero(DocumentState state, bool isDark) {
+    final scheme = Theme.of(context).colorScheme;
     final counts = <DocumentType, int>{};
     for (final doc in state.allDocuments) {
       counts.update(doc.type, (value) => value + 1, ifAbsent: () => 1);
@@ -128,12 +131,10 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1B1F26) : Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isDark
-                ? Colors.white10
-                : Colors.black.withValues(alpha: 0.06),
+            color: scheme.outlineVariant,
           ),
           boxShadow: [
             BoxShadow(
@@ -149,10 +150,10 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
               width: 54,
               height: 54,
               decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.12),
+                color: scheme.primaryContainer,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Icon(Icons.folder_copy, color: Colors.blue),
+              child: Icon(Icons.folder_copy, color: scheme.onPrimaryContainer),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -162,7 +163,7 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
                   Text(
                     '${state.allDocuments.length} documents ready',
                     style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       fontSize: 17,
                       fontWeight: FontWeight.w800,
                     ),
@@ -176,7 +177,7 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: isDark ? Colors.white60 : Colors.black54,
+                      color: scheme.onSurfaceVariant,
                       fontSize: 12,
                       height: 1.25,
                     ),
@@ -185,7 +186,7 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            _ReaderBadge(label: _formatSize(totalSize), isDark: isDark),
+            _ReaderBadge(label: _formatSize(totalSize)),
           ],
         ),
       ),
@@ -205,19 +206,16 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
-  Widget _buildSearchBar(bool isDark) {
+  Widget _buildSearchBar() {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
       child: Container(
         decoration: BoxDecoration(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.grey.shade100,
+          color: scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.grey.shade200,
+            color: scheme.outlineVariant,
           ),
         ),
         child: TextField(
@@ -299,7 +297,8 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
     );
   }
 
-  Widget _buildDocumentList(DocumentState state, bool isDark) {
+  Widget _buildDocumentList(DocumentState state) {
+    final scheme = Theme.of(context).colorScheme;
     if (state.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -311,17 +310,21 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
+              Icon(
+                Icons.search_off,
+                size: 64,
+                color: scheme.onSurfaceVariant.withValues(alpha: 0.38),
+              ),
               const SizedBox(height: 16),
               Text(
                 'No documents found',
-                style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 16),
               ),
               const SizedBox(height: 8),
               Text(
                 'Tap Open file to preview PDF, Word, Excel, PowerPoint, or text.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
               ),
             ],
           ),
@@ -345,27 +348,23 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
 
 class _ReaderBadge extends StatelessWidget {
   final String label;
-  final bool isDark;
 
-  const _ReaderBadge({required this.label, required this.isDark});
+  const _ReaderBadge({required this.label});
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.blue.shade50,
+        color: scheme.primaryContainer.withValues(alpha: 0.7),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.blue.withValues(alpha: 0.12),
-        ),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.18)),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: isDark ? Colors.white70 : Colors.blue.shade700,
+          color: scheme.onPrimaryContainer,
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
@@ -387,27 +386,23 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
         label: Text(label),
         selected: isSelected,
         onSelected: (_) => onTap(),
-        selectedColor: Colors.blue.withValues(alpha: 0.2),
+        selectedColor: scheme.primaryContainer,
         labelStyle: TextStyle(
-          color: isSelected
-              ? Colors.blue
-              : (isDark ? Colors.white70 : Colors.black87),
+          color: isSelected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
         backgroundColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
-            color: isSelected
-                ? Colors.blue
-                : (isDark ? Colors.white10 : Colors.grey.shade300),
+            color: isSelected ? scheme.primary : scheme.outlineVariant,
           ),
         ),
       ),
@@ -423,15 +418,17 @@ class _DocumentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final color = _getColorForType(doc.type);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+        border: Border.all(color: scheme.outlineVariant),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.035),
@@ -466,7 +463,7 @@ class _DocumentCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : Colors.black87,
+                        color: scheme.onSurface,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -488,9 +485,7 @@ class _DocumentCard extends StatelessWidget {
                           '${doc.sizeString} | ${DateFormat('MMM d, yyyy').format(doc.lastModified)}',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark
-                                ? Colors.grey.shade400
-                                : Colors.grey[600],
+                            color: scheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -498,10 +493,7 @@ class _DocumentCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                color: isDark ? Colors.white24 : Colors.black12,
-              ),
+              Icon(Icons.chevron_right, color: scheme.primary),
             ],
           ),
         ),

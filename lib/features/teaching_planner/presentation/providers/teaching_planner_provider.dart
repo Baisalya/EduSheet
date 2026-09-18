@@ -16,11 +16,22 @@ import '../../domain/models/teaching_planner_capabilities.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
 import '../../domain/repositories/teaching_planner_repository.dart';
 import '../services/teaching_resource_file_picker.dart';
+import '../../../guided_experience/demo/guided_demo_controller.dart';
+import '../../../guided_experience/demo/guided_demo_providers.dart';
+
+final productionTeachingPlannerRepositoryProvider =
+    Provider<TeachingPlannerRepository>((ref) {
+      return LocalTeachingPlannerRepository();
+    });
 
 final teachingPlannerRepositoryProvider = Provider<TeachingPlannerRepository>((
   ref,
 ) {
-  return LocalTeachingPlannerRepository();
+  final demoSession = ref.watch(guidedDemoControllerProvider);
+  if (isSyllabusDemoActive(demoSession)) {
+    return ref.watch(demoTeachingPlannerRepositoryProvider);
+  }
+  return ref.watch(productionTeachingPlannerRepositoryProvider);
 });
 
 final teachingResourceFileStoreProvider = Provider<TeachingResourceFileStore>((
@@ -450,6 +461,7 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
     String? mimeType,
     String? localRelativePath,
     int? sizeBytes,
+    String? linkedPaperId,
     Map<String, dynamic>? geometryJson,
   }) {
     return _run(
@@ -466,6 +478,7 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
         mimeType: mimeType,
         localRelativePath: localRelativePath,
         sizeBytes: sizeBytes,
+        linkedPaperId: linkedPaperId,
         geometryJson: geometryJson,
       ),
     );

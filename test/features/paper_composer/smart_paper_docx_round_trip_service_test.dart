@@ -29,8 +29,55 @@ void main() {
     expect(jsonEncode(result.paper!.toJson()), jsonEncode(paper.toJson()));
   });
 
+  test(
+    'exact EduSheet DOCX restore preserves canonical accessibility text verbatim',
+    () {
+      final base = _paper();
+      final section = base.sections.single;
+      final question = section.questions.first.copyWith(
+        plainTextAccessibility: 'Teacher-authored accessibility wording',
+      );
+      final paper = base.copyWith(
+        sections: [
+          section.copyWith(questions: [question, ...section.questions.skip(1)]),
+        ],
+      );
+      final documentXml = _documentXml(
+        paper,
+        questionText: 'Solve x + 1',
+      );
+      final bytes = _docxBytes(
+        documentXml: documentXml,
+        stylesXml: _stylesXml,
+        envelopeXml: SmartPaperDocxRoundTripService.buildEnvelopeXml(
+          paper: paper,
+          documentXml: documentXml,
+          stylesXml: _stylesXml,
+        ),
+      );
+
+      final result = SmartPaperDocxRoundTripService.importFromBytes(bytes);
+
+      expect(result.status, SmartPaperDocxImportStatus.exactEduSheetRoundTrip);
+      expect(
+        result.paper!.sections.single.questions.first.plainTextAccessibility,
+        'Teacher-authored accessibility wording',
+      );
+      expect(jsonEncode(result.paper!.toJson()), jsonEncode(paper.toJson()));
+    },
+  );
+
   test('Word text and basic rich formatting safely merge by EduSheet tag', () {
-    final paper = _paper();
+    final base = _paper();
+    final section = base.sections.single;
+    final untouched = section.questions.last.copyWith(
+      plainTextAccessibility: 'Canonical untouched accessibility wording',
+    );
+    final paper = base.copyWith(
+      sections: [
+        section.copyWith(questions: [section.questions.first, untouched]),
+      ],
+    );
     final exported = _documentXml(paper, questionText: 'Solve x + 1');
     final edited = _documentXml(
       paper,
@@ -73,7 +120,7 @@ void main() {
     expect(merged.sections.single.questions.last.isWordContentBlock, isTrue);
     expect(
       merged.sections.single.questions.last.plainTextAccessibility,
-      'Teacher free paragraph',
+      'Canonical untouched accessibility wording',
     );
   });
 

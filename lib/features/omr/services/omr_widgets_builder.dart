@@ -1,3 +1,4 @@
+import 'package:edusheet/features/pdf/services/shaping/pdf_complex_text_service.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../domain/models/omr_config.dart';
 
@@ -32,14 +33,19 @@ class OmrWidgetsBuilder {
             pw.Expanded(
               child: pw.Column(
                 children: [
-                  pw.Text(
+                  PdfComplexTextService.styledText(
                     config.schoolName,
                     style: pw.TextStyle(
                       fontSize: 20,
                       fontWeight: pw.FontWeight.bold,
                     ),
+                    textAlign: pw.TextAlign.center,
                   ),
-                  pw.Text(config.examName, style: pw.TextStyle(fontSize: 16)),
+                  PdfComplexTextService.styledText(
+                    config.examName,
+                    style: pw.TextStyle(fontSize: 16),
+                    textAlign: pw.TextAlign.center,
+                  ),
                 ],
               ),
             ),

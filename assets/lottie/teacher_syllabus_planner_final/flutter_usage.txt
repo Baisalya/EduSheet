@@ -1,0 +1,9 @@
+import 'package:lottie/lottie.dart';
+
+Lottie.asset(
+  'assets/lottie/teacher_syllabus_planner_final.json',
+  repeat: true,
+  fit: BoxFit.contain,
+);
+
+// If you use the embedded JSON version, only the JSON file is required.

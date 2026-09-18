@@ -189,7 +189,7 @@ void main() {
     final restored = await repository.load();
 
     expect(restored.units.single.priority.name, 'normal');
-    expect(TeachingPlannerDocumentCodec.currentSchemaVersion, 7);
+    expect(TeachingPlannerDocumentCodec.currentSchemaVersion, 8);
   });
 
   test('newer unknown schema fails safely', () async {

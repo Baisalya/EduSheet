@@ -1,26 +1,28 @@
 import 'dart:io';
-import 'dart:math' as math;
-
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/domain/models/paper_page_layout.dart';
 import 'package:edusheet/features/editor/domain/models/question_math_content.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
+import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
+import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/paper_composer/application/question_math_surface_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_content_block_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_direct_authoring_service.dart';
 import 'package:edusheet/features/paper_composer/application/word_shape_service.dart';
+import 'package:edusheet/features/paper_composer/application/word_pagination_service.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
 import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
 import 'package:edusheet/features/paper_composer/presentation/responsive/paper_page_canvas_metrics.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_header_layout_canvas.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/paper_page_design_surface.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_image_attachment_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_text_field.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_math_surface_view.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_rich_text_preview.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_table_editor_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/word_rich_text_editor.dart';
+import 'package:edusheet/features/paper_composer/presentation/widgets/word_object_editor_layer.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/word_shape_picker_sheet.dart';
-import 'package:edusheet/features/paper_composer/presentation/widgets/word_shape_preview.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/word_page_layout_sheet.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
@@ -102,6 +104,8 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
   String? _pendingFocusQuestionId;
   _WordDocumentFormatTarget _formatTarget = _WordDocumentFormatTarget.none;
   String? _formatSectionId;
+  Paper? _paginationPaper;
+  WordPaginationPlan? _cachedPaginationPlan;
 
   @override
   void initState() {
@@ -136,6 +140,17 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
   String? get _targetSectionId {
     if (_activeSectionId != null) return _activeSectionId;
     return widget.paper.sections.firstOrNull?.id;
+  }
+
+  WordPaginationPlan get _paginationPlan {
+    final cached = _cachedPaginationPlan;
+    if (identical(_paginationPaper, widget.paper) && cached != null) {
+      return cached;
+    }
+    final plan = WordPaginationService.planFor(widget.paper);
+    _paginationPaper = widget.paper;
+    _cachedPaginationPlan = plan;
+    return plan;
   }
 
   int? _targetInsertIndex(String sectionId) {
@@ -274,12 +289,12 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
     widget.onInsertWordBlock(sectionId, block, _targetInsertIndex(sectionId));
   }
 
-  Future<void> _insertShape() async {
+  Future<void> _insertShape([WordShapeKind? requestedKind]) async {
     final activeTarget = _activeQuestionTarget;
     final sectionId = activeTarget?.sectionId ?? _targetSectionId;
     if (sectionId == null) return;
 
-    final kind = await WordShapePickerSheet.show(context);
+    final kind = requestedKind ?? await WordShapePickerSheet.show(context);
     if (kind == null || !mounted) return;
 
     final shape = WordShapeService.create(kind);
@@ -302,6 +317,67 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
       _pendingFocusQuestionId = null;
     });
     widget.onInsertWordBlock(sectionId, block, _targetInsertIndex(sectionId));
+  }
+
+  Future<void> _insertTextBox() => _insertShape(WordShapeKind.textBox);
+
+  Future<void> _insertFloatingGeometry() async {
+    final activeTarget = _activeQuestionTarget;
+    final sectionId = activeTarget?.sectionId ?? _targetSectionId;
+    if (sectionId == null) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final diagram = await GeometryBuilderScreen.show(context);
+    if (diagram == null || !mounted) return;
+    GeometryDiagramRegistry.instance.save(diagram);
+    final object = WordShapeService.createGeometry(diagram);
+    if (activeTarget != null) {
+      _replaceQuestion(
+        activeTarget.sectionId,
+        WordShapeService.append(activeTarget.question, object),
+      );
+      setState(() {
+        _activeSectionId = activeTarget.sectionId;
+        _pendingFocusQuestionId = activeTarget.question.id;
+      });
+      return;
+    }
+    final block = WordContentBlockService.shape(object);
+    setState(() {
+      _activeSectionId = sectionId;
+      _pendingFocusQuestionId = null;
+    });
+    widget.onInsertWordBlock(sectionId, block, _targetInsertIndex(sectionId));
+  }
+
+  Future<void> _editFloatingGeometry(
+    String sectionId,
+    String questionId,
+    WordShapeObject object,
+  ) async {
+    final diagram = object.geometryDiagram;
+    if (diagram == null) return;
+    final updatedDiagram = await GeometryBuilderScreen.show(
+      context,
+      initialDiagram: diagram,
+    );
+    if (updatedDiagram == null || !mounted) return;
+    GeometryDiagramRegistry.instance.save(updatedDiagram);
+    final section = _sectionById(sectionId);
+    final currentQuestion = section?.questions
+        .where((item) => item.id == questionId)
+        .firstOrNull;
+    if (currentQuestion == null) return;
+    final currentObject = WordShapeService.shapesOf(currentQuestion)
+        .where((item) => item.id == object.id)
+        .firstOrNull;
+    if (currentObject == null) return;
+    _replaceQuestion(
+      sectionId,
+      WordShapeService.replace(
+        currentQuestion,
+        currentObject.copyWith(geometryDiagram: updatedDiagram),
+      ),
+    );
   }
 
   void _insertQuestion() {
@@ -464,10 +540,16 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
       layout: widget.paper.pageLayout,
       templatePageSize: widget.template.paperSize,
       viewportWidth: MediaQuery.sizeOf(context).width,
+      templateTwoColumn: widget.template.paperLayout == PaperLayout.twoColumn,
     );
     final previewWidth = pageMetrics.pageWidth;
     final pagePadding = pageMetrics.pagePadding;
     final pageMinHeight = pageMetrics.pageMinHeight;
+    final resolvedColumnCount = pageMetrics.resolvedColumnCount;
+    final columnGap = (widget.paper.pageLayout.columnSpacingPoints *
+            pageMetrics.pageScale)
+        .clamp(6.0, 96.0)
+        .toDouble();
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLow,
       child: Column(
@@ -479,7 +561,9 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
             onInsertParagraph: _insertParagraph,
             onInsertTable: _insertTable,
             onInsertImage: _insertImage,
-            onInsertShape: _insertShape,
+            onInsertShape: () => _insertShape(),
+            onInsertTextBox: _insertTextBox,
+            onInsertFloatingGeometry: _insertFloatingGeometry,
             onInsertQuestion: _insertQuestion,
             onAddSection: widget.onAddSection,
             onQuestionBank: _openQuestionBank,
@@ -514,7 +598,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
                       const SizedBox(height: 12),
                       Material(
                         key: const Key('word-paper-document'),
-                        color: Colors.white,
+                        color: Colors.transparent,
                         elevation: 1,
                         shadowColor: Colors.black26,
                         shape: RoundedRectangleBorder(
@@ -531,9 +615,16 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
                         clipBehavior: Clip.antiAlias,
                         child: ConstrainedBox(
                           constraints: BoxConstraints(minHeight: pageMinHeight),
-                          child: Padding(
-                            padding: pagePadding,
-                            child: Theme(
+                          child: PaperPageDesignSurface(
+                            layout: widget.paper.pageLayout,
+                            pageScale: pageMetrics.pageScale,
+                            pagePadding: pagePadding,
+                            resolvedColumnCount: resolvedColumnCount,
+                            compact: widget.compact,
+                            showEditorChrome: true,
+                            child: Padding(
+                              padding: pagePadding,
+                              child: Theme(
                               data: ThemeData.light(useMaterial3: true),
                               child: DefaultTextStyle(
                                 style: TextStyle(
@@ -616,6 +707,8 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
                                     ) ...[
                                       _buildSection(
                                         widget.paper.sections[sectionIndex],
+                                        columnCount: resolvedColumnCount,
+                                        columnGap: columnGap,
                                       ),
                                       if (sectionIndex !=
                                           widget.paper.sections.length - 1)
@@ -649,6 +742,7 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
                           ),
                         ),
                       ),
+                    ),
                       if (!widget.compact) ...[
                         const SizedBox(height: 14),
                         Align(
@@ -717,7 +811,11 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
     );
   }
 
-  Widget _buildSection(PaperSection section) {
+  Widget _buildSection(
+    PaperSection section, {
+    required int columnCount,
+    required double columnGap,
+  }) {
     final answerRule = PaperStructureService.answerRuleText(section);
     final hasManualPageBreak = section.questions.any(
       (question) =>
@@ -849,25 +947,25 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
           ),
         if (section.showBottomDivider) const Divider(height: 24),
         SizedBox(height: section.spacing.afterPoints),
-        if (widget.template.paperLayout == PaperLayout.twoColumn &&
-            !hasManualPageBreak)
+        if (columnCount > 1 && !hasManualPageBreak)
           for (
             var rawIndex = 0;
             rawIndex < section.questions.length;
-            rawIndex += 2
+            rawIndex += columnCount
           )
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: _buildWordQuestion(section, rawIndex)),
-                  const SizedBox(width: 22),
-                  Expanded(
-                    child: rawIndex + 1 < section.questions.length
-                        ? _buildWordQuestion(section, rawIndex + 1)
-                        : const SizedBox(),
-                  ),
+                  for (var offset = 0; offset < columnCount; offset++) ...[
+                    if (offset > 0) SizedBox(width: columnGap),
+                    Expanded(
+                      child: rawIndex + offset < section.questions.length
+                          ? _buildWordQuestion(section, rawIndex + offset)
+                          : const SizedBox(),
+                    ),
+                  ],
                 ],
               ),
             )
@@ -930,6 +1028,9 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
           _editQuestionImage(section.id, question, attachment),
       onRemoveImage: (attachment) =>
           _removeQuestionImage(section.id, question, attachment),
+      ownerPageIndex: _paginationPlan.pageOfQuestion(question.id),
+      onEditGeometry: (object) =>
+          _editFloatingGeometry(section.id, question.id, object),
     );
   }
 }
@@ -951,6 +1052,8 @@ class _WordEditorRibbon extends StatelessWidget {
   final Future<void> Function() onInsertTable;
   final Future<void> Function() onInsertImage;
   final Future<void> Function() onInsertShape;
+  final Future<void> Function() onInsertTextBox;
+  final Future<void> Function() onInsertFloatingGeometry;
   final VoidCallback onInsertQuestion;
   final VoidCallback onAddSection;
   final Future<void> Function() onQuestionBank;
@@ -972,6 +1075,8 @@ class _WordEditorRibbon extends StatelessWidget {
     required this.onInsertTable,
     required this.onInsertImage,
     required this.onInsertShape,
+    required this.onInsertTextBox,
+    required this.onInsertFloatingGeometry,
     required this.onInsertQuestion,
     required this.onAddSection,
     required this.onQuestionBank,
@@ -1056,6 +1161,8 @@ class _WordEditorRibbon extends StatelessWidget {
                         onInsertTable: onInsertTable,
                         onInsertImage: onInsertImage,
                         onInsertShape: onInsertShape,
+                        onInsertTextBox: onInsertTextBox,
+                        onInsertFloatingGeometry: onInsertFloatingGeometry,
                         onInsertPageBreak: onInsertPageBreak,
                         onImportWord: onImportWord,
                         onPageLayout: onPageLayout,
@@ -1151,6 +1258,8 @@ class _WordEditorRibbon extends StatelessWidget {
                                     onInsertTable: onInsertTable,
                                     onInsertImage: onInsertImage,
                                     onInsertShape: onInsertShape,
+                                    onInsertTextBox: onInsertTextBox,
+                                    onInsertFloatingGeometry: onInsertFloatingGeometry,
                                     onInsertPageBreak: onInsertPageBreak,
                                     onImportWord: onImportWord,
                                     onPageLayout: onPageLayout,
@@ -1456,6 +1565,8 @@ class _InsertActions extends StatelessWidget {
   final Future<void> Function() onInsertTable;
   final Future<void> Function() onInsertImage;
   final Future<void> Function() onInsertShape;
+  final Future<void> Function() onInsertTextBox;
+  final Future<void> Function() onInsertFloatingGeometry;
   final VoidCallback onInsertPageBreak;
   final Future<void> Function() onImportWord;
   final Future<void> Function() onPageLayout;
@@ -1468,6 +1579,8 @@ class _InsertActions extends StatelessWidget {
     required this.onInsertTable,
     required this.onInsertImage,
     required this.onInsertShape,
+    required this.onInsertTextBox,
+    required this.onInsertFloatingGeometry,
     required this.onInsertPageBreak,
     required this.onImportWord,
     required this.onPageLayout,
@@ -1495,6 +1608,14 @@ class _InsertActions extends StatelessWidget {
       key: const Key('word-ribbon-geometry'),
       icon: Icons.category_outlined,
       label: 'Geometry',
+      enabled: enabled,
+      dense: !compact,
+      onTap: onInsertFloatingGeometry,
+    );
+    final inlineGeometryAction = _RibbonAction(
+      key: const Key('word-ribbon-inline-geometry'),
+      icon: Icons.format_align_left_rounded,
+      label: 'Inline diagram',
       enabled: session.hasActiveEditor,
       dense: !compact,
       onTap: session.insertGeometry,
@@ -1523,6 +1644,14 @@ class _InsertActions extends StatelessWidget {
       dense: !compact,
       onTap: onInsertImage,
     );
+    final textBoxAction = _RibbonAction(
+      key: const Key('word-ribbon-text-box'),
+      icon: Icons.text_fields_rounded,
+      label: 'Text box',
+      enabled: enabled,
+      dense: !compact,
+      onTap: onInsertTextBox,
+    );
     final shapeAction = _RibbonAction(
       key: const Key('word-ribbon-shape'),
       icon: Icons.crop_square_rounded,
@@ -1539,9 +1668,11 @@ class _InsertActions extends StatelessWidget {
         paragraphAction,
         tableAction,
         imageAction,
+        textBoxAction,
         shapeAction,
         mathAction,
         geometryAction,
+        inlineGeometryAction,
         _RibbonAction(
           key: const Key('word-ribbon-page-break'),
           icon: Icons.insert_page_break_outlined,
@@ -1561,9 +1692,11 @@ class _InsertActions extends StatelessWidget {
       importAction,
       mathAction,
       geometryAction,
+      inlineGeometryAction,
       paragraphAction,
       tableAction,
       imageAction,
+      textBoxAction,
       shapeAction,
     ];
     return Column(
@@ -1724,13 +1857,21 @@ class _RibbonAction extends StatelessWidget {
 
     final button = emphasized
         ? FilledButton.tonalIcon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              tapTargetSize: MaterialTapTargetSize.padded,
+            ),
             onPressed: enabled ? onTap : null,
-            icon: Icon(icon, size: 17),
+            icon: Icon(icon, size: 18),
             label: Text(label),
           )
         : TextButton.icon(
+            style: TextButton.styleFrom(
+              minimumSize: const Size(48, 48),
+              tapTargetSize: MaterialTapTargetSize.padded,
+            ),
             onPressed: enabled ? onTap : null,
-            icon: Icon(icon, size: 17),
+            icon: Icon(icon, size: 18),
             label: Text(label),
           );
     return Padding(padding: const EdgeInsets.only(right: 3), child: button);
@@ -1817,6 +1958,8 @@ class _WordQuestionBlock extends StatelessWidget {
   final VoidCallback onEditTable;
   final ValueChanged<QuestionAttachment> onEditImage;
   final ValueChanged<QuestionAttachment> onRemoveImage;
+  final int ownerPageIndex;
+  final Future<void> Function(WordShapeObject object) onEditGeometry;
 
   const _WordQuestionBlock({
     super.key,
@@ -1834,6 +1977,8 @@ class _WordQuestionBlock extends StatelessWidget {
     required this.onEditTable,
     required this.onEditImage,
     required this.onRemoveImage,
+    required this.ownerPageIndex,
+    required this.onEditGeometry,
   });
 
   static String _alphaLabel(int index) {
@@ -1850,17 +1995,15 @@ class _WordQuestionBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final platform = theme.platform;
+    final desktopInteractions =
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.linux;
     final advanced = QuestionAdvancedContent.fromQuestion(question);
     final isWordBlock = question.isWordContentBlock;
     final kind = WordContentBlockService.kindOf(question);
     final shapes = WordShapeService.shapesOf(question);
-    final needsFlowPreview = shapes.any(
-      (shape) =>
-          shape.wrapMode == WordTextWrapMode.squareLeft ||
-          shape.wrapMode == WordTextWrapMode.squareRight ||
-          shape.wrapMode == WordTextWrapMode.behindText ||
-          shape.wrapMode == WordTextWrapMode.inFrontOfText,
-    );
     if (isWordBlock && kind == WordContentBlockKind.pageBreak) {
       return _WordPageBreakMarker(onDelete: onDelete);
     }
@@ -1912,8 +2055,17 @@ class _WordQuestionBlock extends StatelessWidget {
                   ),
                 ),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: WordObjectEditorLayer(
+                  shapes: shapes,
+                  compact: compact,
+                  desktopInteractions: desktopInteractions,
+                  onShapesChanged: (updatedShapes) => onChanged(
+                    WordShapeService.replaceAll(question, updatedShapes),
+                  ),
+                  ownerPageIndex: ownerPageIndex,
+                  onEditGeometry: onEditGeometry,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (question.instructions.trim().isNotEmpty) ...[
                       QuestionMathSurfaceView(
@@ -1929,39 +2081,30 @@ class _WordQuestionBlock extends StatelessWidget {
                       ),
                       const SizedBox(height: 5),
                     ],
-                    Builder(
-                      builder: (context) {
-                        final editor = Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: WordRichTextEditor(
-                                question: question,
-                                compact: compact,
-                                autofocus: autofocus,
-                                session: session,
-                                onActivated: onActivated,
-                                onChanged: onChanged,
-                              ),
-                            ),
-                            if (!isWordBlock &&
-                                section.questionMarksPlacement ==
-                                    QuestionMarksPlacement.inline) ...[
-                              const SizedBox(width: 6),
-                              _InlineMarksEditor(
-                                marks: question.marks,
-                                onChanged: (marks) =>
-                                    onChanged(question.copyWith(marks: marks)),
-                              ),
-                            ],
-                          ],
-                        );
-                        if (!needsFlowPreview) return editor;
-                        return WordShapeFlowPreview(
-                          shapes: shapes,
-                          child: editor,
-                        );
-                      },
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: WordRichTextEditor(
+                            question: question,
+                            compact: compact,
+                            autofocus: autofocus,
+                            session: session,
+                            onActivated: onActivated,
+                            onChanged: onChanged,
+                          ),
+                        ),
+                        if (!isWordBlock &&
+                            section.questionMarksPlacement ==
+                                QuestionMarksPlacement.inline) ...[
+                          const SizedBox(width: 6),
+                          _InlineMarksEditor(
+                            marks: question.marks,
+                            onChanged: (marks) =>
+                                onChanged(question.copyWith(marks: marks)),
+                          ),
+                        ],
+                      ],
                     ),
                     if (advanced.hasStimulus) ...[
                       const SizedBox(height: 7),
@@ -2037,24 +2180,6 @@ class _WordQuestionBlock extends StatelessWidget {
                           ),
                         ),
                     ],
-                    if (shapes.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      _WordShapeCanvas(
-                        shapes: shapes,
-                        onChanged: (shape) => onChanged(
-                          WordShapeService.replace(question, shape),
-                        ),
-                        onRemove: (shapeId) => onChanged(
-                          WordShapeService.remove(question, shapeId),
-                        ),
-                        onBringForward: (shapeId) => onChanged(
-                          WordShapeService.bringForward(question, shapeId),
-                        ),
-                        onSendBackward: (shapeId) => onChanged(
-                          WordShapeService.sendBackward(question, shapeId),
-                        ),
-                      ),
-                    ],
                     if (question.attachments.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       for (final attachment in question.attachments)
@@ -2108,7 +2233,8 @@ class _WordQuestionBlock extends StatelessWidget {
                           ),
                         ),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               if (!isWordBlock) ...[
@@ -2569,436 +2695,6 @@ class _WordAttachmentPreview extends StatelessWidget {
         ],
       ),
     );
-  }
-}
-
-class _WordShapeCanvas extends StatefulWidget {
-  final List<WordShapeObject> shapes;
-  final ValueChanged<WordShapeObject> onChanged;
-  final ValueChanged<String> onRemove;
-  final ValueChanged<String> onBringForward;
-  final ValueChanged<String> onSendBackward;
-
-  const _WordShapeCanvas({
-    required this.shapes,
-    required this.onChanged,
-    required this.onRemove,
-    required this.onBringForward,
-    required this.onSendBackward,
-  });
-
-  @override
-  State<_WordShapeCanvas> createState() => _WordShapeCanvasState();
-}
-
-class _WordShapeCanvasState extends State<_WordShapeCanvas> {
-  static const double _canvasHeight = 180;
-  String? _selectedId;
-
-  WordShapeObject? get _selectedShape {
-    final id = _selectedId;
-    if (id == null) return null;
-    return widget.shapes.where((shape) => shape.id == id).firstOrNull;
-  }
-
-  @override
-  void didUpdateWidget(covariant _WordShapeCanvas oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_selectedId != null &&
-        !widget.shapes.any((shape) => shape.id == _selectedId)) {
-      _selectedId = null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final ordered = [...widget.shapes]
-      ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
-    final selected = _selectedShape;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.dashboard_customize_outlined,
-              size: 15,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 5),
-            Text(
-              'Arrange shapes',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Material(
-          color: theme.colorScheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(10),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth;
-              return SizedBox(
-                key: const Key('word-shape-canvas'),
-                height: _canvasHeight,
-                child: Stack(
-                  clipBehavior: Clip.hardEdge,
-                  children: [
-                    for (final shape in ordered)
-                      _buildShape(context, shape, width),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-        if (selected != null) ...[
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 4,
-            runSpacing: 2,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              PopupMenuButton<WordTextWrapMode>(
-                key: ValueKey('word-shape-wrap-${selected.id}'),
-                tooltip: 'Text wrapping',
-                onSelected: (mode) {
-                  var updated = selected.copyWith(wrapMode: mode);
-                  if (mode == WordTextWrapMode.squareLeft) {
-                    updated = updated.copyWith(x: 0.02);
-                  } else if (mode == WordTextWrapMode.squareRight) {
-                    updated = updated.copyWith(
-                      x: (0.98 - updated.width).clamp(0.0, 0.92).toDouble(),
-                    );
-                  }
-                  widget.onChanged(updated);
-                },
-                itemBuilder: (context) => [
-                  for (final mode in WordTextWrapMode.values)
-                    PopupMenuItem(value: mode, child: Text(mode.label)),
-                ],
-                child: Chip(
-                  avatar: const Icon(Icons.wrap_text_rounded, size: 16),
-                  label: Text(selected.wrapMode.label),
-                ),
-              ),
-              if (selected.kind == WordShapeKind.textBox ||
-                  selected.kind == WordShapeKind.callout)
-                IconButton(
-                  key: ValueKey('word-shape-edit-text-${selected.id}'),
-                  tooltip: 'Edit shape text',
-                  onPressed: () => _editSelectedText(context, selected),
-                  icon: const Icon(Icons.edit_note_rounded, size: 19),
-                ),
-              IconButton(
-                key: ValueKey('word-shape-forward-${selected.id}'),
-                tooltip: 'Bring forward',
-                onPressed: () => widget.onBringForward(selected.id),
-                icon: const Icon(Icons.flip_to_front_rounded, size: 19),
-              ),
-              IconButton(
-                key: ValueKey('word-shape-backward-${selected.id}'),
-                tooltip: 'Send backward',
-                onPressed: () => widget.onSendBackward(selected.id),
-                icon: const Icon(Icons.flip_to_back_rounded, size: 19),
-              ),
-              IconButton(
-                key: ValueKey('word-shape-delete-${selected.id}'),
-                tooltip: 'Delete shape',
-                onPressed: () => widget.onRemove(selected.id),
-                icon: const Icon(Icons.delete_outline_rounded, size: 19),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  Future<void> _editSelectedText(
-    BuildContext context,
-    WordShapeObject selected,
-  ) async {
-    final controller = TextEditingController(text: selected.text);
-    final value = await showAdaptiveModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              4,
-              16,
-              16 + MediaQuery.viewInsetsOf(sheetContext).bottom,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  selected.kind == WordShapeKind.callout
-                      ? 'Edit callout text'
-                      : 'Edit text box',
-                  style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  key: const Key('word-shape-text-editor'),
-                  controller: controller,
-                  autofocus: true,
-                  minLines: 2,
-                  maxLines: 5,
-                  textInputAction: TextInputAction.newline,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: 'Type shape text',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                FilledButton.icon(
-                  onPressed: () =>
-                      Navigator.pop(sheetContext, controller.text.trim()),
-                  icon: const Icon(Icons.check_rounded),
-                  label: const Text('Apply'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    controller.dispose();
-    if (!mounted || value == null) return;
-    widget.onChanged(selected.copyWith(text: value));
-  }
-
-  Widget _buildShape(
-    BuildContext context,
-    WordShapeObject shape,
-    double canvasWidth,
-  ) {
-    final left = shape.x * canvasWidth;
-    final top = shape.y * _canvasHeight;
-    final width = (shape.width * canvasWidth).clamp(34.0, canvasWidth);
-    final height = (shape.height * _canvasHeight).clamp(22.0, _canvasHeight);
-    final selected = _selectedId == shape.id;
-    final theme = Theme.of(context);
-
-    return Positioned(
-      key: ValueKey('word-shape-${shape.id}'),
-      left: left,
-      top: top,
-      width: width,
-      height: height,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => _selectedId = shape.id),
-        onPanStart: (_) => setState(() => _selectedId = shape.id),
-        onPanUpdate: (details) {
-          final maxX = (1.0 - shape.width).clamp(0.0, 1.0).toDouble();
-          final maxY = (1.0 - shape.height).clamp(0.0, 1.0).toDouble();
-          widget.onChanged(
-            shape.copyWith(
-              x: (shape.x + details.delta.dx / canvasWidth)
-                  .clamp(0.0, maxX)
-                  .toDouble(),
-              y: (shape.y + details.delta.dy / _canvasHeight)
-                  .clamp(0.0, maxY)
-                  .toDouble(),
-            ),
-          );
-        },
-        child: Transform.rotate(
-          angle: shape.rotationDegrees * math.pi / 180,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  border: selected
-                      ? Border.all(color: theme.colorScheme.primary, width: 1.5)
-                      : null,
-                ),
-                child: CustomPaint(
-                  painter: _WordShapePainter(
-                    kind: shape.kind,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                  child:
-                      (shape.kind == WordShapeKind.textBox ||
-                              shape.kind == WordShapeKind.callout) &&
-                          shape.text.trim().isNotEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(6),
-                            child: Text(
-                              shape.text,
-                              textAlign: TextAlign.center,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        )
-                      : null,
-                ),
-              ),
-              if (selected)
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: GestureDetector(
-                    key: ValueKey('word-shape-resize-${shape.id}'),
-                    behavior: HitTestBehavior.opaque,
-                    onPanUpdate: (details) {
-                      final maxWidth = (1.0 - shape.x)
-                          .clamp(0.08, 1.0)
-                          .toDouble();
-                      final maxHeight = (1.0 - shape.y)
-                          .clamp(0.08, 1.0)
-                          .toDouble();
-                      widget.onChanged(
-                        shape.copyWith(
-                          width: (shape.width + details.delta.dx / canvasWidth)
-                              .clamp(0.08, maxWidth)
-                              .toDouble(),
-                          height:
-                              (shape.height + details.delta.dy / _canvasHeight)
-                                  .clamp(0.08, maxHeight)
-                                  .toDouble(),
-                        ),
-                      );
-                    },
-                    child: Container(
-                      width: 22,
-                      height: 22,
-                      alignment: Alignment.bottomRight,
-                      child: Icon(
-                        Icons.open_in_full_rounded,
-                        size: 15,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _WordShapePainter extends CustomPainter {
-  final WordShapeKind kind;
-  final Color color;
-
-  const _WordShapePainter({required this.kind, required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-
-    final rect = Rect.fromLTWH(
-      2,
-      2,
-      math.max(0.0, size.width - 4),
-      math.max(0.0, size.height - 4),
-    );
-
-    switch (kind) {
-      case WordShapeKind.rectangle:
-      case WordShapeKind.textBox:
-        canvas.drawRect(rect, paint);
-        break;
-      case WordShapeKind.roundedRectangle:
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(10)),
-          paint,
-        );
-        break;
-      case WordShapeKind.ellipse:
-        canvas.drawOval(rect, paint);
-        break;
-      case WordShapeKind.line:
-        canvas.drawLine(
-          Offset(2, size.height / 2),
-          Offset(size.width - 2, size.height / 2),
-          paint,
-        );
-        break;
-      case WordShapeKind.arrow:
-        _drawArrow(
-          canvas,
-          Offset(2, size.height / 2),
-          Offset(size.width - 4, size.height / 2),
-          paint,
-          startHead: false,
-          endHead: true,
-        );
-        break;
-      case WordShapeKind.doubleArrow:
-        _drawArrow(
-          canvas,
-          Offset(4, size.height / 2),
-          Offset(size.width - 4, size.height / 2),
-          paint,
-          startHead: true,
-          endHead: true,
-        );
-        break;
-      case WordShapeKind.callout:
-        final body = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            2,
-            2,
-            math.max(0.0, size.width - 4),
-            math.max(0.0, size.height - 12),
-          ),
-          const Radius.circular(8),
-        );
-        canvas.drawRRect(body, paint);
-        final tail = Path()
-          ..moveTo(size.width * 0.28, size.height - 10)
-          ..lineTo(size.width * 0.20, size.height - 2)
-          ..lineTo(size.width * 0.42, size.height - 10);
-        canvas.drawPath(tail, paint);
-        break;
-    }
-  }
-
-  void _drawArrow(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint, {
-    required bool startHead,
-    required bool endHead,
-  }) {
-    canvas.drawLine(start, end, paint);
-    const head = 8.0;
-    if (endHead) {
-      canvas.drawLine(end, end.translate(-head, -head / 2), paint);
-      canvas.drawLine(end, end.translate(-head, head / 2), paint);
-    }
-    if (startHead) {
-      canvas.drawLine(start, start.translate(head, -head / 2), paint);
-      canvas.drawLine(start, start.translate(head, head / 2), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WordShapePainter oldDelegate) {
-    return oldDelegate.kind != kind || oldDelegate.color != color;
   }
 }
 

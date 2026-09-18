@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../../domain/models/document_model.dart';
+import '../../responsive/document_viewport_policy.dart';
+
+enum _PdfFitMode { fitWidth, fitPage, custom }
 
 class PdfDocumentViewer extends StatefulWidget {
   final DocumentFile document;
@@ -16,7 +19,7 @@ class PdfDocumentViewer extends StatefulWidget {
 }
 
 class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
-  static const double _minZoom = 0.6;
+  static const double _minZoom = 1.0;
   static const double _maxZoom = 4.0;
 
   final PdfViewerController _controller = PdfViewerController();
@@ -30,6 +33,8 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
   int _page = 1;
   int _pageCount = 0;
   double _zoom = 1;
+  _PdfFitMode _fitMode = _PdfFitMode.fitWidth;
+  PdfPageLayoutMode _pageLayoutMode = PdfPageLayoutMode.continuous;
 
   @override
   void dispose() {
@@ -43,83 +48,102 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Focus(
-      focusNode: _viewerFocusNode,
-      autofocus: true,
-      onKeyEvent: _handleKeyEvent,
-      child: Column(
-        children: [
-          _buildToolbar(context, isDark),
-          if (_showSearch) _buildSearchBar(context, isDark),
-          Expanded(
-            child: _error == null
-                ? ColoredBox(
-                    color: isDark
-                        ? const Color(0xFF15181D)
-                        : const Color(0xFFE8ECF2),
-                    child: SfPdfViewer.file(
-                      File(widget.document.path),
-                      controller: _controller,
-                      maxZoomLevel: _maxZoom,
-                      enableDoubleTapZooming: true,
-                      canShowScrollHead: true,
-                      canShowScrollStatus: true,
-                      enableTextSelection: true,
-                      onDocumentLoaded: (details) {
-                        if (!mounted) return;
-                        setState(() {
-                          _error = null;
-                          _pageCount = details.document.pages.count;
-                          _page = _page
-                              .clamp(1, _pageCount == 0 ? 1 : _pageCount)
-                              .toInt();
-                        });
-                      },
-                      onDocumentLoadFailed: (details) {
-                        if (!mounted) return;
-                        setState(
-                          () => _error =
-                              'PDF load failed: ${details.description}',
-                        );
-                      },
-                      onPageChanged: (details) {
-                        if (!mounted) return;
-                        setState(() => _page = details.newPageNumber);
-                      },
-                      onZoomLevelChanged: (details) {
-                        if (!mounted) return;
-                        setState(
-                          () => _zoom = details.newZoomLevel
-                              .clamp(_minZoom, _maxZoom)
-                              .toDouble(),
-                        );
-                      },
-                    ),
-                  )
-                : _PdfErrorState(
-                    message: _error!,
-                    onRetry: () => setState(() => _error = null),
-                  ),
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final policy = DocumentViewportPolicy(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+        );
+        return Focus(
+          focusNode: _viewerFocusNode,
+          autofocus: true,
+          onKeyEvent: _handleKeyEvent,
+          child: Column(
+            children: [
+              _buildToolbar(context, policy),
+              if (_showSearch) _buildSearchBar(context),
+              Expanded(
+                child: _error == null
+                    ? ColoredBox(
+                        color: scheme.surfaceContainerHigh,
+                        child: SfPdfViewer.file(
+                          File(widget.document.path),
+                          controller: _controller,
+                          initialZoomLevel: 1,
+                          maxZoomLevel: _maxZoom,
+                          pageLayoutMode: _pageLayoutMode,
+                          scrollDirection: PdfScrollDirection.vertical,
+                          enableDoubleTapZooming: true,
+                          canShowScrollHead: true,
+                          canShowScrollStatus: true,
+                          enableTextSelection: true,
+                          onDocumentLoaded: (details) {
+                            if (!mounted) return;
+                            setState(() {
+                              _error = null;
+                              _pageCount = details.document.pages.count;
+                              _page = _page
+                                  .clamp(1, _pageCount == 0 ? 1 : _pageCount)
+                                  .toInt();
+                              _zoom = _controller.zoomLevel
+                                  .clamp(_minZoom, _maxZoom)
+                                  .toDouble();
+                            });
+                          },
+                          onDocumentLoadFailed: (details) {
+                            if (!mounted) return;
+                            setState(
+                              () => _error =
+                                  'PDF load failed: ${details.description}',
+                            );
+                          },
+                          onPageChanged: (details) {
+                            if (!mounted) return;
+                            setState(() => _page = details.newPageNumber);
+                          },
+                          onZoomLevelChanged: (details) {
+                            if (!mounted) return;
+                            final next = details.newZoomLevel
+                                .clamp(_minZoom, _maxZoom)
+                                .toDouble();
+                            setState(() {
+                              _zoom = next;
+                              if (next > 1.001) {
+                                _fitMode = _PdfFitMode.custom;
+                              }
+                            });
+                          },
+                        ),
+                      )
+                    : _PdfErrorState(
+                        message: _error!,
+                        onRetry: () => setState(() => _error = null),
+                      ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildToolbar(BuildContext context, bool isDark) {
-    final width = MediaQuery.sizeOf(context).width;
-    final compact = width < 680;
-    final veryCompact = width < 390;
+  Widget _buildToolbar(
+    BuildContext context,
+    DocumentViewportPolicy policy,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final compact = policy.isCompactToolbar;
+    final veryCompact = policy.isVeryCompactToolbar;
     final searchResult = _searchResult;
     final resultLabel = searchResult != null && searchResult.hasResult
         ? '${searchResult.currentInstanceIndex}/${searchResult.totalInstanceCount}'
         : null;
 
     return Material(
-      color: isDark ? const Color(0xFF1B1F26) : Colors.white,
+      color: scheme.surface,
       child: SizedBox(
-        height: 52,
+        height: policy.documentToolbarHeight,
         child: Row(
           children: [
             const SizedBox(width: 6),
@@ -173,27 +197,54 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
                 icon: const Icon(Icons.add),
               ),
             if (!compact)
-              IconButton(
-                tooltip: 'Reset zoom',
-                onPressed: () => _setZoom(1),
-                icon: const Icon(Icons.fit_screen),
+              PopupMenuButton<_PdfFitMode>(
+                tooltip: 'Page fit',
+                icon: Icon(
+                  _fitMode == _PdfFitMode.fitPage
+                      ? Icons.fullscreen_outlined
+                      : Icons.fit_screen_outlined,
+                ),
+                onSelected: (mode) {
+                  if (mode == _PdfFitMode.fitPage) {
+                    _applyFitPage();
+                  } else {
+                    _applyFitWidth();
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _PdfFitMode.fitWidth,
+                    child: Text('Fit width'),
+                  ),
+                  PopupMenuItem(
+                    value: _PdfFitMode.fitPage,
+                    child: Text('Fit page'),
+                  ),
+                ],
               ),
             if (veryCompact)
               PopupMenuButton<String>(
-                tooltip: 'Zoom options',
-                icon: const Icon(Icons.zoom_in),
+                tooltip: 'View options',
+                icon: const Icon(Icons.fit_screen_outlined),
                 onSelected: (value) {
-                  if (value == 'out') {
-                    _setZoom(_zoom - 0.25);
-                  } else if (value == 'reset') {
-                    _setZoom(1);
+                  if (value == 'fitWidth') {
+                    _applyFitWidth();
+                  } else if (value == 'fitPage') {
+                    _applyFitPage();
                   } else if (value == 'in') {
                     _setZoom(_zoom + 0.25);
                   }
                 },
                 itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'out', child: Text('Zoom out')),
-                  PopupMenuItem(value: 'reset', child: Text('Reset zoom')),
+                  PopupMenuItem(
+                    value: 'fitWidth',
+                    child: Text('Fit width'),
+                  ),
+                  PopupMenuItem(
+                    value: 'fitPage',
+                    child: Text('Fit page'),
+                  ),
+                  PopupMenuDivider(),
                   PopupMenuItem(value: 'in', child: Text('Zoom in')),
                 ],
               ),
@@ -204,7 +255,7 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
                 child: Text(
                   resultLabel,
                   style: TextStyle(
-                    color: isDark ? Colors.white60 : Colors.black54,
+                    color: scheme.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -222,11 +273,12 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
     );
   }
 
-  Widget _buildSearchBar(BuildContext context, bool isDark) {
+  Widget _buildSearchBar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final result = _searchResult;
     final searching = result != null && !result.isSearchCompleted;
     return Material(
-      color: isDark ? const Color(0xFF171A1F) : const Color(0xFFF5F7FA),
+      color: scheme.surfaceContainerLow,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
         child: Row(
@@ -284,7 +336,36 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
   void _setZoom(double value) {
     final next = value.clamp(_minZoom, _maxZoom).toDouble();
     _controller.zoomLevel = next;
-    setState(() => _zoom = next);
+    setState(() {
+      _zoom = next;
+      if (next > 1.001) _fitMode = _PdfFitMode.custom;
+    });
+  }
+
+  void _applyFitWidth() {
+    final currentPage = _page;
+    setState(() {
+      _fitMode = _PdfFitMode.fitWidth;
+      _pageLayoutMode = PdfPageLayoutMode.continuous;
+      _zoom = 1;
+    });
+    _controller.zoomLevel = 1;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && currentPage > 0) _controller.jumpToPage(currentPage);
+    });
+  }
+
+  void _applyFitPage() {
+    final currentPage = _page;
+    setState(() {
+      _fitMode = _PdfFitMode.fitPage;
+      _pageLayoutMode = PdfPageLayoutMode.single;
+      _zoom = 1;
+    });
+    _controller.zoomLevel = 1;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && currentPage > 0) _controller.jumpToPage(currentPage);
+    });
   }
 
   void _toggleSearch() {
@@ -387,6 +468,10 @@ class _PdfDocumentViewerState extends State<PdfDocumentViewer> {
     }
     if (key == LogicalKeyboardKey.end && controlPressed) {
       _controller.lastPage();
+      return KeyEventResult.handled;
+    }
+    if (controlPressed && key == LogicalKeyboardKey.digit0) {
+      _applyFitWidth();
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.add || key == LogicalKeyboardKey.numpadAdd) {

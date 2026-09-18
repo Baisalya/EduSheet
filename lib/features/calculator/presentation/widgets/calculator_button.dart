@@ -70,9 +70,9 @@ class CalculatorButton extends StatelessWidget {
         ? labelSize - 0.75
         : labelSize;
     final foreground = isActive
-        ? Colors.white
+        ? theme.colorScheme.onPrimary
         : (textColor ?? theme.colorScheme.onSurface);
-    final background = isActive ? const Color(0xFF2563EB) : bgColor;
+    final background = isActive ? theme.colorScheme.primary : bgColor;
 
     return Padding(
       padding: EdgeInsets.all(outerPadding),
@@ -135,7 +135,7 @@ class CalculatorButton extends StatelessWidget {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withAlpha(20),
+                        color: theme.colorScheme.shadow.withAlpha(20),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),

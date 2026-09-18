@@ -43,7 +43,7 @@ class WordShapePickerSheet extends StatelessWidget {
               mainAxisSpacing: 8,
               crossAxisSpacing: 8,
               children: [
-                for (final kind in WordShapeKind.values)
+                for (final kind in WordShapeKind.values.where((value) => value != WordShapeKind.geometry))
                   OutlinedButton.icon(
                     key: ValueKey('word-shape-kind-${kind.name}'),
                     onPressed: () => Navigator.pop(context, kind),
@@ -67,5 +67,6 @@ class WordShapePickerSheet extends StatelessWidget {
     WordShapeKind.doubleArrow => Icons.compare_arrows_rounded,
     WordShapeKind.textBox => Icons.text_fields_rounded,
     WordShapeKind.callout => Icons.chat_bubble_outline_rounded,
+    WordShapeKind.geometry => Icons.category_outlined,
   };
 }

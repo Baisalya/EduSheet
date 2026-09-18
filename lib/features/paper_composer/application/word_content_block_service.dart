@@ -62,7 +62,7 @@ class WordContentBlockService {
       plainText: shape.kind.label,
       extraMetadata: {
         WordShapeService.metadataKey: [shape.toJson()],
-        WordShapeService.metadataVersionKey: 1,
+        WordShapeService.metadataVersionKey: 3,
       },
     );
   }

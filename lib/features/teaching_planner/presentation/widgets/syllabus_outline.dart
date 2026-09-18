@@ -4,9 +4,12 @@ import '../../domain/models/planner_chapter.dart';
 import '../../domain/models/planner_subject.dart';
 import '../../domain/models/planner_unit.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
+import '../design/teaching_planner_design_system.dart';
 import '../models/syllabus_filter.dart';
 import '../models/syllabus_node_ref.dart';
+import '../models/syllabus_overview_model.dart';
 import '../services/syllabus_manager_filter.dart';
+import 'teaching_planner_shared_components.dart';
 
 class SyllabusOutline extends StatelessWidget {
   const SyllabusOutline({
@@ -35,33 +38,31 @@ class SyllabusOutline extends StatelessWidget {
         .where((value) => syllabusClassVisible(workspace, value, query, filter))
         .toList();
 
+    final colors = TeachingPlannerTheme.colorsOf(context);
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(18),
+      color: colors.surface,
+      elevation: 2,
+      shadowColor: colors.shadow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(TeachingPlannerDesign.radiusXLarge),
+        side: BorderSide(color: colors.border),
+      ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 10, 10),
+            padding: const EdgeInsets.fromLTRB(14, 14, 10, 11),
             child: Row(
               children: [
                 const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Syllabus outline',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      SizedBox(height: 2),
-                      Text('Class → Subject → Unit → Chapter → Topic'),
-                    ],
+                  child: TeachingPlannerSectionHeader(
+                    title: 'Syllabus outline',
+                    subtitle: 'Class → Subject → Unit → Chapter → Topic',
+                    icon: Icons.account_tree_rounded,
                   ),
                 ),
-                IconButton.filledTonal(
+                const SizedBox(width: 8),
+                IconButton.filled(
                   tooltip: 'Create syllabus',
                   onPressed: onCreateSyllabus,
                   icon: const Icon(Icons.add_rounded),
@@ -69,7 +70,7 @@ class SyllabusOutline extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: colors.border),
           Expanded(
             child: classes.isEmpty
                 ? _OutlineEmpty(
@@ -112,15 +113,21 @@ class SyllabusOutline extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: classValue.academicYear == null
-          ? null
-          : Text(
-              classValue.academicYear!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+      subtitle: Text(
+        [
+          if (classValue.academicYear != null) classValue.academicYear!,
+          syllabusCountLabel(
+            workspace.activeSubjectsForClass(classId).length,
+            'subject',
+          ),
+        ].join(' • '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       onExpansionChanged: (expanded) {
-        if (expanded) onSelected(node);
+        if (expanded) {
+          onSelected(node);
+        }
       },
       trailing: const Icon(Icons.expand_more_rounded),
       children: [
@@ -157,9 +164,27 @@ class SyllabusOutline extends StatelessWidget {
       childrenPadding: const EdgeInsets.only(left: 12),
       leading: const Icon(Icons.menu_book_outlined, size: 20),
       title: Text(subject.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: subject.code == null ? null : Text(subject.code!),
+      subtitle: Builder(
+        builder: (context) {
+          final metrics = SyllabusOverviewModel.forSubject(
+            workspace,
+            subject.id,
+          );
+          return Text(
+            [
+              if (subject.code != null) subject.code!,
+              syllabusCountLabel(metrics.chapters, 'chapter'),
+              syllabusCountLabel(metrics.topics, 'topic'),
+            ].join(' • '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          );
+        },
+      ),
       onExpansionChanged: (expanded) {
-        if (expanded) onSelected(node);
+        if (expanded) {
+          onSelected(node);
+        }
       },
       children: [
         _SelectableNodeTile(
@@ -197,8 +222,11 @@ class SyllabusOutline extends StatelessWidget {
       childrenPadding: const EdgeInsets.only(left: 12),
       leading: const Icon(Icons.folder_outlined, size: 19),
       title: Text(unit.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(syllabusCountLabel(unit.plannedPeriods, 'planned period')),
       onExpansionChanged: (expanded) {
-        if (expanded) onSelected(node);
+        if (expanded) {
+          onSelected(node);
+        }
       },
       children: [
         _SelectableNodeTile(
@@ -234,8 +262,15 @@ class SyllabusOutline extends StatelessWidget {
       childrenPadding: const EdgeInsets.only(left: 12),
       leading: const Icon(Icons.article_outlined, size: 18),
       title: Text(chapter.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        '${syllabusCountLabel(workspace.activeTopicsForChapter(chapter.id).length, 'topic')} • ${syllabusCountLabel(chapter.plannedPeriods, 'period')}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       onExpansionChanged: (expanded) {
-        if (expanded) onSelected(node);
+        if (expanded) {
+          onSelected(node);
+        }
       },
       children: [
         _SelectableNodeTile(
@@ -283,13 +318,21 @@ class _SelectableNodeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
     return ListTile(
       dense: true,
       selected: selected,
-      selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
+      selectedTileColor: colors.primarySoft,
+      iconColor: selected ? colors.primary : colors.inkMuted,
+      textColor: selected ? colors.primary : colors.ink,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       leading: Icon(icon, size: 18),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
       onTap: () => onSelected(node),
     );
   }

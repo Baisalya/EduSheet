@@ -94,6 +94,155 @@ void main() {
     );
   }
 
+
+  testWidgets('guided lesson flow opens create editor immediately', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(412, 915));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teachingPlannerRepositoryProvider.overrideWithValue(
+            _MemoryPlannerRepository(workspace),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: const LessonPlannerScreen(
+            openCreateOnStart: true,
+            initialClassId: 'class-10',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.widgetWithText(FilledButton, 'Create lesson'),
+      findsOneWidget,
+    );
+    expect(find.text('Class 10'), findsWidgets);
+    expect(find.text('Mathematics'), findsWidgets);
+    expect(find.text('Algebra'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('smart assistant context preselects subject and chapter', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(412, 915));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final contextualWorkspace = TeachingPlannerWorkspace(
+      classes: [
+        PlannerClass(
+          id: 'class-10',
+          name: 'Class 10',
+          sortOrder: 0,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      subjects: [
+        PlannerSubject(
+          id: 'science',
+          classId: 'class-10',
+          name: 'Science',
+          sortOrder: 0,
+          createdAt: now,
+          updatedAt: now,
+        ),
+        PlannerSubject(
+          id: 'math',
+          classId: 'class-10',
+          name: 'Mathematics',
+          sortOrder: 1,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+      chapters: [
+        PlannerChapter(
+          id: 'plants',
+          subjectId: 'science',
+          title: 'Plants',
+          sortOrder: 0,
+          plannedPeriods: 2,
+          createdAt: now,
+          updatedAt: now,
+        ),
+        PlannerChapter(
+          id: 'fractions',
+          subjectId: 'math',
+          title: 'Fractions',
+          sortOrder: 0,
+          plannedPeriods: 3,
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teachingPlannerRepositoryProvider.overrideWithValue(
+            _MemoryPlannerRepository(contextualWorkspace),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: const LessonPlannerScreen(
+            openCreateOnStart: true,
+            initialClassId: 'class-10',
+            initialSubjectId: 'math',
+            initialChapterId: 'fractions',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final classField = tester.widget<DropdownButtonFormField<String>>(
+      find.byKey(const ValueKey('lesson-editor-class-field')),
+    );
+    final subjectField = tester.widget<DropdownButtonFormField<String>>(
+      find.byKey(const ValueKey('lesson-editor-subject-field')),
+    );
+    final chapterField = tester.widget<DropdownButtonFormField<String>>(
+      find.byKey(const ValueKey('lesson-editor-chapter-field')),
+    );
+
+    expect(classField.initialValue, 'class-10');
+    expect(subjectField.initialValue, 'math');
+    expect(chapterField.initialValue, 'fractions');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('lesson card opens focused lesson detail', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(412, 915));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teachingPlannerRepositoryProvider.overrideWithValue(
+            _MemoryPlannerRepository(workspace),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: const LessonPlannerScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const ValueKey('lesson-card-lesson-1'));
+    await tester.ensureVisible(card);
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lesson detail'), findsOneWidget);
+    expect(find.text('Teaching session'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('lesson search filters by objective and syllabus text', (
     tester,
   ) async {

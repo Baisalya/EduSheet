@@ -4,7 +4,10 @@ import 'package:edusheet/features/pdf/presentation/providers/template_provider.d
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:edusheet/shared/services/review_service.dart';
+import 'package:edusheet/features/teaching_planner/domain/models/teaching_resource.dart';
+import 'package:edusheet/features/teaching_planner/presentation/providers/teaching_planner_provider.dart';
 import '../providers/editor_provider.dart';
+import '../widgets/paper_rename_dialog.dart';
 import 'create_paper_screen.dart';
 import 'package:intl/intl.dart';
 
@@ -20,18 +23,24 @@ class SavedPapersScreen extends ConsumerStatefulWidget {
 class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
   String _searchQuery = '';
   PaperSort _sortBy = PaperSort.dateNewest;
+  final Map<String, Paper> _paperOverrides = <String, Paper>{};
+
+  void _showRenamedPaper(Paper paper) {
+    if (!mounted) return;
+    setState(() => _paperOverrides[paper.id] = paper);
+  }
 
   @override
   Widget build(BuildContext context) {
     final papersAsync = ref.watch(savedPapersProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black,
+        foregroundColor: scheme.onSurface,
         title: const Text(
           'Saved Papers',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -76,9 +85,7 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
                 prefixIcon: const Icon(Icons.search),
                 isDense: true,
                 filled: true,
-                fillColor: isDark
-                    ? Colors.white.withAlpha(13)
-                    : Colors.grey.withAlpha(13),
+                fillColor: scheme.surfaceContainerLow,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
@@ -89,7 +96,10 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
           Expanded(
             child: papersAsync.when(
               data: (papers) {
-                var filtered = papers.where((p) {
+                final displayPapers = papers
+                    .map((paper) => _paperOverrides[paper.id] ?? paper)
+                    .toList(growable: false);
+                var filtered = displayPapers.where((p) {
                   final query = _searchQuery.toLowerCase();
                   return p.title.toLowerCase().contains(query) ||
                       p.schoolName.toLowerCase().contains(query);
@@ -132,7 +142,7 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
                               ? Icons.description_outlined
                               : Icons.search_off,
                           size: 64,
-                          color: Colors.grey[300],
+                          color: scheme.onSurfaceVariant.withValues(alpha: 0.38),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -140,7 +150,7 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
                               ? 'No saved papers yet.'
                               : 'No papers match your search.',
                           style: TextStyle(
-                            color: Colors.grey[600],
+                            color: scheme.onSurfaceVariant,
                             fontSize: 16,
                           ),
                         ),
@@ -154,7 +164,10 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
                     final paper = filtered[index];
-                    return _SavedPaperCard(paper: paper);
+                    return _SavedPaperCard(
+                      paper: paper,
+                      onPaperRenamed: _showRenamedPaper,
+                    );
                   },
                 );
               },
@@ -170,11 +183,18 @@ class _SavedPapersScreenState extends ConsumerState<SavedPapersScreen> {
 
 class _SavedPaperCard extends ConsumerWidget {
   final Paper paper;
-  const _SavedPaperCard({required this.paper});
+  final ValueChanged<Paper> onPaperRenamed;
+
+  const _SavedPaperCard({
+    required this.paper,
+    required this.onPaperRenamed,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final dateStr = DateFormat(
       'MMM dd, yyyy • hh:mm a',
     ).format(paper.createdAt);
@@ -182,7 +202,7 @@ class _SavedPaperCard extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
@@ -191,7 +211,7 @@ class _SavedPaperCard extends ConsumerWidget {
             offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
@@ -217,7 +237,7 @@ class _SavedPaperCard extends ConsumerWidget {
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.3,
-                        color: isDark ? Colors.white : Colors.black87,
+                        color: scheme.onSurface,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -229,13 +249,13 @@ class _SavedPaperCard extends ConsumerWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.1),
+                      color: scheme.primaryContainer,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       '${paper.totalMarks.toStringAsFixed(0)} Marks',
-                      style: const TextStyle(
-                        color: Colors.blue,
+                      style: TextStyle(
+                        color: scheme.onPrimaryContainer,
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
                       ),
@@ -247,7 +267,7 @@ class _SavedPaperCard extends ConsumerWidget {
               Text(
                 dateStr,
                 style: TextStyle(
-                  color: Colors.grey[500],
+                  color: scheme.onSurfaceVariant,
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                 ),
@@ -256,7 +276,7 @@ class _SavedPaperCard extends ConsumerWidget {
               Text(
                 paper.schoolName,
                 style: TextStyle(
-                  color: isDark ? Colors.grey.shade400 : Colors.grey[600],
+                  color: scheme.onSurfaceVariant,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -274,7 +294,7 @@ class _SavedPaperCard extends ConsumerWidget {
                         _ActionButton(
                           icon: Icons.edit_outlined,
                           label: 'Edit',
-                          color: Colors.blue,
+                          color: scheme.primary,
                           onPressed: () {
                             ref
                                 .read(editorStateProvider.notifier)
@@ -286,6 +306,12 @@ class _SavedPaperCard extends ConsumerWidget {
                               ),
                             );
                           },
+                        ),
+                        _ActionButton(
+                          icon: Icons.drive_file_rename_outline_rounded,
+                          label: 'Rename',
+                          color: scheme.primary,
+                          onPressed: () => _renamePaper(context, ref, paper),
                         ),
                         _ActionButton(
                           icon: Icons.picture_as_pdf_outlined,
@@ -303,7 +329,7 @@ class _SavedPaperCard extends ConsumerWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                    icon: Icon(Icons.delete_outline, color: scheme.onSurfaceVariant),
                     onPressed: () => _confirmDelete(context, ref, paper),
                   ),
                 ],
@@ -313,6 +339,73 @@ class _SavedPaperCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _renamePaper(
+    BuildContext context,
+    WidgetRef ref,
+    Paper paper,
+  ) async {
+    final renamed = await showPaperRenameDialog(
+      context,
+      initialTitle: paper.title == 'New Paper' ? '' : paper.title,
+    );
+    final cleanTitle = renamed?.trim();
+    if (cleanTitle == null || cleanTitle.isEmpty || cleanTitle == paper.title) {
+      return;
+    }
+
+    final updated = paper.copyWith(title: cleanTitle);
+    try {
+      await ref.read(paperRepositoryProvider).savePaper(updated);
+      onPaperRenamed(updated);
+
+      final current = ref.read(editorStateProvider);
+      if (current.id == paper.id) {
+        ref.read(editorStateProvider.notifier).loadPaper(updated);
+      }
+
+      final planner = ref.read(teachingPlannerProvider.notifier);
+      await planner.load();
+      final plannerState = ref.read(teachingPlannerProvider);
+      final linkedResources = plannerState.workspace.resources
+          .where(
+            (resource) =>
+                !resource.isArchived &&
+                resource.kind == TeachingResourceKind.paper &&
+                resource.linkedPaperId == paper.id &&
+                resource.title != cleanTitle,
+          )
+          .toList(growable: false);
+      for (final resource in linkedResources) {
+        await planner.updateTeachingResource(
+          resource.id,
+          role: resource.role,
+          title: cleanTitle,
+        );
+      }
+
+      // Invalidate the watched AsyncValue first, then await its fresh load.
+      // Refreshing only the `.future` projection can leave the screen watching
+      // the previous AsyncValue snapshot in this route/dialog transition.
+      ref.invalidate(savedPapersProvider);
+      await ref.read(savedPapersProvider.future);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Renamed to “$cleanTitle”'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not rename paper: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref, Paper paper) {

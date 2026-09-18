@@ -3,6 +3,7 @@ import 'package:edusheet/features/pdf/application/paper_header_layout_factory.da
 import 'package:edusheet/features/pdf/application/paper_document_marks.dart';
 import 'package:edusheet/features/pdf/domain/models/custom_layout.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
+import 'package:edusheet/features/pdf/services/shaping/pdf_complex_text_service.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -140,7 +141,12 @@ class CustomHeaderBuilder {
                 )
               : null,
           alignment: alignment,
-          child: pw.Text(content, style: style, maxLines: 2),
+          child: PdfComplexTextService.styledText(
+            content,
+            style: style,
+            textAlign: _textAlign(alignment),
+            maxLines: 2,
+          ),
         );
       case ElementType.horizontalLine:
         return pw.Container(
@@ -170,7 +176,12 @@ class CustomHeaderBuilder {
           ),
           child: element.content.trim().isEmpty
               ? null
-              : pw.Text(element.content, style: style, maxLines: 1),
+              : PdfComplexTextService.styledText(
+                  element.content,
+                  style: style,
+                  textAlign: _textAlign(alignment),
+                  maxLines: 1,
+                ),
         );
     }
   }
@@ -230,16 +241,15 @@ class CustomHeaderBuilder {
     final content = field.isPlaceholder || value.isEmpty
         ? '________________'
         : value;
-    return pw.RichText(
-      text: pw.TextSpan(
-        children: [
-          pw.TextSpan(
-            text: '${field.label}: ',
-            style: fieldStyle.copyWith(fontWeight: pw.FontWeight.bold),
-          ),
-          pw.TextSpan(text: content, style: fieldStyle),
-        ],
-      ),
+    return pw.Wrap(
+      crossAxisAlignment: pw.WrapCrossAlignment.center,
+      children: [
+        PdfComplexTextService.styledText(
+          '${field.label}: ',
+          style: fieldStyle.copyWith(fontWeight: pw.FontWeight.bold),
+        ),
+        PdfComplexTextService.styledText(content, style: fieldStyle),
+      ],
     );
   }
 
@@ -255,7 +265,12 @@ class CustomHeaderBuilder {
       width: element.width == null ? null : element.width! * scale,
       height: element.height == null ? null : element.height! * scale,
       alignment: alignment,
-      child: pw.Text(text, style: style, maxLines: 2),
+      child: PdfComplexTextService.styledText(
+        text,
+        style: style,
+        textAlign: _textAlign(alignment),
+        maxLines: 2,
+      ),
     );
   }
 
@@ -265,6 +280,20 @@ class CustomHeaderBuilder {
   static PdfColor? _pdfColor(Object? value) {
     if (value is num) return PdfColor.fromInt(value.toInt());
     return null;
+  }
+
+  static pw.TextAlign _textAlign(pw.Alignment alignment) {
+    if (alignment == pw.Alignment.center ||
+        alignment == pw.Alignment.topCenter ||
+        alignment == pw.Alignment.bottomCenter) {
+      return pw.TextAlign.center;
+    }
+    if (alignment == pw.Alignment.centerRight ||
+        alignment == pw.Alignment.topRight ||
+        alignment == pw.Alignment.bottomRight) {
+      return pw.TextAlign.right;
+    }
+    return pw.TextAlign.left;
   }
 
   static pw.Alignment _alignment(String? value) {

@@ -66,8 +66,9 @@ class TeachingPackCodec {
     }
     final body = trimmed.substring(magicHeader.length).trimLeft();
     final decoded = jsonDecode(body);
-    if (decoded is! Map)
+    if (decoded is! Map) {
       throw const FormatException('Teaching Pack payload must be an object.');
+    }
     final json = Map<String, dynamic>.from(decoded);
     if (json['format'] != format || json['version'] != version) {
       throw const FormatException(
@@ -75,22 +76,26 @@ class TeachingPackCodec {
       );
     }
     final sourceJson = json['source'];
-    if (sourceJson is! Map)
+    if (sourceJson is! Map) {
       throw const FormatException('Teaching Pack source metadata is missing.');
+    }
     final sourceMap = Map<String, dynamic>.from(sourceJson);
     final rawResources = json['resources'];
-    if (rawResources is! List)
+    if (rawResources is! List) {
       throw const FormatException('Teaching Pack resources are missing.');
+    }
     final resources = <TeachingPackResourcePayload>[];
     for (final raw in rawResources) {
-      if (raw is! Map)
+      if (raw is! Map) {
         throw const FormatException('Invalid Teaching Pack resource.');
+      }
       final item = Map<String, dynamic>.from(raw);
       final resourceJson = item['resource'];
-      if (resourceJson is! Map)
+      if (resourceJson is! Map) {
         throw const FormatException(
           'Teaching Pack resource metadata is missing.',
         );
+      }
       final resource = TeachingResource.fromJson(
         Map<String, dynamic>.from(resourceJson),
       );
@@ -104,8 +109,9 @@ class TeachingPackCodec {
     }
     String requiredText(String key) {
       final value = sourceMap[key]?.toString().trim() ?? '';
-      if (value.isEmpty)
+      if (value.isEmpty) {
         throw FormatException('Teaching Pack source $key is missing.');
+      }
       return value;
     }
 

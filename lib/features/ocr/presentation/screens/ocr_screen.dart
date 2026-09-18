@@ -67,7 +67,7 @@ class _OCRScreenState extends State<OCRScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -78,7 +78,7 @@ class _OCRScreenState extends State<OCRScreen> {
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: isDark ? Colors.white : Colors.black,
+        foregroundColor: scheme.onSurface,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
@@ -93,8 +93,8 @@ class _OCRScreenState extends State<OCRScreen> {
                     icon: const Icon(Icons.camera_alt_outlined),
                     label: const Text('Camera'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
+                      backgroundColor: scheme.primary,
+                      foregroundColor: scheme.onPrimary,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -109,10 +109,8 @@ class _OCRScreenState extends State<OCRScreen> {
                     icon: const Icon(Icons.photo_library_outlined),
                     label: const Text('Gallery'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark
-                          ? Colors.grey[800]
-                          : Colors.grey[200],
-                      foregroundColor: isDark ? Colors.white : Colors.black87,
+                      backgroundColor: scheme.surfaceContainerHigh,
+                      foregroundColor: scheme.onSurface,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -126,10 +124,10 @@ class _OCRScreenState extends State<OCRScreen> {
             const SizedBox(height: 20),
             Container(
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[850] : Colors.white,
+                color: scheme.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+                  color: scheme.outlineVariant,
                 ),
               ),
               child: SwitchListTile(
@@ -162,22 +160,22 @@ class _OCRScreenState extends State<OCRScreen> {
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
-                  color: isDark ? Colors.white : Colors.black,
+                  color: scheme.onSurface,
                 ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _resultController,
                 maxLines: 10,
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                style: TextStyle(color: scheme.onSurface),
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
                   filled: true,
-                  fillColor: isDark ? Colors.grey[900] : Colors.white,
+                  fillColor: scheme.surfaceContainerLow,
                   hintText: 'Recognized text will appear here...',
-                  hintStyle: TextStyle(color: Colors.grey[500]),
+                  hintStyle: TextStyle(color: scheme.onSurfaceVariant),
                 ),
               ),
               const SizedBox(height: 20),
@@ -186,8 +184,8 @@ class _OCRScreenState extends State<OCRScreen> {
                     ? () => Navigator.pop(context, _resultController.text)
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
+                  backgroundColor: scheme.primary,
+                  foregroundColor: scheme.onPrimary,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -206,7 +204,7 @@ class _OCRScreenState extends State<OCRScreen> {
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
-                  color: isDark ? Colors.white : Colors.black,
+                  color: scheme.onSurface,
                 ),
               ),
               const SizedBox(height: 12),

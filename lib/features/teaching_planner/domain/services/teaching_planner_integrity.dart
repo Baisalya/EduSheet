@@ -329,6 +329,17 @@ class TeachingPlannerIntegrity {
             );
           }
           break;
+        case TeachingResourceKind.paper:
+          if ((item.linkedPaperId ?? '').trim().isEmpty) {
+            issues.add(
+              TeachingPlannerIntegrityIssue(
+                code: 'missing_linked_paper_id',
+                entityId: item.id,
+                message: 'Saved paper resource is missing its paper id.',
+              ),
+            );
+          }
+          break;
         case TeachingResourceKind.geometry:
           if (item.geometryJson == null) {
             issues.add(

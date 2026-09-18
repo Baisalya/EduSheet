@@ -13,6 +13,7 @@
 #include "win32_window.h"
 
 class MicrosoftStoreBridge;
+class PdfRendererBridge;
 
 // A window that hosts the Flutter view and receives warm document activations
 // forwarded by a second EduSheet process.
@@ -30,6 +31,8 @@ class FlutterWindow : public Win32Window {
 
  private:
   void DispatchDocumentToDart(const std::string& path);
+  void EnterPresentationFullscreen();
+  void ExitPresentationFullscreen();
 
   // The project to run.
   flutter::DartProject project_;
@@ -41,6 +44,18 @@ class FlutterWindow : public Win32Window {
   // instance receives a document from Windows Explorer/Open With.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       document_channel_;
+
+  // Dart-to-native presentation channel. On Windows this removes the native
+  // frame/title bar and fills the current monitor while Present mode is open.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      presentation_mode_channel_;
+  bool presentation_fullscreen_ = false;
+  LONG_PTR presentation_window_style_ = 0;
+  LONG_PTR presentation_window_ex_style_ = 0;
+  WINDOWPLACEMENT presentation_window_placement_{};
+
+  // Native Windows.Data.Pdf page renderer used by Preserve Appearance.
+  std::unique_ptr<PdfRendererBridge> pdf_renderer_bridge_;
 
   // Native Microsoft Store durable add-on integration for packaged builds.
   std::unique_ptr<MicrosoftStoreBridge> microsoft_store_bridge_;

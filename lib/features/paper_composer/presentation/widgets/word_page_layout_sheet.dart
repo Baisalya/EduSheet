@@ -74,6 +74,13 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
   late double _headerDistance;
   late double _footerDistance;
   late bool _showPageNumbers;
+  late PaperPageColumns _columns;
+  late double _columnSpacing;
+  late double _watermarkOpacity;
+  late int _pageBackgroundArgb;
+  late bool _showRulers;
+  late bool _showGrid;
+  late double _gridSpacing;
 
   late final TextEditingController _topMargin;
   late final TextEditingController _rightMargin;
@@ -81,6 +88,7 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
   late final TextEditingController _leftMargin;
   late final TextEditingController _headerText;
   late final TextEditingController _footerText;
+  late final TextEditingController _watermarkText;
 
   @override
   void initState() {
@@ -94,6 +102,13 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
     _headerDistance = layout.headerDistancePoints;
     _footerDistance = layout.footerDistancePoints;
     _showPageNumbers = widget.paper.showPageNumbers;
+    _columns = layout.columns;
+    _columnSpacing = layout.columnSpacingPoints;
+    _watermarkOpacity = layout.watermarkOpacity;
+    _pageBackgroundArgb = layout.pageBackgroundArgb;
+    _showRulers = layout.showRulers;
+    _showGrid = layout.showGrid;
+    _gridSpacing = layout.gridSpacingPoints;
     _topMargin = TextEditingController(
       text: _formatMm(_pointsToMm(layout.margins.topPoints)),
     );
@@ -108,6 +123,7 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
     );
     _headerText = TextEditingController(text: widget.paper.headerText);
     _footerText = TextEditingController(text: widget.paper.footerText);
+    _watermarkText = TextEditingController(text: layout.watermarkText);
   }
 
   @override
@@ -118,6 +134,7 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
     _leftMargin.dispose();
     _headerText.dispose();
     _footerText.dispose();
+    _watermarkText.dispose();
     super.dispose();
   }
 
@@ -151,6 +168,14 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
       lineSpacing: _lineSpacing,
       paragraphSpacingPoints: _paragraphSpacing,
       pageNumberPosition: _pageNumberPosition,
+      columns: _columns,
+      columnSpacingPoints: _columnSpacing,
+      watermarkText: _watermarkText.text.trim(),
+      watermarkOpacity: _watermarkOpacity,
+      pageBackgroundArgb: _pageBackgroundArgb,
+      showRulers: _showRulers,
+      showGrid: _showGrid,
+      gridSpacingPoints: _gridSpacing,
     );
 
     Navigator.of(context).pop(
@@ -349,6 +374,116 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
                   },
                 ),
                 const SizedBox(height: 22),
+                _SectionTitle('Columns & page surface'),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<PaperPageColumns>(
+                  key: const Key('word-page-columns'),
+                  initialValue: _columns,
+                  decoration: const InputDecoration(
+                    labelText: 'Document columns',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final value in PaperPageColumns.values)
+                      DropdownMenuItem(
+                        value: value,
+                        child: Text(_columnsLabel(value)),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => _columns = value);
+                  },
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Column spacing: ${_pointsToMm(_columnSpacing).toStringAsFixed(1)} mm',
+                  style: theme.textTheme.labelLarge,
+                ),
+                Slider(
+                  key: const Key('word-column-spacing'),
+                  min: 0,
+                  max: 54,
+                  divisions: 18,
+                  value: _columnSpacing.clamp(0, 54).toDouble(),
+                  onChanged: (value) => setState(() => _columnSpacing = value),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  key: const Key('word-watermark-text'),
+                  controller: _watermarkText,
+                  maxLength: 48,
+                  decoration: const InputDecoration(
+                    labelText: 'Watermark',
+                    hintText: 'Optional, e.g. SAMPLE or CONFIDENTIAL',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                Text(
+                  'Watermark strength: ${(_watermarkOpacity * 100).round()}%',
+                  style: theme.textTheme.labelLarge,
+                ),
+                Slider(
+                  key: const Key('word-watermark-opacity'),
+                  min: 0.04,
+                  max: 0.30,
+                  divisions: 13,
+                  value: _watermarkOpacity.clamp(0.04, 0.30).toDouble(),
+                  onChanged: (value) =>
+                      setState(() => _watermarkOpacity = value),
+                ),
+                const SizedBox(height: 8),
+                Text('Page background', style: theme.textTheme.labelLarge),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final preset in _backgroundPresets)
+                      ChoiceChip(
+                        key: ValueKey('word-page-background-${preset.label}'),
+                        label: Text(preset.label),
+                        avatar: CircleAvatar(
+                          backgroundColor: Color(preset.argb),
+                          radius: 8,
+                        ),
+                        selected: _pageBackgroundArgb == preset.argb,
+                        onSelected: (_) =>
+                            setState(() => _pageBackgroundArgb = preset.argb),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SwitchListTile.adaptive(
+                  key: const Key('word-show-rulers'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Show rulers on desktop'),
+                  subtitle: const Text('Editor-only measurement aid; never printed.'),
+                  value: _showRulers,
+                  onChanged: (value) => setState(() => _showRulers = value),
+                ),
+                SwitchListTile.adaptive(
+                  key: const Key('word-show-grid'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Show page grid on desktop'),
+                  subtitle: const Text('Editor-only alignment grid; never printed.'),
+                  value: _showGrid,
+                  onChanged: (value) => setState(() => _showGrid = value),
+                ),
+                if (_showGrid) ...[
+                  Text(
+                    'Grid spacing: ${_pointsToMm(_gridSpacing).toStringAsFixed(1)} mm',
+                    style: theme.textTheme.labelLarge,
+                  ),
+                  Slider(
+                    key: const Key('word-grid-spacing'),
+                    min: 6,
+                    max: 36,
+                    divisions: 10,
+                    value: _gridSpacing.clamp(6, 36).toDouble(),
+                    onChanged: (value) => setState(() => _gridSpacing = value),
+                  ),
+                ],
+                const SizedBox(height: 22),
                 _SectionTitle('Header, footer & page number'),
                 const SizedBox(height: 10),
                 TextField(
@@ -493,6 +628,15 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
     };
   }
 
+  static String _columnsLabel(PaperPageColumns value) {
+    return switch (value) {
+      PaperPageColumns.useTemplate => 'Use paper style',
+      PaperPageColumns.one => 'One column',
+      PaperPageColumns.two => 'Two columns',
+      PaperPageColumns.three => 'Three columns',
+    };
+  }
+
   static String _pageNumberPositionLabel(PaperPageNumberPosition value) {
     return switch (value) {
       PaperPageNumberPosition.footerCenter => 'Footer — center',
@@ -504,6 +648,20 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
   static double _pointsToMm(double points) => points * 25.4 / 72;
   static double _mmToPoints(double millimetres) => millimetres * 72 / 25.4;
   static String _formatMm(double value) => value.toStringAsFixed(1);
+}
+
+const _backgroundPresets = <_PageBackgroundPreset>[
+  _PageBackgroundPreset('White', 0xFFFFFFFF),
+  _PageBackgroundPreset('Warm', 0xFFFFFDF5),
+  _PageBackgroundPreset('Soft gray', 0xFFF7F7F7),
+  _PageBackgroundPreset('Cool', 0xFFF7FAFF),
+];
+
+class _PageBackgroundPreset {
+  final String label;
+  final int argb;
+
+  const _PageBackgroundPreset(this.label, this.argb);
 }
 
 class _SectionTitle extends StatelessWidget {

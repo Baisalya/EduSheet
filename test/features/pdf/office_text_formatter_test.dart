@@ -29,4 +29,32 @@ void main() {
       );
     },
   );
+  test('questionText keeps only printable geometry placeholder', () {
+    final delta = jsonEncode([
+      {'insert': 'Use the figure.\n'},
+      {
+        'insert': {
+          'geometry': jsonEncode({
+            'id': 'g1',
+            'height': 220,
+            'wrapMode': 'topAndBottom',
+            'diagram': {
+              'id': 'g1',
+              'name': 'Rectangle',
+              'width': 360,
+              'height': 240,
+            },
+          }),
+        },
+      },
+      {'insert': '\nFind the area.\n'},
+    ]);
+
+    final text = OfficeTextFormatter.questionText(delta);
+
+    expect(text, 'Use the figure. [diagram] Find the area.');
+    expect(text, isNot(contains('Rectangle')));
+    expect(text, isNot(contains('Top & bottom')));
+  });
+
 }

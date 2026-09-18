@@ -418,14 +418,18 @@ class QuestionMathValidationService {
         ..remove(QuestionMathContent.metadataKey);
     }
 
+    final bodyWasRepaired = inspection.needsRepair || bodyRepair.changed;
+
     return question.copyWith(
       text: safeText,
       richTextFormat: shouldEncodeBody
           ? 'quill-delta-json-v1'
           : question.richTextFormat,
-      plainTextAccessibility: richTextCodec.accessibleText(
-        Document.fromJson(bodyRepair.operations),
-      ),
+      plainTextAccessibility: bodyWasRepaired
+          ? richTextCodec.accessibleText(
+              Document.fromJson(bodyRepair.operations),
+            )
+          : question.plainTextAccessibility,
       mathExpressions: canonicalExpressions,
       metadata: metadata,
       subQuestions: subQuestions,

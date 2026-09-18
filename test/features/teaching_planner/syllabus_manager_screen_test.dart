@@ -96,12 +96,55 @@ void main() {
         await tester.pumpWidget(_app(workspace));
         await tester.pumpAndSettle();
 
-        expect(find.text('Syllabus Manager'), findsOneWidget);
+        expect(find.text('Syllabus'), findsWidgets);
         expect(find.text('Create syllabus'), findsWidgets);
         expect(tester.takeException(), isNull);
       },
     );
   }
+
+  testWidgets(
+    'guided setup opens the requested class and enables continue when usable',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(412, 915));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            teachingPlannerRepositoryProvider.overrideWithValue(
+              _MemoryPlannerRepository(workspace),
+            ),
+            teachingPlannerCapabilitiesProvider.overrideWithValue(
+              TeachingPlannerCapabilities.free(),
+            ),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(useMaterial3: true),
+            home: const SyllabusManagerScreen(
+              initialClassId: 'class-10',
+              guidedSetup: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Setup step 2 of 3 · Build a usable syllabus'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('syllabus-subjects-section')),
+        findsOneWidget,
+      );
+      final continueButton = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('planner-guided-syllabus-continue')),
+      );
+      expect(continueButton.onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('create syllabus starts with only name and academic year', (
     tester,
@@ -178,6 +221,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('chapter cards show real topic, period and priority metadata', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(412, 915));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(_app(workspace));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Class 10').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mathematics'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Number Systems'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('chapter-1')), findsOneWidget);
+    expect(find.text('1 topic • 6 planned periods'), findsOneWidget);
+    expect(find.text('High'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('search exposes deeply nested content without manual drilling', (
     tester,
   ) async {
@@ -207,6 +272,34 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Euclid Division Lemma'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'phase 3 syllabus UI mirrors reference hierarchy without fake fields',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(412, 915));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(_app(workspace));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add Syllabus'), findsOneWidget);
+      expect(find.text('Import JSON'), findsOneWidget);
+      expect(find.text('Import from Template'), findsNothing);
+      expect(find.text('CBSE'), findsNothing);
+      expect(find.text('Est. Hours'), findsNothing);
+
+      await tester.tap(find.text('Class 10').first);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('syllabus-entity-hero')),
+        findsOneWidget,
+      );
+      expect(find.text('Edit details'), findsNothing);
+      expect(find.byTooltip('Edit details'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

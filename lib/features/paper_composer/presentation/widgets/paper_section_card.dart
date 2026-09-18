@@ -1,6 +1,8 @@
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/services/paper_structure_service.dart';
 import 'package:edusheet/features/editor/services/question_numbering_service.dart';
+import 'package:edusheet/features/guided_experience/domain/guide_ids.dart';
+import 'package:edusheet/features/guided_experience/presentation/widgets/guide_anchor.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/question_card.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +14,8 @@ class PaperSectionCard extends StatelessWidget {
   final List<String> customQuestionNumberLabels;
   final VoidCallback onAddQuestion;
   final VoidCallback onAddFromBank;
+  final GuideTargetId? newQuestionGuideTargetId;
+  final GuideTargetId? questionBankGuideTargetId;
   final ValueChanged<Question> onEditQuestion;
   final ValueChanged<Question> onDuplicateQuestion;
   final ValueChanged<Question> onDeleteQuestion;
@@ -33,6 +37,8 @@ class PaperSectionCard extends StatelessWidget {
     this.customQuestionNumberLabels = const [],
     required this.onAddQuestion,
     required this.onAddFromBank,
+    this.newQuestionGuideTargetId,
+    this.questionBankGuideTargetId,
     required this.onEditQuestion,
     required this.onDuplicateQuestion,
     required this.onDeleteQuestion,
@@ -234,6 +240,8 @@ class PaperSectionCard extends StatelessWidget {
                 ? _EmptySection(
                     onAddQuestion: onAddQuestion,
                     onAddFromBank: onAddFromBank,
+                    newQuestionGuideTargetId: newQuestionGuideTargetId,
+                    questionBankGuideTargetId: questionBankGuideTargetId,
                   )
                 : ReorderableListView.builder(
                     shrinkWrap: true,
@@ -286,28 +294,51 @@ class PaperSectionCard extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   if (constraints.maxWidth < 520) {
-                    return OutlinedButton.icon(
+                    final button = OutlinedButton.icon(
                       onPressed: () => _showCompactAddMenu(context),
                       icon: const Icon(Icons.add_rounded),
                       label: const Text('Add question'),
                     );
+                    final targetId = questionBankGuideTargetId;
+                    return targetId == null
+                        ? button
+                        : GuideAnchor(targetId: targetId, child: button);
                   }
                   return Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: onAddQuestion,
-                          icon: const Icon(Icons.edit_note_rounded),
-                          label: const Text('New question'),
-                        ),
+                        child: newQuestionGuideTargetId == null
+                            ? OutlinedButton.icon(
+                                onPressed: onAddQuestion,
+                                icon: const Icon(Icons.edit_note_rounded),
+                                label: const Text('New question'),
+                              )
+                            : GuideAnchor(
+                                targetId: newQuestionGuideTargetId!,
+                                reportPointerActivation: true,
+                                child: OutlinedButton.icon(
+                                  onPressed: onAddQuestion,
+                                  icon: const Icon(Icons.edit_note_rounded),
+                                  label: const Text('New question'),
+                                ),
+                              ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: onAddFromBank,
-                          icon: const Icon(Icons.inventory_2_outlined),
-                          label: const Text('Question Bank'),
-                        ),
+                        child: questionBankGuideTargetId == null
+                            ? OutlinedButton.icon(
+                                onPressed: onAddFromBank,
+                                icon: const Icon(Icons.inventory_2_outlined),
+                                label: const Text('Question Bank'),
+                              )
+                            : GuideAnchor(
+                                targetId: questionBankGuideTargetId!,
+                                child: OutlinedButton.icon(
+                                  onPressed: onAddFromBank,
+                                  icon: const Icon(Icons.inventory_2_outlined),
+                                  label: const Text('Question Bank'),
+                                ),
+                              ),
                       ),
                     ],
                   );
@@ -403,11 +434,28 @@ class _SectionMetaChip extends StatelessWidget {
 class _EmptySection extends StatelessWidget {
   final VoidCallback onAddQuestion;
   final VoidCallback onAddFromBank;
+  final GuideTargetId? newQuestionGuideTargetId;
+  final GuideTargetId? questionBankGuideTargetId;
 
   const _EmptySection({
     required this.onAddQuestion,
     required this.onAddFromBank,
+    this.newQuestionGuideTargetId,
+    this.questionBankGuideTargetId,
   });
+
+  Widget _wrapGuideTarget(
+    GuideTargetId? targetId,
+    Widget child, {
+    bool reportPointerActivation = false,
+  }) {
+    if (targetId == null) return child;
+    return GuideAnchor(
+      targetId: targetId,
+      reportPointerActivation: reportPointerActivation,
+      child: child,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -440,15 +488,22 @@ class _EmptySection extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              FilledButton.icon(
-                onPressed: onAddQuestion,
-                icon: const Icon(Icons.edit_note_rounded),
-                label: const Text('Write question'),
+              _wrapGuideTarget(
+                newQuestionGuideTargetId,
+                FilledButton.icon(
+                  onPressed: onAddQuestion,
+                  icon: const Icon(Icons.edit_note_rounded),
+                  label: const Text('Write question'),
+                ),
+                reportPointerActivation: true,
               ),
-              OutlinedButton.icon(
-                onPressed: onAddFromBank,
-                icon: const Icon(Icons.inventory_2_outlined),
-                label: const Text('Choose from bank'),
+              _wrapGuideTarget(
+                questionBankGuideTargetId,
+                OutlinedButton.icon(
+                  onPressed: onAddFromBank,
+                  icon: const Icon(Icons.inventory_2_outlined),
+                  label: const Text('Choose from bank'),
+                ),
               ),
             ],
           ),

@@ -1,17 +1,49 @@
+import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/paper_composer/domain/question_advanced_content.dart';
 import 'package:edusheet/features/paper_composer/domain/question_draft.dart';
 import 'package:edusheet/features/paper_composer/domain/universal_question_document.dart';
 
-/// Compatibility adapter between the legacy persisted Question contract and
-/// the Universal Smart Paper Editor view.
+/// Compatibility adapter between the persisted Question contract and the
+/// Universal Smart Paper Editor view.
 ///
 /// It does not introduce a second persistence schema. Existing Question fields
-/// remain the source of truth while the authoring UI is free to treat their
+/// remain the source of truth while editor/preview/export code can treat their
 /// contents as composable blocks.
 class UniversalQuestionAdapter {
   const UniversalQuestionAdapter._();
 
   static UniversalQuestionDocument fromDraft(QuestionDraft draft) {
+    return _fromParts(
+      advancedContent: draft.advancedContent,
+      options: draft.options,
+      attachments: draft.attachments,
+      tableData: draft.tableData,
+      subQuestions: draft.subQuestions,
+      internalChoices: draft.internalChoices,
+    );
+  }
+
+  /// Builds the same universal structure directly from persisted content.
+  /// Read-only renderers therefore never need to construct an authoring draft.
+  static UniversalQuestionDocument fromQuestion(Question question) {
+    return _fromParts(
+      advancedContent: QuestionAdvancedContent.fromQuestion(question),
+      options: question.options,
+      attachments: question.attachments,
+      tableData: question.tableData,
+      subQuestions: question.subQuestions,
+      internalChoices: question.internalChoices,
+    );
+  }
+
+  static UniversalQuestionDocument _fromParts({
+    required QuestionAdvancedContent advancedContent,
+    required List<QuestionOption> options,
+    required List<QuestionAttachment> attachments,
+    required QuestionTable? tableData,
+    required List<Question> subQuestions,
+    required List<Question> internalChoices,
+  }) {
     final blocks = <UniversalQuestionBlock>[
       const UniversalQuestionBlock(
         kind: UniversalQuestionBlockKind.prompt,
@@ -19,7 +51,7 @@ class UniversalQuestionAdapter {
       ),
     ];
 
-    if (draft.advancedContent.hasStimulus) {
+    if (advancedContent.hasStimulus) {
       blocks.add(
         const UniversalQuestionBlock(
           kind: UniversalQuestionBlockKind.stimulus,
@@ -28,27 +60,27 @@ class UniversalQuestionAdapter {
       );
     }
 
-    if (draft.advancedContent.hasWordBank) {
+    if (advancedContent.hasWordBank) {
       blocks.add(
         UniversalQuestionBlock(
           kind: UniversalQuestionBlockKind.wordBank,
           id: 'word-bank',
-          itemCount: draft.advancedContent.wordBank.length,
+          itemCount: advancedContent.wordBank.length,
         ),
       );
     }
 
-    if (draft.options.isNotEmpty) {
+    if (options.isNotEmpty) {
       blocks.add(
         UniversalQuestionBlock(
           kind: UniversalQuestionBlockKind.answerOptions,
           id: 'answer-options',
-          itemCount: draft.options.length,
+          itemCount: options.length,
         ),
       );
     }
 
-    for (final attachment in draft.attachments) {
+    for (final attachment in attachments) {
       blocks.add(
         UniversalQuestionBlock(
           kind: UniversalQuestionBlockKind.attachment,
@@ -57,7 +89,7 @@ class UniversalQuestionAdapter {
       );
     }
 
-    if (draft.tableData != null) {
+    if (tableData != null) {
       blocks.add(
         const UniversalQuestionBlock(
           kind: UniversalQuestionBlockKind.table,
@@ -66,27 +98,27 @@ class UniversalQuestionAdapter {
       );
     }
 
-    if (draft.subQuestions.isNotEmpty) {
+    if (subQuestions.isNotEmpty) {
       blocks.add(
         UniversalQuestionBlock(
           kind: UniversalQuestionBlockKind.subQuestions,
           id: 'sub-questions',
-          itemCount: draft.subQuestions.length,
+          itemCount: subQuestions.length,
         ),
       );
     }
 
-    if (draft.internalChoices.isNotEmpty) {
+    if (internalChoices.isNotEmpty) {
       blocks.add(
         UniversalQuestionBlock(
           kind: UniversalQuestionBlockKind.internalChoice,
           id: 'internal-choice',
-          itemCount: draft.internalChoices.length,
+          itemCount: internalChoices.length,
         ),
       );
     }
 
-    if (draft.advancedContent.hasAnswerSpace) {
+    if (advancedContent.hasAnswerSpace) {
       blocks.add(
         const UniversalQuestionBlock(
           kind: UniversalQuestionBlockKind.answerSpace,

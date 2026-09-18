@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/planner_chapter.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
+import '../design/teaching_planner_design_system.dart';
 import '../models/syllabus_filter.dart';
 import '../models/syllabus_node_ref.dart';
+import '../models/syllabus_overview_model.dart';
 import '../services/syllabus_manager_filter.dart';
+import 'syllabus_hierarchy_cards.dart';
+import 'teaching_planner_shared_components.dart';
 
 class SyllabusAdaptiveToolbar extends StatelessWidget {
   const SyllabusAdaptiveToolbar({
@@ -24,11 +28,12 @@ class SyllabusAdaptiveToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 1180;
+        final showInlineFilters = constraints.maxWidth >= 980;
         return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
           child: Row(
             children: [
               Expanded(
@@ -36,16 +41,23 @@ class SyllabusAdaptiveToolbar extends StatelessWidget {
                   controller: searchController,
                   onChanged: onQueryChanged,
                   textInputAction: TextInputAction.search,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search_rounded),
+                  decoration: InputDecoration(
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: colors.primary,
+                    ),
                     hintText: 'Search syllabus',
-                    border: OutlineInputBorder(),
-                    isDense: true,
+                    filled: true,
+                    fillColor: colors.surface,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 13,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(width: 8),
-              if (wide)
+              if (showInlineFilters)
                 ...SyllabusFilter.values.map(
                   (value) => Padding(
                     padding: const EdgeInsets.only(left: 6),
@@ -63,8 +75,11 @@ class SyllabusAdaptiveToolbar extends StatelessWidget {
                   onSelected: onFilterChanged,
                   icon: Icon(
                     filter == SyllabusFilter.all
-                        ? Icons.filter_list_rounded
+                        ? Icons.tune_rounded
                         : Icons.filter_alt_rounded,
+                    color: filter == SyllabusFilter.all
+                        ? colors.inkMuted
+                        : colors.primary,
                   ),
                   itemBuilder: (context) => [
                     for (final value in SyllabusFilter.values)
@@ -74,19 +89,6 @@ class SyllabusAdaptiveToolbar extends StatelessWidget {
                         child: Text(value.label),
                       ),
                   ],
-                ),
-              const SizedBox(width: 6),
-              if (wide)
-                FilledButton.icon(
-                  onPressed: onCreateSyllabus,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Create syllabus'),
-                )
-              else
-                IconButton.filledTonal(
-                  tooltip: 'Create syllabus',
-                  onPressed: onCreateSyllabus,
-                  icon: const Icon(Icons.add_rounded),
                 ),
             ],
           ),
@@ -120,62 +122,167 @@ class SyllabusClassBrowser extends StatelessWidget {
       );
     }
 
-    return ListView(
-      key: const ValueKey('syllabus-class-browser'),
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-      children: [
-        Row(
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 430;
+        return ListView(
+          key: const ValueKey('syllabus-class-browser'),
+          padding: EdgeInsets.fromLTRB(14, compact ? 2 : 4, 14, 30),
           children: [
-            Expanded(
-              child: Text(
-                'My syllabuses',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            if (!compact) ...[
+              TeachingPlannerSurfaceCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const TeachingPlannerSectionHeader(
+                      title: 'Your syllabuses',
+                      subtitle:
+                          'Choose a class to open its subjects, chapters and topics.',
+                      icon: Icons.auto_stories_rounded,
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _SyllabusActionTile(
+                            icon: Icons.add_rounded,
+                            title: 'Create syllabus',
+                            subtitle: 'Start with a class and academic year',
+                            tone: TeachingPlannerTone.primary,
+                            onTap: onCreateSyllabus,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _SyllabusActionTile(
+                            icon: Icons.file_upload_outlined,
+                            title: 'Import syllabus',
+                            subtitle: 'Use your existing EduSheet JSON file',
+                            tone: TeachingPlannerTone.teal,
+                            onTap: onImportSyllabus,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(height: 18),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Classes',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                TeachingPlannerPill(
+                  label: '${classes.length} active',
+                  icon: Icons.school_outlined,
+                  tone: TeachingPlannerTone.primary,
+                ),
+              ],
             ),
-            FilledButton.tonalIcon(
-              onPressed: onCreateSyllabus,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Create syllabus'),
-            ),
+            const SizedBox(height: 10),
+            for (final value in classes)
+              Builder(
+                builder: (context) {
+                  final metrics = SyllabusOverviewModel.forClass(
+                    workspace,
+                    value.id,
+                  );
+                  return SyllabusHierarchyCard(
+                    icon: Icons.school_outlined,
+                    title: value.name,
+                    subtitle: [
+                      if (value.academicYear != null) value.academicYear!,
+                      syllabusCountLabel(metrics.subjects, 'subject'),
+                      syllabusCountLabel(metrics.chapters, 'chapter'),
+                      syllabusCountLabel(metrics.topics, 'topic'),
+                    ].join(' • '),
+                    completion: metrics.topics == 0 ? null : metrics.completion,
+                    onTap: () =>
+                        onSelected(SyllabusNodeRef.classValue(value.id)),
+                  );
+                },
+              ),
           ],
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Choose a class syllabus. You can add subjects and chapters inside it.',
-        ),
-        const SizedBox(height: 14),
-        for (final value in classes)
-          Card(
-            margin: const EdgeInsets.only(bottom: 9),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 7,
-              ),
-              leading: const CircleAvatar(child: Icon(Icons.school_outlined)),
-              title: Text(
-                value.name,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(
-                [
-                  ?value.academicYear,
-                  '${workspace.activeSubjectsForClass(value.id).length} subject(s)',
-                ].join(' • '),
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => onSelected(SyllabusNodeRef.classValue(value.id)),
+        );
+      },
+    );
+  }
+}
+
+class _SyllabusActionTile extends StatelessWidget {
+  const _SyllabusActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.tone,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final TeachingPlannerTone tone;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return Material(
+      color: colors.surfaceSoft,
+      borderRadius: BorderRadius.circular(TeachingPlannerDesign.radiusLarge),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(TeachingPlannerDesign.radiusLarge),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(
+              TeachingPlannerDesign.radiusLarge,
             ),
+            border: Border.all(color: colors.border),
           ),
-        const SizedBox(height: 6),
-        OutlinedButton.icon(
-          onPressed: onImportSyllabus,
-          icon: const Icon(Icons.file_upload_outlined),
-          label: const Text('Import syllabus JSON'),
+          child: Row(
+            children: [
+              TeachingPlannerIconBadge(icon: icon, tone: tone, size: 38),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: colors.ink,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.labelSmall?.copyWith(color: colors.inkMuted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: colors.inkMuted),
+            ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -504,34 +611,52 @@ class SyllabusSelectionPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(18),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.account_tree_outlined, size: 46),
-              const SizedBox(height: 12),
-              const Text(
-                'Select a syllabus item from the outline',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Or create a new syllabus and build it one level at a time.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                onPressed: onCreateSyllabus,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Create syllabus'),
-              ),
-            ],
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: TeachingPlannerSurfaceCard(
+            tint: true,
+            tone: TeachingPlannerTone.primary,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TeachingPlannerIconBadge(
+                  icon: Icons.auto_stories_rounded,
+                  tone: TeachingPlannerTone.primary,
+                  size: 54,
+                  iconSize: 28,
+                  circular: true,
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Choose a syllabus from the outline',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Open a class or subject to manage chapters and topics, or create a new syllabus.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.inkMuted,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: onCreateSyllabus,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Create syllabus'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -550,50 +675,61 @@ class _SyllabusEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(24),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Column(
-            children: [
-              Icon(
-                Icons.school_outlined,
-                size: 64,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Create your first syllabus',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: TeachingPlannerSurfaceCard(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                TeachingPlannerIconBadge(
+                  icon: Icons.school_outlined,
+                  tone: TeachingPlannerTone.primary,
+                  size: 58,
+                  iconSize: 30,
+                  circular: true,
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Start with only the class name and academic year. Then add subjects, units, chapters and topics from one simple editor.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: onCreateSyllabus,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Create syllabus'),
+                const SizedBox(height: 14),
+                Text(
+                  'Create your first syllabus',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: onImportSyllabus,
-                  icon: const Icon(Icons.file_upload_outlined),
-                  label: const Text('Import existing syllabus'),
+                const SizedBox(height: 7),
+                Text(
+                  'Start with the class name and academic year. Then add the syllabus levels already supported by EduSheet.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.inkMuted,
+                    height: 1.4,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onCreateSyllabus,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Create syllabus'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: onImportSyllabus,
+                    icon: const Icon(Icons.file_upload_outlined),
+                    label: const Text('Import existing syllabus'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

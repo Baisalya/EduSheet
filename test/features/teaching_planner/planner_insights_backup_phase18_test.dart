@@ -17,7 +17,7 @@ void main() {
     expect(restored.isEmpty, isTrue);
     expect(text, startsWith('${TeachingPlannerBackupCodec.magicHeader}\n'));
     expect(text, contains('edusheet.teaching-planner-backup'));
-    expect(text, contains('"schemaVersion": 7'));
+    expect(text, contains('"schemaVersion": 8'));
   });
 
   test('backup rejects unrelated json before restore', () {

@@ -5,7 +5,7 @@ publish_to: 'none'
 version: 1.2.2+6
 
 environment:
-  sdk: ^3.11.5
+  sdk: ">=3.12.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -17,6 +17,9 @@ dependencies:
   math_keyboard: ^0.3.3
   flutter_math_fork: ^0.7.4
   pdf: ^3.12.0
+  characters: ^1.4.1
+  ffi: ^2.2.0
+  harfbuzz_ffi: 0.4.2
   printing: ^5.14.3
   flutter_html: ^3.0.0
   image_picker: ^1.2.2
@@ -50,7 +53,9 @@ dependencies:
   upgrader: ^13.6.0
   http: ^1.6.0
   xml: 6.5.0
-  permission_handler: ^13.0.2
+  # Pinned below 13.x because permission_handler 13.x requires Android API 37.
+  # EduSheet currently compiles/targets API 36 and does not use Android 17 local-network permission.
+  permission_handler: 12.0.3
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,7 @@
 import 'planner_json.dart';
 import 'teaching_resource_owner.dart';
 
-enum TeachingResourceKind { note, file, link, geometry }
+enum TeachingResourceKind { note, file, link, geometry, paper }
 
 enum TeachingResourceRole {
   teachInClass,
@@ -40,6 +40,7 @@ class TeachingResource {
   final String? mimeType;
   final String? localRelativePath;
   final int? sizeBytes;
+  final String? linkedPaperId;
   final Map<String, dynamic>? geometryJson;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -58,6 +59,7 @@ class TeachingResource {
     this.mimeType,
     this.localRelativePath,
     this.sizeBytes,
+    this.linkedPaperId,
     this.geometryJson,
     required this.createdAt,
     required this.updatedAt,
@@ -94,6 +96,7 @@ class TeachingResource {
     Object? mimeType = _unset,
     Object? localRelativePath = _unset,
     Object? sizeBytes = _unset,
+    Object? linkedPaperId = _unset,
     Object? geometryJson = _unset,
     DateTime? updatedAt,
     Object? archivedAt = _unset,
@@ -123,6 +126,9 @@ class TeachingResource {
       sizeBytes: identical(sizeBytes, _unset)
           ? this.sizeBytes
           : sizeBytes as int?,
+      linkedPaperId: identical(linkedPaperId, _unset)
+          ? this.linkedPaperId
+          : linkedPaperId as String?,
       geometryJson: identical(geometryJson, _unset)
           ? this.geometryJson
           : geometryJson as Map<String, dynamic>?,
@@ -147,6 +153,7 @@ class TeachingResource {
     if (mimeType != null) 'mimeType': mimeType,
     if (localRelativePath != null) 'localRelativePath': localRelativePath,
     if (sizeBytes != null) 'sizeBytes': sizeBytes,
+    if (linkedPaperId != null) 'linkedPaperId': linkedPaperId,
     if (geometryJson != null) 'geometryJson': geometryJson,
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
@@ -166,6 +173,7 @@ class TeachingResource {
         mimeType: plannerOptionalString(json, 'mimeType'),
         localRelativePath: plannerOptionalString(json, 'localRelativePath'),
         sizeBytes: _optionalInt(json['sizeBytes']),
+        linkedPaperId: plannerOptionalString(json, 'linkedPaperId'),
         geometryJson: json['geometryJson'] is Map
             ? Map<String, dynamic>.from(json['geometryJson'] as Map)
             : null,

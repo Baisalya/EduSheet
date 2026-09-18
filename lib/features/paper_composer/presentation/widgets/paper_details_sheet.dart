@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/paper_composer/application/paper_marks_teacher_diagnostics.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+import 'package:edusheet/features/guided_experience/application/guided_experience_providers.dart';
+import 'package:edusheet/features/guided_experience/guides/create_paper_guide.dart';
+import 'package:edusheet/features/guided_experience/presentation/widgets/guide_anchor.dart';
 import 'package:edusheet/features/pdf/application/paper_header_profile.dart';
 import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
@@ -146,6 +150,11 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
           maximumMarks: parsed,
           clearMaximumMarks: rawMaximum.isEmpty,
         );
+    unawaited(
+      ref
+          .read(guidedExperienceControllerProvider.notifier)
+          .notifyConditionSatisfied(CreatePaperGuideSteps.savePaperSetup),
+    );
     Navigator.pop(context);
   }
 
@@ -326,24 +335,34 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    TextField(
-                      controller: _school,
-                      autofocus: true,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'School / institution',
-                        hintText: 'Green Valley Public School',
-                        prefixIcon: Icon(Icons.account_balance_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _title,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Exam / paper title',
-                        hintText: 'Half-Yearly Examination 2026',
-                        prefixIcon: Icon(Icons.description_outlined),
+                    GuideAnchor(
+                      targetId: CreatePaperGuideTargets.paperSetupEssentials,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
+                            controller: _school,
+                            autofocus: true,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'School / institution',
+                              hintText: 'Green Valley Public School',
+                              prefixIcon: Icon(
+                                Icons.account_balance_outlined,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _title,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Exam / paper title',
+                              hintText: 'Half-Yearly Examination 2026',
+                              prefixIcon: Icon(Icons.description_outlined),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -573,10 +592,13 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: _save,
-                      icon: const Icon(Icons.check_rounded),
-                      label: const Text('Save paper setup'),
+                    GuideAnchor(
+                      targetId: CreatePaperGuideTargets.paperSetupSave,
+                      child: FilledButton.icon(
+                        onPressed: _save,
+                        icon: const Icon(Icons.check_rounded),
+                        label: const Text('Save paper setup'),
+                      ),
                     ),
                   ],
                 ),

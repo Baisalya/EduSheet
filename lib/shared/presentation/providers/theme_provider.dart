@@ -48,7 +48,12 @@ class ThemeNotifier extends StateNotifier<AppThemeSettings> {
   static const String _modeKey = 'app_theme_mode';
   static const String _accentKey = 'app_theme_accent';
 
+  // Prevent a slow preference read from overwriting a theme/accent the user
+  // has already changed during app startup.
+  int _localRevision = 0;
+
   Future<void> _load() async {
+    final revisionAtStart = _localRevision;
     try {
       final prefs = await SharedPreferences.getInstance();
       final isDark = prefs.getBool(_modeKey) ?? false;
@@ -57,7 +62,7 @@ class ThemeNotifier extends StateNotifier<AppThemeSettings> {
         (value) => value.name == accentName,
         orElse: () => AppAccent.ocean,
       );
-      if (!mounted) return;
+      if (!mounted || revisionAtStart != _localRevision) return;
       state = AppThemeSettings(
         mode: isDark ? ThemeMode.dark : ThemeMode.light,
         accent: accent,
@@ -68,6 +73,7 @@ class ThemeNotifier extends StateNotifier<AppThemeSettings> {
   }
 
   Future<void> toggleTheme() async {
+    _localRevision++;
     final next = state.mode == ThemeMode.light
         ? ThemeMode.dark
         : ThemeMode.light;
@@ -76,11 +82,13 @@ class ThemeNotifier extends StateNotifier<AppThemeSettings> {
   }
 
   Future<void> setTheme(ThemeMode mode) async {
+    _localRevision++;
     state = state.copyWith(mode: mode);
     await _persist();
   }
 
   Future<void> setAccent(AppAccent accent) async {
+    _localRevision++;
     state = state.copyWith(accent: accent);
     await _persist();
   }

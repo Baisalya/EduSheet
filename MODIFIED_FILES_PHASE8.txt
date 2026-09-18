@@ -1,0 +1,6 @@
+lib/features/document_reader/presentation/screens/file_preview_screen.dart
+test/features/document_reader/document_reader_phase8_responsive_gate_test.dart
+test/release/document_reader_phase8_production_gate_test.dart
+tool/run_document_reader_phase8_gate.ps1
+PHASE8_DOCUMENT_READER_PRODUCTION_GATE_HANDOFF.md
+MODIFIED_FILES_PHASE8.txt

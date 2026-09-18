@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:edusheet/features/geometry_builder/painters/geometry_painter.dart';
 import 'package:edusheet/features/paper_composer/domain/word_shape_object.dart';
 import 'package:flutter/material.dart';
 
@@ -207,7 +208,42 @@ class WordShapeVisual extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolvedColor = color ?? Theme.of(context).colorScheme.onSurface;
+    final diagram = shape.geometryDiagram;
+    if (shape.kind == WordShapeKind.geometry && diagram != null) {
+      return Transform.rotate(
+        angle: shape.rotationDegrees * math.pi / 180,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: selected
+                ? Border.all(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 1.5,
+                  )
+                : shape.borderVisible
+                ? Border.all(
+                    color: Color(shape.strokeColorArgb),
+                    width: shape.strokeWidth,
+                  )
+                : null,
+            color: shape.fillOpacity > 0
+                ? Color(shape.fillColorArgb).withValues(alpha: shape.fillOpacity)
+                : null,
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(shape.padding),
+            child: CustomPaint(
+              painter: GeometryPainter(
+                diagram: diagram.copyWith(showGrid: false),
+                showPointHandles: false,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    final fallbackStroke = color ?? Theme.of(context).colorScheme.onSurface;
+    final stroke = color ?? Color(shape.strokeColorArgb);
+    final textColor = color ?? Theme.of(context).colorScheme.onSurface;
     return Transform.rotate(
       angle: shape.rotationDegrees * math.pi / 180,
       child: DecoratedBox(
@@ -220,19 +256,29 @@ class WordShapeVisual extends StatelessWidget {
               : null,
         ),
         child: CustomPaint(
-          painter: WordShapePainter(kind: shape.kind, color: resolvedColor),
-          child:
-              (shape.kind == WordShapeKind.textBox ||
-                      shape.kind == WordShapeKind.callout) &&
-                  shape.text.trim().isNotEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(6),
+          painter: WordShapePainter(
+            kind: shape.kind,
+            strokeColor: shape.borderVisible ? stroke : fallbackStroke,
+            strokeWidth: shape.borderVisible ? shape.strokeWidth : 0,
+            fillColor: Color(shape.fillColorArgb).withValues(
+              alpha: shape.fillOpacity,
+            ),
+            fillOpacity: shape.fillOpacity,
+          ),
+          child: shape.isTextContainer && shape.text.trim().isNotEmpty
+              ? Padding(
+                  padding: EdgeInsets.all(shape.padding),
+                  child: Center(
                     child: Text(
                       shape.text,
                       textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 4,
+                      overflow: shape.textBoxSizing == WordTextBoxSizing.fixed
+                          ? TextOverflow.ellipsis
+                          : TextOverflow.visible,
+                      maxLines: shape.textBoxSizing == WordTextBoxSizing.fixed
+                          ? 8
+                          : null,
+                      style: TextStyle(color: textColor),
                     ),
                   ),
                 )
@@ -245,63 +291,96 @@ class WordShapeVisual extends StatelessWidget {
 
 class WordShapePainter extends CustomPainter {
   final WordShapeKind kind;
-  final Color color;
+  final Color strokeColor;
+  final double strokeWidth;
+  final Color fillColor;
+  final double fillOpacity;
 
-  const WordShapePainter({required this.kind, required this.color});
+  const WordShapePainter({
+    required this.kind,
+    required this.strokeColor,
+    required this.strokeWidth,
+    required this.fillColor,
+    required this.fillOpacity,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
+    final stroke = Paint()
+      ..color = strokeColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6;
+      ..strokeWidth = strokeWidth;
+    final fill = Paint()
+      ..color = fillColor
+      ..style = PaintingStyle.fill;
     final rect = Rect.fromLTWH(
       2,
       2,
       math.max(0.0, size.width - 4),
       math.max(0.0, size.height - 4),
     );
+    final canFill = fillOpacity > 0 &&
+        kind != WordShapeKind.line &&
+        kind != WordShapeKind.arrow &&
+        kind != WordShapeKind.doubleArrow;
+    final canStroke = strokeWidth > 0;
+
+    void drawRect() {
+      if (canFill) canvas.drawRect(rect, fill);
+      if (canStroke) canvas.drawRect(rect, stroke);
+    }
+
+    void drawRoundRect(RRect value) {
+      if (canFill) canvas.drawRRect(value, fill);
+      if (canStroke) canvas.drawRRect(value, stroke);
+    }
 
     switch (kind) {
       case WordShapeKind.rectangle:
       case WordShapeKind.textBox:
-        canvas.drawRect(rect, paint);
+        drawRect();
         break;
       case WordShapeKind.roundedRectangle:
-        canvas.drawRRect(
+        drawRoundRect(
           RRect.fromRectAndRadius(rect, const Radius.circular(10)),
-          paint,
         );
         break;
       case WordShapeKind.ellipse:
-        canvas.drawOval(rect, paint);
+        if (canFill) canvas.drawOval(rect, fill);
+        if (canStroke) canvas.drawOval(rect, stroke);
         break;
       case WordShapeKind.line:
-        canvas.drawLine(
-          Offset(4, size.height / 2),
-          Offset(math.max(4.0, size.width - 4), size.height / 2),
-          paint,
-        );
+        if (canStroke) {
+          canvas.drawLine(
+            Offset(4, size.height / 2),
+            Offset(math.max(4.0, size.width - 4), size.height / 2),
+            stroke,
+          );
+        }
         break;
       case WordShapeKind.arrow:
-        _drawArrow(
-          canvas,
-          Offset(4, size.height / 2),
-          Offset(math.max(4.0, size.width - 4), size.height / 2),
-          paint,
-          startHead: false,
-          endHead: true,
-        );
+        if (canStroke) {
+          _drawArrow(
+            canvas,
+            Offset(4, size.height / 2),
+            Offset(math.max(4.0, size.width - 4), size.height / 2),
+            stroke,
+            startHead: false,
+            endHead: true,
+          );
+        }
         break;
       case WordShapeKind.doubleArrow:
-        _drawArrow(
-          canvas,
-          Offset(4, size.height / 2),
-          Offset(math.max(4.0, size.width - 4), size.height / 2),
-          paint,
-          startHead: true,
-          endHead: true,
-        );
+        if (canStroke) {
+          _drawArrow(
+            canvas,
+            Offset(4, size.height / 2),
+            Offset(math.max(4.0, size.width - 4), size.height / 2),
+            stroke,
+            startHead: true,
+            endHead: true,
+          );
+        }
         break;
       case WordShapeKind.callout:
         final body = RRect.fromRectAndRadius(
@@ -313,12 +392,17 @@ class WordShapePainter extends CustomPainter {
           ),
           const Radius.circular(8),
         );
-        canvas.drawRRect(body, paint);
-        final tail = Path()
-          ..moveTo(size.width * 0.28, math.max(2.0, size.height - 10))
-          ..lineTo(size.width * 0.20, math.max(2.0, size.height - 2))
-          ..lineTo(size.width * 0.42, math.max(2.0, size.height - 10));
-        canvas.drawPath(tail, paint);
+        drawRoundRect(body);
+        if (canStroke) {
+          final tail = Path()
+            ..moveTo(size.width * 0.28, math.max(2.0, size.height - 10))
+            ..lineTo(size.width * 0.20, math.max(2.0, size.height - 2))
+            ..lineTo(size.width * 0.42, math.max(2.0, size.height - 10));
+          canvas.drawPath(tail, stroke);
+        }
+        break;
+      case WordShapeKind.geometry:
+        // Geometry design objects are rendered by GeometryPainter above.
         break;
     }
   }
@@ -345,6 +429,10 @@ class WordShapePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant WordShapePainter oldDelegate) {
-    return oldDelegate.kind != kind || oldDelegate.color != color;
+    return oldDelegate.kind != kind ||
+        oldDelegate.strokeColor != strokeColor ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.fillColor != fillColor ||
+        oldDelegate.fillOpacity != fillOpacity;
   }
 }

@@ -6,6 +6,9 @@ import 'package:lottie/lottie.dart';
 import '../../../features/editor/presentation/screens/create_paper_screen.dart';
 import '../../../features/editor/presentation/screens/saved_papers_screen.dart';
 import '../../../features/editor/presentation/providers/editor_provider.dart';
+import '../../../features/guided_experience/guides/create_paper_guide.dart';
+import '../../../features/guided_experience/guides/create_syllabus_guide.dart';
+import '../../../features/guided_experience/presentation/widgets/guide_anchor.dart';
 import '../../../features/omr/presentation/pages/omr_generator_page.dart';
 import '../../../features/question_bank/presentation/screens/question_bank_screen.dart';
 import '../../../features/document_reader/presentation/screens/document_reader_screen.dart';
@@ -75,15 +78,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       });
     });
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     final cards = <Widget>[
-      _HomeCard(
-        title: 'Create Paper',
-        lottieAsset: 'assets/lottie/WritePaper.json',
-        icon: Icons.note_add,
-        color: Colors.blue,
-        onTap: _openCreatePaper,
+      GuideAnchor(
+        targetId: CreatePaperGuideTargets.homeCreatePaper,
+        reportPointerActivation: true,
+        child: _HomeCard(
+          title: 'Create Paper',
+          lottieAsset: 'assets/lottie/WritePaper.json',
+          icon: Icons.note_add,
+          color: Colors.blue,
+          onTap: _openCreatePaper,
+        ),
       ),
       _HomeCard(
         title: 'Saved Papers',
@@ -106,12 +111,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         color: Colors.green,
         onTap: () => _open(const QuestionBankScreen()),
       ),
-      _HomeCard(
-        title: 'Teaching Planner',
-        lottieAsset: 'assets/lottie/syllabus_planner.json',
-        icon: Icons.calendar_month_rounded,
-        color: Colors.deepPurple,
-        onTap: () => _open(const TeachingPlannerScreen()),
+      GuideAnchor(
+        targetId: CreateSyllabusGuideTargets.homeTeachingPlanner,
+        reportPointerActivation: true,
+        child: _HomeCard(
+          title: 'Teaching Planner',
+          lottieAsset: 'assets/lottie/teaching_planner_schedule.json',
+          icon: Icons.calendar_month_rounded,
+          color: Colors.deepPurple,
+          onTap: () => _open(const TeachingPlannerScreen()),
+        ),
       ),
       _HomeCard(
         title: 'Calculator',
@@ -159,10 +168,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               semanticLabel: 'EduSheet brand logo',
             ),
             const SizedBox(width: 10),
-            const _AnimatedGradientTitle(),
+            const _BrandTitle(),
           ],
         ),
-        foregroundColor: isDark ? Colors.white : Colors.black,
         actions: const [PremiumBadgeButton()],
       ),
       body: SafeArea(
@@ -219,62 +227,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class _AnimatedGradientTitle extends StatefulWidget {
-  const _AnimatedGradientTitle();
-
-  @override
-  State<_AnimatedGradientTitle> createState() => _AnimatedGradientTitleState();
-}
-
-class _AnimatedGradientTitleState extends State<_AnimatedGradientTitle>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(seconds: 3),
-      vsync: this,
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+class _BrandTitle extends StatelessWidget {
+  const _BrandTitle();
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return ShaderMask(
-          shaderCallback: (bounds) {
-            return LinearGradient(
-              colors: const [
-                Colors.blue,
-                Colors.purple,
-                Colors.pink,
-                Colors.blue,
-              ],
-              stops: const [0.0, 0.33, 0.66, 1.0],
-              begin: Alignment(-2.0 + (4.0 * _controller.value), 0.0),
-              end: Alignment(0.0 + (4.0 * _controller.value), 0.0),
-            ).createShader(bounds);
-          },
-          child: const Text(
-            'EduSheet',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              letterSpacing: 1.5,
-            ),
-          ),
-        );
-      },
+    final theme = Theme.of(context);
+    return Text(
+      'EduSheet',
+      style: theme.textTheme.titleLarge?.copyWith(
+        color: theme.colorScheme.onSurface,
+        fontSize: 25,
+        fontWeight: FontWeight.w900,
+        letterSpacing: -0.5,
+      ),
     );
   }
 }
@@ -303,184 +269,126 @@ class _HomeCardState extends State<_HomeCard> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 170;
-        final cardPadding = compact ? 14.0 : 18.0;
-        final lottieSize = compact ? 76.0 : 90.0;
+        final cardPadding = compact ? 13.0 : 17.0;
+        final visualSize = compact ? 72.0 : 88.0;
         final titleSize = compact ? 14.0 : 16.0;
+        final radius = BorderRadius.circular(20);
+        final workspaceSurface = Color.alphaBlend(
+          scheme.primary.withValues(alpha: isDark ? 0.055 : 0.03),
+          scheme.surface,
+        );
+        final surface = Color.alphaBlend(
+          widget.color.withValues(alpha: isDark ? 0.045 : 0.025),
+          workspaceSurface,
+        );
+        final border = Color.alphaBlend(
+          scheme.primary.withValues(alpha: isDark ? 0.16 : 0.10),
+          scheme.outlineVariant,
+        );
 
-        return GestureDetector(
-          onTapDown: (_) => setState(() => _isPressed = true),
-          onTapUp: (_) => setState(() => _isPressed = false),
-          onTapCancel: () => setState(() => _isPressed = false),
-          onTap: widget.onTap,
-          child: AnimatedScale(
-            scale: _isPressed ? 0.97 : 1,
-            duration: const Duration(milliseconds: 140),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(0, _isPressed ? 5 : 0, 0),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color.lerp(
-                      widget.color,
-                      isDark ? Colors.black : Colors.white,
-                      0.88,
-                    )!,
-                    isDark
-                        ? Theme.of(context).colorScheme.surfaceContainer
-                        : Colors.white,
-                  ],
-                ),
-                border: Border.all(color: widget.color.withValues(alpha: 0.15)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
-                    blurRadius: 22,
-                    offset: const Offset(0, 10),
-                    spreadRadius: -6,
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Stack(
+        return AnimatedScale(
+          scale: _isPressed ? 0.985 : 1,
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 120),
+          curve: Curves.easeOutCubic,
+          child: Material(
+            color: surface,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: radius,
+              side: BorderSide(color: border),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: widget.onTap,
+              onHighlightChanged: (value) {
+                if (_isPressed != value) {
+                  setState(() => _isPressed = value);
+                }
+              },
+              borderRadius: radius,
+              child: Padding(
+                padding: EdgeInsets.all(cardPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // soft glow
-                    Positioned(
-                      top: -40,
-                      right: -40,
-                      child: Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: widget.color.withValues(
-                            alpha: isDark ? 0.12 : 0.08,
+                    Row(
+                      children: [
+                        Container(
+                          width: compact ? 32 : 36,
+                          height: compact ? 32 : 36,
+                          decoration: BoxDecoration(
+                            color: widget.color.withValues(
+                              alpha: isDark ? 0.18 : 0.11,
+                            ),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            widget.icon,
+                            size: compact ? 17 : 19,
+                            color: widget.color,
                           ),
                         ),
-                      ),
-                    ),
-
-                    Positioned(
-                      bottom: -30,
-                      left: -30,
-                      child: Container(
-                        width: 90,
-                        height: 90,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: (isDark ? Colors.black : Colors.white)
-                              .withValues(alpha: 0.15),
+                        const Spacer(),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 18,
+                          color: scheme.primary,
                         ),
-                      ),
+                      ],
                     ),
-
-                    Padding(
-                      padding: EdgeInsets.all(cardPadding),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // TOP ROW
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: widget.color.withValues(
-                                          alpha: 0.15,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          100,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        'FEATURE',
-                                        style: TextStyle(
-                                          color: widget.color,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Icon(
-                                Icons.arrow_outward_rounded,
-                                size: 18,
+                    Expanded(
+                      child: Center(
+                        child: reduceMotion
+                            ? Icon(
+                                widget.icon,
+                                size: compact ? 48 : 58,
                                 color: widget.color,
-                              ),
-                            ],
-                          ),
-
-                          // CENTER EMPTY SPACE FOR LOTTIE
-                          Expanded(
-                            child: Center(
-                              child: Lottie.asset(
+                              )
+                            : Lottie.asset(
                                 widget.lottieAsset,
-                                height: lottieSize,
-                                width: lottieSize,
+                                height: visualSize,
+                                width: visualSize,
+                                fit: BoxFit.contain,
                                 repeat: true,
                                 errorBuilder: (context, error, stackTrace) {
                                   return Icon(
                                     widget.icon,
-                                    size: compact ? 50 : 60,
+                                    size: compact ? 48 : 58,
                                     color: widget.color,
                                   );
                                 },
                               ),
-                            ),
-                          ),
-
-                          // BOTTOM TITLE
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: titleSize,
-                                  height: 1.15,
-                                  fontWeight: FontWeight.w800,
-                                  color: isDark ? Colors.white : Colors.black87,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Tap to explore',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark
-                                      ? Colors.grey.shade400
-                                      : Colors.black54,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                      ),
+                    ),
+                    Text(
+                      widget.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontSize: titleSize,
+                        height: 1.18,
+                        fontWeight: FontWeight.w800,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Open',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.primary,
                       ),
                     ),
                   ],

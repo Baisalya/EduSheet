@@ -6,11 +6,21 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
+
 import '../../application/planner_insights_service.dart';
+import '../../application/portable_paper_import_service.dart';
+import '../../data/portable_paper_snapshot.dart';
 import '../../data/teaching_planner_backup_codec.dart';
 import '../../domain/models/teaching_planner_capabilities.dart';
 import '../../domain/models/teaching_resource.dart';
+import '../design/teaching_planner_design_system.dart';
+import '../layout/teaching_planner_breakpoints.dart';
+import '../navigation/teaching_planner_navigation.dart';
 import '../providers/teaching_planner_provider.dart';
+import '../widgets/teaching_planner_page_shell.dart';
+import '../widgets/teaching_planner_responsive_content.dart';
+import '../widgets/teaching_planner_shared_components.dart';
 
 class PlannerInsightsBackupScreen extends ConsumerWidget {
   const PlannerInsightsBackupScreen({super.key});
@@ -27,71 +37,51 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
       TeachingPlannerCapability.richExportAndBackup,
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Insights & backup'),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh planner data',
-            onPressed: () => ref.read(teachingPlannerProvider.notifier).load(),
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final horizontalPadding = (constraints.maxWidth * 0.04)
-                .clamp(12.0, 32.0)
-                .toDouble();
-            return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                horizontalPadding,
-                16,
-                horizontalPadding,
-                36,
+    return TeachingPlannerPageShell(
+      title: 'Insights & backup',
+      currentDestination: TeachingPlannerDestination.insightsBackup,
+      actions: [
+        IconButton(
+          tooltip: 'Refresh planner data',
+          onPressed: () => ref.read(teachingPlannerProvider.notifier).load(),
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+        const SizedBox(width: 4),
+      ],
+      body: TeachingPlannerResponsiveContent(
+        maxWidth: 1240,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _PageIntro(insights: insights),
+            const SizedBox(height: TeachingPlannerDesign.space16),
+            _ResponsiveMetricGrid(insights: insights),
+            const SizedBox(height: TeachingPlannerDesign.space16),
+            if (canUseAdvanced)
+              _AdvancedInsights(insights: insights)
+            else
+              const _LockedCard(
+                title: 'Advanced teaching insights',
+                message:
+                    'Completion and period-efficiency insights are available with Teaching Planner Pro.',
               ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1240),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _PageIntro(insights: insights),
-                      const SizedBox(height: 16),
-                      _ResponsiveMetricGrid(insights: insights),
-                      const SizedBox(height: 16),
-                      if (canUseAdvanced)
-                        _AdvancedInsights(insights: insights)
-                      else
-                        const _LockedCard(
-                          title: 'Advanced teaching insights',
-                          message:
-                              'Completion and period-efficiency insights are available with Teaching Planner Pro.',
-                        ),
-                      const SizedBox(height: 20),
-                      _SectionHeading(
-                        icon: Icons.devices_rounded,
-                        title: 'Move or protect your planner',
-                        subtitle:
-                            'One .eds file carries the complete Teaching Planner workspace between Android and Windows.',
-                      ),
-                      const SizedBox(height: 12),
-                      _BackupWorkspace(
-                        enabled: canBackup,
-                        insights: insights,
-                        onExport: () => _exportBackup(context, ref),
-                        onRestore: () => _restoreBackup(context, ref),
-                      ),
-                      const SizedBox(height: 16),
-                      const _SafetyGuide(),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+            const SizedBox(height: TeachingPlannerDesign.space20),
+            const TeachingPlannerSectionHeader(
+              icon: Icons.devices_rounded,
+              title: 'Move or protect your planner',
+              subtitle:
+                  'One .eds file carries the planner, attached files, and linked EduSheet papers between Android and Windows.',
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space12),
+            _BackupWorkspace(
+              enabled: canBackup,
+              insights: insights,
+              onExport: () => _exportBackup(context, ref),
+              onRestore: () => _restoreBackup(context, ref),
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space16),
+            const _SafetyGuide(),
+          ],
         ),
       ),
     );
@@ -103,7 +93,7 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
       final store = ref.read(teachingResourceFileStoreProvider);
       final resourceFiles = <String, List<int>>{};
       for (final resource in workspace.resources) {
-        if (resource.kind.name != 'file') continue;
+        if (resource.kind != TeachingResourceKind.file) continue;
         final relativePath = resource.localRelativePath;
         if (relativePath == null || !await store.exists(relativePath)) {
           throw FileSystemException(
@@ -112,9 +102,30 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
         }
         resourceFiles[resource.id] = await store.readBytes(relativePath);
       }
+
+      final paperRepository = ref.read(paperRepositoryProvider);
+      final savedPapers = await paperRepository.getAllPapers();
+      final papersById = {for (final paper in savedPapers) paper.id: paper};
+      final linkedPaperIds = workspace.resources
+          .where((resource) => resource.kind == TeachingResourceKind.paper)
+          .map((resource) => resource.linkedPaperId?.trim() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final paperSnapshots = <String, PortablePaperSnapshot>{};
+      for (final paperId in linkedPaperIds) {
+        final paper = papersById[paperId];
+        if (paper == null) {
+          throw FormatException(
+            'Linked EduSheet paper is missing on this device: $paperId',
+          );
+        }
+        paperSnapshots[paperId] = await PortablePaperSnapshot.capture(paper);
+      }
+
       final source = const TeachingPlannerBackupCodec().encode(
         workspace,
         resourceFiles: resourceFiles,
+        paperSnapshots: paperSnapshots,
       );
       final path = await FilePicker.platform.saveFile(
         dialogTitle: 'Save EduSheet planner file',
@@ -193,7 +204,23 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
                   classes: workspace.activeClassCount,
                   topics: workspace.activeTopicCount,
                   lessons: workspace.activeLessonPlans.length,
+                  papers: payload.paperSnapshots.length,
                 ),
+                if (payload.paperSnapshots.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.copy_all_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Linked papers will be restored too. If a different saved paper already exists on this device, EduSheet keeps it and restores the incoming one as a separate copy.',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 14),
                 const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,13 +254,24 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
 
       final store = ref.read(teachingResourceFileStoreProvider);
       final currentWorkspace = ref.read(teachingPlannerProvider).workspace;
+      final paperImportService = PortablePaperImportService(
+        paperRepository: ref.read(paperRepositoryProvider),
+      );
+      PortablePaperImportResult? paperImport;
       final rollbackBytes = <String, List<int>>{};
       final rollbackNames = <String, String>{};
       final newlyWritten = <String>[];
       try {
+        final importedPapers = await paperImportService.importSnapshots(
+          workspace: workspace,
+          snapshots: payload.paperSnapshots,
+        );
+        paperImport = importedPapers;
+        workspace = importedPapers.workspace;
+
         final restoredResources = <TeachingResource>[];
         for (final resource in workspace.resources) {
-          if (resource.kind.name != 'file') {
+          if (resource.kind != TeachingResourceKind.file) {
             restoredResources.add(resource);
             continue;
           }
@@ -282,10 +320,18 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
               await store.deleteResourceFiles(id);
             }
           }
+          await paperImportService.rollback(importedPapers);
+        } else {
+          ref.invalidate(savedPapersProvider);
         }
         if (!context.mounted) return;
+        final paperNote = saved && payload.paperSnapshots.isNotEmpty
+            ? ' ${importedPapers.restoredCount} paper(s) restored, '
+                  '${importedPapers.reusedCount} reused, '
+                  '${importedPapers.conflictCopyCount} conflict copy/copies created.'
+            : '';
         final message = saved
-            ? 'Planner opened successfully.'
+            ? 'Planner opened successfully.$paperNote'
             : ref.read(teachingPlannerProvider).errorMessage ??
                   'Planner could not be restored.';
         ScaffoldMessenger.of(
@@ -304,6 +350,9 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
           } else {
             await store.deleteResourceFiles(id);
           }
+        }
+        if (paperImport != null) {
+          await paperImportService.rollback(paperImport);
         }
         rethrow;
       }
@@ -326,69 +375,87 @@ class _PageIntro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.primaryContainer.withValues(alpha: 0.72),
-            theme.colorScheme.surface,
-          ],
-        ),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Wrap(
-        spacing: 20,
-        runSpacing: 16,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        alignment: WrapAlignment.spaceBetween,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 700),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.auto_graph_rounded,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Teaching overview',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'See what is moving, what needs attention, and keep your planner safe.',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return TeachingPlannerSurfaceCard(
+      tone: TeachingPlannerTone.primary,
+      tint: true,
+      borderRadius: TeachingPlannerDesign.radiusHero,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < TeachingPlannerBreakpoints.medium;
+          final copy = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const TeachingPlannerIconBadge(
+                    icon: Icons.auto_graph_rounded,
+                    size: 46,
+                    iconSize: 24,
                   ),
+                  const SizedBox(width: TeachingPlannerDesign.space12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Teaching overview',
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: colors.primary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: TeachingPlannerDesign.space4),
+                        Text(
+                          'See what is moving and keep your planner safe',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: colors.ink,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: TeachingPlannerDesign.space12),
+              Text(
+                insights.activeLessons == 0
+                    ? 'Create lessons in Lesson Planner and your teaching insights will appear here automatically.'
+                    : 'Everything below is calculated from your current syllabus, lessons and recorded teaching progress.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colors.inkMuted,
+                  height: 1.4,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  insights.activeLessons == 0
-                      ? 'Create lessons in Lesson Planner and your teaching insights will appear here automatically.'
-                      : 'Everything below is calculated from your current syllabus, lessons and recorded teaching progress.',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-          _AnimatedRing(
+              ),
+            ],
+          );
+          final ring = _AnimatedRing(
             value: insights.lessonCompletionRate,
             label: 'Lessons',
-            diameter: 112,
-          ),
-        ],
+            diameter: compact ? 96 : 112,
+          );
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                copy,
+                const SizedBox(height: TeachingPlannerDesign.space16),
+                Align(alignment: Alignment.center, child: ring),
+              ],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(child: copy),
+              const SizedBox(width: TeachingPlannerDesign.space20),
+              ring,
+            ],
+          );
+        },
       ),
     );
   }
@@ -424,7 +491,7 @@ class _ResponsiveMetricGrid extends StatelessWidget {
     ];
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 900
+        final columns = constraints.maxWidth >= TeachingPlannerBreakpoints.twoPane
             ? 4
             : constraints.maxWidth >= 520
             ? 2
@@ -550,7 +617,7 @@ class _BackupWorkspace extends StatelessWidget {
           eyebrow: 'STEP 1 · BACK UP OR MOVE',
           title: 'Save this planner',
           description:
-              'Create one portable .eds file with the complete Teaching Planner. Keep it as a backup or send it to your other device.',
+              'Create one portable .eds file with the planner, attached files and linked EduSheet papers. Keep it as a backup or send it to your other device.',
           buttonLabel: 'Save .eds file',
           enabled: enabled,
           onPressed: onExport,
@@ -616,52 +683,42 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: secondary
-            ? scheme.surfaceContainerLow
-            : scheme.primaryContainer.withValues(alpha: 0.32),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: secondary
-              ? scheme.outlineVariant
-              : scheme.primary.withValues(alpha: 0.22),
-        ),
-      ),
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    final tone = secondary ? TeachingPlannerTone.teal : TeachingPlannerTone.primary;
+    return TeachingPlannerSurfaceCard(
+      tone: tone,
+      tint: !secondary,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: scheme.primary.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: scheme.primary),
-          ),
-          const SizedBox(height: 16),
+          TeachingPlannerIconBadge(icon: icon, tone: tone, size: 46, iconSize: 23),
+          const SizedBox(height: TeachingPlannerDesign.space14),
           Text(
             eyebrow,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: scheme.primary,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: tone.foreground(colors),
               fontWeight: FontWeight.w900,
-              letterSpacing: 0.7,
+              letterSpacing: .7,
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: TeachingPlannerDesign.space4),
           Text(
             title,
-            style: theme.textTheme.titleLarge?.copyWith(
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: colors.ink,
               fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(description, style: theme.textTheme.bodyMedium),
-          const SizedBox(height: 18),
+          const SizedBox(height: TeachingPlannerDesign.space8),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colors.inkMuted,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space18),
           SizedBox(
             width: double.infinity,
             child: secondary
@@ -676,24 +733,23 @@ class _ActionCard extends StatelessWidget {
                     label: Text(buttonLabel),
                   ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: TeachingPlannerDesign.space10),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                enabled
-                    ? Icons.verified_user_outlined
-                    : Icons.lock_outline_rounded,
+                enabled ? Icons.verified_user_outlined : Icons.lock_outline_rounded,
                 size: 16,
-                color: scheme.onSurfaceVariant,
+                color: colors.inkMuted,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: TeachingPlannerDesign.space6),
               Expanded(
                 child: Text(
                   enabled
                       ? footer
                       : 'Portable backup is available with Teaching Planner Pro.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.inkMuted,
                   ),
                 ),
               ),
@@ -1120,10 +1176,12 @@ class _RestoreSummary extends StatelessWidget {
     required this.classes,
     required this.topics,
     required this.lessons,
+    required this.papers,
   });
   final int classes;
   final int topics;
   final int lessons;
+  final int papers;
 
   @override
   Widget build(BuildContext context) => Wrap(
@@ -1142,6 +1200,11 @@ class _RestoreSummary extends StatelessWidget {
         avatar: const Icon(Icons.menu_book_outlined, size: 17),
         label: Text('$lessons lessons'),
       ),
+      if (papers > 0)
+        Chip(
+          avatar: const Icon(Icons.description_outlined, size: 17),
+          label: Text('$papers linked papers'),
+        ),
     ],
   );
 }
@@ -1157,27 +1220,10 @@ class _SectionHeading extends StatelessWidget {
   final String subtitle;
 
   @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Icon(icon, color: Theme.of(context).colorScheme.primary),
-      const SizedBox(width: 10),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 2),
-            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-          ],
-        ),
-      ),
-    ],
+  Widget build(BuildContext context) => TeachingPlannerSectionHeader(
+    icon: icon,
+    title: title,
+    subtitle: subtitle,
   );
 }
 
@@ -1186,13 +1232,8 @@ class _SurfaceCard extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-    ),
+  Widget build(BuildContext context) => TeachingPlannerSurfaceCard(
+    padding: const EdgeInsets.all(TeachingPlannerDesign.space18),
     child: child,
   );
 }
@@ -1203,29 +1244,43 @@ class _LockedCard extends StatelessWidget {
   final String message;
 
   @override
-  Widget build(BuildContext context) => _SurfaceCard(
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Icon(Icons.lock_outline_rounded),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(message),
-            ],
+  Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return TeachingPlannerSurfaceCard(
+      tone: TeachingPlannerTone.purple,
+      tint: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TeachingPlannerIconBadge(
+            icon: Icons.lock_outline_rounded,
+            tone: TeachingPlannerTone.purple,
           ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(width: TeachingPlannerDesign.space12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: TeachingPlannerDesign.space4),
+                Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.inkMuted,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

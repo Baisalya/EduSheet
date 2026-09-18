@@ -11,6 +11,7 @@ void main() {
   for (final size in const [
     Size(360, 800),
     Size(412, 915),
+    Size(600, 900),
     Size(900, 700),
     Size(1366, 768),
   ]) {
@@ -35,11 +36,51 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Teaching Calendar'), findsOneWidget);
+        expect(find.text('Weekly Planner'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('planner-week-add-lesson')),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
       },
     );
   }
+
+  testWidgets(
+    'phase 3 weekly planner keeps reference layout without invented controls',
+    (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            teachingPlannerRepositoryProvider.overrideWithValue(
+              _MemoryRepository(),
+            ),
+            teachingPlannerCapabilitiesProvider.overrideWithValue(
+              TeachingPlannerCapabilities.pro(),
+            ),
+          ],
+          child: const MaterialApp(home: TeachingCalendarScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('planner-week-progress-card')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('planner-day-agenda')), findsOneWidget);
+      expect(find.text("This Week's Progress"), findsOneWidget);
+      expect(find.text('Generate Plan'), findsNothing);
+      expect(find.text('All Subjects'), findsNothing);
+      expect(find.text('All Priorities'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _MemoryRepository implements TeachingPlannerRepository {

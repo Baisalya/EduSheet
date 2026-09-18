@@ -10,6 +10,7 @@ void main() {
     );
 
     expect(candidates, contains(r'C:\Windows\Fonts\Nirmala.ttf'));
+    expect(candidates, contains(r'C:\Windows\Fonts\NirmalaS.ttf'));
     expect(candidates, contains(r'C:\Windows\Fonts\segoeui.ttf'));
     expect(candidates, contains(r'C:\Windows\Fonts\arial.ttf'));
     expect(candidates, contains(r'C:\Windows\Fonts\mangal.ttf'));
