@@ -2,9 +2,6 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Required by store billing and release update checks. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission
         android:name="android.permission.READ_MEDIA_IMAGES"
         tools:node="remove" />
@@ -19,8 +16,10 @@
     <application
         android:label="EduSheet"
         android:name="${applicationName}"
-        android:requestLegacyExternalStorage="true"
         android:icon="@mipmap/ic_launcher">
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${adMobAppId}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -97,6 +96,36 @@
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
                 <data android:mimeType="application/vnd.oasis.opendocument.presentation" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <!-- EduSheet portable packages. Custom MIME matching covers files
+                 exported by aware providers; extension matching covers common
+                 Files/Downloads providers without claiming every binary file. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/vnd.baishalya.edusheet" />
+                <data android:mimeType="application/vnd.baishalya.edusheet-teaching-pack" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:pathPattern=".*\\.eds" />
+                <data android:pathPattern=".*\\.EDS" />
+                <data android:pathPattern=".*\\.edtp" />
+                <data android:pathPattern=".*\\.EDTP" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/vnd.baishalya.edusheet" />
+                <data android:mimeType="application/vnd.baishalya.edusheet-teaching-pack" />
             </intent-filter>
         </activity>
         <activity

@@ -41,6 +41,8 @@ class WordPaperEditor extends StatefulWidget {
   final Paper paper;
   final bool compact;
   final PaperTemplate template;
+  final bool canAddBranding;
+  final Future<void> Function() onPremiumBrandingRequired;
   final ValueChanged<String> onTitleChanged;
   final ValueChanged<String> onSchoolNameChanged;
   final ValueChanged<String> onInstructionChanged;
@@ -73,6 +75,8 @@ class WordPaperEditor extends StatefulWidget {
     required this.paper,
     required this.compact,
     required this.template,
+    required this.canAddBranding,
+    required this.onPremiumBrandingRequired,
     required this.onTitleChanged,
     required this.onSchoolNameChanged,
     required this.onInstructionChanged,
@@ -367,9 +371,9 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
         .where((item) => item.id == questionId)
         .firstOrNull;
     if (currentQuestion == null) return;
-    final currentObject = WordShapeService.shapesOf(currentQuestion)
-        .where((item) => item.id == object.id)
-        .firstOrNull;
+    final currentObject = WordShapeService.shapesOf(
+      currentQuestion,
+    ).where((item) => item.id == object.id).firstOrNull;
     if (currentObject == null) return;
     _replaceQuestion(
       sectionId,
@@ -514,6 +518,11 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
       ),
     );
     if (action == null || !mounted) return;
+    if (!widget.canAddBranding &&
+        (action == _LogoAction.choose || action == _LogoAction.manageSlots)) {
+      await widget.onPremiumBrandingRequired();
+      return;
+    }
     if (action == _LogoAction.remove) {
       widget.onLogoChanged(logoIndex, '');
       return;
@@ -546,10 +555,10 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
     final pagePadding = pageMetrics.pagePadding;
     final pageMinHeight = pageMetrics.pageMinHeight;
     final resolvedColumnCount = pageMetrics.resolvedColumnCount;
-    final columnGap = (widget.paper.pageLayout.columnSpacingPoints *
-            pageMetrics.pageScale)
-        .clamp(6.0, 96.0)
-        .toDouble();
+    final columnGap =
+        (widget.paper.pageLayout.columnSpacingPoints * pageMetrics.pageScale)
+            .clamp(6.0, 96.0)
+            .toDouble();
     return ColoredBox(
       color: theme.colorScheme.surfaceContainerLow,
       child: Column(
@@ -625,124 +634,127 @@ class _WordPaperEditorState extends State<WordPaperEditor> {
                             child: Padding(
                               padding: pagePadding,
                               child: Theme(
-                              data: ThemeData.light(useMaterial3: true),
-                              child: DefaultTextStyle(
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontSize: widget.template.questionFontSize,
-                                  height: widget.paper.pageLayout.lineSpacing,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    _buildHeader(),
-                                    const SizedBox(height: 10),
-                                    if (widget.paper.instruction
-                                        .trim()
-                                        .isNotEmpty) ...[
-                                      const Divider(height: 28),
-                                      _InlineDocumentField(
-                                        key: const Key(
-                                          'word-paper-instruction',
+                                data: ThemeData.light(useMaterial3: true),
+                                child: DefaultTextStyle(
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontSize: widget.template.questionFontSize,
+                                    height: widget.paper.pageLayout.lineSpacing,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _buildHeader(),
+                                      const SizedBox(height: 10),
+                                      if (widget.paper.instruction
+                                          .trim()
+                                          .isNotEmpty) ...[
+                                        const Divider(height: 28),
+                                        _InlineDocumentField(
+                                          key: const Key(
+                                            'word-paper-instruction',
+                                          ),
+                                          initialValue:
+                                              widget.paper.instruction,
+                                          hintText: 'General instructions',
+                                          minLines: 1,
+                                          maxLines: 6,
+                                          textAlign: widget
+                                              .paper
+                                              .instructionAlignment
+                                              .textAlign,
+                                          textStyle: const TextStyle(
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                          onChanged:
+                                              widget.onInstructionChanged,
+                                          onFocusChanged: (focused) {
+                                            if (focused) {
+                                              _activateDocumentFormat(
+                                                _WordDocumentFormatTarget
+                                                    .paperInstruction,
+                                              );
+                                            }
+                                          },
                                         ),
-                                        initialValue: widget.paper.instruction,
-                                        hintText: 'General instructions',
-                                        minLines: 1,
-                                        maxLines: 6,
-                                        textAlign: widget
-                                            .paper
-                                            .instructionAlignment
-                                            .textAlign,
-                                        textStyle: const TextStyle(
-                                          fontStyle: FontStyle.italic,
+                                        const Divider(height: 30),
+                                      ] else if (widget
+                                          .paper
+                                          .sections
+                                          .isNotEmpty) ...[
+                                        _InlineDocumentField(
+                                          key: const Key(
+                                            'word-paper-instruction',
+                                          ),
+                                          initialValue: '',
+                                          hintText: 'Add general instructions',
+                                          minLines: 1,
+                                          maxLines: 6,
+                                          textAlign: widget
+                                              .paper
+                                              .instructionAlignment
+                                              .textAlign,
+                                          textStyle: const TextStyle(
+                                            fontStyle: FontStyle.italic,
+                                          ),
+                                          onChanged:
+                                              widget.onInstructionChanged,
+                                          onFocusChanged: (focused) {
+                                            if (focused) {
+                                              _activateDocumentFormat(
+                                                _WordDocumentFormatTarget
+                                                    .paperInstruction,
+                                              );
+                                            }
+                                          },
                                         ),
-                                        onChanged: widget.onInstructionChanged,
-                                        onFocusChanged: (focused) {
-                                          if (focused) {
-                                            _activateDocumentFormat(
-                                              _WordDocumentFormatTarget
-                                                  .paperInstruction,
-                                            );
-                                          }
-                                        },
-                                      ),
-                                      const Divider(height: 30),
-                                    ] else if (widget
-                                        .paper
-                                        .sections
-                                        .isNotEmpty) ...[
-                                      _InlineDocumentField(
-                                        key: const Key(
-                                          'word-paper-instruction',
+                                        const Divider(height: 30),
+                                      ],
+                                      for (
+                                        var sectionIndex = 0;
+                                        sectionIndex <
+                                            widget.paper.sections.length;
+                                        sectionIndex++
+                                      ) ...[
+                                        _buildSection(
+                                          widget.paper.sections[sectionIndex],
+                                          columnCount: resolvedColumnCount,
+                                          columnGap: columnGap,
                                         ),
-                                        initialValue: '',
-                                        hintText: 'Add general instructions',
-                                        minLines: 1,
-                                        maxLines: 6,
-                                        textAlign: widget
-                                            .paper
-                                            .instructionAlignment
-                                            .textAlign,
-                                        textStyle: const TextStyle(
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                        onChanged: widget.onInstructionChanged,
-                                        onFocusChanged: (focused) {
-                                          if (focused) {
-                                            _activateDocumentFormat(
-                                              _WordDocumentFormatTarget
-                                                  .paperInstruction,
-                                            );
-                                          }
-                                        },
-                                      ),
-                                      const Divider(height: 30),
-                                    ],
-                                    for (
-                                      var sectionIndex = 0;
-                                      sectionIndex <
-                                          widget.paper.sections.length;
-                                      sectionIndex++
-                                    ) ...[
-                                      _buildSection(
-                                        widget.paper.sections[sectionIndex],
-                                        columnCount: resolvedColumnCount,
-                                        columnGap: columnGap,
-                                      ),
-                                      if (sectionIndex !=
-                                          widget.paper.sections.length - 1)
-                                        SizedBox(
-                                          height:
-                                              14 +
-                                              widget
-                                                  .paper
-                                                  .pageLayout
-                                                  .paragraphSpacingPoints,
-                                        ),
-                                    ],
-                                    if (widget.paper.footerText
-                                            .trim()
-                                            .isNotEmpty ||
-                                        (widget.paper.showPageNumbers &&
-                                            widget
+                                        if (sectionIndex !=
+                                            widget.paper.sections.length - 1)
+                                          SizedBox(
+                                            height:
+                                                14 +
+                                                widget
                                                     .paper
                                                     .pageLayout
-                                                    .pageNumberPosition !=
-                                                PaperPageNumberPosition
-                                                    .headerRight)) ...[
-                                      const SizedBox(height: 18),
-                                      const Divider(height: 16),
-                                      _WordFooterPreview(paper: widget.paper),
+                                                    .paragraphSpacingPoints,
+                                          ),
+                                      ],
+                                      if (widget.paper.footerText
+                                              .trim()
+                                              .isNotEmpty ||
+                                          (widget.paper.showPageNumbers &&
+                                              widget
+                                                      .paper
+                                                      .pageLayout
+                                                      .pageNumberPosition !=
+                                                  PaperPageNumberPosition
+                                                      .headerRight)) ...[
+                                        const SizedBox(height: 18),
+                                        const Divider(height: 16),
+                                        _WordFooterPreview(paper: widget.paper),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
                       if (!widget.compact) ...[
                         const SizedBox(height: 14),
                         Align(
@@ -1259,7 +1271,8 @@ class _WordEditorRibbon extends StatelessWidget {
                                     onInsertImage: onInsertImage,
                                     onInsertShape: onInsertShape,
                                     onInsertTextBox: onInsertTextBox,
-                                    onInsertFloatingGeometry: onInsertFloatingGeometry,
+                                    onInsertFloatingGeometry:
+                                        onInsertFloatingGeometry,
                                     onInsertPageBreak: onInsertPageBreak,
                                     onImportWord: onImportWord,
                                     onPageLayout: onPageLayout,
@@ -2066,173 +2079,174 @@ class _WordQuestionBlock extends StatelessWidget {
                   onEditGeometry: onEditGeometry,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (question.instructions.trim().isNotEmpty) ...[
-                      QuestionMathSurfaceView(
-                        question: question,
-                        surfaceKey: QuestionMathSurfaceKey.instructions,
-                        fallbackText: question.instructions.trim(),
-                        textAlign: question.instructionAlignment.textAlign,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                    ],
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: WordRichTextEditor(
-                            question: question,
-                            compact: compact,
-                            autofocus: autofocus,
-                            session: session,
-                            onActivated: onActivated,
-                            onChanged: onChanged,
+                    children: [
+                      if (question.instructions.trim().isNotEmpty) ...[
+                        QuestionMathSurfaceView(
+                          question: question,
+                          surfaceKey: QuestionMathSurfaceKey.instructions,
+                          fallbackText: question.instructions.trim(),
+                          textAlign: question.instructionAlignment.textAlign,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (!isWordBlock &&
-                            section.questionMarksPlacement ==
-                                QuestionMarksPlacement.inline) ...[
-                          const SizedBox(width: 6),
-                          _InlineMarksEditor(
-                            marks: question.marks,
-                            onChanged: (marks) =>
-                                onChanged(question.copyWith(marks: marks)),
+                        const SizedBox(height: 5),
+                      ],
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: WordRichTextEditor(
+                              question: question,
+                              compact: compact,
+                              autofocus: autofocus,
+                              session: session,
+                              onActivated: onActivated,
+                              onChanged: onChanged,
+                            ),
+                          ),
+                          if (!isWordBlock &&
+                              section.questionMarksPlacement ==
+                                  QuestionMarksPlacement.inline) ...[
+                            const SizedBox(width: 6),
+                            _InlineMarksEditor(
+                              marks: question.marks,
+                              onChanged: (marks) =>
+                                  onChanged(question.copyWith(marks: marks)),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (advanced.hasStimulus) ...[
+                        const SizedBox(height: 7),
+                        if (advanced.stimulus!.title.trim().isNotEmpty)
+                          QuestionMathSurfaceView(
+                            question: question,
+                            surfaceKey: QuestionMathSurfaceKey.stimulusTitle,
+                            fallbackText: advanced.stimulus!.title.trim(),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        QuestionMathSurfaceView(
+                          question: question,
+                          surfaceKey: QuestionMathSurfaceKey.stimulusText,
+                          fallbackText: advanced.stimulus!.text.trim(),
+                          style: TextStyle(
+                            fontStyle:
+                                advanced.stimulus!.kind ==
+                                    QuestionStimulusKind.poem
+                                ? FontStyle.italic
+                                : FontStyle.normal,
+                          ),
+                        ),
+                      ],
+                      if (question.options.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        for (var i = 0; i < question.options.length; i++)
+                          _InlineOptionEditor(
+                            question: question,
+                            label: '${String.fromCharCode(65 + i)})',
+                            option: question.options[i],
+                            onChanged: (value) {
+                              final options = [...question.options];
+                              options[i] = options[i].copyWith(text: value);
+                              onChanged(question.copyWith(options: options));
+                            },
+                          ),
+                      ],
+                      if (advanced.hasWordBank) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            const Text(
+                              'Word bank:',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            for (final entry
+                                in advanced.wordBank.asMap().entries)
+                              QuestionMathSurfaceView(
+                                question: question,
+                                surfaceKey: QuestionMathSurfaceKey.wordBank(
+                                  entry.key,
+                                ),
+                                fallbackText: entry.value,
+                              ),
+                          ],
+                        ),
+                      ],
+                      if (question.tableData != null) ...[
+                        const SizedBox(height: 8),
+                        _WordQuestionTable(
+                          question: question,
+                          table: question.tableData!,
+                        ),
+                        if (isWordBlock)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: onEditTable,
+                              icon: const Icon(Icons.edit_outlined, size: 16),
+                              label: const Text('Edit table'),
+                            ),
+                          ),
+                      ],
+                      if (question.attachments.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        for (final attachment in question.attachments)
+                          _WordAttachmentPreview(
+                            question: question,
+                            attachment: attachment,
+                            onEdit: () => onEditImage(attachment),
+                            onRemove: () => onRemoveImage(attachment),
+                          ),
+                      ],
+                      if (question.subQuestions.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        for (var i = 0; i < question.subQuestions.length; i++)
+                          _NestedQuestionLine(
+                            label: '(${_alphaLabel(i)})',
+                            question: question.subQuestions[i],
+                            section: section,
+                          ),
+                      ],
+                      if (question.internalChoices.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        for (
+                          var i = 0;
+                          i < question.internalChoices.length;
+                          i++
+                        ) ...[
+                          if (i > 0)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 5),
+                              child: Text(
+                                'OR',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          _NestedQuestionLine(
+                            label: '',
+                            question: question.internalChoices[i],
+                            section: section,
                           ),
                         ],
                       ],
-                    ),
-                    if (advanced.hasStimulus) ...[
-                      const SizedBox(height: 7),
-                      if (advanced.stimulus!.title.trim().isNotEmpty)
-                        QuestionMathSurfaceView(
-                          question: question,
-                          surfaceKey: QuestionMathSurfaceKey.stimulusTitle,
-                          fallbackText: advanced.stimulus!.title.trim(),
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      QuestionMathSurfaceView(
-                        question: question,
-                        surfaceKey: QuestionMathSurfaceKey.stimulusText,
-                        fallbackText: advanced.stimulus!.text.trim(),
-                        style: TextStyle(
-                          fontStyle:
-                              advanced.stimulus!.kind ==
-                                  QuestionStimulusKind.poem
-                              ? FontStyle.italic
-                              : FontStyle.normal,
-                        ),
-                      ),
-                    ],
-                    if (question.options.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      for (var i = 0; i < question.options.length; i++)
-                        _InlineOptionEditor(
-                          question: question,
-                          label: '${String.fromCharCode(65 + i)})',
-                          option: question.options[i],
-                          onChanged: (value) {
-                            final options = [...question.options];
-                            options[i] = options[i].copyWith(text: value);
-                            onChanged(question.copyWith(options: options));
-                          },
-                        ),
-                    ],
-                    if (advanced.hasWordBank) ...[
-                      const SizedBox(height: 6),
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          const Text(
-                            'Word bank:',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          for (final entry in advanced.wordBank.asMap().entries)
-                            QuestionMathSurfaceView(
-                              question: question,
-                              surfaceKey: QuestionMathSurfaceKey.wordBank(
-                                entry.key,
-                              ),
-                              fallbackText: entry.value,
-                            ),
-                        ],
-                      ),
-                    ],
-                    if (question.tableData != null) ...[
-                      const SizedBox(height: 8),
-                      _WordQuestionTable(
-                        question: question,
-                        table: question.tableData!,
-                      ),
-                      if (isWordBlock)
+                      if (!isWordBlock)
                         Align(
                           alignment: Alignment.centerLeft,
                           child: TextButton.icon(
-                            onPressed: onEditTable,
-                            icon: const Icon(Icons.edit_outlined, size: 16),
-                            label: const Text('Edit table'),
-                          ),
-                        ),
-                    ],
-                    if (question.attachments.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      for (final attachment in question.attachments)
-                        _WordAttachmentPreview(
-                          question: question,
-                          attachment: attachment,
-                          onEdit: () => onEditImage(attachment),
-                          onRemove: () => onRemoveImage(attachment),
-                        ),
-                    ],
-                    if (question.subQuestions.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      for (var i = 0; i < question.subQuestions.length; i++)
-                        _NestedQuestionLine(
-                          label: '(${_alphaLabel(i)})',
-                          question: question.subQuestions[i],
-                          section: section,
-                        ),
-                    ],
-                    if (question.internalChoices.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      for (
-                        var i = 0;
-                        i < question.internalChoices.length;
-                        i++
-                      ) ...[
-                        if (i > 0)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 5),
-                            child: Text(
-                              'OR',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontWeight: FontWeight.w800),
+                            onPressed: onOpenFullEditor,
+                            icon: const Icon(Icons.tune_rounded, size: 16),
+                            label: const Text(
+                              'Options, marks & advanced question settings',
                             ),
                           ),
-                        _NestedQuestionLine(
-                          label: '',
-                          question: question.internalChoices[i],
-                          section: section,
                         ),
-                      ],
-                    ],
-                    if (!isWordBlock)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: onOpenFullEditor,
-                          icon: const Icon(Icons.tune_rounded, size: 16),
-                          label: const Text(
-                            'Options, marks & advanced question settings',
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),

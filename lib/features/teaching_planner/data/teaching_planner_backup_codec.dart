@@ -1,5 +1,10 @@
 import 'dart:convert';
 
+import 'package:edusheet/shared/portable/eds_unified_container.dart';
+import 'package:uuid/uuid.dart';
+
+import '../domain/models/curriculum_merge_state.dart';
+import '../domain/models/offline_sync_state.dart';
 import '../domain/models/teaching_planner_workspace.dart';
 import '../domain/models/teaching_resource.dart';
 import 'portable_paper_snapshot.dart';
@@ -9,32 +14,41 @@ class TeachingPlannerBackupPayload {
   final TeachingPlannerWorkspace workspace;
   final Map<String, List<int>> resourceFiles;
   final Map<String, PortablePaperSnapshot> paperSnapshots;
+  final CurriculumMergeState mergeState;
+  final OfflineSyncState syncState;
   final int version;
 
-  const TeachingPlannerBackupPayload({
+  TeachingPlannerBackupPayload({
     required this.workspace,
     this.resourceFiles = const {},
     this.paperSnapshots = const {},
+    CurriculumMergeState? mergeState,
+    OfflineSyncState? syncState,
     required this.version,
-  });
+  }) : mergeState = mergeState ?? CurriculumMergeState.empty(),
+       syncState = syncState ?? OfflineSyncState.uninitialized();
 }
 
 /// Codec for portable EduSheet Teaching Planner files.
 ///
-/// v3 embeds linked native EduSheet papers and every local file referenced by
-/// those papers, in addition to the planner attachment bytes introduced in v2.
-/// v2 and v1 remain readable for backward compatibility.
+/// v4 is wrapped in the universal EduSheet container and identifies itself as
+/// `plannerBackup`. v3 embeds linked native papers and their binary assets; v2
+/// embeds planner file resources. Legacy v1-v3 files remain readable.
 class TeachingPlannerBackupCodec {
   const TeachingPlannerBackupCodec({
     TeachingPlannerDocumentCodec documentCodec =
         const TeachingPlannerDocumentCodec(),
-  }) : _documentCodec = documentCodec;
+    EdsUnifiedContainer container = const EdsUnifiedContainer(),
+  }) : _documentCodec = documentCodec,
+       _container = container;
 
   final TeachingPlannerDocumentCodec _documentCodec;
+  final EdsUnifiedContainer _container;
 
   static const String format = 'edusheet.teaching-planner-backup';
-  static const int version = 3;
-  static const String fileExtension = 'eds';
+  static const int version = 4;
+  static const int packageSchemaVersion = 1;
+  static const String fileExtension = EdsUnifiedContainer.fileExtension;
   static const String magicHeader = 'EDUSHEET-PLANNER/1';
 
   String encode(
@@ -42,11 +56,13 @@ class TeachingPlannerBackupCodec {
     DateTime? exportedAt,
     Map<String, List<int>> resourceFiles = const {},
     Map<String, PortablePaperSnapshot> paperSnapshots = const {},
+    CurriculumMergeState? mergeState,
+    OfflineSyncState? syncState,
     int targetVersion = version,
   }) {
-    if (targetVersion != 2 && targetVersion != 3) {
+    if (targetVersion != 2 && targetVersion != 3 && targetVersion != 4) {
       throw const FormatException(
-        'EduSheet can export only portable planner versions 2 or 3.',
+        'EduSheet can export only portable planner versions 2, 3 or 4.',
       );
     }
     _validateEmbeddedFileSet(workspace, resourceFiles.keys.toSet());
@@ -58,22 +74,59 @@ class TeachingPlannerBackupCodec {
       );
     }
 
-    final payload = {
+    final exportTime = exportedAt ?? DateTime.now();
+    final payload = <String, dynamic>{
       'format': format,
       'version': targetVersion,
-      'exportedAt': (exportedAt ?? DateTime.now()).toUtc().toIso8601String(),
-      'document': _documentCodec.encode(workspace, updatedAt: exportedAt),
+      'exportedAt': exportTime.toUtc().toIso8601String(),
+      'document': targetVersion == 4
+          ? _documentCodec.encodeStored(
+              TeachingPlannerStoredDocument(
+                workspace: workspace,
+                mergeState: mergeState ?? CurriculumMergeState.empty(),
+                syncState: syncState ?? OfflineSyncState.uninitialized(),
+                localRevision: 1,
+              ),
+              updatedAt: exportedAt,
+            )
+          : _documentCodec.encode(workspace, updatedAt: exportedAt),
       if (resourceFiles.isNotEmpty)
-        'resourceFiles': {
+        'resourceFiles': <String, String>{
           for (final entry in resourceFiles.entries)
             entry.key: base64Encode(entry.value),
         },
       if (targetVersion >= 3 && paperSnapshots.isNotEmpty)
-        'paperSnapshots': {
+        'paperSnapshots': <String, dynamic>{
           for (final entry in paperSnapshots.entries)
             entry.key: entry.value.toJson(),
         },
     };
+
+    if (targetVersion == 4) {
+      final manifest = EdsPackageManifest(
+        packageId: const Uuid().v4(),
+        contentType: EdsContentType.plannerBackup,
+        schemaVersion: packageSchemaVersion,
+        entityId: 'teaching-planner-workspace',
+        originId: 'teaching-planner-workspace',
+        revision: exportTime
+            .toUtc()
+            .millisecondsSinceEpoch
+            .clamp(1, 1 << 62)
+            .toInt(),
+        title: 'EduSheet Teaching Planner',
+        exportedAt: exportTime,
+        metadata: <String, dynamic>{
+          'classCount': workspace.activeClassCount,
+          'topicCount': workspace.activeTopicCount,
+          'lessonCount': workspace.activeLessonPlans.length,
+          'paperCount': paperSnapshots.length,
+          'attachmentCount': resourceFiles.length,
+        },
+      );
+      return _container.encode(manifest: manifest, payload: payload);
+    }
+
     final json = const JsonEncoder.withIndent('  ').convert(payload);
     return '$magicHeader\n$json';
   }
@@ -82,14 +135,7 @@ class TeachingPlannerBackupCodec {
       decodePayload(source).workspace;
 
   TeachingPlannerBackupPayload decodePayload(String source) {
-    final payloadSource = _unwrapPortableContainer(source);
-    final decoded = jsonDecode(payloadSource);
-    if (decoded is! Map) {
-      throw const FormatException(
-        'Teaching Planner backup must be a JSON object.',
-      );
-    }
-    final json = Map<String, dynamic>.from(decoded);
+    final json = _decodeRoot(source);
     if (json['format'] != format) {
       throw const FormatException(
         'This file is not an EduSheet Teaching Planner backup.',
@@ -101,9 +147,16 @@ class TeachingPlannerBackupCodec {
         'Unsupported Teaching Planner backup version.',
       );
     }
-    final workspace = _documentCodec.decode(
+    final storedDocument = _documentCodec.decodeStored(
       _normalizeDocument(json['document']),
     );
+    final workspace = storedDocument.workspace;
+    final mergeState = fileVersion >= 4
+        ? storedDocument.mergeState
+        : CurriculumMergeState.empty();
+    final syncState = fileVersion >= 4
+        ? storedDocument.syncState
+        : OfflineSyncState.uninitialized();
     final resourceFiles = <String, List<int>>{};
     if (fileVersion >= 2 && json['resourceFiles'] != null) {
       final raw = json['resourceFiles'];
@@ -148,10 +201,39 @@ class TeachingPlannerBackupCodec {
     return TeachingPlannerBackupPayload(
       workspace: workspace,
       resourceFiles: Map<String, List<int>>.unmodifiable(resourceFiles),
-      paperSnapshots:
-          Map<String, PortablePaperSnapshot>.unmodifiable(paperSnapshots),
+      paperSnapshots: Map<String, PortablePaperSnapshot>.unmodifiable(
+        paperSnapshots,
+      ),
+      mergeState: mergeState,
+      syncState: syncState,
       version: fileVersion,
     );
+  }
+
+  Map<String, dynamic> _decodeRoot(String source) {
+    if (_container.looksLikeUnified(source)) {
+      final package = _container.decode(source);
+      if (package.manifest.contentType != EdsContentType.plannerBackup) {
+        throw FormatException(
+          'This EduSheet file contains ${package.manifest.contentType.name}, not a Teaching Planner backup.',
+        );
+      }
+      if (package.manifest.schemaVersion != packageSchemaVersion) {
+        throw const FormatException(
+          'Unsupported EduSheet Teaching Planner package schema version.',
+        );
+      }
+      return package.payload;
+    }
+
+    final payloadSource = _unwrapLegacyContainer(source);
+    final decoded = jsonDecode(payloadSource);
+    if (decoded is! Map) {
+      throw const FormatException(
+        'Teaching Planner backup must be a JSON object.',
+      );
+    }
+    return Map<String, dynamic>.from(decoded);
   }
 
   static void _validateEmbeddedFileSet(
@@ -245,7 +327,7 @@ class TeachingPlannerBackupCodec {
     };
   }
 
-  String _unwrapPortableContainer(String source) {
+  String _unwrapLegacyContainer(String source) {
     final normalized = source.startsWith('\uFEFF')
         ? source.substring(1)
         : source;

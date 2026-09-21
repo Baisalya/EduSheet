@@ -40,7 +40,8 @@ class WordPaginationService {
       }
       for (final question in section.questions) {
         final kind = WordContentBlockService.kindOf(question);
-        if (question.isWordContentBlock && kind == WordContentBlockKind.pageBreak) {
+        if (question.isWordContentBlock &&
+            kind == WordContentBlockKind.pageBreak) {
           pageIndex += 1;
           hasContentOnPage = false;
           continue;

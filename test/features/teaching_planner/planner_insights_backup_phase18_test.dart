@@ -15,9 +15,9 @@ void main() {
     );
     final restored = const TeachingPlannerBackupCodec().decode(text);
     expect(restored.isEmpty, isTrue);
-    expect(text, startsWith('${TeachingPlannerBackupCodec.magicHeader}\n'));
+    expect(text, startsWith('EDUSHEET/4\n'));
     expect(text, contains('edusheet.teaching-planner-backup'));
-    expect(text, contains('"schemaVersion": 8'));
+    expect(text, contains('"schemaVersion": 10'));
   });
 
   test('backup rejects unrelated json before restore', () {

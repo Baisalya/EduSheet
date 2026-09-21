@@ -8,15 +8,12 @@ class PortablePaperAsset {
   final String fileName;
   final List<int> bytes;
 
-  const PortablePaperAsset({
-    required this.fileName,
-    required this.bytes,
-  });
+  const PortablePaperAsset({required this.fileName, required this.bytes});
 
   Map<String, dynamic> toJson() => {
-        'fileName': fileName,
-        'bytes': base64Encode(bytes),
-      };
+    'fileName': fileName,
+    'bytes': base64Encode(bytes),
+  };
 
   factory PortablePaperAsset.fromJson(Map<String, dynamic> json) {
     final fileName = json['fileName']?.toString().trim() ?? '';
@@ -47,17 +44,19 @@ class PortablePaperSnapshot {
   }
 
   Map<String, dynamic> toJson() => {
-        'paper': paper.toJson(),
-        if (assets.isNotEmpty)
-          'assets': {
-            for (final entry in assets.entries) entry.key: entry.value.toJson(),
-          },
-      };
+    'paper': paper.toJson(),
+    if (assets.isNotEmpty)
+      'assets': {
+        for (final entry in assets.entries) entry.key: entry.value.toJson(),
+      },
+  };
 
   factory PortablePaperSnapshot.fromJson(Map<String, dynamic> json) {
     final paperJson = json['paper'];
     if (paperJson is! Map) {
-      throw const FormatException('Portable paper snapshot is missing paper data.');
+      throw const FormatException(
+        'Portable paper snapshot is missing paper data.',
+      );
     }
     final rawAssets = json['assets'];
     final assets = <String, PortablePaperAsset>{};
@@ -67,7 +66,9 @@ class PortablePaperSnapshot {
       }
       for (final entry in rawAssets.entries) {
         if (entry.value is! Map) {
-          throw const FormatException('Portable paper asset payload is invalid.');
+          throw const FormatException(
+            'Portable paper asset payload is invalid.',
+          );
         }
         assets[entry.key.toString()] = PortablePaperAsset.fromJson(
           Map<String, dynamic>.from(entry.value as Map),
@@ -116,14 +117,20 @@ class PortablePaperSnapshot {
 
     final sections = json['sections'];
     if (sections is List) {
-      for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+      for (
+        var sectionIndex = 0;
+        sectionIndex < sections.length;
+        sectionIndex++
+      ) {
         final section = sections[sectionIndex];
         if (section is! Map) continue;
         final questions = section['questions'];
         if (questions is! List) continue;
-        for (var questionIndex = 0;
-            questionIndex < questions.length;
-            questionIndex++) {
+        for (
+          var questionIndex = 0;
+          questionIndex < questions.length;
+          questionIndex++
+        ) {
           final question = questions[questionIndex];
           if (question is Map) {
             await _captureQuestionAssets(
@@ -136,10 +143,7 @@ class PortablePaperSnapshot {
       }
     }
 
-    return PortablePaperSnapshot(
-      paper: Paper.fromJson(json),
-      assets: assets,
-    );
+    return PortablePaperSnapshot(paper: Paper.fromJson(json), assets: assets);
   }
 
   Future<bool> representsSamePaper(Paper candidate) async {
@@ -159,7 +163,8 @@ class PortablePaperSnapshot {
     if (assets.length != other.assets.length) return false;
     for (final entry in assets.entries) {
       final otherAsset = other.assets[entry.key];
-      if (otherAsset == null || !_bytesEqual(entry.value.bytes, otherAsset.bytes)) {
+      if (otherAsset == null ||
+          !_bytesEqual(entry.value.bytes, otherAsset.bytes)) {
         return false;
       }
     }

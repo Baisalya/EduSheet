@@ -168,6 +168,9 @@ enum QuestionNumberStyle {
 
 class Paper {
   final String id;
+  final String originId;
+  final int revision;
+  final DateTime updatedAt;
   final String title;
   final String schoolName;
   final String instruction;
@@ -190,6 +193,9 @@ class Paper {
 
   Paper({
     required this.id,
+    String? originId,
+    int revision = 1,
+    DateTime? updatedAt,
     required this.title,
     this.schoolName = 'My School',
     this.instruction = '',
@@ -209,10 +215,17 @@ class Paper {
     this.showPageNumbers = true,
     this.pageLayout = PaperPageLayout.defaults,
     required this.createdAt,
-  });
+  }) : originId = originId == null || originId.trim().isEmpty
+           ? id
+           : originId.trim(),
+       revision = revision < 1 ? 1 : revision,
+       updatedAt = updatedAt ?? createdAt;
 
   Paper copyWith({
     String? id,
+    String? originId,
+    int? revision,
+    DateTime? updatedAt,
     String? title,
     String? schoolName,
     String? instruction,
@@ -236,6 +249,9 @@ class Paper {
   }) {
     return Paper(
       id: id ?? this.id,
+      originId: originId ?? this.originId,
+      revision: revision ?? this.revision,
+      updatedAt: updatedAt ?? this.updatedAt,
       title: title ?? this.title,
       schoolName: schoolName ?? this.schoolName,
       instruction: instruction ?? this.instruction,
@@ -268,6 +284,9 @@ class Paper {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'originId': originId,
+      'revision': revision,
+      'updatedAt': updatedAt.toIso8601String(),
       'title': title,
       'schoolName': schoolName,
       'instruction': instruction,
@@ -292,8 +311,15 @@ class Paper {
 
   factory Paper.fromJson(Map<String, dynamic> json) {
     final questionNumberStyleIndex = json['questionNumberStyle'];
+    final parsedCreatedAt = json['createdAt'] != null
+        ? DateTime.parse(json['createdAt'])
+        : DateTime.now();
     return Paper(
       id: json['id'],
+      originId: json['originId']?.toString(),
+      revision: (json['revision'] as num?)?.toInt() ?? 1,
+      updatedAt: DateTime.tryParse(json['updatedAt']?.toString() ?? '') ??
+          parsedCreatedAt,
       title: json['title'],
       schoolName: json['schoolName'] ?? 'My School',
       instruction: json['instruction'] ?? '',
@@ -341,9 +367,7 @@ class Paper {
               Map<String, dynamic>.from(json['pageLayout'] as Map),
             )
           : PaperPageLayout.defaults,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : DateTime.now(),
+      createdAt: parsedCreatedAt,
     );
   }
 }

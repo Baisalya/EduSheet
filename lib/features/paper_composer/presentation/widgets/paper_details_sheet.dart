@@ -11,6 +11,9 @@ import 'package:edusheet/features/pdf/application/paper_header_profile.dart';
 import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
+import 'package:edusheet/features/premium/application/premium_controller.dart';
+import 'package:edusheet/features/premium/domain/freemium_policy.dart';
+import 'package:edusheet/features/premium/presentation/widgets/premium_gate_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
@@ -221,6 +224,21 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
   }
 
   Future<void> _pickLogo() async {
+    final alreadyHasBranding = widget.paper.logos.any(
+      (path) => path.trim().isNotEmpty,
+    );
+    if (!FreemiumPolicy.canAddBranding(
+      premium: ref.read(premiumProvider),
+      paperAlreadyHasBranding: alreadyHasBranding,
+    )) {
+      await showPremiumGateDialog(
+        context,
+        title: 'School logos are Premium',
+        message:
+            'Basic PDF creation remains available on Free. Premium adds new school logos and custom branding. Existing logos remain editable after expiry.',
+      );
+      return;
+    }
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['png', 'jpg', 'jpeg'],
@@ -347,9 +365,7 @@ class _PaperDetailsSheetState extends ConsumerState<PaperDetailsSheet> {
                             decoration: const InputDecoration(
                               labelText: 'School / institution',
                               hintText: 'Green Valley Public School',
-                              prefixIcon: Icon(
-                                Icons.account_balance_outlined,
-                              ),
+                              prefixIcon: Icon(Icons.account_balance_outlined),
                             ),
                           ),
                           const SizedBox(height: 12),

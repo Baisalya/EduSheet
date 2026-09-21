@@ -87,6 +87,47 @@ void main() {
     },
   );
 
+  test('verified expiry receives a seven-day Premium grace period', () async {
+    final now = DateTime.utc(2026, 9, 20, 12);
+    final store = _FakePremiumStore(
+      requiresServerVerification: true,
+      entry: const PremiumCatalogEntry(
+        product: PremiumProduct(
+          id: 'edusheet_premium_yearly',
+          title: 'EduSheet Premium',
+          description: 'Monthly subscription',
+          price: '₹25.00',
+        ),
+      ),
+    );
+    final controller = PremiumController(
+      store: store,
+      verifier: _FakePremiumVerifier(
+        result: PremiumVerificationResult(
+          isValid: true,
+          isActive: false,
+          expiresAt: now.subtract(const Duration(days: 3)),
+        ),
+      ),
+      premiumEnabled: true,
+      now: () => now,
+    );
+    addTearDown(controller.dispose);
+    await _flushAsyncWork();
+
+    await controller.buyPremium();
+    await _flushAsyncWork();
+
+    expect(controller.state.isPremium, isFalse);
+    expect(controller.state.isInGracePeriod, isTrue);
+    expect(controller.state.hasPremiumAccess, isTrue);
+    expect(store.completeCalls, 1);
+    expect(
+      controller.state.gracePeriodEndsAt,
+      now.add(const Duration(days: 4)),
+    );
+  });
+
   test('invalid Android purchase is neither unlocked nor completed', () async {
     final store = _FakePremiumStore(
       requiresServerVerification: true,
@@ -191,7 +232,7 @@ void main() {
     expect(controller.state.hasPremiumAccess, isFalse);
   });
 
-  test('disabled checkout keeps every premium style free', () async {
+  test('disabled checkout keeps every feature free', () async {
     final controller = PremiumController(
       store: _FakePremiumStore(),
       premiumEnabled: false,

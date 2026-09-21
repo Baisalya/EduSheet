@@ -226,7 +226,9 @@ class WordShapeVisual extends StatelessWidget {
                   )
                 : null,
             color: shape.fillOpacity > 0
-                ? Color(shape.fillColorArgb).withValues(alpha: shape.fillOpacity)
+                ? Color(
+                    shape.fillColorArgb,
+                  ).withValues(alpha: shape.fillOpacity)
                 : null,
           ),
           child: Padding(
@@ -260,9 +262,9 @@ class WordShapeVisual extends StatelessWidget {
             kind: shape.kind,
             strokeColor: shape.borderVisible ? stroke : fallbackStroke,
             strokeWidth: shape.borderVisible ? shape.strokeWidth : 0,
-            fillColor: Color(shape.fillColorArgb).withValues(
-              alpha: shape.fillOpacity,
-            ),
+            fillColor: Color(
+              shape.fillColorArgb,
+            ).withValues(alpha: shape.fillOpacity),
             fillOpacity: shape.fillOpacity,
           ),
           child: shape.isTextContainer && shape.text.trim().isNotEmpty
@@ -319,7 +321,8 @@ class WordShapePainter extends CustomPainter {
       math.max(0.0, size.width - 4),
       math.max(0.0, size.height - 4),
     );
-    final canFill = fillOpacity > 0 &&
+    final canFill =
+        fillOpacity > 0 &&
         kind != WordShapeKind.line &&
         kind != WordShapeKind.arrow &&
         kind != WordShapeKind.doubleArrow;
@@ -341,9 +344,7 @@ class WordShapePainter extends CustomPainter {
         drawRect();
         break;
       case WordShapeKind.roundedRectangle:
-        drawRoundRect(
-          RRect.fromRectAndRadius(rect, const Radius.circular(10)),
-        );
+        drawRoundRect(RRect.fromRectAndRadius(rect, const Radius.circular(10)));
         break;
       case WordShapeKind.ellipse:
         if (canFill) canvas.drawOval(rect, fill);

@@ -24,6 +24,9 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Google sample ID. Replace with the production iOS AdMob app ID before enabling ads. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<key>NSCameraUsageDescription</key>
 	<string>We need camera access to scan question papers and OMR sheets.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

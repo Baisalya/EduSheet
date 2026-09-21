@@ -14,6 +14,8 @@ enum DocumentOpenSource {
 }
 
 class DocumentOpenRequest {
+  static const Set<String> portableEduSheetExtensions = {'.eds', '.edtp'};
+
   final DocumentOpenSource source;
   final String localPath;
   final String? originalUri;
@@ -74,7 +76,10 @@ class DocumentOpenRequest {
       final value = _stripWrappingQuotes(raw.trim());
       if (value.isEmpty || value.startsWith('--')) continue;
       final extension = p.extension(value).toLowerCase();
-      if (!DocumentFile.supportedExtensions.contains(extension)) continue;
+      if (!DocumentFile.supportedExtensions.contains(extension) &&
+          !portableEduSheetExtensions.contains(extension)) {
+        continue;
+      }
 
       return DocumentOpenRequest(
         source: DocumentOpenSource.windowsCommandLine,
@@ -87,6 +92,12 @@ class DocumentOpenRequest {
   }
 
   String get dedupeKey => activationId ?? originalUri ?? localPath;
+
+  String get effectiveExtension {
+    final nameExtension = p.extension(displayName ?? '').toLowerCase();
+    if (nameExtension.isNotEmpty) return nameExtension;
+    return p.extension(localPath).toLowerCase();
+  }
 
   static String? _nonEmpty(Object? value) {
     final text = value?.toString().trim();

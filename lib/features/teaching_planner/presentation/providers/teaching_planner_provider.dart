@@ -1,12 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../premium/application/premium_controller.dart';
+import '../../../premium/domain/freemium_policy.dart';
+import '../../application/offline_sync_contract_service.dart';
 import '../../application/teaching_planner_entitlement_adapter.dart';
 import '../../application/teaching_planner_service.dart';
 import '../../application/teaching_resource_attachment_service.dart';
 import '../../data/local_teaching_planner_repository.dart';
 import '../../data/teaching_resource_file_store.dart';
+import '../../domain/models/curriculum_merge_state.dart';
 import '../../domain/models/lesson_plan.dart';
+import '../../domain/models/offline_sync_state.dart';
 import '../../domain/models/planner_priority.dart';
 import '../../domain/models/teaching_status.dart';
 import '../../domain/models/teaching_resource.dart';
@@ -14,6 +18,7 @@ import '../../domain/models/teaching_resource_owner.dart';
 import '../../domain/models/syllabus_import_package.dart';
 import '../../domain/models/teaching_planner_capabilities.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
+import '../../domain/repositories/curriculum_merge_repository.dart';
 import '../../domain/repositories/teaching_planner_repository.dart';
 import '../services/teaching_resource_file_picker.dart';
 import '../../../guided_experience/demo/guided_demo_controller.dart';
@@ -40,9 +45,29 @@ final teachingResourceFileStoreProvider = Provider<TeachingResourceFileStore>((
   return TeachingResourceFileStore();
 });
 
+final curriculumMergeStateProvider = FutureProvider<CurriculumMergeState>((
+  ref,
+) async {
+  final repository = ref.watch(teachingPlannerRepositoryProvider);
+  final mergeRepository = switch (repository) {
+    CurriculumMergeRepository value => value,
+    _ => null,
+  };
+  if (mergeRepository == null) return CurriculumMergeState.empty();
+  return (await mergeRepository.loadCurriculumMergeSnapshot()).mergeState;
+});
+
 final teachingPlannerServiceProvider = Provider<TeachingPlannerService>((ref) {
   return TeachingPlannerService(ref.watch(teachingPlannerRepositoryProvider));
 });
+
+final offlineSyncContractServiceProvider = Provider<OfflineSyncContractService>(
+  (ref) {
+    return OfflineSyncContractService(
+      ref.watch(teachingPlannerRepositoryProvider),
+    );
+  },
+);
 
 final teachingResourceAttachmentServiceProvider =
     Provider<TeachingResourceAttachmentService>((ref) {
@@ -91,13 +116,20 @@ class TeachingPlannerState {
 }
 
 class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
-  TeachingPlannerNotifier(this._service, this._attachmentService)
-    : super(TeachingPlannerState()) {
+  TeachingPlannerNotifier(
+    this._service,
+    this._attachmentService, {
+    bool Function()? hasPremiumAccess,
+  }) : _hasPremiumAccess = hasPremiumAccess ?? _alwaysAllow,
+       super(TeachingPlannerState()) {
     load();
   }
 
   final TeachingPlannerService _service;
   final TeachingResourceAttachmentService _attachmentService;
+  final bool Function() _hasPremiumAccess;
+
+  static bool _alwaysAllow() => true;
 
   Future<void> load() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
@@ -118,6 +150,7 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
   }
 
   Future<bool> createClass({required String name, String? academicYear}) {
+    if (!_canCreateClass()) return Future<bool>.value(false);
     return _run(
       () => _service.createClass(name: name, academicYear: academicYear),
     );
@@ -255,7 +288,21 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
   }
 
   Future<bool> importSyllabus(SyllabusImportPackage package) {
+    if (!_canCreateClass()) return Future<bool>.value(false);
     return _run(() => _service.importSyllabus(package));
+  }
+
+  bool _canCreateClass() {
+    if (_hasPremiumAccess() ||
+        state.workspace.activeClasses.length <
+            FreemiumPolicy.freeActiveClassLimit) {
+      return true;
+    }
+    state = state.copyWith(
+      errorMessage:
+          'Free includes ${FreemiumPolicy.freeActiveClassLimit} active classes. Existing classes remain editable; Premium adds unlimited new classes.',
+    );
+    return false;
   }
 
   Future<bool> archiveClass(String classId) {
@@ -540,6 +587,29 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
     return _run(() => _service.restoreWorkspace(workspace));
   }
 
+  Future<bool> restoreWorkspaceWithMergeState(
+    TeachingPlannerWorkspace workspace,
+    CurriculumMergeState mergeState,
+  ) {
+    return _run(
+      () => _service.restoreWorkspaceWithMergeState(workspace, mergeState),
+    );
+  }
+
+  Future<bool> restoreWorkspaceWithSyncMetadata(
+    TeachingPlannerWorkspace workspace,
+    CurriculumMergeState mergeState,
+    OfflineSyncState syncState,
+  ) {
+    return _run(
+      () => _service.restoreWorkspaceWithSyncMetadata(
+        workspace,
+        mergeState,
+        syncState,
+      ),
+    );
+  }
+
   Future<bool> _run(
     Future<TeachingPlannerWorkspace> Function() operation,
   ) async {
@@ -566,6 +636,7 @@ final teachingPlannerProvider =
       return TeachingPlannerNotifier(
         ref.watch(teachingPlannerServiceProvider),
         ref.watch(teachingResourceAttachmentServiceProvider),
+        hasPremiumAccess: () => ref.read(premiumProvider).hasPremiumAccess,
       );
     });
 

@@ -29,7 +29,7 @@ void main() {
       },
     });
     expect(workspace.resources, isEmpty);
-    expect(codec.encode(workspace)['schemaVersion'], 8);
+    expect(codec.encode(workspace)['schemaVersion'], 10);
   });
 
   test(

@@ -1,6 +1,4 @@
-import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../../application/document_open_coordinator.dart';
 import '../../data/repositories/document_repository.dart';
 import '../../domain/models/document_model.dart';
@@ -55,21 +53,6 @@ class DocumentNotifier extends StateNotifier<DocumentState> {
 
   Future<void> refreshDocuments() async {
     state = state.copyWith(isLoading: true);
-
-    if (Platform.isAndroid) {
-      if (await Permission.manageExternalStorage.isGranted ||
-          await Permission.storage.isGranted) {
-        // Permissions already granted
-      } else {
-        // Request permissions
-        // On Android 11+ (API 30+), manageExternalStorage is required
-        final manageStatus = await Permission.manageExternalStorage.request();
-        if (!manageStatus.isGranted) {
-          // Fallback to regular storage permission for older Androids
-          await Permission.storage.request();
-        }
-      }
-    }
 
     final docs = await _repository.getDocuments();
     state = state.copyWith(allDocuments: docs, isLoading: false);

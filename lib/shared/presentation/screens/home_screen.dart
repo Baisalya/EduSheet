@@ -6,6 +6,8 @@ import 'package:lottie/lottie.dart';
 import '../../../features/editor/presentation/screens/create_paper_screen.dart';
 import '../../../features/editor/presentation/screens/saved_papers_screen.dart';
 import '../../../features/editor/presentation/providers/editor_provider.dart';
+import '../../../features/advertising/presentation/widgets/home_sponsored_banner.dart';
+import '../../../features/advertising/application/home_interstitial_controller.dart';
 import '../../../features/guided_experience/guides/create_paper_guide.dart';
 import '../../../features/guided_experience/guides/create_syllabus_guide.dart';
 import '../../../features/guided_experience/presentation/widgets/guide_anchor.dart';
@@ -16,6 +18,9 @@ import '../../../features/calculator/presentation/screens/calculator_screen.dart
 import '../../../features/word_converter/presentation/screens/word_converter_screen.dart';
 import '../../../features/teaching_planner/presentation/screens/teaching_planner_screen.dart';
 import '../../../features/premium/presentation/widgets/premium_badge_button.dart';
+import '../../../features/premium/application/premium_controller.dart';
+import '../../../features/premium/domain/freemium_policy.dart';
+import '../../../features/premium/presentation/widgets/premium_gate_dialog.dart';
 import '../../services/review_service.dart';
 import '../providers/privacy_provider.dart';
 import '../widgets/privacy_policy_dialog.dart';
@@ -60,13 +65,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _privacyDialogOpen = false;
   }
 
-  void _open(Widget page) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => page));
+  Future<void> _open(Widget page) async {
+    final interstitial = ref.read(homeInterstitialControllerProvider);
+    unawaited(interstitial.prepare());
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(builder: (context) => page),
+    );
+    if (!mounted) return;
+    await interstitial.onReturnedHome();
   }
 
-  void _openCreatePaper() {
+  Future<void> _openCreatePaper() async {
+    final premium = ref.read(premiumProvider);
+    final savedPapers = await ref.read(savedPapersProvider.future);
+    if (!mounted) return;
+    if (!FreemiumPolicy.canCreatePaper(
+      premium: premium,
+      savedPaperCount: savedPapers.length,
+    )) {
+      await showPremiumGateDialog(
+        context,
+        title: 'Free paper limit reached',
+        message:
+            'Free includes up to ${FreemiumPolicy.freeSavedPaperLimit} saved papers. Existing papers stay editable and personal .eds backups remain available. Premium adds unlimited new papers.',
+      );
+      return;
+    }
     ref.read(editorStateProvider.notifier).reset();
-    _open(const CreatePaperScreen());
+    await _open(const CreatePaperScreen());
   }
 
   @override
@@ -79,6 +106,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     final cards = <Widget>[
+      GuideAnchor(
+        targetId: CreateSyllabusGuideTargets.homeTeachingPlanner,
+        reportPointerActivation: true,
+        child: _HomeCard(
+          title: 'Teaching Planner',
+          lottieAsset:
+          'assets/lottie/teacher_syllabus_planner_final_embedded.json',
+          icon: Icons.calendar_month_rounded,
+          color: Colors.deepPurple,
+          onTap: () => _open(const TeachingPlannerScreen()),
+        ),
+      ),
       GuideAnchor(
         targetId: CreatePaperGuideTargets.homeCreatePaper,
         reportPointerActivation: true,
@@ -97,6 +136,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         color: Colors.purple,
         onTap: () => _open(const SavedPapersScreen()),
       ),
+      /*    _HomeCard(
+        title: 'Import EduSheet File',
+        lottieAsset: 'assets/lottie/SavedFolder.json',
+        icon: Icons.file_open_outlined,
+        color: Colors.cyan,
+        onTap: () => _open(const EdsImportCenterScreen()),
+      ),*/
       _HomeCard(
         title: 'OMR Generator',
         lottieAsset: 'assets/lottie/selectoption.json',
@@ -111,17 +157,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         color: Colors.green,
         onTap: () => _open(const QuestionBankScreen()),
       ),
-      GuideAnchor(
-        targetId: CreateSyllabusGuideTargets.homeTeachingPlanner,
-        reportPointerActivation: true,
-        child: _HomeCard(
-          title: 'Teaching Planner',
-          lottieAsset: 'assets/lottie/teaching_planner_schedule.json',
-          icon: Icons.calendar_month_rounded,
-          color: Colors.deepPurple,
-          onTap: () => _open(const TeachingPlannerScreen()),
-        ),
-      ),
+
       _HomeCard(
         title: 'Calculator',
         lottieAsset: 'assets/lottie/calculator.json',
@@ -208,14 +244,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 1180),
-                  child: GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: columns,
-                    mainAxisSpacing: spacing,
-                    crossAxisSpacing: spacing,
-                    childAspectRatio: aspectRatio,
-                    children: cards,
+                  child: Column(
+                    children: [
+                      GridView.count(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisCount: columns,
+                        mainAxisSpacing: spacing,
+                        crossAxisSpacing: spacing,
+                        childAspectRatio: aspectRatio,
+                        children: cards,
+                      ),
+                      const HomeSponsoredBanner(),
+                    ],
                   ),
                 ),
               ),
@@ -272,7 +313,8 @@ class _HomeCardState extends State<_HomeCard> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
     return LayoutBuilder(
       builder: (context, constraints) {

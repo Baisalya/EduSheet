@@ -45,7 +45,9 @@ class PaperPageDesignSurface extends StatelessWidget {
                 child: Transform.rotate(
                   angle: -math.pi / 5,
                   child: Opacity(
-                    opacity: layout.watermarkOpacity.clamp(0.02, 0.35).toDouble(),
+                    opacity: layout.watermarkOpacity
+                        .clamp(0.02, 0.35)
+                        .toDouble(),
                     child: Text(
                       watermark,
                       key: const Key('paper-page-watermark'),
@@ -120,15 +122,25 @@ class _PageChromePainter extends CustomPainter {
     if (content.width <= 0 || content.height <= 0) return;
 
     if (showGrid) {
-      final spacing = (gridSpacingPoints * pageScale).clamp(8.0, 72.0).toDouble();
+      final spacing = (gridSpacingPoints * pageScale)
+          .clamp(8.0, 72.0)
+          .toDouble();
       final gridPaint = Paint()
         ..color = color.withValues(alpha: 0.08)
         ..strokeWidth = 0.6;
       for (double x = content.left; x <= content.right; x += spacing) {
-        canvas.drawLine(Offset(x, content.top), Offset(x, content.bottom), gridPaint);
+        canvas.drawLine(
+          Offset(x, content.top),
+          Offset(x, content.bottom),
+          gridPaint,
+        );
       }
       for (double y = content.top; y <= content.bottom; y += spacing) {
-        canvas.drawLine(Offset(content.left, y), Offset(content.right, y), gridPaint);
+        canvas.drawLine(
+          Offset(content.left, y),
+          Offset(content.right, y),
+          gridPaint,
+        );
       }
     }
 

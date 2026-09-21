@@ -72,10 +72,7 @@ class PaperExportFidelityAudit {
     return PaperExportFidelityReport(List.unmodifiable(issues));
   }
 
-  static void _auditPageLayout(
-    Paper paper,
-    List<PaperFidelityIssue> issues,
-  ) {
+  static void _auditPageLayout(Paper paper, List<PaperFidelityIssue> issues) {
     final explicitSize = paper.pageLayout.explicitPageSizePoints;
     if (explicitSize == null) return;
 

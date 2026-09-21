@@ -27,8 +27,8 @@ class PremiumBadgeButton extends ConsumerWidget {
       child: compact
           ? IconButton(
               tooltip: premium.isComplimentaryAccess
-                  ? 'Free access release'
-                  : (hasAccess ? 'Premium active' : 'Premium'),
+                  ? 'Premium access release'
+                  : (hasAccess ? 'Premium active' : 'View Premium'),
               onPressed: openPremium,
               visualDensity: VisualDensity.compact,
               color: foreground,
@@ -54,8 +54,8 @@ class PremiumBadgeButton extends ConsumerWidget {
               ),
               label: Text(
                 premium.isComplimentaryAccess
-                    ? 'FREE'
-                    : (hasAccess ? 'PRO' : 'Premium'),
+                    ? 'FULL ACCESS'
+                    : (hasAccess ? 'PREMIUM' : 'Premium'),
                 style: const TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 12,

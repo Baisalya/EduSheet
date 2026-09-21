@@ -361,7 +361,9 @@ class TeachingPlannerSmartAssistantService {
     String subjectId,
   ) {
     final chapters = workspace.chapters
-        .where((chapter) => chapter.subjectId == subjectId && !chapter.isArchived)
+        .where(
+          (chapter) => chapter.subjectId == subjectId && !chapter.isArchived,
+        )
         .toList();
     chapters.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return chapters;

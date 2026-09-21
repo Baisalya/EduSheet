@@ -15,6 +15,8 @@ import 'package:edusheet/features/editor/services/question_copy_service.dart';
 import 'package:edusheet/features/geometry_builder/services/geometry_diagram_registry.dart';
 import 'package:edusheet/features/guided_experience/demo/guided_demo_controller.dart';
 import 'package:edusheet/features/guided_experience/demo/guided_demo_providers.dart';
+import 'package:edusheet/features/premium/application/premium_controller.dart';
+import 'package:edusheet/features/premium/domain/freemium_policy.dart';
 
 part 'editor_provider.g.dart';
 
@@ -125,6 +127,18 @@ class EditorState extends _$EditorState {
   ) {
     return AutosaveCoordinator<Paper>(
       save: (paper) async {
+        if (!_persistedDocumentIds.contains(paper.id)) {
+          final savedPaperCount = (await repository.getAllPapers()).length;
+          final premium = ref.read(premiumProvider);
+          if (!FreemiumPolicy.canCreatePaper(
+            premium: premium,
+            savedPaperCount: savedPaperCount,
+          )) {
+            throw const FreemiumLimitException(
+              'Free saved-paper limit reached. Existing papers remain editable.',
+            );
+          }
+        }
         await repository.savePaper(paper);
         _persistedDocumentIds.add(paper.id);
         _unsavedEditedIds.remove(paper.id);
@@ -180,8 +194,7 @@ class EditorState extends _$EditorState {
     return _persistedDocumentIds.contains(paper.id);
   }
 
-  bool get isCurrentPaperPersisted =>
-      _persistedDocumentIds.contains(state.id);
+  bool get isCurrentPaperPersisted => _persistedDocumentIds.contains(state.id);
 
   bool get hasMeaningfulUnsavedDraft =>
       !isCurrentPaperPersisted &&
@@ -221,9 +234,10 @@ class EditorState extends _$EditorState {
     });
   }
 
-  Future<void> savePaper() async {
+  Future<bool> savePaper() async {
     _autosave.schedule(state);
     await _autosave.flush();
+    return _autosave.status.phase == AutosavePhase.saved;
   }
 
   Future<void> flushPendingAutosave() => _autosave.flush();
@@ -327,16 +341,18 @@ class EditorState extends _$EditorState {
     final cleanClass = className?.trim() ?? '';
     final cleanSubject = subjectName?.trim() ?? '';
     final paper = base.copyWith(
-      headerFields: base.headerFields.map((field) {
-        final normalized = field.label.trim().toLowerCase();
-        if (normalized == 'class' && cleanClass.isNotEmpty) {
-          return field.copyWith(value: cleanClass, isPlaceholder: false);
-        }
-        if (normalized == 'subject' && cleanSubject.isNotEmpty) {
-          return field.copyWith(value: cleanSubject, isPlaceholder: false);
-        }
-        return field;
-      }).toList(growable: false),
+      headerFields: base.headerFields
+          .map((field) {
+            final normalized = field.label.trim().toLowerCase();
+            if (normalized == 'class' && cleanClass.isNotEmpty) {
+              return field.copyWith(value: cleanClass, isPlaceholder: false);
+            }
+            if (normalized == 'subject' && cleanSubject.isNotEmpty) {
+              return field.copyWith(value: cleanSubject, isPlaceholder: false);
+            }
+            return field;
+          })
+          .toList(growable: false),
     );
     _replaceWithoutHistory(paper);
     ref.read(editorSaveStatusProvider.notifier).state = const AutosaveStatus(

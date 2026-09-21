@@ -457,7 +457,9 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
                   key: const Key('word-show-rulers'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Show rulers on desktop'),
-                  subtitle: const Text('Editor-only measurement aid; never printed.'),
+                  subtitle: const Text(
+                    'Editor-only measurement aid; never printed.',
+                  ),
                   value: _showRulers,
                   onChanged: (value) => setState(() => _showRulers = value),
                 ),
@@ -465,7 +467,9 @@ class _PageLayoutEditorState extends State<_PageLayoutEditor> {
                   key: const Key('word-show-grid'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Show page grid on desktop'),
-                  subtitle: const Text('Editor-only alignment grid; never printed.'),
+                  subtitle: const Text(
+                    'Editor-only alignment grid; never printed.',
+                  ),
                   value: _showGrid,
                   onChanged: (value) => setState(() => _showGrid = value),
                 ),

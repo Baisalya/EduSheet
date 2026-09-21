@@ -19,7 +19,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Free access release'), findsOneWidget);
+    expect(find.text('Full-access release'), findsOneWidget);
     expect(find.text('Enjoying EduSheet?'), findsOneWidget);
     expect(find.text('Workspace colour'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -35,8 +35,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('FREE ACCESS'), findsOneWidget);
-    expect(find.text('Premium colour styles'), findsOneWidget);
-    expect(find.text('Core tools remain free'), findsOneWidget);
+    expect(find.text('Unlimited papers, classes and exports'), findsOneWidget);
+    expect(find.text('Your work always stays yours'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

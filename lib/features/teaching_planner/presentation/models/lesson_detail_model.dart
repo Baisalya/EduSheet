@@ -36,10 +36,8 @@ class LessonDetailModel {
         .map((id) => workspace.topicById(id))
         .whereType<PlannerTopic>()
         .map(
-          (topic) => LessonDetailTopic(
-            title: topic.title,
-            status: topic.status,
-          ),
+          (topic) =>
+              LessonDetailTopic(title: topic.title, status: topic.status),
         )
         .toList(growable: false);
     return LessonDetailModel(
@@ -69,7 +67,9 @@ class LessonDetailModel {
     if (lesson.plannedPeriods <= 0) {
       return lesson.actualPeriods > 0 ? 1 : 0;
     }
-    return (lesson.actualPeriods / lesson.plannedPeriods).clamp(0, 1).toDouble();
+    return (lesson.actualPeriods / lesson.plannedPeriods)
+        .clamp(0, 1)
+        .toDouble();
   }
 
   String get statusLabel => switch (lesson.status) {
@@ -94,10 +94,7 @@ class LessonDetailModel {
 }
 
 class LessonDetailTopic {
-  const LessonDetailTopic({
-    required this.title,
-    required this.status,
-  });
+  const LessonDetailTopic({required this.title, required this.status});
 
   final String title;
   final TeachingProgressStatus status;

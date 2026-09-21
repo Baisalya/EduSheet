@@ -75,6 +75,8 @@ void main() {
                   paper: paper,
                   compact: false,
                   template: template,
+                  canAddBranding: true,
+                  onPremiumBrandingRequired: () async {},
                   onTitleChanged: (_) {},
                   onSchoolNameChanged: (_) {},
                   onInstructionChanged: (_) {},

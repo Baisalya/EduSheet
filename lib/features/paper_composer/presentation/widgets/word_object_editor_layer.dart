@@ -55,9 +55,7 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
   Duration? _lastDesktopClickTime;
   Offset? _lastDesktopClickPosition;
 
-  static const Duration _desktopDoubleClickWindow = Duration(
-    milliseconds: 500,
-  );
+  static const Duration _desktopDoubleClickWindow = Duration(milliseconds: 500);
   static const double _desktopClickMovementTolerance = 6.0;
 
   @override
@@ -150,7 +148,9 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                               right: 0,
                               child: IgnorePointer(
                                 child: Container(
-                                  key: const Key('word-object-horizontal-guide'),
+                                  key: const Key(
+                                    'word-object-horizontal-guide',
+                                  ),
                                   height: 1,
                                   color: Theme.of(
                                     context,
@@ -226,177 +226,181 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
           label: '${shape.kind.label}${shape.locked ? ', locked' : ''}',
           child: Listener(
             behavior: HitTestBehavior.translucent,
-        // Desktop selection stays outside the gesture arena so floating text
-        // boxes and geometry select immediately. Double-click editing is also
-        // tracked here without Flutter's DoubleTapGestureRecognizer, avoiding
-        // delayed selection and pending timer state in deterministic tests.
-        onPointerDown: _usesDesktopInteractions
-            ? (event) => _handleDesktopPointerDown(shape, event)
-            : null,
-        onPointerMove: _usesDesktopInteractions
-            ? (event) => _handleDesktopPointerMove(shape, event)
-            : null,
-        onPointerUp: _usesDesktopInteractions
-            ? (event) => _handleDesktopPointerUp(
-                  context,
-                  shape,
-                  event,
-                  editGeometry,
-                )
-            : null,
-        onPointerCancel: _usesDesktopInteractions
-            ? (_) => _resetDesktopPointerTracking()
-            : null,
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          // Compact/mobile mode uses tap-to-select and the toolbar Edit action,
-          // leaving long-press free for multi-selection.
-          onTap: _usesDesktopInteractions
-              ? null
-              : () => _select(shape.id, additive: false),
-          onLongPress: _usesDesktopInteractions
-              ? null
-              : () {
-                  HapticFeedback.selectionClick();
-                  _addToSelection(shape.id);
-                },
-          onPanStart: shape.locked
-              ? null
-              : (_) {
-                  _focusNode.requestFocus();
-                  if (!_selectedIds.contains(shape.id)) {
-                    _select(shape.id, additive: false);
-                  }
-                },
-          onPanUpdate: shape.locked
-              ? null
-              : (details) {
-                  final current = widget.shapes
-                      .where((item) => item.id == shape.id)
-                      .firstOrNull;
-                  if (current == null) return;
-                  if (_selectedIds.length > 1) {
-                    widget.onShapesChanged(
-                      WordObjectManipulationService.moveSelection(
-                        widget.shapes,
-                        _selectedIds,
-                        deltaX: details.delta.dx / canvasWidth,
-                        deltaY: details.delta.dy / canvasHeight,
-                      ),
-                    );
-                    _clearGuides();
-                    return;
-                  }
-                  final siblings = widget.shapes.where(
-                    (item) => item.id != current.id,
-                  );
-                  final result = WordObjectManipulationService.moveWithSnap(
-                    current,
-                    deltaX: details.delta.dx / canvasWidth,
-                    deltaY: details.delta.dy / canvasHeight,
-                    siblings: siblings,
-                  );
-                  _replaceSingle(result.object);
-                  if (mounted) {
-                    setState(() {
-                      _verticalGuide = result.verticalGuide;
-                      _horizontalGuide = result.horizontalGuide;
-                    });
-                  }
-                },
-          onPanEnd: shape.locked ? null : (_) => _clearGuides(),
-          onPanCancel: shape.locked ? null : _clearGuides,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: selected
-                        ? Border.all(
-                            color: shape.locked
-                                ? theme.colorScheme.tertiary
-                                : theme.colorScheme.primary,
-                            width: 1.5,
-                          )
-                        : hovered && _usesDesktopInteractions
-                        ? Border.all(
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.35),
-                            width: 1,
-                          )
-                        : null,
-                  ),
-                  child: WordShapeVisual(shape: shape),
-                ),
-              ),
-              if (selected && shape.locked)
-                Positioned(
-                  top: touchInteractions ? 4 : -10,
-                  right: touchInteractions ? 4 : -10,
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: theme.colorScheme.tertiary),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(3),
-                        child: Icon(
-                          Icons.lock_rounded,
-                          key: ValueKey(
-                            'word-object-lock-indicator-${shape.id}',
-                          ),
-                          size: touchInteractions ? 16 : 13,
-                          color: theme.colorScheme.tertiary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              if (selected && !shape.locked)
-                Positioned(
-                  right: touchInteractions ? 2 : -handleSize / 2,
-                  bottom: touchInteractions ? 2 : -handleSize / 2,
-                  width: handleSize,
-                  height: handleSize,
-                  child: GestureDetector(
-                    key: ValueKey('word-object-resize-${shape.id}'),
-                    behavior: HitTestBehavior.opaque,
-                    onPanStart: (_) => _focusNode.requestFocus(),
-                    onPanUpdate: (details) {
+            // Desktop selection stays outside the gesture arena so floating text
+            // boxes and geometry select immediately. Double-click editing is also
+            // tracked here without Flutter's DoubleTapGestureRecognizer, avoiding
+            // delayed selection and pending timer state in deterministic tests.
+            onPointerDown: _usesDesktopInteractions
+                ? (event) => _handleDesktopPointerDown(shape, event)
+                : null,
+            onPointerMove: _usesDesktopInteractions
+                ? (event) => _handleDesktopPointerMove(shape, event)
+                : null,
+            onPointerUp: _usesDesktopInteractions
+                ? (event) => _handleDesktopPointerUp(
+                    context,
+                    shape,
+                    event,
+                    editGeometry,
+                  )
+                : null,
+            onPointerCancel: _usesDesktopInteractions
+                ? (_) => _resetDesktopPointerTracking()
+                : null,
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              // Compact/mobile mode uses tap-to-select and the toolbar Edit action,
+              // leaving long-press free for multi-selection.
+              onTap: _usesDesktopInteractions
+                  ? null
+                  : () => _select(shape.id, additive: false),
+              onLongPress: _usesDesktopInteractions
+                  ? null
+                  : () {
+                      HapticFeedback.selectionClick();
+                      _addToSelection(shape.id);
+                    },
+              onPanStart: shape.locked
+                  ? null
+                  : (_) {
+                      _focusNode.requestFocus();
+                      if (!_selectedIds.contains(shape.id)) {
+                        _select(shape.id, additive: false);
+                      }
+                    },
+              onPanUpdate: shape.locked
+                  ? null
+                  : (details) {
                       final current = widget.shapes
                           .where((item) => item.id == shape.id)
                           .firstOrNull;
                       if (current == null) return;
-                      _replaceSingle(
-                        WordObjectManipulationService.resizeBottomRight(
-                          current,
-                          deltaWidth: details.delta.dx / canvasWidth,
-                          deltaHeight: details.delta.dy / canvasHeight,
-                        ),
+                      if (_selectedIds.length > 1) {
+                        widget.onShapesChanged(
+                          WordObjectManipulationService.moveSelection(
+                            widget.shapes,
+                            _selectedIds,
+                            deltaX: details.delta.dx / canvasWidth,
+                            deltaY: details.delta.dy / canvasHeight,
+                          ),
+                        );
+                        _clearGuides();
+                        return;
+                      }
+                      final siblings = widget.shapes.where(
+                        (item) => item.id != current.id,
                       );
+                      final result = WordObjectManipulationService.moveWithSnap(
+                        current,
+                        deltaX: details.delta.dx / canvasWidth,
+                        deltaY: details.delta.dy / canvasHeight,
+                        siblings: siblings,
+                      );
+                      _replaceSingle(result.object);
+                      if (mounted) {
+                        setState(() {
+                          _verticalGuide = result.verticalGuide;
+                          _horizontalGuide = result.horizontalGuide;
+                        });
+                      }
                     },
+              onPanEnd: shape.locked ? null : (_) => _clearGuides(),
+              onPanCancel: shape.locked ? null : _clearGuides,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surface,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: theme.colorScheme.primary),
+                        border: selected
+                            ? Border.all(
+                                color: shape.locked
+                                    ? theme.colorScheme.tertiary
+                                    : theme.colorScheme.primary,
+                                width: 1.5,
+                              )
+                            : hovered && _usesDesktopInteractions
+                            ? Border.all(
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.35),
+                                width: 1,
+                              )
+                            : null,
                       ),
-                      child: Icon(
-                        Icons.open_in_full_rounded,
-                        size: touchInteractions ? 18 : 13,
-                        color: theme.colorScheme.primary,
-                      ),
+                      child: WordShapeVisual(shape: shape),
                     ),
                   ),
-                ),
-            ],
+                  if (selected && shape.locked)
+                    Positioned(
+                      top: touchInteractions ? 4 : -10,
+                      right: touchInteractions ? 4 : -10,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: theme.colorScheme.tertiary,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(3),
+                            child: Icon(
+                              Icons.lock_rounded,
+                              key: ValueKey(
+                                'word-object-lock-indicator-${shape.id}',
+                              ),
+                              size: touchInteractions ? 16 : 13,
+                              color: theme.colorScheme.tertiary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (selected && !shape.locked)
+                    Positioned(
+                      right: touchInteractions ? 2 : -handleSize / 2,
+                      bottom: touchInteractions ? 2 : -handleSize / 2,
+                      width: handleSize,
+                      height: handleSize,
+                      child: GestureDetector(
+                        key: ValueKey('word-object-resize-${shape.id}'),
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: (_) => _focusNode.requestFocus(),
+                        onPanUpdate: (details) {
+                          final current = widget.shapes
+                              .where((item) => item.id == shape.id)
+                              .firstOrNull;
+                          if (current == null) return;
+                          _replaceSingle(
+                            WordObjectManipulationService.resizeBottomRight(
+                              current,
+                              deltaWidth: details.delta.dx / canvasWidth,
+                              deltaHeight: details.delta.dy / canvasHeight,
+                            ),
+                          );
+                        },
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.open_in_full_rounded,
+                            size: touchInteractions ? 18 : 13,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
-      ),
-      ),
       ),
     );
   }
@@ -410,8 +414,10 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
     final editGeometry = widget.onEditGeometry;
     final fixedObject = single?.isFixedOnPage == true ? single : null;
     final pageMismatch =
-        fixedObject != null && fixedObject.fixedPageIndex != widget.ownerPageIndex;
-    final allLocked = selected.isNotEmpty && selected.every((item) => item.locked);
+        fixedObject != null &&
+        fixedObject.fixedPageIndex != widget.ownerPageIndex;
+    final allLocked =
+        selected.isNotEmpty && selected.every((item) => item.locked);
     final hasOverflow = selected.any((item) => item.exceedsNormalizedBounds);
 
     if (widget.compact) {
@@ -442,7 +448,9 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
               visualDensity: VisualDensity.compact,
               avatar: const Icon(Icons.select_all_rounded, size: 16),
               label: Text(
-                selected.length == 1 ? single!.kind.label : '${selected.length} objects',
+                selected.length == 1
+                    ? single!.kind.label
+                    : '${selected.length} objects',
               ),
             ),
             if (single != null)
@@ -465,7 +473,10 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                     PopupMenuItem(value: mode, child: Text(mode.label)),
                 ],
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 4,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -660,12 +671,30 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                   ),
                 ),
                 itemBuilder: (context) => const [
-                  PopupMenuItem(value: WordObjectAlignment.left, child: Text('Align left')),
-                  PopupMenuItem(value: WordObjectAlignment.horizontalCenter, child: Text('Align center')),
-                  PopupMenuItem(value: WordObjectAlignment.right, child: Text('Align right')),
-                  PopupMenuItem(value: WordObjectAlignment.top, child: Text('Align top')),
-                  PopupMenuItem(value: WordObjectAlignment.verticalCenter, child: Text('Align middle')),
-                  PopupMenuItem(value: WordObjectAlignment.bottom, child: Text('Align bottom')),
+                  PopupMenuItem(
+                    value: WordObjectAlignment.left,
+                    child: Text('Align left'),
+                  ),
+                  PopupMenuItem(
+                    value: WordObjectAlignment.horizontalCenter,
+                    child: Text('Align center'),
+                  ),
+                  PopupMenuItem(
+                    value: WordObjectAlignment.right,
+                    child: Text('Align right'),
+                  ),
+                  PopupMenuItem(
+                    value: WordObjectAlignment.top,
+                    child: Text('Align top'),
+                  ),
+                  PopupMenuItem(
+                    value: WordObjectAlignment.verticalCenter,
+                    child: Text('Align middle'),
+                  ),
+                  PopupMenuItem(
+                    value: WordObjectAlignment.bottom,
+                    child: Text('Align bottom'),
+                  ),
                 ],
                 icon: const Icon(Icons.align_horizontal_left_rounded, size: 19),
               ),
@@ -754,7 +783,9 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                 );
               },
               icon: Icon(
-                allLocked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+                allLocked
+                    ? Icons.lock_open_rounded
+                    : Icons.lock_outline_rounded,
                 size: 18,
               ),
             ),
@@ -997,7 +1028,9 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
               fixedObject.fixedPageIndex != widget.ownerPageIndex;
           final allLocked =
               selected.isNotEmpty && selected.every((item) => item.locked);
-          final hasOverflow = selected.any((item) => item.exceedsNormalizedBounds);
+          final hasOverflow = selected.any(
+            (item) => item.exceedsNormalizedBounds,
+          );
 
           void replaceWorking(WordShapeObject value) {
             workingSingle = value;
@@ -1116,7 +1149,9 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                       contentPadding: EdgeInsets.zero,
                       value: textObject.fillOpacity > 0,
                       title: const Text('White fill'),
-                      subtitle: const Text('Off keeps the text box transparent'),
+                      subtitle: const Text(
+                        'Off keeps the text box transparent',
+                      ),
                       onChanged: (value) => replaceWorking(
                         textObject.copyWith(fillOpacity: value ? 1 : 0),
                       ),
@@ -1134,9 +1169,8 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                       max: 32,
                       divisions: 16,
                       label: '${textObject.padding.toStringAsFixed(0)} pt',
-                      onChanged: (value) => replaceWorking(
-                        textObject.copyWith(padding: value),
-                      ),
+                      onChanged: (value) =>
+                          replaceWorking(textObject.copyWith(padding: value)),
                     ),
                   ],
                   if (currentSingle != null) ...[
@@ -1212,9 +1246,7 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                       onChanged: currentSingle.locked
                           ? null
                           : (value) => replaceWorking(
-                              currentSingle.copyWith(
-                                aspectRatioLocked: value,
-                              ),
+                              currentSingle.copyWith(aspectRatioLocked: value),
                             ),
                     ),
                     if (fixedObject != null)
@@ -1224,9 +1256,7 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                           pageMismatch
                               ? Icons.warning_amber_rounded
                               : Icons.push_pin_rounded,
-                          color: pageMismatch
-                              ? theme.colorScheme.error
-                              : null,
+                          color: pageMismatch ? theme.colorScheme.error : null,
                         ),
                         title: Text(
                           'Pinned to page ${fixedObject.fixedPageIndex + 1}',
@@ -1235,12 +1265,12 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                             ? Text(
                                 'The question is now on page ${widget.ownerPageIndex + 1}.',
                               )
-                            : const Text('Pinned page matches the question page'),
+                            : const Text(
+                                'Pinned page matches the question page',
+                              ),
                         trailing: pageMismatch && !fixedObject.locked
                             ? TextButton(
-                                key: const Key(
-                                  'word-object-mobile-repin-page',
-                                ),
+                                key: const Key('word-object-mobile-repin-page'),
                                 onPressed: () => replaceWorking(
                                   WordPaginationService.setAnchorMode(
                                     fixedObject,
@@ -1259,40 +1289,39 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        for (final entry in const <
-                          (WordObjectAlignment, String, IconData)
-                        >[
-                          (
-                            WordObjectAlignment.left,
-                            'Left',
-                            Icons.align_horizontal_left_rounded,
-                          ),
-                          (
-                            WordObjectAlignment.horizontalCenter,
-                            'Center',
-                            Icons.align_horizontal_center_rounded,
-                          ),
-                          (
-                            WordObjectAlignment.right,
-                            'Right',
-                            Icons.align_horizontal_right_rounded,
-                          ),
-                          (
-                            WordObjectAlignment.top,
-                            'Top',
-                            Icons.align_vertical_top_rounded,
-                          ),
-                          (
-                            WordObjectAlignment.verticalCenter,
-                            'Middle',
-                            Icons.align_vertical_center_rounded,
-                          ),
-                          (
-                            WordObjectAlignment.bottom,
-                            'Bottom',
-                            Icons.align_vertical_bottom_rounded,
-                          ),
-                        ])
+                        for (final entry
+                            in const <(WordObjectAlignment, String, IconData)>[
+                              (
+                                WordObjectAlignment.left,
+                                'Left',
+                                Icons.align_horizontal_left_rounded,
+                              ),
+                              (
+                                WordObjectAlignment.horizontalCenter,
+                                'Center',
+                                Icons.align_horizontal_center_rounded,
+                              ),
+                              (
+                                WordObjectAlignment.right,
+                                'Right',
+                                Icons.align_horizontal_right_rounded,
+                              ),
+                              (
+                                WordObjectAlignment.top,
+                                'Top',
+                                Icons.align_vertical_top_rounded,
+                              ),
+                              (
+                                WordObjectAlignment.verticalCenter,
+                                'Middle',
+                                Icons.align_vertical_center_rounded,
+                              ),
+                              (
+                                WordObjectAlignment.bottom,
+                                'Bottom',
+                                Icons.align_vertical_bottom_rounded,
+                              ),
+                            ])
                           OutlinedButton.icon(
                             onPressed: allLocked
                                 ? null
@@ -1374,8 +1403,9 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                                   for (final item in widget.shapes)
                                     if (_selectedIds.contains(item.id) &&
                                         !item.locked)
-                                      WordPaginationService
-                                          .fitInsidePrintableBounds(item)
+                                      WordPaginationService.fitInsidePrintableBounds(
+                                        item,
+                                      )
                                     else
                                       item,
                                 ]);
@@ -1522,11 +1552,14 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
 
     final previousTime = _lastDesktopClickTime;
     final previousPosition = _lastDesktopClickPosition;
-    final elapsed = previousTime == null ? null : event.timeStamp - previousTime;
+    final elapsed = previousTime == null
+        ? null
+        : event.timeStamp - previousTime;
     final positionDelta = previousPosition == null
         ? null
         : event.position - previousPosition;
-    final isDoubleClick = _lastDesktopClickObjectId == shape.id &&
+    final isDoubleClick =
+        _lastDesktopClickObjectId == shape.id &&
         elapsed != null &&
         !elapsed.isNegative &&
         elapsed <= _desktopDoubleClickWindow &&
@@ -1594,7 +1627,9 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
   }
 
   void _clearGuides() {
-    if (!mounted || (_verticalGuide == null && _horizontalGuide == null)) return;
+    if (!mounted || (_verticalGuide == null && _horizontalGuide == null)) {
+      return;
+    }
     setState(() {
       _verticalGuide = null;
       _horizontalGuide = null;
@@ -1682,9 +1717,7 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
       _copySelection();
       return KeyEventResult.handled;
     }
-    if (command &&
-        key == LogicalKeyboardKey.keyV &&
-        _clipboard.isNotEmpty) {
+    if (command && key == LogicalKeyboardKey.keyV && _clipboard.isNotEmpty) {
       _pasteClipboard();
       return KeyEventResult.handled;
     }
@@ -1734,10 +1767,7 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
     return KeyEventResult.handled;
   }
 
-  Future<void> _editText(
-    BuildContext context,
-    WordShapeObject shape,
-  ) async {
+  Future<void> _editText(BuildContext context, WordShapeObject shape) async {
     final controller = TextEditingController(text: shape.text);
     final value = await showAdaptiveModalBottomSheet<String>(
       context: context,
@@ -1758,9 +1788,9 @@ class _WordObjectEditorLayerState extends State<WordObjectEditorLayer> {
                 shape.kind == WordShapeKind.callout
                     ? 'Edit callout text'
                     : 'Edit text box',
-                style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                style: Theme.of(
+                  sheetContext,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 10),
               TextField(

@@ -8,3 +8,7 @@
 -keep class com.google.mlkit.vision.text.devanagari.** { *; }
 -keep class com.google.mlkit.vision.text.japanese.** { *; }
 -keep class com.google.mlkit.vision.text.korean.** { *; }
+
+# WorkManager initializes Room before Flutter starts. Room loads this generated
+# database implementation reflectively; R8 must not remove its zero-arg ctor.
+-keep class androidx.work.impl.WorkDatabase_Impl { public <init>(); }

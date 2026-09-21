@@ -56,7 +56,7 @@ if (-not $SkipChecks) {
 
 $buildArguments = @(
     'build', 'windows', '--release',
-    '--dart-define=PREMIUM_ENABLED=false',
+    '--dart-define=PREMIUM_ENABLED=true',
     "--dart-define=PREMIUM_PRODUCT_ID=$PremiumProductId",
     "--dart-define=MICROSOFT_PREMIUM_PRODUCT_ID=$PremiumProductId"
 )
@@ -67,7 +67,7 @@ if (-not [string]::IsNullOrWhiteSpace($MicrosoftStoreId)) {
 if ($LASTEXITCODE -ne 0) { throw 'Windows release build failed.' }
 
 $outputName = "EduSheet_${MsixVersion}_x64_store"
-$fileExtensions = '.pdf,.doc,.docx,.rtf,.odt,.xls,.xlsx,.csv,.ods,.ppt,.pptx,.odp,.txt'
+$fileExtensions = '.pdf,.doc,.docx,.rtf,.odt,.xls,.xlsx,.csv,.ods,.ppt,.pptx,.odp,.txt,.eds,.edtp'
 $msixArguments = @(
     'run', 'msix:create',
     '--build-windows', 'false',

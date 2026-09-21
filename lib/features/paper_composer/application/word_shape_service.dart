@@ -52,7 +52,6 @@ class WordShapeService {
     );
   }
 
-
   static WordShapeObject createGeometry(GeometryDiagram diagram) {
     final ratio = diagram.canvasSize.height <= 0
         ? 1.5
@@ -83,10 +82,7 @@ class WordShapeService {
     ]);
   }
 
-  static Question replaceAll(
-    Question question,
-    List<WordShapeObject> shapes,
-  ) {
+  static Question replaceAll(Question question, List<WordShapeObject> shapes) {
     return _write(question, shapes);
   }
 

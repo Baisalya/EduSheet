@@ -20,6 +20,8 @@ import 'features/pdf/services/question_paper_service.dart';
 import 'features/document_reader/domain/models/document_open_request.dart';
 import 'features/document_reader/presentation/providers/document_provider.dart';
 import 'features/document_reader/presentation/screens/file_preview_screen.dart';
+import 'features/eds_import/presentation/screens/eds_import_center_screen.dart';
+import 'features/teaching_planner/presentation/screens/teaching_workspace_screen.dart';
 
 void main(List<String> args) {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +46,7 @@ class _MyAppState extends ConsumerState<MyApp> {
   );
 
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final Set<String> _handledPortableActivations = <String>{};
 
   @override
   void initState() {
@@ -103,6 +106,26 @@ class _MyAppState extends ConsumerState<MyApp> {
   }
 
   Future<void> _openRequest(DocumentOpenRequest request) async {
+    if (request.effectiveExtension == '.eds' ||
+        request.effectiveExtension == '.edtp') {
+      if (!_handledPortableActivations.add(request.dedupeKey)) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final screen = request.effectiveExtension == '.eds'
+            ? EdsImportCenterScreen(
+                initialFilePath: request.localPath,
+                initialDisplayName: request.displayName,
+              )
+            : TeachingWorkspaceScreen(
+                initialTeachingPackPath: request.localPath,
+              );
+        _navigatorKey.currentState?.push(
+          MaterialPageRoute<void>(builder: (_) => screen),
+        );
+      });
+      return;
+    }
+
     try {
       final result = await ref
           .read(documentOpenCoordinatorProvider)
@@ -175,9 +198,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         child: SmartWorkActivityHost(
           child: WindowsEscapeBackScope(
             navigatorKey: _navigatorKey,
-            child: GuideOverlayHost(
-              child: MathKeyboardWrapper(child: child!),
-            ),
+            child: GuideOverlayHost(child: MathKeyboardWrapper(child: child!)),
           ),
         ),
       ),

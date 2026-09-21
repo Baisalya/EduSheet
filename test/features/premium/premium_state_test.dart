@@ -23,4 +23,15 @@ void main() {
 
     expect(failed.copyWith(clearMessage: true).message, isNull);
   });
+
+  test('complimentary mode unlocks features but remains ad-supported', () {
+    const complimentary = PremiumState(isComplimentaryAccess: true);
+    const paid = PremiumState(isPremium: true);
+    const grace = PremiumState(isInGracePeriod: true);
+
+    expect(complimentary.hasPremiumAccess, isTrue);
+    expect(complimentary.hasAdFreeAccess, isFalse);
+    expect(paid.hasAdFreeAccess, isTrue);
+    expect(grace.hasAdFreeAccess, isTrue);
+  });
 }

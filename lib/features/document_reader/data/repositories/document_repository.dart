@@ -126,25 +126,6 @@ class DocumentRepository {
             _appScanDepth,
           );
         }
-        
-        // Also scan standard Android directories if we have permission
-        final rootDir = Directory('/storage/emulated/0');
-        if (await rootDir.exists()) {
-          for (final name in const ['Download', 'Documents', 'PDFs']) {
-            final directory = Directory(p.join(rootDir.path, name));
-            if (await directory.exists()) {
-              roots[p.normalize(directory.path)] = _ScanRoot(
-                directory,
-                4, // A bit deeper for these folders
-              );
-            }
-          }
-          // Also allow a shallow scan of the root itself just in case
-          roots[p.normalize(rootDir.path)] = _ScanRoot(
-            rootDir,
-            3,
-          );
-        }
       } catch (_) {
         // Scoped-storage app directories can be unavailable on some devices.
       }

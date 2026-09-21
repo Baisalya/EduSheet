@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/premium_controller.dart';
+import '../../domain/freemium_policy.dart';
 import '../../domain/premium_state.dart';
 
 class PremiumScreen extends ConsumerWidget {
@@ -25,16 +26,19 @@ class PremiumScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _PremiumHero(
-                    isPremium: premium.isPremium,
+                    hasPremiumAccess: premium.hasPremiumAccess,
+                    isInGracePeriod: premium.isInGracePeriod,
                     isComplimentary: premium.isComplimentaryAccess,
                   ),
                   const SizedBox(height: 24),
                   Text(
                     premium.isComplimentaryAccess
-                        ? 'Everything is unlocked for free'
+                        ? 'Everything is unlocked for now'
+                        : premium.isInGracePeriod
+                        ? 'Your 7-day grace period is active'
                         : premium.isPremium
-                        ? 'Your premium workspace is active'
-                        : 'Make the workspace yours',
+                        ? 'Your Premium plan is active'
+                        : 'Unlock unlimited teacher workflows',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -42,10 +46,12 @@ class PremiumScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   Text(
                     premium.isComplimentaryAccess
-                        ? 'No subscription or purchase is active in this release. All workspace colour styles are available to every user.'
+                        ? 'Premium checkout is not active yet. Every feature remains available; Free-plan advertising may still appear.'
+                        : premium.isInGracePeriod
+                        ? 'Your papers and planner remain fully available while you resolve the payment issue.'
                         : premium.isPremium
-                        ? 'Thank you for supporting an offline-first tool built for teachers.'
-                        : 'An optional Store-managed plan for premium workspace styles. All essential paper-creation tools stay free.',
+                        ? 'Unlimited creation, advanced planning and an ad-free workspace are active.'
+                        : 'Free remains genuinely useful. Premium removes limits from new creation and advanced operations.',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: colors.onSurfaceVariant,
                       height: 1.45,
@@ -53,29 +59,34 @@ class PremiumScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 22),
                   const _BenefitTile(
-                    icon: Icons.palette_rounded,
-                    title: 'Premium colour styles',
-                    description:
-                        'Switch between Violet, Emerald and Sunset workspace accents.',
-                  ),
-                  const _BenefitTile(
-                    icon: Icons.workspace_premium_rounded,
-                    title: 'Supporter status',
-                    description:
-                        'Keep a premium badge in your EduSheet workspace and settings.',
-                  ),
-                  _BenefitTile(
                     icon: Icons.all_inclusive_rounded,
-                    title: 'Store-managed subscription',
-                    description: premium.isComplimentaryAccess
-                        ? 'The optional plan is not active in this store. No checkout is started while free access is active.'
-                        : 'Subscribe and restore through the same Play Store account.',
+                    title: 'Unlimited papers, classes and exports',
+                    description:
+                        'Create without Free limits and export editable Word files or unlimited PDFs.',
                   ),
                   const _BenefitTile(
-                    icon: Icons.lock_open_rounded,
-                    title: 'Core tools remain free',
+                    icon: Icons.branding_watermark_rounded,
+                    title: 'All templates and custom branding',
                     description:
-                        'Paper creation, exports and current teacher utilities are not taken away.',
+                        'Use every template, school logos and custom paper styles.',
+                  ),
+                  const _BenefitTile(
+                    icon: Icons.insights_rounded,
+                    title: 'Advanced Teaching Planner',
+                    description:
+                        'Advanced analytics, period scheduling, curriculum packs and bulk operations.',
+                  ),
+                  const _BenefitTile(
+                    icon: Icons.security_rounded,
+                    title: 'Your work always stays yours',
+                    description:
+                        'Existing documents remain viewable/editable, personal backups stay free, and expiry includes a 7-day grace period.',
+                  ),
+                  const _BenefitTile(
+                    icon: Icons.block_rounded,
+                    title: 'No advertising',
+                    description:
+                        'Home banners and occasional transition ads are removed.',
                   ),
                   if (premium.message != null) ...[
                     const SizedBox(height: 12),
@@ -85,7 +96,7 @@ class PremiumScreen extends ConsumerWidget {
                   _PurchaseButton(state: premium),
                   if (!premium.isComplimentaryAccess &&
                       premium.storeStatus != PremiumStoreStatus.unsupported &&
-                      !premium.isPremium) ...[
+                      !premium.hasPremiumAccess) ...[
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: premium.purchasePending
@@ -116,10 +127,10 @@ class PremiumScreen extends ConsumerWidget {
 
   String _storeFootnote(PremiumState state) {
     if (state.isComplimentaryAccess) {
-      return 'The subscription is not active in this store. Everything remains unlocked for free and no checkout is started.';
+      return 'The Premium subscription is not active in this store. Full feature access stays available; supported mobile Free editions may show advertising.';
     }
     if (state.storeStatus == PremiumStoreStatus.unsupported) {
-      return 'Store checkout is available in the Android, iPhone, Mac and Windows editions. Core tools remain available on this platform.';
+      return 'Ad-free checkout is unavailable on this platform. Every EduSheet feature remains available.';
     }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       return 'Payment is securely processed by Microsoft Store. An active subscription can be restored with the same Microsoft account.';
@@ -129,10 +140,15 @@ class PremiumScreen extends ConsumerWidget {
 }
 
 class _PremiumHero extends StatelessWidget {
-  final bool isPremium;
+  final bool hasPremiumAccess;
+  final bool isInGracePeriod;
   final bool isComplimentary;
 
-  const _PremiumHero({required this.isPremium, required this.isComplimentary});
+  const _PremiumHero({
+    required this.hasPremiumAccess,
+    required this.isInGracePeriod,
+    required this.isComplimentary,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -164,7 +180,7 @@ class _PremiumHero extends StatelessWidget {
               border: Border.all(color: Colors.white24),
             ),
             child: Icon(
-              isPremium || isComplimentary
+              hasPremiumAccess || isComplimentary
                   ? Icons.verified_rounded
                   : Icons.workspace_premium,
               size: 38,
@@ -179,7 +195,9 @@ class _PremiumHero extends StatelessWidget {
                 Text(
                   isComplimentary
                       ? 'FREE ACCESS'
-                      : (isPremium ? 'PREMIUM ACTIVE' : 'PREMIUM PLAN'),
+                      : isInGracePeriod
+                      ? 'GRACE PERIOD'
+                      : (hasPremiumAccess ? 'PREMIUM ACTIVE' : 'PREMIUM PLAN'),
                   style: const TextStyle(
                     color: Color(0xFFFFD76A),
                     fontWeight: FontWeight.w900,
@@ -190,10 +208,12 @@ class _PremiumHero extends StatelessWidget {
                 const SizedBox(height: 5),
                 Text(
                   isComplimentary
-                      ? 'No payment required.'
-                      : isPremium
-                      ? 'You make EduSheet better.'
-                      : 'Optional. Store managed.',
+                      ? 'Full features with Free ads.'
+                      : isInGracePeriod
+                      ? '${FreemiumPolicy.premiumGracePeriod.inDays} days to update payment.'
+                      : hasPremiumAccess
+                      ? 'Unlimited and ad-free.'
+                      : 'More creation. Less friction.',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 22,
@@ -283,15 +303,18 @@ class _PurchaseButton extends ConsumerWidget {
     final ready = state.storeStatus == PremiumStoreStatus.ready;
     final label = switch ((
       state.isComplimentaryAccess,
-      state.isPremium,
+      state.hasPremiumAccess,
       state.purchasePending,
       ready,
     )) {
       (true, _, _, _) => 'Free access is active',
-      (_, true, _, _) => 'Premium is active',
+      (_, true, _, _) =>
+        state.isInGracePeriod
+            ? 'Premium grace period is active'
+            : 'Premium plan is active',
       (_, _, true, _) => 'Connecting to store…',
       (_, _, _, true) => 'Subscribe for ${state.product!.price}',
-      _ => 'Premium unavailable',
+      _ => 'Ad-free plan unavailable',
     };
 
     return SizedBox(
@@ -301,7 +324,7 @@ class _PurchaseButton extends ConsumerWidget {
             !state.isComplimentaryAccess &&
                 ready &&
                 !state.purchasePending &&
-                !state.isPremium
+                !state.hasPremiumAccess
             ? () => ref.read(premiumProvider.notifier).buyPremium()
             : null,
         style: FilledButton.styleFrom(

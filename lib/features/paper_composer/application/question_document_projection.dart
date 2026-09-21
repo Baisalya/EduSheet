@@ -43,7 +43,8 @@ class QuestionDocumentProjection {
 
   bool get hasFixedPageObjects => wordShapes.any((item) => item.isFixedOnPage);
 
-  bool get hasFloatingGeometry => wordShapes.any((item) => item.isGeometryObject);
+  bool get hasFloatingGeometry =>
+      wordShapes.any((item) => item.isGeometryObject);
 
   bool containsBlock(UniversalQuestionBlockKind kind) =>
       structure.contains(kind);

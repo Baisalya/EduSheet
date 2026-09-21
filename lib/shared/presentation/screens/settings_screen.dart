@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/config/app_config.dart';
+import '../../../features/advertising/application/ad_consent_controller.dart';
 import '../../../features/guided_experience/application/guide_catalog_providers.dart';
 import '../../../features/guided_experience/application/guided_experience_providers.dart';
 import '../../../features/guided_experience/domain/guide_progress.dart';
@@ -13,8 +14,12 @@ import '../../../features/guided_experience/demo/guided_demo_screen.dart';
 import '../../../features/guided_experience/demo/guided_demo_session.dart';
 import '../../../features/premium/application/premium_controller.dart';
 import '../../../features/premium/presentation/screens/premium_screen.dart';
+import '../../../features/eds_import/presentation/screens/eds_import_center_screen.dart';
+import '../../../features/editor/presentation/screens/saved_papers_screen.dart';
+import '../../../features/teaching_planner/presentation/screens/planner_insights_backup_screen.dart';
 import '../providers/app_info_provider.dart';
 import '../providers/theme_provider.dart';
+import '../widgets/adaptive_modal_bottom_sheet.dart';
 import '../widgets/privacy_policy_dialog.dart';
 import '../widgets/rating_card.dart';
 
@@ -30,6 +35,11 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeSettings = ref.watch(themeProvider);
     final premium = ref.watch(premiumProvider);
+    final adConsent =
+        AppConfig.homeBannerAdUnitIdForCurrentPlatform != null &&
+            !premium.hasAdFreeAccess
+        ? ref.watch(adConsentProvider)
+        : const AdConsentState.disabled();
     final appInfo = ref.watch(appInfoProvider);
     final contextualHelp = ref.watch(contextualHelpControllerProvider);
     final guidedExperience = ref.watch(guidedExperienceControllerProvider);
@@ -86,26 +96,13 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    premium.hasPremiumAccess
-                        ? premium.isComplimentaryAccess
-                              ? 'All workspace styles are free in this release.'
-                              : 'All premium styles are unlocked.'
-                        : 'Ocean is free. Premium unlocks three more styles.',
+                    'All workspace colours are available on the Free plan.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 14),
                   _AccentPicker(
                     selected: themeSettings.accent,
-                    isPremium: premium.hasPremiumAccess,
                     onSelected: (accent) {
-                      if (accent.isPremium && !premium.hasPremiumAccess) {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const PremiumScreen(),
-                          ),
-                        );
-                        return;
-                      }
                       ref.read(themeProvider.notifier).setAccent(accent);
                     },
                   ),
@@ -133,27 +130,34 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                     trailing: Switch(
                       value: contextualHelp.helperEnabled,
-                      onChanged: contextualHelp.isLoading ||
+                      onChanged:
+                          contextualHelp.isLoading ||
                               !contextualHelp.isInitialized
                           ? null
                           : (value) {
                               ref
-                                  .read(contextualHelpControllerProvider.notifier)
+                                  .read(
+                                    contextualHelpControllerProvider.notifier,
+                                  )
                                   .setHelperEnabled(value);
                             },
                     ),
                   ),
                   if (guideCatalog.isNotEmpty) ...[
                     const Divider(height: 20),
-                    for (var index = 0; index < guideCatalog.length; index++) ...[
+                    for (
+                      var index = 0;
+                      index < guideCatalog.length;
+                      index++
+                    ) ...[
                       if (index > 0) const Divider(height: 1, indent: 48),
                       _SettingsActionCard(
                         title: guideCatalog[index].title,
                         subtitle: _guideReplaySubtitle(
                           guideCatalog[index].description,
-                          guidedExperience.progressFor(
-                            guideCatalog[index].definition.id,
-                          )?.status,
+                          guidedExperience
+                              .progressFor(guideCatalog[index].definition.id)
+                              ?.status,
                         ),
                         icon: Icons.replay_rounded,
                         color: Colors.deepPurple,
@@ -165,10 +169,9 @@ class SettingsScreen extends ConsumerWidget {
                           final controller = ref.read(
                             guidedExperienceControllerProvider.notifier,
                           );
-                          if (progress?.status == GuideProgressStatus.completed) {
-                            unawaited(
-                              controller.replayGuide(entry.definition),
-                            );
+                          if (progress?.status ==
+                              GuideProgressStatus.completed) {
+                            unawaited(controller.replayGuide(entry.definition));
                           } else {
                             // Settings always returns to Home. Restart an
                             // unfinished guide from its real Home entry point
@@ -194,9 +197,8 @@ class SettingsScreen extends ConsumerWidget {
                             if (feature == null) return;
                             Navigator.of(context).push<void>(
                               MaterialPageRoute<void>(
-                                builder: (_) => GuidedDemoScreen(
-                                  feature: feature,
-                                ),
+                                builder: (_) =>
+                                    GuidedDemoScreen(feature: feature),
                               ),
                             );
                           },
@@ -249,7 +251,7 @@ class SettingsScreen extends ConsumerWidget {
                 children: [
                   _SettingsActionCard(
                     title: 'Privacy Policy',
-                    subtitle: 'How EduSheet handles local and store data',
+                    subtitle: 'How EduSheet handles local, store and ad data',
                     icon: Icons.privacy_tip_rounded,
                     color: Colors.blueGrey,
                     onTap: () {
@@ -259,6 +261,20 @@ class SettingsScreen extends ConsumerWidget {
                       );
                     },
                   ),
+                  if (adConsent.privacyOptionsRequired) ...[
+                    const Divider(height: 1, indent: 48),
+                    _SettingsActionCard(
+                      title: 'Advertising privacy choices',
+                      subtitle: 'Review or change your consent choices',
+                      icon: Icons.ads_click_outlined,
+                      color: Colors.deepOrange,
+                      onTap: () => unawaited(
+                        ref
+                            .read(adConsentProvider.notifier)
+                            .showPrivacyOptions(),
+                      ),
+                    ),
+                  ],
                   const Divider(height: 1, indent: 48),
                   _SettingsActionCard(
                     title: 'Check for updates',
@@ -312,12 +328,12 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                   const Divider(height: 1, indent: 48),
                   _SettingsActionCard(
-                    title: 'Import/Export Data',
-                    subtitle: 'Manage your local files',
+                    title: 'Import & Export',
+                    subtitle:
+                        'Open, back up, or share portable EduSheet .eds files',
                     icon: Icons.import_export_rounded,
                     color: Colors.deepOrange,
-                    isComingSoon: true,
-                    onTap: () {},
+                    onTap: () => _openImportExportHub(context),
                   ),
                 ],
               ),
@@ -341,6 +357,117 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _openImportExportHub(BuildContext context) async {
+    await showAdaptiveModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      maximumSheetWidth: 720,
+      builder: (sheetContext) {
+        final scheme = Theme.of(sheetContext).colorScheme;
+        return SingleChildScrollView(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  bottom: 20 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Import & Export',
+                      style: Theme.of(sheetContext).textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Use the same verified EduSheet .eds flows available across the app. No duplicate import or backup logic is used here.',
+                      style: Theme.of(sheetContext).textTheme.bodyMedium
+                          ?.copyWith(color: scheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 16),
+                    _ImportExportActionTile(
+                      icon: Icons.file_open_outlined,
+                      color: Colors.cyan,
+                      title: 'Import EduSheet File',
+                      subtitle:
+                          'Open papers, planner backups, curriculum, and teacher packs with the safe preview and merge flow.',
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const EdsImportCenterScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    _ImportExportActionTile(
+                      icon: Icons.backup_outlined,
+                      color: Colors.indigo,
+                      title: 'Backup / Export Teaching Workspace',
+                      subtitle:
+                          'Create the existing portable planner .eds backup with attachments, linked papers, lineage, and sync metadata.',
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PlannerInsightsBackupScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    _ImportExportActionTile(
+                      icon: Icons.description_outlined,
+                      color: Colors.deepPurple,
+                      title: 'Export Saved Paper',
+                      subtitle:
+                          'Open Saved Papers and export any editable paper using its existing EduSheet .eds action.',
+                      onTap: () {
+                        Navigator.of(sheetContext).pop();
+                        Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const SavedPapersScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.shield_outlined,
+                          size: 18,
+                          color: scheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Existing entitlement checks, lineage protection, conflict-safe merge rules, and official curriculum locks still apply from Settings.',
+                            style: Theme.of(sheetContext).textTheme.bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   GuidedDemoFeature? _demoFeatureForGuide(GuideId guideId) {
     if (guideId == GuideId.createPaper) {
       return GuidedDemoFeature.createPaper;
@@ -351,10 +478,7 @@ class SettingsScreen extends ConsumerWidget {
     return null;
   }
 
-  String _guideReplaySubtitle(
-    String description,
-    GuideProgressStatus? status,
-  ) {
+  String _guideReplaySubtitle(String description, GuideProgressStatus? status) {
     final stateLabel = switch (status) {
       GuideProgressStatus.completed => 'Completed',
       GuideProgressStatus.inProgress => 'In progress',
@@ -715,8 +839,8 @@ class _PremiumSettingsBanner extends StatelessWidget {
                   children: [
                     Text(
                       isComplimentary
-                          ? 'Free access release'
-                          : (isPremium ? 'Premium active' : 'EduSheet Premium'),
+                          ? 'Full-access release'
+                          : (isPremium ? 'Premium active' : 'View Premium'),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 17,
@@ -726,10 +850,10 @@ class _PremiumSettingsBanner extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       isComplimentary
-                          ? 'Subscription inactive • all styles unlocked'
+                          ? 'All features available; Free ads may appear'
                           : isPremium
-                          ? 'Thank you for supporting EduSheet.'
-                          : 'Optional Store subscription • premium styles',
+                          ? 'Unlimited creation and no advertising.'
+                          : 'Unlimited papers, exports, classes and advanced planning',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
@@ -749,14 +873,9 @@ class _PremiumSettingsBanner extends StatelessWidget {
 
 class _AccentPicker extends StatelessWidget {
   final AppAccent selected;
-  final bool isPremium;
   final ValueChanged<AppAccent> onSelected;
 
-  const _AccentPicker({
-    required this.selected,
-    required this.isPremium,
-    required this.onSelected,
-  });
+  const _AccentPicker({required this.selected, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
@@ -765,11 +884,10 @@ class _AccentPicker extends StatelessWidget {
       runSpacing: 10,
       children: AppAccent.values.map((accent) {
         final selectedAccent = accent == selected;
-        final locked = accent.isPremium && !isPremium;
         return Semantics(
           button: true,
           selected: selectedAccent,
-          label: '${accent.label}${locked ? ', Premium' : ''}',
+          label: accent.label,
           child: InkWell(
             onTap: () => onSelected(accent),
             borderRadius: BorderRadius.circular(14),
@@ -807,20 +925,6 @@ class _AccentPicker extends StatelessWidget {
                               )
                             : null,
                       ),
-                      if (locked)
-                        const Positioned(
-                          right: -5,
-                          bottom: -4,
-                          child: CircleAvatar(
-                            radius: 8,
-                            backgroundColor: Color(0xFFFFC857),
-                            child: Icon(
-                              Icons.lock_rounded,
-                              size: 10,
-                              color: Color(0xFF4A3210),
-                            ),
-                          ),
-                        ),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -1003,6 +1107,75 @@ class _SettingsSection extends StatelessWidget {
   }
 }
 
+class _ImportExportActionTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ImportExportActionTile({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: color.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingsActionCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -1098,10 +1271,7 @@ class _SettingsActionCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: scheme.onSurfaceVariant,
-            ),
+            Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
           ],
         ),
       ),

@@ -207,14 +207,10 @@ class WordShapeObject {
       borderVisible: json['borderVisible'] is bool
           ? json['borderVisible'] as bool
           : true,
-      strokeColorArgb:
-          (json['strokeColorArgb'] as num?)?.toInt() ?? 0xFF000000,
+      strokeColorArgb: (json['strokeColorArgb'] as num?)?.toInt() ?? 0xFF000000,
       strokeWidth: _stroke((json['strokeWidth'] as num?)?.toDouble() ?? 1.6),
-      fillColorArgb:
-          (json['fillColorArgb'] as num?)?.toInt() ?? 0xFFFFFFFF,
-      fillOpacity: _opacity(
-        (json['fillOpacity'] as num?)?.toDouble() ?? 0,
-      ),
+      fillColorArgb: (json['fillColorArgb'] as num?)?.toInt() ?? 0xFFFFFFFF,
+      fillOpacity: _opacity((json['fillOpacity'] as num?)?.toDouble() ?? 0),
       padding: _padding((json['padding'] as num?)?.toDouble() ?? 6),
       textBoxSizing: _enumByName(
         WordTextBoxSizing.values,
@@ -226,7 +222,9 @@ class WordShapeObject {
         json['anchorMode'],
         WordObjectAnchorMode.moveWithContent,
       ),
-      fixedPageIndex: _pageIndex((json['fixedPageIndex'] as num?)?.toInt() ?? 0),
+      fixedPageIndex: _pageIndex(
+        (json['fixedPageIndex'] as num?)?.toInt() ?? 0,
+      ),
       geometryDiagram: _geometryFromJson(json['geometryDiagram']),
     );
   }

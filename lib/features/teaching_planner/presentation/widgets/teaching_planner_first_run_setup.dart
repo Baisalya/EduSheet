@@ -70,10 +70,7 @@ class TeachingPlannerFirstRunSetup extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: TeachingPlannerDesign.space18),
-                          Expanded(
-                            flex: 4,
-                            child: _SetupSummary(model: model),
-                          ),
+                          Expanded(flex: 4, child: _SetupSummary(model: model)),
                         ],
                       )
                     else ...[
@@ -210,11 +207,7 @@ class _SetupStep extends StatelessWidget {
     final colors = TeachingPlannerTheme.colorsOf(context);
     return Column(
       children: [
-        _StepCircle(
-          index: index,
-          completed: completed,
-          active: active,
-        ),
+        _StepCircle(index: index, completed: completed, active: active),
         const SizedBox(height: TeachingPlannerDesign.space8),
         Text(
           label,
@@ -323,64 +316,64 @@ class _MainSetupCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final details = switch (model.stage) {
       TeachingPlannerSetupStage.classSetup => _SetupStageData(
-          icon: Icons.class_rounded,
-          tone: TeachingPlannerTone.primary,
-          eyebrow: 'STEP 1 OF 3',
-          title: 'Create your first class',
-          body:
-              'Start with the class you teach. Academic year is optional, and you can edit it later.',
-          bullets: const [
-            'Enter the class name you already use',
-            'Add the academic year only if you need it',
-          ],
-          action: 'Create class',
-          key: const ValueKey('planner-setup-create-class'),
-          callback: onCreateClass,
-        ),
+        icon: Icons.class_rounded,
+        tone: TeachingPlannerTone.primary,
+        eyebrow: 'STEP 1 OF 3',
+        title: 'Create your first class',
+        body:
+            'Start with the class you teach. Academic year is optional, and you can edit it later.',
+        bullets: const [
+          'Enter the class name you already use',
+          'Add the academic year only if you need it',
+        ],
+        action: 'Create class',
+        key: const ValueKey('planner-setup-create-class'),
+        callback: onCreateClass,
+      ),
       TeachingPlannerSetupStage.syllabus => _SetupStageData(
-          icon: Icons.account_tree_rounded,
-          tone: TeachingPlannerTone.teal,
-          eyebrow: 'STEP 2 OF 3',
-          title: 'Add the syllabus you actually teach',
-          body:
-              'Open your class, add a subject, then add at least one chapter. Units and topics stay optional.',
-          bullets: const [
-            'Add the real subject for this class',
-            'Create at least one chapter to plan lessons',
-          ],
-          action: 'Build syllabus',
-          key: const ValueKey('planner-setup-build-syllabus'),
-          callback: onOpenSyllabus,
-        ),
+        icon: Icons.account_tree_rounded,
+        tone: TeachingPlannerTone.teal,
+        eyebrow: 'STEP 2 OF 3',
+        title: 'Add the syllabus you actually teach',
+        body:
+            'Open your class, add a subject, then add at least one chapter. Units and topics stay optional.',
+        bullets: const [
+          'Add the real subject for this class',
+          'Create at least one chapter to plan lessons',
+        ],
+        action: 'Build syllabus',
+        key: const ValueKey('planner-setup-build-syllabus'),
+        callback: onOpenSyllabus,
+      ),
       TeachingPlannerSetupStage.firstLesson => _SetupStageData(
-          icon: Icons.menu_book_rounded,
-          tone: TeachingPlannerTone.purple,
-          eyebrow: 'STEP 3 OF 3',
-          title: 'Plan your first lesson',
-          body:
-              'Turn the syllabus into a real lesson with date, periods and objective. Materials and activities can be added now or later.',
-          bullets: const [
-            'Choose the syllabus chapter you will teach',
-            'Set the date, periods and teaching objective',
-          ],
-          action: 'Plan first lesson',
-          key: const ValueKey('planner-setup-first-lesson'),
-          callback: onPlanFirstLesson,
-        ),
+        icon: Icons.menu_book_rounded,
+        tone: TeachingPlannerTone.purple,
+        eyebrow: 'STEP 3 OF 3',
+        title: 'Plan your first lesson',
+        body:
+            'Turn the syllabus into a real lesson with date, periods and objective. Materials and activities can be added now or later.',
+        bullets: const [
+          'Choose the syllabus chapter you will teach',
+          'Set the date, periods and teaching objective',
+        ],
+        action: 'Plan first lesson',
+        key: const ValueKey('planner-setup-first-lesson'),
+        callback: onPlanFirstLesson,
+      ),
       TeachingPlannerSetupStage.complete => _SetupStageData(
-          icon: Icons.check_circle_rounded,
-          tone: TeachingPlannerTone.teal,
-          eyebrow: 'ALL SET',
-          title: 'Your Teaching Planner is ready',
-          body: 'Your class, syllabus and first lesson are connected.',
-          bullets: const [
-            'Your teaching structure is ready to use',
-            'Continue planning from the main dashboard',
-          ],
-          action: 'Continue',
-          key: const ValueKey('planner-setup-complete'),
-          callback: onPlanFirstLesson,
-        ),
+        icon: Icons.check_circle_rounded,
+        tone: TeachingPlannerTone.teal,
+        eyebrow: 'ALL SET',
+        title: 'Your Teaching Planner is ready',
+        body: 'Your class, syllabus and first lesson are connected.',
+        bullets: const [
+          'Your teaching structure is ready to use',
+          'Continue planning from the main dashboard',
+        ],
+        action: 'Continue',
+        key: const ValueKey('planner-setup-complete'),
+        callback: onPlanFirstLesson,
+      ),
     };
 
     final theme = Theme.of(context);
@@ -393,10 +386,7 @@ class _MainSetupCard extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            details.tone.background(colors),
-            colors.surface,
-          ],
+          colors: [details.tone.background(colors), colors.surface],
         ),
         borderRadius: BorderRadius.circular(TeachingPlannerDesign.radiusHero),
         border: Border.all(color: colors.border),
@@ -522,19 +512,18 @@ class _MainSetupCard extends StatelessWidget {
   Widget _guideActionAnchor(TeachingPlannerSetupStage stage, Widget child) {
     return switch (stage) {
       TeachingPlannerSetupStage.classSetup => GuideAnchor(
-          targetId: CreateSyllabusGuideTargets.openClassSetup,
-          reportPointerActivation: true,
-          child: child,
-        ),
+        targetId: CreateSyllabusGuideTargets.openClassSetup,
+        reportPointerActivation: true,
+        child: child,
+      ),
       TeachingPlannerSetupStage.syllabus => GuideAnchor(
-          targetId: CreateSyllabusGuideTargets.openSyllabus,
-          reportPointerActivation: true,
-          child: child,
-        ),
+        targetId: CreateSyllabusGuideTargets.openSyllabus,
+        reportPointerActivation: true,
+        child: child,
+      ),
       _ => child,
     };
   }
-
 }
 
 class _SetupStageData {
@@ -717,7 +706,9 @@ class _SetupError extends StatelessWidget {
         padding: const EdgeInsets.all(TeachingPlannerDesign.space14),
         decoration: BoxDecoration(
           color: scheme.errorContainer,
-          borderRadius: BorderRadius.circular(TeachingPlannerDesign.radiusLarge),
+          borderRadius: BorderRadius.circular(
+            TeachingPlannerDesign.radiusLarge,
+          ),
         ),
         child: Row(
           children: [

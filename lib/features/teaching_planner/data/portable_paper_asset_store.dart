@@ -20,15 +20,17 @@ class PortablePaperAssetStore {
   PortablePaperAssetStore({
     Future<Directory> Function()? rootResolver,
     String Function()? importDirectoryId,
-  })  : _rootResolver = rootResolver ?? _defaultRoot,
-        _importDirectoryId = importDirectoryId ?? (() => const Uuid().v4());
+  }) : _rootResolver = rootResolver ?? _defaultRoot,
+       _importDirectoryId = importDirectoryId ?? (() => const Uuid().v4());
 
   final Future<Directory> Function() _rootResolver;
   final String Function() _importDirectoryId;
 
   static Future<Directory> _defaultRoot() async {
     final documents = await getApplicationDocumentsDirectory();
-    return Directory(p.join(documents.path, 'edusheet', 'portable-paper-assets'));
+    return Directory(
+      p.join(documents.path, 'edusheet', 'portable-paper-assets'),
+    );
   }
 
   Future<PortablePaperMaterialization> materialize(

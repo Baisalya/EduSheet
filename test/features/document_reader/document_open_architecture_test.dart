@@ -131,4 +131,28 @@ void main() {
     expect(request.displayName, 'My Lesson.pdf');
     expect(request.source, DocumentOpenSource.windowsCommandLine);
   });
+
+  test('desktop activation accepts EduSheet portable file extensions', () {
+    final eds = DocumentOpenRequest.fromCommandLine([
+      r'C:\Users\Teacher\Planner Backup.eds',
+    ]);
+    final teachingPack = DocumentOpenRequest.fromCommandLine([
+      r'C:\Users\Teacher\Algebra Resources.edtp',
+    ]);
+
+    expect(eds, isNotNull);
+    expect(eds!.effectiveExtension, '.eds');
+    expect(teachingPack, isNotNull);
+    expect(teachingPack!.effectiveExtension, '.edtp');
+  });
+
+  test('Android activation prefers original display-name extension', () {
+    final request = DocumentOpenRequest.fromPlatformMap({
+      'path': '/data/user/0/com.baishalya.edusheet/cache/incoming_file',
+      'name': 'School Curriculum.eds',
+      'source': 'androidViewIntent',
+    });
+
+    expect(request.effectiveExtension, '.eds');
+  });
 }

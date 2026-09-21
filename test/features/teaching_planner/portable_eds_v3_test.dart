@@ -29,6 +29,7 @@ void main() {
       workspace,
       exportedAt: now,
       paperSnapshots: {paper.id: snapshot},
+      targetVersion: 3,
     );
     final decoded = codec.decodePayload(encoded);
 
@@ -40,6 +41,30 @@ void main() {
       decoded.paperSnapshots[paper.id]!.assets.values.single.bytes,
       [1, 2, 3, 4],
     );
+  });
+
+
+  test('v4 universal container keeps planner payload backward-compatible', () async {
+    final temp = await Directory.systemTemp.createTemp('edusheet-v4-planner-');
+    addTearDown(() => temp.delete(recursive: true));
+    final logo = File('${temp.path}/school-logo.png');
+    await logo.writeAsBytes([4, 2, 4, 2], flush: true);
+    final paper = _paper(now, logos: [logo.path]);
+    final snapshot = await PortablePaperSnapshot.capture(paper);
+    final workspace = _workspaceWithPaper(now, paper.id);
+
+    const codec = TeachingPlannerBackupCodec();
+    final encoded = codec.encode(
+      workspace,
+      exportedAt: now,
+      paperSnapshots: {paper.id: snapshot},
+    );
+    final decoded = codec.decodePayload(encoded);
+
+    expect(encoded, startsWith('EDUSHEET/4'));
+    expect(decoded.version, 4);
+    expect(decoded.paperSnapshots.keys, [paper.id]);
+    expect(decoded.workspace.resources.single.linkedPaperId, paper.id);
   });
 
   test('question image and attachment paths are materialized on the new device', () async {
@@ -249,10 +274,9 @@ void main() {
       papers.firstWhere((paper) => paper.id == incoming.id).title,
       'Existing local version',
     );
-    expect(
-      papers.firstWhere((paper) => paper.id == 'paper-safe-copy').title,
-      'Incoming backup version',
-    );
+    final safeCopy = papers.firstWhere((paper) => paper.id == 'paper-safe-copy');
+    expect(safeCopy.title, 'Incoming backup version');
+    expect(safeCopy.originId, incoming.originId);
   });
 
   test('rollback removes papers and files created by an import', () async {

@@ -42,9 +42,7 @@ class _TeachingPlannerScreenState extends ConsumerState<TeachingPlannerScreen> {
         ? guidedExperience.activeStep?.id
         : null;
 
-    _scheduleCreateSyllabusGuideReconciliation(
-      activeStep: activeSyllabusStep,
-    );
+    _scheduleCreateSyllabusGuideReconciliation(activeStep: activeSyllabusStep);
 
     final showSetup = !setup.isComplete && !_skipSetupForSession;
 
@@ -146,47 +144,46 @@ class _TeachingPlannerScreenState extends ConsumerState<TeachingPlannerScreen> {
 
     return switch (setup.stage) {
       TeachingPlannerSetupStage.classSetup => const ContextualHelpSuggestion(
-          id: 'teaching_planner.finish_class_setup',
-          screen: GuidedScreenContext.teachingPlanner,
-          title: 'Add your first class?',
-          message:
-              'I can open the class form. A class name is enough to begin.',
-          primaryLabel: 'Add class',
-          minimumInactivity: Duration(minutes: 1),
-          requiresIncompleteAction: true,
-        ),
+        id: 'teaching_planner.finish_class_setup',
+        screen: GuidedScreenContext.teachingPlanner,
+        title: 'Add your first class?',
+        message: 'I can open the class form. A class name is enough to begin.',
+        primaryLabel: 'Add class',
+        minimumInactivity: Duration(minutes: 1),
+        requiresIncompleteAction: true,
+      ),
       TeachingPlannerSetupStage.syllabus => ContextualHelpSuggestion(
-          id: 'teaching_planner.finish_syllabus.${setup.focusClassId ?? 'class'}',
-          screen: GuidedScreenContext.teachingPlanner,
-          title: className == null
-              ? 'Continue your syllabus?'
-              : 'Continue $className syllabus?',
-          message: className == null
-              ? 'This syllabus still needs a subject and chapter. I can open it for you.'
-              : '$className still needs a subject and chapter before lesson planning. I can open the syllabus at this class.',
-          primaryLabel: 'Open syllabus',
-          minimumInactivity: const Duration(minutes: 1),
-          requiresIncompleteAction: true,
-        ),
+        id: 'teaching_planner.finish_syllabus.${setup.focusClassId ?? 'class'}',
+        screen: GuidedScreenContext.teachingPlanner,
+        title: className == null
+            ? 'Continue your syllabus?'
+            : 'Continue $className syllabus?',
+        message: className == null
+            ? 'This syllabus still needs a subject and chapter. I can open it for you.'
+            : '$className still needs a subject and chapter before lesson planning. I can open the syllabus at this class.',
+        primaryLabel: 'Open syllabus',
+        minimumInactivity: const Duration(minutes: 1),
+        requiresIncompleteAction: true,
+      ),
       TeachingPlannerSetupStage.firstLesson => ContextualHelpSuggestion(
-          id: 'teaching_planner.finish_first_lesson.${setup.focusClassId ?? 'class'}',
-          screen: GuidedScreenContext.teachingPlanner,
-          title: className == null
-              ? 'Ready to plan your first lesson?'
-              : 'Plan the first $className lesson?',
-          message:
-              'The syllabus is ready. I can open a lesson form with the class already selected.',
-          primaryLabel: 'Plan lesson',
-          minimumInactivity: const Duration(minutes: 1),
-          requiresIncompleteAction: true,
-        ),
+        id: 'teaching_planner.finish_first_lesson.${setup.focusClassId ?? 'class'}',
+        screen: GuidedScreenContext.teachingPlanner,
+        title: className == null
+            ? 'Ready to plan your first lesson?'
+            : 'Plan the first $className lesson?',
+        message:
+            'The syllabus is ready. I can open a lesson form with the class already selected.',
+        primaryLabel: 'Plan lesson',
+        minimumInactivity: const Duration(minutes: 1),
+        requiresIncompleteAction: true,
+      ),
       TeachingPlannerSetupStage.complete => const ContextualHelpSuggestion(
-          id: 'teaching_planner.complete',
-          screen: GuidedScreenContext.teachingPlanner,
-          title: 'Teaching Planner is ready',
-          message: 'Your setup is already complete.',
-          requiresIncompleteAction: true,
-        ),
+        id: 'teaching_planner.complete',
+        screen: GuidedScreenContext.teachingPlanner,
+        title: 'Teaching Planner is ready',
+        message: 'Your setup is already complete.',
+        requiresIncompleteAction: true,
+      ),
     };
   }
 
@@ -231,9 +228,9 @@ class _TeachingPlannerScreenState extends ConsumerState<TeachingPlannerScreen> {
 
     final message = ref.read(teachingPlannerProvider).errorMessage;
     if (message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

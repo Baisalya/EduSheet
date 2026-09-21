@@ -42,7 +42,7 @@ try {
     }
 
     $manifestText = Get-Content -LiteralPath $manifestPath -Raw
-    foreach ($extension in @('.pdf', '.docx', '.xlsx', '.pptx', '.txt')) {
+    foreach ($extension in @('.pdf', '.docx', '.xlsx', '.pptx', '.txt', '.eds', '.edtp')) {
         if ($manifestText -notmatch [regex]::Escape(">$extension<")) {
             throw "Required file association is missing: $extension"
         }

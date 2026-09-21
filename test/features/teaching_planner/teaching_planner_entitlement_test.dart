@@ -4,7 +4,7 @@ import 'package:edusheet/features/teaching_planner/domain/models/teaching_planne
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('free users keep core planning capabilities', () {
+  test('free users keep core planning and personal backup', () {
     final capabilities = TeachingPlannerEntitlementAdapter.fromPremiumState(
       const PremiumState(
         isPremium: false,
@@ -20,7 +20,15 @@ void main() {
       isTrue,
     );
     expect(
+      capabilities.allows(TeachingPlannerCapability.plannerBackupAndRestore),
+      isTrue,
+    );
+    expect(
       capabilities.allows(TeachingPlannerCapability.advancedDashboards),
+      isFalse,
+    );
+    expect(
+      capabilities.allows(TeachingPlannerCapability.richCurriculumExport),
       isFalse,
     );
   });
@@ -39,6 +47,10 @@ void main() {
       capabilities.allows(TeachingPlannerCapability.bulkOperations),
       isTrue,
     );
+    expect(
+      capabilities.allows(TeachingPlannerCapability.richCurriculumExport),
+      isTrue,
+    );
   });
 
   test('complimentary fail-open access remains full access', () {
@@ -51,5 +63,17 @@ void main() {
       TeachingPlannerAccessLevel.complimentaryPro,
     );
     expect(capabilities.hasProConvenience, isTrue);
+  });
+
+  test('grace-period entitlement keeps pro capabilities', () {
+    final capabilities = TeachingPlannerEntitlementAdapter.fromPremiumState(
+      const PremiumState(isInGracePeriod: true),
+    );
+
+    expect(capabilities.accessLevel, TeachingPlannerAccessLevel.pro);
+    expect(
+      capabilities.allows(TeachingPlannerCapability.advancedScheduling),
+      isTrue,
+    );
   });
 }

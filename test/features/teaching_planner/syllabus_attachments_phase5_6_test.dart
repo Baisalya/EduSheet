@@ -5,6 +5,7 @@ import 'package:edusheet/features/teaching_planner/application/teaching_planner_
 import 'package:edusheet/features/teaching_planner/application/teaching_resource_attachment_service.dart';
 import 'package:edusheet/features/teaching_planner/data/teaching_planner_backup_codec.dart';
 import 'package:edusheet/features/teaching_planner/data/teaching_resource_file_store.dart';
+import 'package:edusheet/features/teaching_planner/domain/models/curriculum_merge_state.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/planner_chapter.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/planner_class.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/planner_subject.dart';
@@ -89,7 +90,7 @@ void main() {
     );
     final decoded = codec.decodePayload(encoded);
 
-    expect(encoded, startsWith('${TeachingPlannerBackupCodec.magicHeader}\n'));
+    expect(encoded, startsWith('EDUSHEET/4\n'));
     expect(decoded.resourceFiles, resourceFiles);
     expect(
       decoded.workspace.resourceById('class-image')!.owner,
@@ -224,6 +225,7 @@ void main() {
           home: Scaffold(
             body: SyllabusDetailPanel(
               workspace: workspace,
+              mergeState: CurriculumMergeState.empty(),
               selected: item.$1,
               query: '',
               filter: SyllabusFilter.all,
@@ -282,6 +284,7 @@ void main() {
         home: Scaffold(
           body: SyllabusDetailPanel(
             workspace: workspace,
+            mergeState: CurriculumMergeState.empty(),
             selected: const SyllabusNodeRef.classValue('class'),
             query: '',
             filter: SyllabusFilter.all,

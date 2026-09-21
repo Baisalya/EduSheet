@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 
 import '../../../data/services/document_file_read_service.dart';
 import '../../../data/services/presentation_parser_service.dart';
@@ -787,12 +788,21 @@ class _AnimationWipeClipper extends CustomClipper<Rect> {
   Rect getClip(Size size) {
     final amount = factor.clamp(0.0, 1.0).toDouble();
     return switch (direction) {
-      'r' || 'right' =>
-        Rect.fromLTWH(size.width * (1 - amount), 0, size.width * amount, size.height),
-      'u' || 'up' || 't' =>
-        Rect.fromLTWH(0, size.height * (1 - amount), size.width, size.height * amount),
-      'd' || 'down' || 'b' =>
-        Rect.fromLTWH(0, 0, size.width, size.height * amount),
+      'r' || 'right' => Rect.fromLTWH(
+        size.width * (1 - amount),
+        0,
+        size.width * amount,
+        size.height,
+      ),
+      'u' || 'up' || 't' => Rect.fromLTWH(
+        0,
+        size.height * (1 - amount),
+        size.width,
+        size.height * amount,
+      ),
+      'd' ||
+      'down' ||
+      'b' => Rect.fromLTWH(0, 0, size.width, size.height * amount),
       _ => Rect.fromLTWH(0, 0, size.width * amount, size.height),
     };
   }
@@ -862,8 +872,9 @@ class _PresentationElementView extends StatelessWidget {
               fontFamily: _safeFontFamily(element.fontFamily),
               fontWeight: element.bold ? FontWeight.w700 : FontWeight.w400,
               fontStyle: element.italic ? FontStyle.italic : FontStyle.normal,
-              decoration:
-                  element.underline ? TextDecoration.underline : TextDecoration.none,
+              decoration: element.underline
+                  ? TextDecoration.underline
+                  : TextDecoration.none,
             ),
           )
         : RichText(
@@ -876,20 +887,29 @@ class _PresentationElementView extends StatelessWidget {
                   TextSpan(
                     text: run.text,
                     style: TextStyle(
-                      color: Color(run.color ?? element.textColor ?? 0xDE000000),
-                      fontSize: math.max(
-                        compact ? 4.0 : 8.0,
-                        (run.fontSizePoints ?? element.fontSizePoints ?? 18) *
-                            scale,
-                      ).toDouble(),
+                      color: Color(
+                        run.color ?? element.textColor ?? 0xDE000000,
+                      ),
+                      fontSize: math
+                          .max(
+                            compact ? 4.0 : 8.0,
+                            (run.fontSizePoints ??
+                                    element.fontSizePoints ??
+                                    18) *
+                                scale,
+                          )
+                          .toDouble(),
                       height: 1.12,
                       fontFamily: _safeFontFamily(
                         run.fontFamily ?? element.fontFamily,
                       ),
                       fontWeight: run.bold ? FontWeight.w700 : FontWeight.w400,
-                      fontStyle: run.italic ? FontStyle.italic : FontStyle.normal,
-                      decoration:
-                          run.underline ? TextDecoration.underline : TextDecoration.none,
+                      fontStyle: run.italic
+                          ? FontStyle.italic
+                          : FontStyle.normal,
+                      decoration: run.underline
+                          ? TextDecoration.underline
+                          : TextDecoration.none,
                     ),
                   ),
               ],
@@ -936,13 +956,10 @@ LinearGradient _presentationGradient(PresentationGradient gradient) {
   final angle = gradient.angleDegrees * math.pi / 180;
   final x = math.cos(angle);
   final y = math.sin(angle);
-  final stops = [...gradient.stops]..sort(
-    (a, b) => a.position.compareTo(b.position),
-  );
+  final stops = [...gradient.stops]
+    ..sort((a, b) => a.position.compareTo(b.position));
   if (stops.length == 1) {
-    stops.add(
-      PresentationGradientStop(position: 1, color: stops.single.color),
-    );
+    stops.add(PresentationGradientStop(position: 1, color: stops.single.color));
   }
   return LinearGradient(
     begin: Alignment(-x, -y),
@@ -1146,12 +1163,10 @@ class _PresentationModePageState extends State<_PresentationModePage>
                             width: metrics.slideSize.width,
                             height: metrics.slideSize.height,
                             animationTimeline: _animationTimeline,
-                            completedAnimationGroups:
-                                _completedAnimationGroups,
+                            completedAnimationGroups: _completedAnimationGroups,
                             activeAnimationGroupIndex:
                                 _activeAnimationGroupIndex,
-                            activeAnimationProgress:
-                                _objectAnimationController,
+                            activeAnimationProgress: _objectAnimationController,
                           ),
                         ),
                       );
@@ -1334,8 +1349,8 @@ class _PresentationModePageState extends State<_PresentationModePage>
           canRetreat: canRetreat,
           onAdvance: _advance,
           onRetreat: _retreat,
-          nextTooltip: _completedAnimationGroups <
-                  _animationTimeline.groups.length
+          nextTooltip:
+              _completedAnimationGroups < _animationTimeline.groups.length
               ? 'Next animation'
               : 'Next slide',
         );
@@ -1384,10 +1399,9 @@ class _PresentationModePageState extends State<_PresentationModePage>
     }
     final finishedGroup = _activeAnimationGroupIndex!;
     setState(() {
-      _completedAnimationGroups = math.max(
-        _completedAnimationGroups,
-        finishedGroup + 1,
-      ).toInt();
+      _completedAnimationGroups = math
+          .max(_completedAnimationGroups, finishedGroup + 1)
+          .toInt();
       _activeAnimationGroupIndex = null;
     });
     _scheduleAutomaticAnimationIfNeeded();
@@ -1533,11 +1547,12 @@ class _PresentationModePageState extends State<_PresentationModePage>
 
   Future<void> _showSlideOverview() async {
     _pauseControlsHide();
-    final selected = await showModalBottomSheet<int>(
+    final selected = await showAdaptiveModalBottomSheet<int>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF151515),
+      maximumSheetWidth: 1200,
       builder: (sheetContext) => FractionallySizedBox(
         heightFactor: 0.76,
         child: _PresentationSlideOverview(
@@ -1780,13 +1795,14 @@ class _PresentationSlideOverview extends StatelessWidget {
                             Expanded(
                               child: LayoutBuilder(
                                 builder: (context, slideConstraints) {
-                                  final metrics = PresentationStagePolicy.contain(
-                                    viewport: Size(
-                                      slideConstraints.maxWidth,
-                                      slideConstraints.maxHeight,
-                                    ),
-                                    aspectRatio: presentation.aspectRatio,
-                                  );
+                                  final metrics =
+                                      PresentationStagePolicy.contain(
+                                        viewport: Size(
+                                          slideConstraints.maxWidth,
+                                          slideConstraints.maxHeight,
+                                        ),
+                                        aspectRatio: presentation.aspectRatio,
+                                      );
                                   return Center(
                                     child: IgnorePointer(
                                       child: _PptxSlideCanvas(
@@ -1806,8 +1822,9 @@ class _PresentationSlideOverview extends StatelessWidget {
                               style: TextStyle(
                                 color: selected ? Colors.white : Colors.white70,
                                 fontSize: 11,
-                                fontWeight:
-                                    selected ? FontWeight.w800 : FontWeight.w500,
+                                fontWeight: selected
+                                    ? FontWeight.w800
+                                    : FontWeight.w500,
                               ),
                             ),
                           ],
@@ -1878,8 +1895,8 @@ class _NativeAnimationNotice extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final text = supported > 0
         ? unsupported > 0
-            ? 'PowerPoint animations enabled: $supported supported effects will play in Present mode; $unsupported advanced Office effects use a safe final-state fallback.'
-            : 'PowerPoint animations enabled: $supported supported object effects will play in Present mode.'
+              ? 'PowerPoint animations enabled: $supported supported effects will play in Present mode; $unsupported advanced Office effects use a safe final-state fallback.'
+              : 'PowerPoint animations enabled: $supported supported object effects will play in Present mode.'
         : 'This deck contains PowerPoint timing metadata. No supported object effects were found, so EduSheet keeps slide content visible instead of guessing unsupported Office animations.';
     return Container(
       width: double.infinity,

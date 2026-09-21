@@ -210,8 +210,14 @@ class WordObjectManipulationService {
       selected.sort((a, b) => a.x.compareTo(b.x));
       final start = selected.first.x;
       final end = selected.last.x + selected.last.width;
-      final totalWidth = selected.fold<double>(0, (sum, item) => sum + item.width);
-      final gap = math.max(0.0, (end - start - totalWidth) / (selected.length - 1));
+      final totalWidth = selected.fold<double>(
+        0,
+        (sum, item) => sum + item.width,
+      );
+      final gap = math.max(
+        0.0,
+        (end - start - totalWidth) / (selected.length - 1),
+      );
       var cursor = start;
       for (final item in selected) {
         replacements[item.id] = item.copyWith(x: cursor);
@@ -221,8 +227,14 @@ class WordObjectManipulationService {
       selected.sort((a, b) => a.y.compareTo(b.y));
       final start = selected.first.y;
       final end = selected.last.y + selected.last.height;
-      final totalHeight = selected.fold<double>(0, (sum, item) => sum + item.height);
-      final gap = math.max(0.0, (end - start - totalHeight) / (selected.length - 1));
+      final totalHeight = selected.fold<double>(
+        0,
+        (sum, item) => sum + item.height,
+      );
+      final gap = math.max(
+        0.0,
+        (end - start - totalHeight) / (selected.length - 1),
+      );
       var cursor = start;
       for (final item in selected) {
         replacements[item.id] = item.copyWith(y: cursor);
@@ -279,10 +291,12 @@ class WordObjectManipulationService {
   ) {
     return [
       for (final item in objects)
-        if (selectedIds.contains(item.id)) item.copyWith(locked: locked) else item,
+        if (selectedIds.contains(item.id))
+          item.copyWith(locked: locked)
+        else
+          item,
     ];
   }
-
 
   static List<WordShapeObject> bringForwardOne(
     List<WordShapeObject> objects,
@@ -370,18 +384,21 @@ class WordObjectManipulationService {
   }) {
     if (selectedIds.isEmpty) return objects;
     final ordered = [...objects]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
-    final selected = ordered.where((item) => selectedIds.contains(item.id)).toList();
-    final others = ordered.where((item) => !selectedIds.contains(item.id)).toList();
-    final combined = toFront ? [...others, ...selected] : [...selected, ...others];
+    final selected = ordered
+        .where((item) => selectedIds.contains(item.id))
+        .toList();
+    final others = ordered
+        .where((item) => !selectedIds.contains(item.id))
+        .toList();
+    final combined = toFront
+        ? [...others, ...selected]
+        : [...selected, ...others];
     return [
       for (var i = 0; i < combined.length; i++) combined[i].copyWith(zIndex: i),
     ];
   }
 
-  static WordShapeObject updateText(
-    WordShapeObject object,
-    String text,
-  ) {
+  static WordShapeObject updateText(WordShapeObject object, String text) {
     var updated = object.copyWith(text: text);
     if (updated.textBoxSizing == WordTextBoxSizing.autoHeight &&
         updated.isTextContainer) {
@@ -424,7 +441,9 @@ class WordObjectManipulationService {
       if (distance > threshold) return;
       if (best == null || distance < best!.distance) {
         best = _AxisSnap(
-          position: candidatePosition.clamp(0.0, math.max(0.0, 1 - size)).toDouble(),
+          position: candidatePosition
+              .clamp(0.0, math.max(0.0, 1 - size))
+              .toDouble(),
           guide: guide.clamp(0.0, 1.0).toDouble(),
           distance: distance,
         );

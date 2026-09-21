@@ -5,7 +5,7 @@ class TeachingPlannerEntitlementAdapter {
   const TeachingPlannerEntitlementAdapter._();
 
   static TeachingPlannerCapabilities fromPremiumState(PremiumState state) {
-    if (state.isPremium) {
+    if (state.hasPremiumAccess && !state.isComplimentaryAccess) {
       return TeachingPlannerCapabilities.pro();
     }
     if (state.isComplimentaryAccess) {

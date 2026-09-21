@@ -12,10 +12,14 @@ import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart'
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
+import 'package:edusheet/features/premium/presentation/widgets/premium_gate_dialog.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 
 import '../../data/teaching_pack_codec.dart';
+import '../../domain/models/curriculum_layer_policy.dart';
+import '../../domain/models/curriculum_merge_state.dart';
 import '../../domain/models/lesson_plan.dart';
+import '../../domain/models/teaching_planner_capabilities.dart';
 import '../../domain/models/teaching_resource.dart';
 import '../../domain/models/teaching_resource_owner.dart';
 import '../design/teaching_planner_design_system.dart';
@@ -27,9 +31,14 @@ import '../widgets/teaching_planner_responsive_content.dart';
 import '../widgets/teaching_planner_shared_components.dart';
 
 class TeachingWorkspaceScreen extends ConsumerStatefulWidget {
-  const TeachingWorkspaceScreen({super.key, this.initialLessonId});
+  const TeachingWorkspaceScreen({
+    super.key,
+    this.initialLessonId,
+    this.initialTeachingPackPath,
+  });
 
   final String? initialLessonId;
+  final String? initialTeachingPackPath;
 
   @override
   ConsumerState<TeachingWorkspaceScreen> createState() =>
@@ -39,6 +48,7 @@ class TeachingWorkspaceScreen extends ConsumerStatefulWidget {
 class _TeachingWorkspaceScreenState
     extends ConsumerState<TeachingWorkspaceScreen> {
   String? _lessonId;
+  bool _incomingTeachingPackScheduled = false;
 
   @override
   void initState() {
@@ -50,8 +60,24 @@ class _TeachingWorkspaceScreenState
   Widget build(BuildContext context) {
     final state = ref.watch(teachingPlannerProvider);
     final workspace = state.workspace;
+    final mergeState =
+        ref.watch(curriculumMergeStateProvider).asData?.value ??
+        CurriculumMergeState.empty();
+    final layerPolicy = CurriculumLayerPolicy(mergeState);
     final lessons = workspace.activeLessonPlans;
     final selected = _selectedLesson(lessons);
+    if (widget.initialTeachingPackPath != null &&
+        selected != null &&
+        !_incomingTeachingPackScheduled) {
+      _incomingTeachingPackScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _importPack(selected, sourcePath: widget.initialTeachingPackPath);
+      });
+    }
+    final lessonLayer = selected == null
+        ? null
+        : layerPolicy.describe('lessonPlan', selected.id);
     final resources = selected == null
         ? const <TeachingResource>[]
         : workspace.activeResourcesForLesson(selected.id);
@@ -68,7 +94,10 @@ class _TeachingWorkspaceScreenState
         ),
       ],
       body: lessons.isEmpty
-          ? _NoLessons(onPlanLesson: () => Navigator.of(context).maybePop())
+          ? _NoLessons(
+              incomingPack: widget.initialTeachingPackPath != null,
+              onPlanLesson: () => Navigator.of(context).maybePop(),
+            )
           : TeachingPlannerResponsiveContent(
               maxWidth: 1240,
               child: Column(
@@ -77,6 +106,7 @@ class _TeachingWorkspaceScreenState
                   _WorkspaceHero(
                     lesson: selected!,
                     resourceCount: resources.length,
+                    layer: lessonLayer!,
                   ),
                   const SizedBox(height: TeachingPlannerDesign.space16),
                   TeachingPlannerResponsiveSplit(
@@ -123,6 +153,8 @@ class _TeachingWorkspaceScreenState
                             onOpen: (item) => _openResource(item),
                             onEdit: (item) => _editResource(item),
                             onArchive: (item) => _archiveResource(item),
+                            canEdit: (item) =>
+                                !layerPolicy.isOfficial('resource', item.id),
                           ),
                       ],
                     ),
@@ -288,11 +320,25 @@ class _TeachingWorkspaceScreenState
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Open linked papers from the syllabus Resources & Papers section.'),
+            content: Text(
+              'Open linked papers from the syllabus Resources & Papers section.',
+            ),
           ),
         );
         break;
       case TeachingResourceKind.geometry:
+        final mergeState = await ref.read(curriculumMergeStateProvider.future);
+        if (!mounted) return;
+        if (mergeState.isOfficialLocalId('resource', item.id)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This geometry is an official curriculum reference. Add your own geometry from Quick Actions to make an editable version.',
+              ),
+            ),
+          );
+          return;
+        }
         final json = item.geometryJson;
         if (json == null) return;
         final updated = await GeometryBuilderScreen.show(
@@ -376,6 +422,16 @@ class _TeachingWorkspaceScreenState
     LessonPlan lesson,
     List<TeachingResource> resources,
   ) async {
+    final capabilities = ref.read(teachingPlannerCapabilitiesProvider);
+    if (!capabilities.allows(TeachingPlannerCapability.richCurriculumExport)) {
+      await showPremiumGateDialog(
+        context,
+        title: 'Premium Teaching Pack export',
+        message:
+            'Your lesson and its resources remain editable. Premium is required only to create a new shareable Teaching Pack.',
+      );
+      return;
+    }
     try {
       final workspace = ref.read(teachingPlannerProvider).workspace;
       final store = ref.read(teachingResourceFileStoreProvider);
@@ -443,26 +499,44 @@ class _TeachingWorkspaceScreenState
     }
   }
 
-  Future<void> _importPack(LessonPlan targetLesson) async {
+  Future<void> _importPack(
+    LessonPlan targetLesson, {
+    String? sourcePath,
+  }) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Open EduSheet Teaching Pack',
-        type: FileType.custom,
-        allowedExtensions: const [TeachingPackCodec.fileExtension],
-        withData: true,
-      );
-      final picked = result?.files.single;
-      if (picked == null || !mounted) return;
-      final source = picked.bytes != null
-          ? utf8.decode(picked.bytes!)
-          : picked.path != null
-          ? await File(picked.path!).readAsString()
-          : null;
+      String? source;
+      if (sourcePath != null) {
+        source = await File(sourcePath).readAsString();
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          dialogTitle: 'Open EduSheet Teaching Pack',
+          type: FileType.custom,
+          allowedExtensions: const [TeachingPackCodec.fileExtension],
+          withData: true,
+        );
+        final picked = result?.files.single;
+        if (picked == null || !mounted) return;
+        source = picked.bytes != null
+            ? utf8.decode(picked.bytes!)
+            : picked.path != null
+            ? await File(picked.path!).readAsString()
+            : null;
+      }
       if (source == null) {
         throw const FormatException('Teaching Pack could not be read.');
       }
       final pack = const TeachingPackCodec().decode(source);
       if (!mounted) return;
+      final capabilities = ref.read(teachingPlannerCapabilitiesProvider);
+      if (!capabilities.allows(TeachingPlannerCapability.bulkOperations)) {
+        await showPremiumGateDialog(
+          context,
+          title: 'Premium Teaching Pack import',
+          message:
+              'This Teaching Pack was opened and validated. Premium is required only to add its resources to a lesson; existing lessons and resources remain available.',
+        );
+        return;
+      }
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
@@ -594,9 +668,14 @@ class _TeachingWorkspaceScreenState
 }
 
 class _WorkspaceHero extends StatelessWidget {
-  const _WorkspaceHero({required this.lesson, required this.resourceCount});
+  const _WorkspaceHero({
+    required this.lesson,
+    required this.resourceCount,
+    required this.layer,
+  });
   final LessonPlan lesson;
   final int resourceCount;
+  final CurriculumLayerDescriptor layer;
 
   @override
   Widget build(BuildContext context) {
@@ -608,7 +687,8 @@ class _WorkspaceHero extends StatelessWidget {
       padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < TeachingPlannerBreakpoints.medium;
+          final compact =
+              constraints.maxWidth < TeachingPlannerBreakpoints.medium;
           final copy = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -627,19 +707,21 @@ class _WorkspaceHero extends StatelessWidget {
                       children: [
                         Text(
                           'Ready-to-teach desk',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: colors.teal,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: colors.teal,
+                                fontWeight: FontWeight.w900,
+                              ),
                         ),
                         const SizedBox(height: TeachingPlannerDesign.space4),
                         Text(
                           lesson.title,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: colors.ink,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -.3,
-                          ),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                color: colors.ink,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -.3,
+                              ),
                         ),
                       ],
                     ),
@@ -654,6 +736,29 @@ class _WorkspaceHero extends StatelessWidget {
                   height: 1.4,
                 ),
               ),
+              if (layer.isOfficial) ...[
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.lock_outline_rounded,
+                      size: 17,
+                      color: colors.teal,
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        '${layer.sourceSchool == null ? 'Official lesson plan' : 'Official lesson plan from ${layer.sourceSchool}'}. The master definition stays protected; your progress, reflection, notes and added resources are your working layer.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.inkMuted,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           );
           final count = TeachingPlannerPill(
@@ -754,11 +859,36 @@ class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = [
-      _ActionData('Note', Icons.note_add_outlined, onNote, TeachingPlannerTone.primary),
-      _ActionData('Math note', Icons.functions_rounded, onMath, TeachingPlannerTone.purple),
-      _ActionData('File / media', Icons.attach_file_rounded, onFile, TeachingPlannerTone.teal),
-      _ActionData('Link', Icons.link_rounded, onLink, TeachingPlannerTone.orange),
-      _ActionData('Geometry', Icons.architecture_rounded, onGeometry, TeachingPlannerTone.coral),
+      _ActionData(
+        'Note',
+        Icons.note_add_outlined,
+        onNote,
+        TeachingPlannerTone.primary,
+      ),
+      _ActionData(
+        'Math note',
+        Icons.functions_rounded,
+        onMath,
+        TeachingPlannerTone.purple,
+      ),
+      _ActionData(
+        'File / media',
+        Icons.attach_file_rounded,
+        onFile,
+        TeachingPlannerTone.teal,
+      ),
+      _ActionData(
+        'Link',
+        Icons.link_rounded,
+        onLink,
+        TeachingPlannerTone.orange,
+      ),
+      _ActionData(
+        'Geometry',
+        Icons.architecture_rounded,
+        onGeometry,
+        TeachingPlannerTone.coral,
+      ),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -790,17 +920,20 @@ class _ResourceGrid extends StatelessWidget {
     required this.onOpen,
     required this.onEdit,
     required this.onArchive,
+    required this.canEdit,
   });
   final List<TeachingResource> resources;
   final ValueChanged<TeachingResource> onOpen;
   final ValueChanged<TeachingResource> onEdit;
   final ValueChanged<TeachingResource> onArchive;
+  final bool Function(TeachingResource resource) canEdit;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= TeachingPlannerBreakpoints.extraWide
+        final columns =
+            constraints.maxWidth >= TeachingPlannerBreakpoints.extraWide
             ? 3
             : constraints.maxWidth >= 680
             ? 2
@@ -817,8 +950,8 @@ class _ResourceGrid extends StatelessWidget {
                 child: _ResourceCard(
                   item: item,
                   onOpen: () => onOpen(item),
-                  onEdit: () => onEdit(item),
-                  onArchive: () => onArchive(item),
+                  onEdit: canEdit(item) ? () => onEdit(item) : null,
+                  onArchive: canEdit(item) ? () => onArchive(item) : null,
                 ),
               ),
           ],
@@ -832,13 +965,13 @@ class _ResourceCard extends StatelessWidget {
   const _ResourceCard({
     required this.item,
     required this.onOpen,
-    required this.onEdit,
-    required this.onArchive,
+    this.onEdit,
+    this.onArchive,
   });
   final TeachingResource item;
   final VoidCallback onOpen;
-  final VoidCallback onEdit;
-  final VoidCallback onArchive;
+  final VoidCallback? onEdit;
+  final VoidCallback? onArchive;
 
   @override
   Widget build(BuildContext context) {
@@ -866,18 +999,32 @@ class _ResourceCard extends StatelessWidget {
                   ),
                 ),
               ),
-              PopupMenuButton<String>(
-                tooltip: 'Resource actions',
-                onSelected: (value) {
-                  if (value == 'edit') onEdit();
-                  if (value == 'archive') onArchive();
-                },
-                itemBuilder: (_) => [
-                  if (item.kind != TeachingResourceKind.file)
-                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  const PopupMenuItem(value: 'archive', child: Text('Archive')),
-                ],
-              ),
+              if (onEdit != null || onArchive != null)
+                PopupMenuButton<String>(
+                  tooltip: 'Resource actions',
+                  onSelected: (value) {
+                    if (value == 'edit') onEdit?.call();
+                    if (value == 'archive') onArchive?.call();
+                  },
+                  itemBuilder: (_) => [
+                    if (item.kind != TeachingResourceKind.file &&
+                        onEdit != null)
+                      const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                    if (onArchive != null)
+                      const PopupMenuItem(
+                        value: 'archive',
+                        child: Text('Archive'),
+                      ),
+                  ],
+                )
+              else
+                const Tooltip(
+                  message: 'Official curriculum resource',
+                  child: Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.lock_outline_rounded, size: 18),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: TeachingPlannerDesign.space10),
@@ -926,7 +1073,8 @@ class _TeachingPackCard extends StatelessWidget {
       padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < TeachingPlannerBreakpoints.medium;
+          final compact =
+              constraints.maxWidth < TeachingPlannerBreakpoints.medium;
           final text = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -939,9 +1087,9 @@ class _TeachingPackCard extends StatelessWidget {
               const SizedBox(height: TeachingPlannerDesign.space10),
               Text(
                 '$resourceCount resources in “${lesson.title}”.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colors.inkMuted,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.inkMuted),
               ),
             ],
           );
@@ -1037,9 +1185,7 @@ class _NoteResourceSheetState extends ConsumerState<_NoteResourceSheet> {
       children: [
         TextField(
           controller: _title,
-          decoration: const InputDecoration(
-            labelText: 'Note title',
-          ),
+          decoration: const InputDecoration(labelText: 'Note title'),
         ),
         const SizedBox(height: 12),
         MathKeyboardField(
@@ -1122,9 +1268,7 @@ class _LinkResourceSheetState extends State<_LinkResourceSheet> {
       children: [
         TextField(
           controller: _title,
-          decoration: const InputDecoration(
-            labelText: 'Link title',
-          ),
+          decoration: const InputDecoration(labelText: 'Link title'),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -1200,9 +1344,7 @@ class _RolePicker extends StatelessWidget {
   Widget build(BuildContext context) {
     return DropdownButtonFormField<TeachingResourceRole>(
       initialValue: value,
-      decoration: const InputDecoration(
-        labelText: 'Use this as',
-      ),
+      decoration: const InputDecoration(labelText: 'Use this as'),
       items: TeachingResourceRole.values
           .map(
             (role) =>
@@ -1217,8 +1359,9 @@ class _RolePicker extends StatelessWidget {
 }
 
 class _NoLessons extends StatelessWidget {
-  const _NoLessons({required this.onPlanLesson});
+  const _NoLessons({required this.onPlanLesson, required this.incomingPack});
   final VoidCallback onPlanLesson;
+  final bool incomingPack;
 
   @override
   Widget build(BuildContext context) {
@@ -1226,9 +1369,12 @@ class _NoLessons extends StatelessWidget {
       maxWidth: 620,
       child: TeachingPlannerEmptyState(
         icon: Icons.inventory_2_outlined,
-        title: 'Create a lesson first',
-        message:
-            'Teaching materials live inside lessons, so every note or file stays connected to what you are going to teach.',
+        title: incomingPack
+            ? 'Teaching Pack ready — create a lesson first'
+            : 'Create a lesson first',
+        message: incomingPack
+            ? 'EduSheet opened the Teaching Pack safely. Create a lesson, then open the .edtp file again and choose where its resources should be added.'
+            : 'Teaching materials live inside lessons, so every note or file stays connected to what you are going to teach.',
         actionLabel: 'Plan a lesson',
         onAction: onPlanLesson,
         tone: TeachingPlannerTone.teal,

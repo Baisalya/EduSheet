@@ -45,6 +45,43 @@ void main() {
       },
     );
   }
+
+  testWidgets('free teachers can save and restore their planner backup', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          teachingPlannerRepositoryProvider.overrideWithValue(
+            _MemoryRepository(TeachingPlannerWorkspace.empty()),
+          ),
+          teachingPlannerCapabilitiesProvider.overrideWithValue(
+            TeachingPlannerCapabilities.free(),
+          ),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: const PlannerInsightsBackupScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final save = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Save .eds file'),
+    );
+    final restore = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Choose .eds file'),
+    );
+    expect(save.onPressed, isNotNull);
+    expect(restore.onPressed, isNotNull);
+    expect(find.text('Advanced teaching insights'), findsOneWidget);
+    expect(find.text('Progress at a glance'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _MemoryRepository implements TeachingPlannerRepository {

@@ -53,9 +53,10 @@ class PaperPreviewPage extends ConsumerWidget {
     final previewPadding = pageMetrics.pagePadding;
     final pageMinHeight = pageMetrics.pageMinHeight;
     final resolvedColumnCount = pageMetrics.resolvedColumnCount;
-    final columnGap = (paper.pageLayout.columnSpacingPoints * pageMetrics.pageScale)
-        .clamp(6.0, 96.0)
-        .toDouble();
+    final columnGap =
+        (paper.pageLayout.columnSpacingPoints * pageMetrics.pageScale)
+            .clamp(6.0, 96.0)
+            .toDouble();
     final marksDiagnostics = PaperMarksTeacherDiagnostics.fromPaper(paper);
 
     return Scaffold(
@@ -92,90 +93,93 @@ class PaperPreviewPage extends ConsumerWidget {
                     minHeight: pageMinHeight,
                   ),
                   child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: template.hasBorder
-                        ? Border.all(
-                            color: Color(template.primaryColor.toInt()),
-                            width: 1.5,
-                          )
-                        : null,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: PaperPageDesignSurface(
-                    layout: paper.pageLayout,
-                    pageScale: pageMetrics.pageScale,
-                    pagePadding: previewPadding,
-                    resolvedColumnCount: resolvedColumnCount,
-                    compact: true,
-                    showEditorChrome: false,
-                    child: Padding(
-                      padding: previewPadding,
-                      child: Theme(
-                    data: ThemeData.light(useMaterial3: true),
-                    child: DefaultTextStyle(
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: template.questionFontSize,
-                        height: paper.pageLayout.lineSpacing,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (paper.headerText.trim().isNotEmpty ||
-                              (paper.showPageNumbers &&
-                                  paper.pageLayout.pageNumberPosition ==
-                                      PaperPageNumberPosition.headerRight)) ...[
-                            _PreviewRunningHeader(paper: paper),
-                            const Divider(height: 18),
-                          ],
-                          PaperHeaderLayoutPreview(
-                            template: template,
-                            paper: paper,
-                            fitToWidth: true,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: template.hasBorder
+                          ? Border.all(
+                              color: Color(template.primaryColor.toInt()),
+                              width: 1.5,
+                            )
+                          : null,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: PaperPageDesignSurface(
+                      layout: paper.pageLayout,
+                      pageScale: pageMetrics.pageScale,
+                      pagePadding: previewPadding,
+                      resolvedColumnCount: resolvedColumnCount,
+                      compact: true,
+                      showEditorChrome: false,
+                      child: Padding(
+                        padding: previewPadding,
+                        child: Theme(
+                          data: ThemeData.light(useMaterial3: true),
+                          child: DefaultTextStyle(
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: template.questionFontSize,
+                              height: paper.pageLayout.lineSpacing,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (paper.headerText.trim().isNotEmpty ||
+                                    (paper.showPageNumbers &&
+                                        paper.pageLayout.pageNumberPosition ==
+                                            PaperPageNumberPosition
+                                                .headerRight)) ...[
+                                  _PreviewRunningHeader(paper: paper),
+                                  const Divider(height: 18),
+                                ],
+                                PaperHeaderLayoutPreview(
+                                  template: template,
+                                  paper: paper,
+                                  fitToWidth: true,
+                                ),
+                                const SizedBox(height: 10),
+                                if (paper.instruction.trim().isNotEmpty) ...[
+                                  const Divider(height: 28),
+                                  Text(
+                                    paper.instruction.trim(),
+                                    textAlign:
+                                        paper.instructionAlignment.textAlign,
+                                    style: const TextStyle(
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                                const Divider(height: 30),
+                                for (final section in paper.sections)
+                                  _PreviewSection(
+                                    paper: paper,
+                                    section: section,
+                                    columnCount: resolvedColumnCount,
+                                    columnGap: columnGap,
+                                  ),
+                                if (paper.footerText.trim().isNotEmpty ||
+                                    (paper.showPageNumbers &&
+                                        paper.pageLayout.pageNumberPosition !=
+                                            PaperPageNumberPosition
+                                                .headerRight)) ...[
+                                  const SizedBox(height: 18),
+                                  const Divider(height: 18),
+                                  _PreviewFooter(paper: paper),
+                                ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 10),
-                          if (paper.instruction.trim().isNotEmpty) ...[
-                            const Divider(height: 28),
-                            Text(
-                              paper.instruction.trim(),
-                              textAlign: paper.instructionAlignment.textAlign,
-                              style: const TextStyle(
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                          ],
-                          const Divider(height: 30),
-                          for (final section in paper.sections)
-                            _PreviewSection(
-                              paper: paper,
-                              section: section,
-                              columnCount: resolvedColumnCount,
-                              columnGap: columnGap,
-                            ),
-                          if (paper.footerText.trim().isNotEmpty ||
-                              (paper.showPageNumbers &&
-                                  paper.pageLayout.pageNumberPosition !=
-                                      PaperPageNumberPosition.headerRight)) ...[
-                            const SizedBox(height: 18),
-                            const Divider(height: 18),
-                            _PreviewFooter(paper: paper),
-                          ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              ),
-              ),
               ),
             ],
           ),
@@ -407,7 +411,8 @@ class _PreviewSection extends StatelessWidget {
                             ? _PreviewQuestion(
                                 paper: paper,
                                 question: questions[index + offset],
-                                label: questions[index + offset].isWordContentBlock
+                                label:
+                                    questions[index + offset].isWordContentBlock
                                     ? ''
                                     : PaperStructureService.questionLabel(
                                         PaperStructureService.numberedQuestionOrdinal(

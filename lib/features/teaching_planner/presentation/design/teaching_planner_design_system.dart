@@ -247,10 +247,7 @@ class TeachingPlannerColors extends ThemeExtension<TeachingPlannerColors> {
 }
 
 class TeachingPlannerThemeScope extends StatelessWidget {
-  const TeachingPlannerThemeScope({
-    super.key,
-    required this.child,
-  });
+  const TeachingPlannerThemeScope({super.key, required this.child});
 
   final Widget child;
 
@@ -305,8 +302,7 @@ abstract final class TeachingPlannerTheme {
     final originalExtensions = base.extensions.values
         .where((extension) => extension is! TeachingPlannerColors)
         .map(
-          (extension) =>
-              extension as ThemeExtension<ThemeExtension<dynamic>>,
+          (extension) => extension as ThemeExtension<ThemeExtension<dynamic>>,
         )
         .toList(growable: false);
 
@@ -420,9 +416,7 @@ abstract final class TeachingPlannerTheme {
         selectedColor: colors.primarySoft,
         disabledColor: colors.surfaceSoft,
         side: BorderSide(color: colors.border),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(999),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         labelStyle: TextStyle(color: colors.ink, fontWeight: FontWeight.w700),
         secondaryLabelStyle: TextStyle(
           color: colors.primary,

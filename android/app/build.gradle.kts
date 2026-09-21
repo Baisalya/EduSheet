@@ -16,6 +16,12 @@ if (keystorePropertiesFile.exists()) {
     }
 }
 
+// The sample ID is safe for local/test builds. Store builds that enable ads
+// must supply EDUSHEET_ADMOB_APP_ID as a Gradle property or environment value.
+val adMobAppId = providers.gradleProperty("EDUSHEET_ADMOB_APP_ID")
+    .orElse(providers.environmentVariable("EDUSHEET_ADMOB_APP_ID"))
+    .orElse("ca-app-pub-3940256099942544~3347511713")
+
 android {
     namespace = "com.baishalya.edusheet"
     compileSdk = 36
@@ -37,6 +43,7 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["adMobAppId"] = adMobAppId.get()
     }
 
     signingConfigs {

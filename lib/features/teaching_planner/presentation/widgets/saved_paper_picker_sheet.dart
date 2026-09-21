@@ -43,16 +43,21 @@ class _SavedPaperPickerSheetState extends State<SavedPaperPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final normalized = _query.trim().toLowerCase();
-    final papers = widget.papers.where((paper) {
-      if (normalized.isEmpty) return true;
-      final haystack = <String>[
-        paper.title,
-        paper.schoolName,
-        ...paper.headerFields.map((field) => '${field.label} ${field.value}'),
-      ].join(' ').toLowerCase();
-      return haystack.contains(normalized);
-    }).toList(growable: false)
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final papers =
+        widget.papers
+            .where((paper) {
+              if (normalized.isEmpty) return true;
+              final haystack = <String>[
+                paper.title,
+                paper.schoolName,
+                ...paper.headerFields.map(
+                  (field) => '${field.label} ${field.value}',
+                ),
+              ].join(' ').toLowerCase();
+              return haystack.contains(normalized);
+            })
+            .toList(growable: false)
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),

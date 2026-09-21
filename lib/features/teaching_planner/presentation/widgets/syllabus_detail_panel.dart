@@ -4,6 +4,8 @@ import 'package:flutter/rendering.dart' as rendering show ScrollCacheExtent;
 import '../../../guided_experience/guides/create_syllabus_guide.dart';
 import '../../../guided_experience/presentation/widgets/guide_anchor.dart';
 
+import '../../domain/models/curriculum_layer_policy.dart';
+import '../../domain/models/curriculum_merge_state.dart';
 import '../../domain/models/planner_chapter.dart';
 import '../../domain/models/planner_subject.dart';
 import '../../domain/models/planner_topic.dart';
@@ -23,6 +25,7 @@ class SyllabusDetailPanel extends StatelessWidget {
   const SyllabusDetailPanel({
     super.key,
     required this.workspace,
+    required this.mergeState,
     required this.selected,
     required this.query,
     required this.filter,
@@ -46,6 +49,7 @@ class SyllabusDetailPanel extends StatelessWidget {
   });
 
   final TeachingPlannerWorkspace workspace;
+  final CurriculumMergeState mergeState;
   final SyllabusNodeRef selected;
   final String query;
   final SyllabusFilter filter;
@@ -69,6 +73,20 @@ class SyllabusDetailPanel extends StatelessWidget {
   onReorderChapters;
   final void Function(String chapterId, List<String> orderedIds)
   onReorderTopics;
+
+  CurriculumLayerPolicy get _layerPolicy => CurriculumLayerPolicy(mergeState);
+
+  CurriculumLayerDescriptor _layer(String entityType, String localId) =>
+      _layerPolicy.describe(entityType, localId);
+
+  String? _officialLayerDetail(CurriculumLayerDescriptor layer) {
+    if (!layer.isOfficial) return null;
+    final source = layer.sourceSchool?.trim();
+    final prefix = source == null || source.isEmpty
+        ? 'Received master curriculum'
+        : 'Received from $source';
+    return '$prefix. Official structure is protected; teacher progress and resources stay editable.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +126,7 @@ class SyllabusDetailPanel extends StatelessWidget {
       filter,
     );
     final metrics = SyllabusOverviewModel.forClass(workspace, value.id);
+    final layer = _layer('class', value.id);
 
     return _EntityPage(
       hero: SyllabusEntityHero(
@@ -133,9 +152,11 @@ class SyllabusDetailPanel extends StatelessWidget {
           ),
         ],
         completion: metrics.topics == 0 ? null : metrics.completion,
-        onEdit: () => onEdit(selected),
+        layerLabel: layer.isOfficial ? layer.label : null,
+        layerDetail: _officialLayerDetail(layer),
+        onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
-        onArchive: () => onArchive(selected),
+        onArchive: layer.isOfficial ? null : () => onArchive(selected),
       ),
       attachments: _attachmentSection(),
       children: [
@@ -147,7 +168,12 @@ class SyllabusDetailPanel extends StatelessWidget {
         const SizedBox(height: 10),
         _ReorderableCardList<PlannerSubject>(
           items: subjects,
-          enabled: reorderEnabled,
+          enabled:
+              reorderEnabled &&
+              !layer.isOfficial &&
+              subjects.every(
+                (item) => !_layerPolicy.isOfficial('subject', item.id),
+              ),
           itemId: (item) => item.id,
           cardBuilder: (context, item, index, dragHandle) {
             final itemMetrics = SyllabusOverviewModel.forSubject(
@@ -168,25 +194,23 @@ class SyllabusDetailPanel extends StatelessWidget {
                   : itemMetrics.completion,
               dragHandle: dragHandle,
               onTap: () => onSelected(
-                SyllabusNodeRef.subject(
-                  classId: value.id,
-                  subjectId: item.id,
-                ),
+                SyllabusNodeRef.subject(classId: value.id, subjectId: item.id),
               ),
             );
           },
           onReordered: (ids) => onReorderSubjects(value.id, ids),
         ),
         const SizedBox(height: 4),
-        GuideAnchor(
-          targetId: CreateSyllabusGuideTargets.openSubject,
-          reportPointerActivation: true,
-          child: SyllabusAddCard(
-            label: 'Add subject',
-            helper: 'Create the next subject inside ${value.name}.',
-            onTap: () => onCreateSubject(value.id),
+        if (!layer.isOfficial)
+          GuideAnchor(
+            targetId: CreateSyllabusGuideTargets.openSubject,
+            reportPointerActivation: true,
+            child: SyllabusAddCard(
+              label: 'Add subject',
+              helper: 'Create the next subject inside ${value.name}.',
+              onTap: () => onCreateSubject(value.id),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -205,6 +229,7 @@ class SyllabusDetailPanel extends StatelessWidget {
       filter,
     );
     final metrics = SyllabusOverviewModel.forSubject(workspace, value.id);
+    final layer = _layer('subject', value.id);
 
     return _EntityPage(
       hero: SyllabusEntityHero(
@@ -213,7 +238,11 @@ class SyllabusDetailPanel extends StatelessWidget {
         title: value.name,
         subtitle: value.code ?? 'No subject code',
         metrics: [
-          SyllabusMetricData('units', '${metrics.units}', Icons.folder_outlined),
+          SyllabusMetricData(
+            'units',
+            '${metrics.units}',
+            Icons.folder_outlined,
+          ),
           SyllabusMetricData(
             'chapters',
             '${metrics.chapters}',
@@ -231,9 +260,11 @@ class SyllabusDetailPanel extends StatelessWidget {
           ),
         ],
         completion: metrics.topics == 0 ? null : metrics.completion,
-        onEdit: () => onEdit(selected),
+        layerLabel: layer.isOfficial ? layer.label : null,
+        layerDetail: _officialLayerDetail(layer),
+        onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
-        onArchive: () => onArchive(selected),
+        onArchive: layer.isOfficial ? null : () => onArchive(selected),
       ),
       attachments: _attachmentSection(),
       children: [
@@ -245,7 +276,10 @@ class SyllabusDetailPanel extends StatelessWidget {
         const SizedBox(height: 10),
         _ReorderableCardList<PlannerUnit>(
           items: units,
-          enabled: reorderEnabled,
+          enabled:
+              reorderEnabled &&
+              !layer.isOfficial &&
+              units.every((item) => !_layerPolicy.isOfficial('unit', item.id)),
           itemId: (item) => item.id,
           cardBuilder: (context, item, index, dragHandle) {
             final itemMetrics = SyllabusOverviewModel.forUnit(
@@ -274,11 +308,13 @@ class SyllabusDetailPanel extends StatelessWidget {
           onReordered: (ids) => onReorderUnits(value.id, ids),
         ),
         const SizedBox(height: 4),
-        SyllabusAddCard(
-          label: 'Add unit',
-          helper: 'Group chapters into a new unit when the syllabus needs it.',
-          onTap: () => onCreateUnit(value.id),
-        ),
+        if (!layer.isOfficial)
+          SyllabusAddCard(
+            label: 'Add unit',
+            helper:
+                'Group chapters into a new unit when the syllabus needs it.',
+            onTap: () => onCreateUnit(value.id),
+          ),
         const SizedBox(height: 20),
         SyllabusSectionHeader(
           key: const ValueKey('syllabus-root-chapters-section'),
@@ -288,7 +324,12 @@ class SyllabusDetailPanel extends StatelessWidget {
         const SizedBox(height: 10),
         _ReorderableCardList<PlannerChapter>(
           items: rootChapters,
-          enabled: reorderEnabled,
+          enabled:
+              reorderEnabled &&
+              !layer.isOfficial &&
+              rootChapters.every(
+                (item) => !_layerPolicy.isOfficial('chapter', item.id),
+              ),
           itemId: (item) => item.id,
           cardBuilder: (context, item, index, dragHandle) => _chapterCard(
             subject: value,
@@ -299,15 +340,16 @@ class SyllabusDetailPanel extends StatelessWidget {
           onReordered: (ids) => onReorderChapters(value.id, null, ids),
         ),
         const SizedBox(height: 4),
-        GuideAnchor(
-          targetId: CreateSyllabusGuideTargets.openChapter,
-          reportPointerActivation: true,
-          child: SyllabusAddCard(
-            label: 'Add chapter',
-            helper: 'Add a chapter directly under ${value.name}.',
-            onTap: () => onCreateChapter(value.id, null),
+        if (!layer.isOfficial)
+          GuideAnchor(
+            targetId: CreateSyllabusGuideTargets.openChapter,
+            reportPointerActivation: true,
+            child: SyllabusAddCard(
+              label: 'Add chapter',
+              helper: 'Add a chapter directly under ${value.name}.',
+              onTap: () => onCreateChapter(value.id, null),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -329,6 +371,7 @@ class SyllabusDetailPanel extends StatelessWidget {
       filter,
     );
     final metrics = SyllabusOverviewModel.forUnit(workspace, value.id);
+    final layer = _layer('unit', value.id);
 
     return _EntityPage(
       hero: SyllabusEntityHero(
@@ -349,9 +392,11 @@ class SyllabusDetailPanel extends StatelessWidget {
           ),
         ],
         completion: metrics.topics == 0 ? null : metrics.completion,
-        onEdit: () => onEdit(selected),
+        layerLabel: layer.isOfficial ? layer.label : null,
+        layerDetail: _officialLayerDetail(layer),
+        onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
-        onArchive: () => onArchive(selected),
+        onArchive: layer.isOfficial ? null : () => onArchive(selected),
       ),
       attachments: _attachmentSection(),
       children: [
@@ -363,7 +408,12 @@ class SyllabusDetailPanel extends StatelessWidget {
         const SizedBox(height: 10),
         _ReorderableCardList<PlannerChapter>(
           items: chapters,
-          enabled: reorderEnabled,
+          enabled:
+              reorderEnabled &&
+              !layer.isOfficial &&
+              chapters.every(
+                (item) => !_layerPolicy.isOfficial('chapter', item.id),
+              ),
           itemId: (item) => item.id,
           cardBuilder: (context, item, index, dragHandle) => _chapterCard(
             subject: subject,
@@ -374,15 +424,16 @@ class SyllabusDetailPanel extends StatelessWidget {
           onReordered: (ids) => onReorderChapters(subject.id, value.id, ids),
         ),
         const SizedBox(height: 4),
-        GuideAnchor(
-          targetId: CreateSyllabusGuideTargets.openChapter,
-          reportPointerActivation: true,
-          child: SyllabusAddCard(
-            label: 'Add chapter',
-            helper: 'Add the next chapter to ${value.title}.',
-            onTap: () => onCreateChapter(subject.id, value.id),
+        if (!layer.isOfficial)
+          GuideAnchor(
+            targetId: CreateSyllabusGuideTargets.openChapter,
+            reportPointerActivation: true,
+            child: SyllabusAddCard(
+              label: 'Add chapter',
+              helper: 'Add the next chapter to ${value.title}.',
+              onTap: () => onCreateChapter(subject.id, value.id),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -398,6 +449,7 @@ class SyllabusDetailPanel extends StatelessWidget {
     }
     final topics = visibleSyllabusTopics(workspace, value.id, query, filter);
     final metrics = SyllabusOverviewModel.forChapter(workspace, value.id);
+    final layer = _layer('chapter', value.id);
 
     return _EntityPage(
       hero: SyllabusEntityHero(
@@ -418,9 +470,11 @@ class SyllabusDetailPanel extends StatelessWidget {
           ),
         ],
         completion: metrics.topics == 0 ? null : metrics.completion,
-        onEdit: () => onEdit(selected),
+        layerLabel: layer.isOfficial ? layer.label : null,
+        layerDetail: _officialLayerDetail(layer),
+        onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
-        onArchive: () => onArchive(selected),
+        onArchive: layer.isOfficial ? null : () => onArchive(selected),
       ),
       attachments: _attachmentSection(),
       children: [
@@ -432,7 +486,12 @@ class SyllabusDetailPanel extends StatelessWidget {
         const SizedBox(height: 10),
         _ReorderableCardList<PlannerTopic>(
           items: topics,
-          enabled: reorderEnabled,
+          enabled:
+              reorderEnabled &&
+              !layer.isOfficial &&
+              topics.every(
+                (item) => !_layerPolicy.isOfficial('topic', item.id),
+              ),
           itemId: (item) => item.id,
           cardBuilder: (context, item, index, dragHandle) {
             return SyllabusHierarchyCard(
@@ -458,14 +517,15 @@ class SyllabusDetailPanel extends StatelessWidget {
           onReordered: (ids) => onReorderTopics(value.id, ids),
         ),
         const SizedBox(height: 4),
-        GuideAnchor(
-          targetId: CreateSyllabusGuideTargets.optionalTopic,
-          child: SyllabusAddCard(
-            label: 'Add topic',
-            helper: 'Break ${value.title} into a teachable topic.',
-            onTap: () => onCreateTopic(value.id),
+        if (!layer.isOfficial)
+          GuideAnchor(
+            targetId: CreateSyllabusGuideTargets.optionalTopic,
+            child: SyllabusAddCard(
+              label: 'Add topic',
+              helper: 'Break ${value.title} into a teachable topic.',
+              onTap: () => onCreateTopic(value.id),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -479,6 +539,7 @@ class SyllabusDetailPanel extends StatelessWidget {
     if (chapter == null || chapter.isArchived) {
       return null;
     }
+    final layer = _layer('topic', value.id);
 
     return _EntityPage(
       hero: SyllabusEntityHero(
@@ -503,9 +564,11 @@ class SyllabusDetailPanel extends StatelessWidget {
             Icons.flag_outlined,
           ),
         ],
-        onEdit: () => onEdit(selected),
+        layerLabel: layer.isOfficial ? layer.label : null,
+        layerDetail: _officialLayerDetail(layer),
+        onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
-        onArchive: () => onArchive(selected),
+        onArchive: layer.isOfficial ? null : () => onArchive(selected),
       ),
       attachments: _attachmentSection(),
       children: const [_TopicNote()],
@@ -572,6 +635,7 @@ class SyllabusDetailPanel extends StatelessWidget {
       onAddFiles: () => onAddAttachments(selected),
       onOpen: onOpenAttachment,
       onRemove: onRemoveAttachment,
+      canRemove: (resource) => _layerPolicy.canRemoveResource(resource.id),
     );
   }
 
@@ -630,7 +694,12 @@ class _EntityPage extends StatelessWidget {
 }
 
 typedef _CardBuilder<T> =
-    Widget Function(BuildContext context, T item, int index, Widget? dragHandle);
+    Widget Function(
+      BuildContext context,
+      T item,
+      int index,
+      Widget? dragHandle,
+    );
 
 class _ReorderableCardList<T> extends StatelessWidget {
   const _ReorderableCardList({
@@ -663,7 +732,9 @@ class _ReorderableCardList<T> extends StatelessWidget {
           children: [
             Icon(Icons.inbox_outlined),
             SizedBox(width: 10),
-            Expanded(child: Text('Nothing here yet. Add the first item below.')),
+            Expanded(
+              child: Text('Nothing here yet. Add the first item below.'),
+            ),
           ],
         ),
       );

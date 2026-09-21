@@ -1,3 +1,5 @@
+import '../domain/models/curriculum_merge_state.dart';
+import '../domain/models/offline_sync_state.dart';
 import '../domain/models/teaching_planner_workspace.dart';
 import '../domain/services/teaching_planner_integrity.dart';
 
@@ -10,20 +12,67 @@ class TeachingPlannerSchemaException implements Exception {
   String toString() => 'TeachingPlannerSchemaException: $message';
 }
 
+class TeachingPlannerStoredDocument {
+  final TeachingPlannerWorkspace workspace;
+  final CurriculumMergeState mergeState;
+  final OfflineSyncState syncState;
+  final int localRevision;
+
+  const TeachingPlannerStoredDocument({
+    required this.workspace,
+    required this.mergeState,
+    required this.syncState,
+    required this.localRevision,
+  });
+
+  TeachingPlannerStoredDocument copyWith({
+    TeachingPlannerWorkspace? workspace,
+    CurriculumMergeState? mergeState,
+    OfflineSyncState? syncState,
+    int? localRevision,
+  }) => TeachingPlannerStoredDocument(
+    workspace: workspace ?? this.workspace,
+    mergeState: mergeState ?? this.mergeState,
+    syncState: syncState ?? this.syncState,
+    localRevision: localRevision ?? this.localRevision,
+  );
+}
+
 class TeachingPlannerDocumentCodec {
   const TeachingPlannerDocumentCodec();
 
-  static const int currentSchemaVersion = 8;
+  static const int currentSchemaVersion = 10;
 
   Map<String, dynamic> encode(
     TeachingPlannerWorkspace workspace, {
     DateTime? updatedAt,
+  }) => encodeStored(
+    TeachingPlannerStoredDocument(
+      workspace: workspace,
+      mergeState: CurriculumMergeState.empty(),
+      syncState: OfflineSyncState.uninitialized(),
+      localRevision: 1,
+    ),
+    updatedAt: updatedAt,
+  );
+
+  Map<String, dynamic> encodeStored(
+    TeachingPlannerStoredDocument document, {
+    DateTime? updatedAt,
   }) {
-    TeachingPlannerIntegrity.validateOrThrow(workspace);
+    TeachingPlannerIntegrity.validateOrThrow(document.workspace);
+    if (document.localRevision < 1) {
+      throw const TeachingPlannerSchemaException(
+        'Planner local revision must be positive.',
+      );
+    }
     return {
       'schemaVersion': currentSchemaVersion,
       'updatedAt': (updatedAt ?? DateTime.now()).toUtc().toIso8601String(),
-      'workspace': workspace.toJson(),
+      'localRevision': document.localRevision,
+      'curriculumMerge': document.mergeState.toJson(),
+      'offlineSync': document.syncState.toJson(),
+      'workspace': document.workspace.toJson(),
     };
   }
 
@@ -32,7 +81,10 @@ class TeachingPlannerDocumentCodec {
     updatedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
   );
 
-  TeachingPlannerWorkspace decode(Object? value) {
+  TeachingPlannerWorkspace decode(Object? value) =>
+      decodeStored(value).workspace;
+
+  TeachingPlannerStoredDocument decodeStored(Object? value) {
     if (value is! Map) {
       throw const TeachingPlannerSchemaException(
         'Planner document must be a JSON object.',
@@ -58,7 +110,27 @@ class TeachingPlannerDocumentCodec {
       Map<String, dynamic>.from(workspaceJson),
     );
     TeachingPlannerIntegrity.validateOrThrow(workspace);
-    return workspace;
+    final localRevision = _localRevision(migrated['localRevision']);
+    final mergeState = CurriculumMergeState.fromJson(
+      migrated['curriculumMerge'],
+    );
+    final syncState = OfflineSyncState.fromJson(migrated['offlineSync']);
+    return TeachingPlannerStoredDocument(
+      workspace: workspace,
+      mergeState: mergeState,
+      syncState: syncState,
+      localRevision: localRevision,
+    );
+  }
+
+  int _localRevision(Object? value) {
+    if (value is int && value >= 1) return value;
+    if (value is num && value.toInt() >= 1) return value.toInt();
+    final parsed = int.tryParse(value?.toString() ?? '');
+    if (parsed != null && parsed >= 1) return parsed;
+    throw const TeachingPlannerSchemaException(
+      'Planner data has no valid localRevision.',
+    );
   }
 
   int _schemaVersion(Object? value) {
@@ -78,10 +150,32 @@ class TeachingPlannerDocumentCodec {
     if (fromVersion == currentSchemaVersion) {
       return Map<String, dynamic>.from(source);
     }
+    if (fromVersion == 9) {
+      final migrated = _deepCopyMap(source);
+      migrated['offlineSync'] = <String, dynamic>{
+        'replicaId': '',
+        'nextSequence': 1,
+        'entityClocks': <dynamic>[],
+        'journal': <dynamic>[],
+        'appliedInboundChangeIds': <dynamic>[],
+      };
+      migrated['schemaVersion'] = 10;
+      return migrated;
+    }
+    if (fromVersion == 8) {
+      final migrated = _deepCopyMap(source);
+      migrated['localRevision'] = 1;
+      migrated['curriculumMerge'] = <String, dynamic>{
+        'replicas': <dynamic>[],
+        'receipts': <dynamic>[],
+      };
+      migrated['schemaVersion'] = 9;
+      return _migrate(migrated, fromVersion: 9);
+    }
     if (fromVersion == 7) {
       final migrated = _deepCopyMap(source);
-      migrated['schemaVersion'] = currentSchemaVersion;
-      return migrated;
+      migrated['schemaVersion'] = 8;
+      return _migrate(migrated, fromVersion: 8);
     }
     if (fromVersion == 6) {
       final migrated = _deepCopyMap(source);

@@ -266,7 +266,9 @@ class MicrosoftStoreBridge::Impl {
             try {
               const auto license = async_operation.GetResults();
               for (const auto& license_entry : license.AddOnLicenses()) {
-                if (license_entry.Value().InAppOfferToken() == product_id) {
+                const auto add_on_license = license_entry.Value();
+                if (add_on_license.InAppOfferToken() == product_id &&
+                    add_on_license.IsActive()) {
                   result->Success(StoreResponse("restored"));
                   return;
                 }

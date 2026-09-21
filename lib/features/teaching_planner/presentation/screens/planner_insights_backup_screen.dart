@@ -9,11 +9,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 
 import '../../application/planner_insights_service.dart';
-import '../../application/portable_paper_import_service.dart';
+import '../../application/teaching_planner_backup_restore_service.dart';
 import '../../data/portable_paper_snapshot.dart';
 import '../../data/teaching_planner_backup_codec.dart';
+import '../../domain/models/curriculum_merge_state.dart';
+import '../../domain/models/offline_sync_state.dart';
 import '../../domain/models/teaching_planner_capabilities.dart';
 import '../../domain/models/teaching_resource.dart';
+import '../../domain/repositories/curriculum_merge_repository.dart';
+import '../../domain/repositories/offline_sync_repository.dart';
 import '../design/teaching_planner_design_system.dart';
 import '../layout/teaching_planner_breakpoints.dart';
 import '../navigation/teaching_planner_navigation.dart';
@@ -34,7 +38,7 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
       TeachingPlannerCapability.advancedDashboards,
     );
     final canBackup = capabilities.allows(
-      TeachingPlannerCapability.richExportAndBackup,
+      TeachingPlannerCapability.plannerBackupAndRestore,
     );
 
     return TeachingPlannerPageShell(
@@ -88,8 +92,31 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
   }
 
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
-    final workspace = ref.read(teachingPlannerProvider).workspace;
+    var workspace = ref.read(teachingPlannerProvider).workspace;
+    var mergeState = CurriculumMergeState.empty();
+    var syncState = OfflineSyncState.uninitialized();
     try {
+      final repository = ref.read(teachingPlannerRepositoryProvider);
+      final syncRepository = switch (repository) {
+        OfflineSyncRepository value => value,
+        _ => null,
+      };
+      if (syncRepository != null) {
+        final snapshot = await syncRepository.loadOfflineSyncSnapshot();
+        workspace = snapshot.workspace;
+        mergeState = snapshot.mergeState;
+        syncState = snapshot.syncState;
+      } else {
+        final mergeRepository = switch (repository) {
+          CurriculumMergeRepository value => value,
+          _ => null,
+        };
+        if (mergeRepository != null) {
+          final snapshot = await mergeRepository.loadCurriculumMergeSnapshot();
+          workspace = snapshot.workspace;
+          mergeState = snapshot.mergeState;
+        }
+      }
       final store = ref.read(teachingResourceFileStoreProvider);
       final resourceFiles = <String, List<int>>{};
       for (final resource in workspace.resources) {
@@ -126,6 +153,8 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
         workspace,
         resourceFiles: resourceFiles,
         paperSnapshots: paperSnapshots,
+        mergeState: mergeState,
+        syncState: syncState,
       );
       final path = await FilePicker.platform.saveFile(
         dialogTitle: 'Save EduSheet planner file',
@@ -163,7 +192,7 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
 
   Future<void> _restoreBackup(BuildContext context, WidgetRef ref) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final pickerResult = await FilePicker.platform.pickFiles(
         dialogTitle: 'Choose EduSheet planner file',
         type: FileType.custom,
         allowedExtensions: const [
@@ -172,7 +201,7 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
         ],
         withData: true,
       );
-      final file = result?.files.single;
+      final file = pickerResult?.files.single;
       if (file == null || !context.mounted) return;
       final source = file.bytes != null
           ? utf8.decode(file.bytes!)
@@ -183,7 +212,7 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
         throw const FormatException('Planner file could not be read.');
       }
       final payload = const TeachingPlannerBackupCodec().decodePayload(source);
-      var workspace = payload.workspace;
+      final workspace = payload.workspace;
       if (!context.mounted) return;
       final confirmed = await showDialog<bool>(
         context: context,
@@ -252,110 +281,36 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
       );
       if (confirmed != true || !context.mounted) return;
 
-      final store = ref.read(teachingResourceFileStoreProvider);
-      final currentWorkspace = ref.read(teachingPlannerProvider).workspace;
-      final paperImportService = PortablePaperImportService(
+      final service = TeachingPlannerBackupRestoreService(
         paperRepository: ref.read(paperRepositoryProvider),
+        resourceFileStore: ref.read(teachingResourceFileStoreProvider),
       );
-      PortablePaperImportResult? paperImport;
-      final rollbackBytes = <String, List<int>>{};
-      final rollbackNames = <String, String>{};
-      final newlyWritten = <String>[];
-      try {
-        final importedPapers = await paperImportService.importSnapshots(
-          workspace: workspace,
-          snapshots: payload.paperSnapshots,
-        );
-        paperImport = importedPapers;
-        workspace = importedPapers.workspace;
-
-        final restoredResources = <TeachingResource>[];
-        for (final resource in workspace.resources) {
-          if (resource.kind != TeachingResourceKind.file) {
-            restoredResources.add(resource);
-            continue;
-          }
-          final bytes = payload.resourceFiles[resource.id];
-          if (bytes == null) {
-            throw const FormatException(
-              'This planner backup references an attached file that is not embedded in the .eds file.',
-            );
-          }
-          final current = currentWorkspace.resourceById(resource.id);
-          if (current?.localRelativePath != null &&
-              await store.exists(current!.localRelativePath)) {
-            rollbackBytes[resource.id] = await store.readBytes(
-              current.localRelativePath!,
-            );
-            rollbackNames[resource.id] =
-                current.originalFileName ?? current.title;
-          }
-          final relativePath = await store.writeBytes(
-            resourceId: resource.id,
-            fileName: resource.originalFileName ?? resource.title,
-            bytes: bytes,
-          );
-          newlyWritten.add(resource.id);
-          restoredResources.add(
-            resource.copyWith(
-              localRelativePath: relativePath,
-              sizeBytes: bytes.length,
-            ),
-          );
-        }
-        workspace = workspace.copyWith(resources: restoredResources);
-        final saved = await ref
+      final currentWorkspace = ref.read(teachingPlannerProvider).workspace;
+      final restoreResult = await service.restore(
+        payload: payload,
+        currentWorkspace: currentWorkspace,
+        saveWorkspace: (workspace, mergeState, syncState) => ref
             .read(teachingPlannerProvider.notifier)
-            .restoreWorkspace(workspace);
-        if (!saved) {
-          for (final id in newlyWritten) {
-            final old = rollbackBytes[id];
-            if (old != null) {
-              await store.writeBytes(
-                resourceId: id,
-                fileName: rollbackNames[id] ?? 'resource.bin',
-                bytes: old,
-              );
-            } else {
-              await store.deleteResourceFiles(id);
-            }
-          }
-          await paperImportService.rollback(importedPapers);
-        } else {
-          ref.invalidate(savedPapersProvider);
-        }
-        if (!context.mounted) return;
-        final paperNote = saved && payload.paperSnapshots.isNotEmpty
-            ? ' ${importedPapers.restoredCount} paper(s) restored, '
-                  '${importedPapers.reusedCount} reused, '
-                  '${importedPapers.conflictCopyCount} conflict copy/copies created.'
-            : '';
-        final message = saved
-            ? 'Planner opened successfully.$paperNote'
-            : ref.read(teachingPlannerProvider).errorMessage ??
-                  'Planner could not be restored.';
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
-        return;
-      } catch (_) {
-        for (final id in newlyWritten) {
-          final old = rollbackBytes[id];
-          if (old != null) {
-            await store.writeBytes(
-              resourceId: id,
-              fileName: rollbackNames[id] ?? 'resource.bin',
-              bytes: old,
-            );
-          } else {
-            await store.deleteResourceFiles(id);
-          }
-        }
-        if (paperImport != null) {
-          await paperImportService.rollback(paperImport);
-        }
-        rethrow;
+            .restoreWorkspaceWithSyncMetadata(workspace, mergeState, syncState),
+      );
+      if (restoreResult.saved) {
+        ref.invalidate(curriculumMergeStateProvider);
+        ref.invalidate(savedPapersProvider);
       }
+      if (!context.mounted) return;
+      final paperNote = restoreResult.saved && payload.paperSnapshots.isNotEmpty
+          ? ' ${restoreResult.restoredPaperCount} paper(s) restored, '
+                '${restoreResult.reusedPaperCount} reused, '
+                '${restoreResult.conflictCopyCount} conflict copy/copies created.'
+          : '';
+      final message = restoreResult.saved
+          ? 'Planner opened successfully.$paperNote'
+          : ref.read(teachingPlannerProvider).errorMessage ??
+                'Planner could not be restored.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return;
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -383,7 +338,8 @@ class _PageIntro extends StatelessWidget {
       padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < TeachingPlannerBreakpoints.medium;
+          final compact =
+              constraints.maxWidth < TeachingPlannerBreakpoints.medium;
           final copy = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -401,19 +357,21 @@ class _PageIntro extends StatelessWidget {
                       children: [
                         Text(
                           'Teaching overview',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: colors.primary,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: colors.primary,
+                                fontWeight: FontWeight.w900,
+                              ),
                         ),
                         const SizedBox(height: TeachingPlannerDesign.space4),
                         Text(
                           'See what is moving and keep your planner safe',
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: colors.ink,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -.3,
-                          ),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                color: colors.ink,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -.3,
+                              ),
                         ),
                       ],
                     ),
@@ -491,7 +449,8 @@ class _ResponsiveMetricGrid extends StatelessWidget {
     ];
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= TeachingPlannerBreakpoints.twoPane
+        final columns =
+            constraints.maxWidth >= TeachingPlannerBreakpoints.twoPane
             ? 4
             : constraints.maxWidth >= 520
             ? 2
@@ -684,7 +643,9 @@ class _ActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = TeachingPlannerTheme.colorsOf(context);
-    final tone = secondary ? TeachingPlannerTone.teal : TeachingPlannerTone.primary;
+    final tone = secondary
+        ? TeachingPlannerTone.teal
+        : TeachingPlannerTone.primary;
     return TeachingPlannerSurfaceCard(
       tone: tone,
       tint: !secondary,
@@ -692,7 +653,12 @@ class _ActionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TeachingPlannerIconBadge(icon: icon, tone: tone, size: 46, iconSize: 23),
+          TeachingPlannerIconBadge(
+            icon: icon,
+            tone: tone,
+            size: 46,
+            iconSize: 23,
+          ),
           const SizedBox(height: TeachingPlannerDesign.space14),
           Text(
             eyebrow,
@@ -738,7 +704,9 @@ class _ActionCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                enabled ? Icons.verified_user_outlined : Icons.lock_outline_rounded,
+                enabled
+                    ? Icons.verified_user_outlined
+                    : Icons.lock_outline_rounded,
                 size: 16,
                 color: colors.inkMuted,
               ),
@@ -747,10 +715,10 @@ class _ActionCard extends StatelessWidget {
                 child: Text(
                   enabled
                       ? footer
-                      : 'Portable backup is available with Teaching Planner Pro.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colors.inkMuted,
-                  ),
+                      : 'Portable backup is unavailable with the current access level.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: colors.inkMuted),
                 ),
               ),
             ],

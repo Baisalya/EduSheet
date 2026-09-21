@@ -29,7 +29,7 @@ class PortablePaperImportResult {
   });
 }
 
-/// Imports v3 paper snapshots without ever overwriting a saved paper already on
+/// Imports v3/v4 paper snapshots without ever overwriting a saved paper already on
 /// the destination device.
 ///
 /// Missing id -> restore using the original id.
@@ -40,9 +40,9 @@ class PortablePaperImportService {
     required PaperRepository paperRepository,
     PortablePaperAssetStore? assetStore,
     PortablePaperIdGenerator? idGenerator,
-  })  : _paperRepository = paperRepository,
-        _assetStore = assetStore ?? PortablePaperAssetStore(),
-        _idGenerator = idGenerator ?? (() => const Uuid().v4());
+  }) : _paperRepository = paperRepository,
+       _assetStore = assetStore ?? PortablePaperAssetStore(),
+       _idGenerator = idGenerator ?? (() => const Uuid().v4());
 
   final PaperRepository _paperRepository;
   final PortablePaperAssetStore _assetStore;
@@ -68,10 +68,7 @@ class PortablePaperImportService {
     final existingById = <String, Paper>{
       for (final paper in existing) paper.id: paper,
     };
-    final reservedIds = <String>{
-      ...existingById.keys,
-      ...snapshots.keys,
-    };
+    final reservedIds = <String>{...existingById.keys, ...snapshots.keys};
     final remap = <String, String>{};
     final createdIds = <String>[];
     final createdDirectories = <String>[];
@@ -145,10 +142,8 @@ class PortablePaperImportService {
     }
   }
 
-  Future<void> rollback(PortablePaperImportResult result) => _rollbackCreated(
-        result.createdPaperIds,
-        result.createdAssetDirectories,
-      );
+  Future<void> rollback(PortablePaperImportResult result) =>
+      _rollbackCreated(result.createdPaperIds, result.createdAssetDirectories);
 
   String _nextUniqueId(Set<String> reserved) {
     for (var attempt = 0; attempt < 100; attempt++) {

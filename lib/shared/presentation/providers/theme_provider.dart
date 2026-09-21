@@ -5,16 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum AppAccent {
-  ocean('Ocean', Color(0xFF1769E0), false),
-  violet('Violet', Color(0xFF7557D5), true),
-  emerald('Emerald', Color(0xFF008F76), true),
-  sunset('Sunset', Color(0xFFE05A3F), true);
+  ocean('Ocean', Color(0xFF1769E0)),
+  violet('Violet', Color(0xFF7557D5)),
+  emerald('Emerald', Color(0xFF008F76)),
+  sunset('Sunset', Color(0xFFE05A3F));
 
   final String label;
   final Color seedColor;
-  final bool isPremium;
 
-  const AppAccent(this.label, this.seedColor, this.isPremium);
+  const AppAccent(this.label, this.seedColor);
 }
 
 class AppThemeSettings {

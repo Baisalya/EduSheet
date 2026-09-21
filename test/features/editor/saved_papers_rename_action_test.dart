@@ -2,6 +2,8 @@ import 'package:edusheet/features/editor/data/repositories/paper_repository.dart
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/editor/presentation/screens/saved_papers_screen.dart';
+import 'package:edusheet/features/teaching_planner/domain/models/curriculum_merge_state.dart';
+import 'package:edusheet/features/teaching_planner/presentation/providers/teaching_planner_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +48,43 @@ void main() {
     expect(find.text('Class 8 Final Test'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('official curriculum paper requires a teacher copy before editing', (
+    tester,
+  ) async {
+    final repository = _MemoryPaperRepository([_paper()]);
+    final now = DateTime.utc(2026, 9, 18);
+    final mergeState = CurriculumMergeState(
+      replicas: [
+        CurriculumReplicaRecord(
+          entityType: 'paper',
+          localId: 'paper-1',
+          originId: 'official-paper-origin',
+          sourceRevision: 2,
+          sourceUpdatedAt: now,
+          importedAt: now,
+          sourcePackageOriginId: 'assignment-1',
+          sourceSchool: 'ABC School',
+          assignmentId: 'assignment-1',
+        ),
+      ],
+    );
+
+    await _pumpSavedPapers(tester, repository, mergeState: mergeState);
+
+    expect(find.text('Official curriculum · ABC School'), findsOneWidget);
+    expect(find.text('Teacher copy'), findsOneWidget);
+    expect(find.text('Rename'), findsNothing);
+
+    await tester.tap(find.text('Teacher copy'));
+    await tester.pumpAndSettle();
+    expect(find.text('Official paper is protected'), findsOneWidget);
+    await tester.tap(find.text('Keep official'));
+    await tester.pumpAndSettle();
+
+    expect(repository.papers.single.id, 'paper-1');
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Paper _paper() => Paper(
@@ -57,11 +96,17 @@ Paper _paper() => Paper(
 
 Future<void> _pumpSavedPapers(
   WidgetTester tester,
-  PaperRepository repository,
-) async {
+  PaperRepository repository, {
+  CurriculumMergeState? mergeState,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [paperRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        paperRepositoryProvider.overrideWithValue(repository),
+        curriculumMergeStateProvider.overrideWith(
+          (ref) => mergeState ?? CurriculumMergeState.empty(),
+        ),
+      ],
       child: const MaterialApp(home: SavedPapersScreen()),
     ),
   );

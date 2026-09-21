@@ -135,10 +135,8 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
               classFilter: _classFilter,
               statusFilter: _statusFilter,
               onSearchChanged: (_) => setState(() {}),
-              onClassChanged: (value) =>
-                  setState(() => _classFilter = value),
-              onStatusChanged: (value) =>
-                  setState(() => _statusFilter = value),
+              onClassChanged: (value) => setState(() => _classFilter = value),
+              onStatusChanged: (value) => setState(() => _statusFilter = value),
             ),
             const SizedBox(height: TeachingPlannerDesign.space16),
             TeachingPlannerResponsiveSplit(
@@ -165,7 +163,9 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
   }
 
   bool _canCreateLesson(TeachingPlannerWorkspace workspace) {
-    final activeClassIds = workspace.activeClasses.map((item) => item.id).toSet();
+    final activeClassIds = workspace.activeClasses
+        .map((item) => item.id)
+        .toSet();
     final activeSubjects = workspace.subjects.where(
       (item) => !item.isArchived && activeClassIds.contains(item.classId),
     );
@@ -311,7 +311,8 @@ class _LessonHeader extends StatelessWidget {
       padding: const EdgeInsets.all(TeachingPlannerDesign.space20),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < TeachingPlannerBreakpoints.medium;
+          final compact =
+              constraints.maxWidth < TeachingPlannerBreakpoints.medium;
           final copy = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -329,19 +330,21 @@ class _LessonHeader extends StatelessWidget {
                       children: [
                         Text(
                           'Plan lessons',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: colors.primary,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                color: colors.primary,
+                                fontWeight: FontWeight.w900,
+                              ),
                         ),
                         const SizedBox(height: TeachingPlannerDesign.space4),
                         Text(
                           'Turn syllabus into teachable lessons',
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: colors.ink,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -.3,
-                          ),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                color: colors.ink,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -.3,
+                              ),
                         ),
                       ],
                     ),
@@ -380,7 +383,9 @@ class _LessonHeader extends StatelessWidget {
             onPressed: onCreate,
             icon: const Icon(Icons.add_rounded),
             label: Text(
-              workspace.activeClasses.isEmpty ? 'Add syllabus first' : 'New lesson',
+              workspace.activeClasses.isEmpty
+                  ? 'Add syllabus first'
+                  : 'New lesson',
             ),
           );
 
@@ -436,7 +441,8 @@ class _Filters extends StatelessWidget {
         children: [
           const TeachingPlannerSectionHeader(
             title: 'Find a lesson',
-            subtitle: 'Search by lesson, objective or syllabus context, then narrow by class or status.',
+            subtitle:
+                'Search by lesson, objective or syllabus context, then narrow by class or status.',
             icon: Icons.filter_alt_outlined,
           ),
           const SizedBox(height: TeachingPlannerDesign.space14),
@@ -473,24 +479,25 @@ class _Filters extends StatelessWidget {
                 ],
                 onChanged: onClassChanged,
               );
-              final statusDropdown = DropdownButtonFormField<TeachingProgressStatus?>(
-                initialValue: statusFilter,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Status'),
-                items: [
-                  const DropdownMenuItem<TeachingProgressStatus?>(
-                    value: null,
-                    child: Text('All statuses'),
-                  ),
-                  ...TeachingProgressStatus.values.map(
-                    (status) => DropdownMenuItem<TeachingProgressStatus?>(
-                      value: status,
-                      child: Text(_statusLabel(status)),
-                    ),
-                  ),
-                ],
-                onChanged: onStatusChanged,
-              );
+              final statusDropdown =
+                  DropdownButtonFormField<TeachingProgressStatus?>(
+                    initialValue: statusFilter,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Status'),
+                    items: [
+                      const DropdownMenuItem<TeachingProgressStatus?>(
+                        value: null,
+                        child: Text('All statuses'),
+                      ),
+                      ...TeachingProgressStatus.values.map(
+                        (status) => DropdownMenuItem<TeachingProgressStatus?>(
+                          value: status,
+                          child: Text(_statusLabel(status)),
+                        ),
+                      ),
+                    ],
+                    onChanged: onStatusChanged,
+                  );
 
               if (compact) {
                 return Column(
@@ -602,7 +609,12 @@ class _SummaryMetric extends StatelessWidget {
       ),
       child: Row(
         children: [
-          TeachingPlannerIconBadge(icon: icon, tone: tone, size: 36, iconSize: 19),
+          TeachingPlannerIconBadge(
+            icon: icon,
+            tone: tone,
+            size: 36,
+            iconSize: 19,
+          ),
           const SizedBox(width: TeachingPlannerDesign.space10),
           Expanded(
             child: Text(
@@ -657,7 +669,8 @@ class _LessonList extends StatelessWidget {
       children: [
         TeachingPlannerSectionHeader(
           title: 'Lessons',
-          subtitle: '${lessons.length} matching lesson${lessons.length == 1 ? '' : 's'}',
+          subtitle:
+              '${lessons.length} matching lesson${lessons.length == 1 ? '' : 's'}',
           icon: Icons.view_agenda_outlined,
         ),
         const SizedBox(height: TeachingPlannerDesign.space12),
@@ -736,9 +749,9 @@ class _LessonCard extends StatelessWidget {
                       '$plannerClass • $subject • $chapter',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.inkMuted,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: colors.inkMuted),
                     ),
                   ],
                 ),
@@ -784,10 +797,9 @@ class _LessonCard extends StatelessWidget {
             lesson.objective,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: colors.ink,
-              height: 1.4,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.ink, height: 1.4),
           ),
           const SizedBox(height: TeachingPlannerDesign.space12),
           Align(
@@ -851,18 +863,23 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
     _homework = TextEditingController(text: lesson?.homework ?? '');
     _notes = TextEditingController(text: lesson?.notes ?? '');
     final requestedClassId = widget.initialClassId;
-    final requestedClassExists = requestedClassId != null &&
-        widget.workspace.activeClasses.any((item) => item.id == requestedClassId);
-    _classId = lesson?.classId ??
+    final requestedClassExists =
+        requestedClassId != null &&
+        widget.workspace.activeClasses.any(
+          (item) => item.id == requestedClassId,
+        );
+    _classId =
+        lesson?.classId ??
         (requestedClassExists
             ? requestedClassId
             : widget.workspace.activeClasses.isEmpty
-                ? null
-                : widget.workspace.activeClasses.first.id);
+            ? null
+            : widget.workspace.activeClasses.first.id);
     _subjectId = lesson?.subjectId ?? widget.initialSubjectId;
     _chapterId = lesson?.chapterId ?? widget.initialChapterId;
     _topicIds = {...?lesson?.topicIds};
-    _date = lesson?.plannedDate.toLocal() ??
+    _date =
+        lesson?.plannedDate.toLocal() ??
         widget.initialPlannedDate?.toLocal() ??
         DateTime.now();
     _status = lesson?.status ?? TeachingProgressStatus.planned;
@@ -942,7 +959,8 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
           children: [
             const TeachingPlannerSectionHeader(
               title: 'Syllabus link',
-              subtitle: 'Choose the real class, subject and chapter for this lesson.',
+              subtitle:
+                  'Choose the real class, subject and chapter for this lesson.',
               icon: Icons.account_tree_outlined,
             ),
             const SizedBox(height: TeachingPlannerDesign.space12),
@@ -973,7 +991,8 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                     _topicIds.clear();
                     _normalizeSelections();
                   }),
-                  validator: (value) => value == null ? 'Choose a class.' : null,
+                  validator: (value) =>
+                      value == null ? 'Choose a class.' : null,
                 );
                 final subjectField = DropdownButtonFormField<String>(
                   key: const ValueKey('lesson-editor-subject-field'),
@@ -998,7 +1017,8 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                     _topicIds.clear();
                     _normalizeSelections();
                   }),
-                  validator: (value) => value == null ? 'Choose a subject.' : null,
+                  validator: (value) =>
+                      value == null ? 'Choose a subject.' : null,
                 );
                 final chapterField = DropdownButtonFormField<String>(
                   key: const ValueKey('lesson-editor-chapter-field'),
@@ -1021,7 +1041,8 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                     _chapterId = value;
                     _topicIds.clear();
                   }),
-                  validator: (value) => value == null ? 'Choose a chapter.' : null,
+                  validator: (value) =>
+                      value == null ? 'Choose a chapter.' : null,
                 );
 
                 if (compact) {
@@ -1050,9 +1071,9 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
               const SizedBox(height: TeachingPlannerDesign.space14),
               Text(
                 'Topics (optional)',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: TeachingPlannerDesign.space8),
               Wrap(
@@ -1076,7 +1097,8 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
             const SizedBox(height: TeachingPlannerDesign.space20),
             const TeachingPlannerSectionHeader(
               title: 'Teaching plan',
-              subtitle: 'Title, objective, timing and status stay editable without changing syllabus data.',
+              subtitle:
+                  'Title, objective, timing and status stay editable without changing syllabus data.',
               icon: Icons.fact_check_outlined,
             ),
             const SizedBox(height: TeachingPlannerDesign.space12),
@@ -1090,7 +1112,9 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
               controller: _objective,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(labelText: 'Learning objective'),
+              decoration: const InputDecoration(
+                labelText: 'Learning objective',
+              ),
               validator: _required,
             ),
             const SizedBox(height: TeachingPlannerDesign.space10),
@@ -1113,25 +1137,26 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                         : null;
                   },
                 );
-                final statusField = DropdownButtonFormField<TeachingProgressStatus>(
-                  initialValue: _status,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Status'),
-                  items: TeachingProgressStatus.values
-                      .map(
-                        (value) => DropdownMenuItem(
-                          value: value,
-                          child: Text(
-                            _statusLabel(value),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) =>
-                      setState(() => _status = value ?? _status),
-                );
+                final statusField =
+                    DropdownButtonFormField<TeachingProgressStatus>(
+                      initialValue: _status,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Status'),
+                      items: TeachingProgressStatus.values
+                          .map(
+                            (value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(
+                                _statusLabel(value),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _status = value ?? _status),
+                    );
                 if (compact) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1162,7 +1187,8 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
             const SizedBox(height: TeachingPlannerDesign.space20),
             const TeachingPlannerSectionHeader(
               title: 'Optional teaching details',
-              subtitle: 'Use the fields that are useful for this lesson; blank fields remain blank.',
+              subtitle:
+                  'Use the fields that are useful for this lesson; blank fields remain blank.',
               icon: Icons.notes_rounded,
             ),
             const SizedBox(height: TeachingPlannerDesign.space12),
@@ -1259,13 +1285,14 @@ class _LessonDraft {
   final TeachingProgressStatus status;
 }
 
-TeachingPlannerTone _toneForStatus(TeachingProgressStatus status) => switch (status) {
-  TeachingProgressStatus.planned => TeachingPlannerTone.primary,
-  TeachingProgressStatus.inProgress => TeachingPlannerTone.orange,
-  TeachingProgressStatus.completed => TeachingPlannerTone.teal,
-  TeachingProgressStatus.skipped => TeachingPlannerTone.neutral,
-  TeachingProgressStatus.rescheduled => TeachingPlannerTone.purple,
-};
+TeachingPlannerTone _toneForStatus(TeachingProgressStatus status) =>
+    switch (status) {
+      TeachingProgressStatus.planned => TeachingPlannerTone.primary,
+      TeachingProgressStatus.inProgress => TeachingPlannerTone.orange,
+      TeachingProgressStatus.completed => TeachingPlannerTone.teal,
+      TeachingProgressStatus.skipped => TeachingPlannerTone.neutral,
+      TeachingProgressStatus.rescheduled => TeachingPlannerTone.purple,
+    };
 
 String _statusLabel(TeachingProgressStatus status) => switch (status) {
   TeachingProgressStatus.planned => 'Planned',

@@ -2,7 +2,7 @@ name: edusheet
 description: "Offline teacher-focused mathematics worksheet creator app."
 publish_to: 'none'
 
-version: 1.2.2+6
+version: 1.2.3+8
 
 environment:
   sdk: ">=3.12.0 <4.0.0"
@@ -19,7 +19,7 @@ dependencies:
   pdf: ^3.12.0
   characters: ^1.4.1
   ffi: ^2.2.0
-  harfbuzz_ffi: 0.4.2
+  harfbuzz_ffi: ^0.5.0
   printing: ^5.14.3
   flutter_html: ^3.0.0
   image_picker: ^1.2.2
@@ -48,14 +48,12 @@ dependencies:
   url_launcher: ^6.3.1
   file_picker: ^8.3.7
   in_app_purchase: ^3.3.0
+  google_mobile_ads: ^9.1.0
   in_app_review: ^2.0.12
   package_info_plus: ^9.0.1
   upgrader: ^13.6.0
   http: ^1.6.0
   xml: 6.5.0
-  # Pinned below 13.x because permission_handler 13.x requires Android API 37.
-  # EduSheet currently compiles/targets API 36 and does not use Android 17 local-network permission.
-  permission_handler: 12.0.3
 
 dev_dependencies:
   flutter_test:
@@ -106,15 +104,15 @@ msix_config:
   identity_name: Baishalya.EduSheet
   publisher: CN=8A4649E8-2942-4B3D-9789-6B628C3C006F
   # Microsoft Store requires the fourth (revision) segment to be zero.
-  # Map Flutter 1.2.2+5 to MSIX 1.2.5.0; see RELEASE_HELPER.md.
-  msix_version: 1.2.5.0
+  # Map Flutter 1.2.3+8 to MSIX 1.2.8.0; see RELEASE_HELPER.md.
+  msix_version: 1.2.8.0
   logo_path: assets/Applogo.png
   architecture: x64
   os_min_version: 10.0.17763.0
   languages: en-us, hi-in
   capabilities: internetClient
-  file_extension: .pdf, .doc, .docx, .rtf, .odt, .xls, .xlsx, .csv, .ods, .ppt, .pptx, .odp, .txt
+  file_extension: .pdf, .doc, .docx, .rtf, .odt, .xls, .xlsx, .csv, .ods, .ppt, .pptx, .odp, .txt, .eds, .edtp
   output_path: release/microsoft_store/packages
-  output_name: EduSheet_1.2.5.0_x64_store
+  output_name: EduSheet_1.2.8.0_x64_store
   install_certificate: false
   store: true

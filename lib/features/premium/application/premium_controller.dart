@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/config/app_config.dart';
 import '../data/premium_purchase_verifier.dart';
 import '../data/premium_store_gateway.dart';
+import '../domain/freemium_policy.dart';
 import '../domain/premium_state.dart';
 import '../domain/premium_store_models.dart';
 
@@ -18,11 +19,14 @@ class PremiumController extends StateNotifier<PremiumState> {
     PremiumStoreGateway? store,
     PremiumPurchaseVerifier? verifier,
     bool? premiumEnabled,
+    DateTime Function()? now,
   }) : _store = store ?? createPremiumStoreGateway(),
        _verifier = verifier ?? GooglePlayPremiumPurchaseVerifier(),
        _premiumEnabled = premiumEnabled ?? AppConfig.premiumEnabled,
-       // Fail open while store discovery is pending. No feature may become
-       // paid merely because Play Billing is slow, unavailable, or inactive.
+       _now = now ?? DateTime.now,
+       // Fail open for features while store discovery is pending. Advertising
+       // waits for the store check to finish so a paid user never sees a
+       // startup ad before their entitlement is restored.
        super(const PremiumState(isComplimentaryAccess: true)) {
     unawaited(_initialize());
   }
@@ -30,6 +34,7 @@ class PremiumController extends StateNotifier<PremiumState> {
   final PremiumStoreGateway _store;
   final PremiumPurchaseVerifier _verifier;
   final bool _premiumEnabled;
+  final DateTime Function() _now;
   StreamSubscription<PremiumPurchaseUpdate>? _purchaseSubscription;
 
   Future<void> _initialize() async {
@@ -40,7 +45,7 @@ class PremiumController extends StateNotifier<PremiumState> {
             isComplimentaryAccess: true,
             storeStatus: PremiumStoreStatus.unsupported,
             message:
-                'Premium purchases are off. All workspace styles are free in this release.',
+                'Premium checkout is off in this release. Every feature remains available.',
           );
         }
         return;
@@ -89,7 +94,7 @@ class PremiumController extends StateNotifier<PremiumState> {
           storeStatus: PremiumStoreStatus.unavailable,
           clearProduct: true,
           message:
-              'The subscription is not active in this store yet. Everything remains free.',
+              'The subscription is not active in this store yet. Full feature access remains available.',
         );
         return;
       }
@@ -118,7 +123,7 @@ class PremiumController extends StateNotifier<PremiumState> {
       state = state.copyWith(
         isComplimentaryAccess: true,
         storeStatus: PremiumStoreStatus.unavailable,
-        message: 'Premium could not connect to the app store.',
+        message: 'The Premium plan could not connect to the app store.',
       );
     }
   }
@@ -192,12 +197,27 @@ class PremiumController extends StateNotifier<PremiumState> {
         if (mounted) state = state.copyWith(purchasePending: true);
       case PremiumPurchaseStatus.purchased:
       case PremiumPurchaseStatus.restored:
+        var isInGracePeriod = false;
+        DateTime? gracePeriodEndsAt;
         if (_store.requiresServerVerification) {
           final verification = await _verifier.verify(purchase);
-          if (!verification.isValid || !verification.isActive) {
+          gracePeriodEndsAt = verification.expiresAt?.add(
+            FreemiumPolicy.premiumGracePeriod,
+          );
+          isInGracePeriod =
+              verification.isValid &&
+              !verification.isActive &&
+              gracePeriodEndsAt != null &&
+              !_now().toUtc().isAfter(gracePeriodEndsAt);
+          if (!verification.isValid ||
+              (!verification.isActive && !isInGracePeriod)) {
             if (mounted) {
               state = state.copyWith(
                 isPremium: verification.isDefinitive ? false : state.isPremium,
+                isInGracePeriod: verification.isDefinitive
+                    ? false
+                    : state.isInGracePeriod,
+                clearGracePeriodEndsAt: verification.isDefinitive,
                 purchasePending: false,
                 message:
                     verification.message ??
@@ -211,7 +231,10 @@ class PremiumController extends StateNotifier<PremiumState> {
           if (purchase.pendingCompletePurchase) {
             await _store.complete(purchase);
           }
-          await _grantPremium();
+          await _grantPremium(
+            gracePeriodEndsAt: gracePeriodEndsAt,
+            inGracePeriod: isInGracePeriod,
+          );
         } catch (_) {
           if (mounted) {
             state = state.copyWith(
@@ -234,13 +257,22 @@ class PremiumController extends StateNotifier<PremiumState> {
     }
   }
 
-  Future<void> _grantPremium() async {
+  Future<void> _grantPremium({
+    bool inGracePeriod = false,
+    DateTime? gracePeriodEndsAt,
+  }) async {
     if (!mounted) return;
     state = state.copyWith(
-      isPremium: true,
+      isPremium: !inGracePeriod,
+      isInGracePeriod: inGracePeriod,
+      gracePeriodEndsAt: gracePeriodEndsAt,
+      clearGracePeriodEndsAt: !inGracePeriod,
       isComplimentaryAccess: false,
       purchasePending: false,
-      clearMessage: true,
+      message: inGracePeriod
+          ? 'Payment issue detected. Premium access remains active during the 7-day grace period.'
+          : null,
+      clearMessage: !inGracePeriod,
     );
   }
 

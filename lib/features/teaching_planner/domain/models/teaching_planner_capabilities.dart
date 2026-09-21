@@ -4,10 +4,11 @@ enum TeachingPlannerCapability {
   corePlanning,
   syllabusManagement,
   progressTracking,
+  plannerBackupAndRestore,
   advancedScheduling,
   advancedDashboards,
   bulkOperations,
-  richExportAndBackup,
+  richCurriculumExport,
 }
 
 class TeachingPlannerCapabilities {
@@ -30,6 +31,7 @@ class TeachingPlannerCapabilities {
     TeachingPlannerCapability.corePlanning,
     TeachingPlannerCapability.syllabusManagement,
     TeachingPlannerCapability.progressTracking,
+    TeachingPlannerCapability.plannerBackupAndRestore,
   };
 
   static const Set<TeachingPlannerCapability> _advanced = {
@@ -37,12 +39,14 @@ class TeachingPlannerCapabilities {
     TeachingPlannerCapability.advancedScheduling,
     TeachingPlannerCapability.advancedDashboards,
     TeachingPlannerCapability.bulkOperations,
-    TeachingPlannerCapability.richExportAndBackup,
+    TeachingPlannerCapability.richCurriculumExport,
   };
 
   factory TeachingPlannerCapabilities.free() =>
       const TeachingPlannerCapabilities(
         accessLevel: TeachingPlannerAccessLevel.free,
+        // Core planning and personal backup stay available. Premium controls
+        // only new advanced operations; existing planner data is retained.
         enabled: _core,
       );
 

@@ -13,9 +13,11 @@ class SyllabusEntityHero extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.metrics,
-    required this.onEdit,
+    this.onEdit,
     required this.onAttach,
-    required this.onArchive,
+    this.onArchive,
+    this.layerLabel,
+    this.layerDetail,
     this.completion,
   });
 
@@ -24,9 +26,11 @@ class SyllabusEntityHero extends StatelessWidget {
   final String title;
   final String subtitle;
   final List<SyllabusMetricData> metrics;
-  final VoidCallback onEdit;
+  final VoidCallback? onEdit;
   final VoidCallback onAttach;
-  final VoidCallback onArchive;
+  final VoidCallback? onArchive;
+  final String? layerLabel;
+  final String? layerDetail;
   final double? completion;
 
   @override
@@ -69,31 +73,32 @@ class SyllabusEntityHero extends StatelessWidget {
                       children: [
                         Text(
                           eyebrow,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: colors.primary,
-                            letterSpacing: .8,
-                            fontWeight: FontWeight.w900,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: colors.primary,
+                                letterSpacing: .8,
+                                fontWeight: FontWeight.w900,
+                              ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: colors.ink,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -.35,
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                color: colors.ink,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -.35,
+                              ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           subtitle,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: colors.inkMuted,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: colors.inkMuted),
                         ),
                       ],
                     ),
@@ -127,12 +132,12 @@ class SyllabusEntityHero extends StatelessWidget {
                           onAttach();
                           break;
                         case 'archive':
-                          onArchive();
+                          onArchive?.call();
                           break;
                       }
                     },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
                         value: 'attach',
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -140,14 +145,15 @@ class SyllabusEntityHero extends StatelessWidget {
                           title: Text('Attach files'),
                         ),
                       ),
-                      PopupMenuItem(
-                        value: 'archive',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.archive_outlined),
-                          title: Text('Archive'),
+                      if (onArchive != null)
+                        const PopupMenuItem(
+                          value: 'archive',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.archive_outlined),
+                            title: Text('Archive'),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ],
@@ -163,6 +169,81 @@ class SyllabusEntityHero extends StatelessWidget {
               );
             },
           ),
+          if (layerLabel != null) ...[
+            const SizedBox(height: TeachingPlannerDesign.space10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compactLayer = constraints.maxWidth < 500;
+                final badge = Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: compactLayer ? 6 : 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.primarySoft.withValues(alpha: .55),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: colors.primary.withValues(alpha: .16),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        onEdit == null
+                            ? Icons.lock_outline_rounded
+                            : Icons.edit_note_rounded,
+                        size: 17,
+                        color: colors.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: compactLayer
+                            ? Text(
+                                layerLabel!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelLarge
+                                    ?.copyWith(
+                                      color: colors.ink,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    layerLabel!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelLarge
+                                        ?.copyWith(
+                                          color: colors.ink,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                  ),
+                                  if (layerDetail != null) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      layerDetail!,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(color: colors.inkMuted),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (!compactLayer || layerDetail == null) return badge;
+                return Tooltip(message: layerDetail!, child: badge);
+              },
+            ),
+          ],
           const SizedBox(height: TeachingPlannerDesign.space14),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -301,9 +382,9 @@ class SyllabusMetricChip extends StatelessWidget {
                   data.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colors.inkMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: colors.inkMuted),
                 ),
               ],
             ),
@@ -429,9 +510,7 @@ class SyllabusHierarchyCard extends StatelessWidget {
                                 title,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
+                                style: Theme.of(context).textTheme.titleSmall
                                     ?.copyWith(
                                       color: colors.ink,
                                       fontWeight: FontWeight.w900,
@@ -453,10 +532,8 @@ class SyllabusHierarchyCard extends StatelessWidget {
                           subtitle,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colors.inkMuted,
-                            height: 1.3,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: colors.inkMuted, height: 1.3),
                         ),
                         if (completion != null) ...[
                           const SizedBox(height: 7),
@@ -510,7 +587,9 @@ class SyllabusAddCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(TeachingPlannerDesign.radiusLarge),
+            borderRadius: BorderRadius.circular(
+              TeachingPlannerDesign.radiusLarge,
+            ),
             border: Border.all(color: colors.primary.withValues(alpha: .16)),
           ),
           child: Row(
@@ -539,9 +618,9 @@ class SyllabusAddCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       helper,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.inkMuted,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: colors.inkMuted),
                     ),
                   ],
                 ),
@@ -581,27 +660,31 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = TeachingPlannerTheme.colorsOf(context);
     final (label, background, foreground) = switch (status) {
-      TeachingProgressStatus.completed => ('Done', colors.tealSoft, colors.teal),
+      TeachingProgressStatus.completed => (
+        'Done',
+        colors.tealSoft,
+        colors.teal,
+      ),
       TeachingProgressStatus.inProgress => (
-          'Teaching',
-          colors.purpleSoft,
-          colors.purple,
-        ),
+        'Teaching',
+        colors.purpleSoft,
+        colors.purple,
+      ),
       TeachingProgressStatus.skipped => (
-          'Skipped',
-          colors.surfaceStrong,
-          colors.inkMuted,
-        ),
+        'Skipped',
+        colors.surfaceStrong,
+        colors.inkMuted,
+      ),
       TeachingProgressStatus.rescheduled => (
-          'Moved',
-          colors.orangeSoft,
-          colors.orange,
-        ),
+        'Moved',
+        colors.orangeSoft,
+        colors.orange,
+      ),
       TeachingProgressStatus.planned => (
-          'Planned',
-          colors.primarySoft,
-          colors.primary,
-        ),
+        'Planned',
+        colors.primarySoft,
+        colors.primary,
+      ),
     };
     return _Badge(label: label, background: background, foreground: foreground);
   }

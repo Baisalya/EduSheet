@@ -5,6 +5,9 @@ import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_editor_sheet.dart';
 import 'package:edusheet/features/paper_composer/presentation/widgets/paper_style_preview.dart';
+import 'package:edusheet/features/premium/application/premium_controller.dart';
+import 'package:edusheet/features/premium/domain/freemium_policy.dart';
+import 'package:edusheet/features/premium/presentation/widgets/premium_gate_dialog.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +59,7 @@ class _PaperStyleSheetState extends ConsumerState<PaperStyleSheet> {
       all,
     );
     final visible = selectable.where(_matchesFilter).toList(growable: false);
+    final premium = ref.watch(premiumProvider);
     final theme = Theme.of(context);
 
     return Column(
@@ -98,6 +102,15 @@ class _PaperStyleSheetState extends ConsumerState<PaperStyleSheet> {
               ),
               TextButton.icon(
                 onPressed: () async {
+                  if (!premium.hasPremiumAccess) {
+                    await showPremiumGateDialog(
+                      context,
+                      title: 'Custom styles are Premium',
+                      message:
+                          'Free includes three basic paper templates. Existing custom styles remain usable on their saved papers; Premium creates new custom styles.',
+                    );
+                    return;
+                  }
                   final createdId = await PaperStyleEditorSheet.show(
                     context,
                     selected,
@@ -146,15 +159,30 @@ class _PaperStyleSheetState extends ConsumerState<PaperStyleSheet> {
                   itemBuilder: (context, index) {
                     final template = visible[index];
                     final isSelected = template.id == selected.id;
+                    final isLocked = !FreemiumPolicy.canUseTemplate(
+                      premium: premium,
+                      templateId: template.id,
+                      existingTemplateId: widget.selectedTemplateId,
+                    );
                     final preset = PaperStyleCatalog.presetForId(template.id);
                     return _PaperStyleCard(
                       template: template,
                       selected: isSelected,
+                      locked: isLocked,
                       description:
                           preset?.description ??
                           'Your saved custom paper style.',
                       bestFor: preset?.bestFor ?? 'Custom printing preferences',
-                      onTap: () {
+                      onTap: () async {
+                        if (isLocked) {
+                          await showPremiumGateDialog(
+                            context,
+                            title: 'All templates are Premium',
+                            message:
+                                'Free includes School Formal, School Compact and Board Exam Classic. Your existing paper keeps its current template after expiry.',
+                          );
+                          return;
+                        }
                         ref
                             .read(editorStateProvider.notifier)
                             .updateTemplate(template.id);
@@ -212,6 +240,7 @@ class _PaperStyleSheetState extends ConsumerState<PaperStyleSheet> {
 class _PaperStyleCard extends StatelessWidget {
   final PaperTemplate template;
   final bool selected;
+  final bool locked;
   final String description;
   final String bestFor;
   final VoidCallback onTap;
@@ -219,6 +248,7 @@ class _PaperStyleCard extends StatelessWidget {
   const _PaperStyleCard({
     required this.template,
     required this.selected,
+    required this.locked,
     required this.description,
     required this.bestFor,
     required this.onTap,
@@ -266,6 +296,19 @@ class _PaperStyleCard extends StatelessWidget {
                           size: 20,
                           color: theme.colorScheme.onPrimary,
                         ),
+                      ),
+                    ),
+                  if (locked)
+                    Positioned(
+                      top: 7,
+                      right: 7,
+                      child: Chip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: const Icon(
+                          Icons.lock_outline_rounded,
+                          size: 15,
+                        ),
+                        label: const Text('Premium'),
                       ),
                     ),
                 ],

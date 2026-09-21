@@ -181,10 +181,10 @@ packages:
     dependency: transitive
     description:
       name: code_assets
-      sha256: "83ccdaa064c980b5596c35dd64a8d3ecc68620174ab9b90b6343b753aa721687"
+      sha256: "828110d598123b5ea96c00c9f3c72105bf79f8ee36c20a39b26209ade421ec57"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.0"
+    version: "2.1.0"
   code_builder:
     dependency: transitive
     description:
@@ -599,6 +599,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.14.0"
+  google_mobile_ads:
+    dependency: "direct main"
+    description:
+      name: google_mobile_ads
+      sha256: "8094e1ace8b0da33fe79027ca6959763c96a28855025cb7c8ec60838e1d56ed8"
+      url: "https://pub.dev"
+    source: hosted
+    version: "9.1.0"
   graphs:
     dependency: transitive
     description:
@@ -611,10 +619,10 @@ packages:
     dependency: "direct main"
     description:
       name: harfbuzz_ffi
-      sha256: c54642245610297770d8972dafbc3e330d46772be2860f15977793b6aeb5b937
+      sha256: ee46ec68942f30f98283de1847006ccbb923e2b2502a4fadc3eabbf935f7235f
       url: "https://pub.dev"
     source: hosted
-    version: "0.4.2"
+    version: "0.5.1"
   holding_gesture:
     dependency: transitive
     description:
@@ -627,10 +635,10 @@ packages:
     dependency: transitive
     description:
       name: hooks
-      sha256: "025f060e86d2d4c3c47b56e33caf7f93bf9283340f26d23424ebcfccf34f621e"
+      sha256: eaac480a35ec0814146c2c48d96aaa829e0e44a7662c88ae84c9edf4bc35651f
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.3"
+    version: "2.2.0"
   html:
     dependency: "direct main"
     description:
@@ -992,18 +1000,10 @@ packages:
     dependency: transitive
     description:
       name: native_toolchain_c
-      sha256: "6ba77bb18063eebe9de401f5e6437e95e1438af0a87a3a39084fbd37c90df572"
+      sha256: "90eaad8059ebc2004a63810a4696ea9acdb02473e47ed3b6b3bafb100ac77e31"
       url: "https://pub.dev"
     source: hosted
-    version: "0.17.6"
-  native_toolchain_ninja:
-    dependency: transitive
-    description:
-      name: native_toolchain_ninja
-      sha256: "3d22b36191c6a1df9d8a7678fde395bd299e5bf2674ce9460ccb719d748228e5"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.2"
+    version: "0.19.5"
   nested:
     dependency: transitive
     description:
@@ -1016,10 +1016,10 @@ packages:
     dependency: transitive
     description:
       name: objective_c
-      sha256: "100a1c87616ab6ed41ec263b083c0ef3261ee6cd1dc3b0f35f8ddfa4f996fe52"
+      sha256: ad56fd53a78ff6b1472fa59ff2a4e8b8ccabafc586fc263a1dfad0b99b5553e3
       url: "https://pub.dev"
     source: hosted
-    version: "9.3.0"
+    version: "9.6.0"
   open_filex:
     dependency: "direct main"
     description:
@@ -1140,54 +1140,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.4"
-  permission_handler:
-    dependency: "direct main"
-    description:
-      name: permission_handler
-      sha256: fe54465bcc62a4564c6e4db337bbaded6c0c0fa6e10487414436d163114784f6
-      url: "https://pub.dev"
-    source: hosted
-    version: "12.0.3"
-  permission_handler_android:
-    dependency: transitive
-    description:
-      name: permission_handler_android
-      sha256: "1e3bc410ca1bf84662104b100eb126e066cb55791b7451307f9708d4007350e6"
-      url: "https://pub.dev"
-    source: hosted
-    version: "13.0.1"
-  permission_handler_apple:
-    dependency: transitive
-    description:
-      name: permission_handler_apple
-      sha256: f49cb15a064ea9d974fc7fbb302099353b7b170d07284e86e264561579e5bcf8
-      url: "https://pub.dev"
-    source: hosted
-    version: "9.6.1"
-  permission_handler_html:
-    dependency: transitive
-    description:
-      name: permission_handler_html
-      sha256: "6ea98b3f17f60d3b527f2647ed2ab4dc0f6bfe25b22cb1c363f5d8f62252f6ac"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.1.4+1"
-  permission_handler_platform_interface:
-    dependency: transitive
-    description:
-      name: permission_handler_platform_interface
-      sha256: ed86a61c190258fdd65de395ea0632822e3415c1faec38eae0c31b479c28a531
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.4.1"
-  permission_handler_windows:
-    dependency: transitive
-    description:
-      name: permission_handler_windows
-      sha256: caeae01858a0a7d2df67a445ac98e1ad95e55a0e77c73044f4e9b1c8c2289cbd
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.2.2"
   petitparser:
     dependency: "direct overridden"
     description:
@@ -1352,10 +1304,10 @@ packages:
     dependency: transitive
     description:
       name: record_use
-      sha256: "2551bd8eecfe95d14ae75f6021ad0248be5c27f138c2ec12fcb52b500b3ba1ed"
+      sha256: "1cb8564af8d43b464294411db9217f5ec04891c6f22ee2c32d73ae05e88a6bd2"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.0"
+    version: "1.1.1"
   riverpod:
     dependency: transitive
     description:
@@ -1809,6 +1761,38 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.0"
+  webview_flutter:
+    dependency: transitive
+    description:
+      name: webview_flutter
+      sha256: d53e1ccf5516f25017e3c9d44c39034db352d20fa34fe200674270242c2c5111
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.14.1"
+  webview_flutter_android:
+    dependency: transitive
+    description:
+      name: webview_flutter_android
+      sha256: "4de8b3d1ff4ebe1bdb42e68a5e4f809194a3cb0117a8f495f590004f00da3964"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.14.1"
+  webview_flutter_platform_interface:
+    dependency: transitive
+    description:
+      name: webview_flutter_platform_interface
+      sha256: "1221c1b12f5278791042f2ec2841743784cf25c5a644e23d6680e5d718824f04"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.15.1"
+  webview_flutter_wkwebview:
+    dependency: transitive
+    description:
+      name: webview_flutter_wkwebview
+      sha256: fe359c7fac1002124b5b9e2ba3a41906bbb9b2d029ccb4a0067404d8f3704730
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.26.1"
   win32:
     dependency: transitive
     description:
@@ -1850,5 +1834,5 @@ packages:
     source: hosted
     version: "3.1.3"
 sdks:
-  dart: ">=3.12.0 <4.0.0"
+  dart: ">=3.13.0 <4.0.0"
   flutter: ">=3.44.0"

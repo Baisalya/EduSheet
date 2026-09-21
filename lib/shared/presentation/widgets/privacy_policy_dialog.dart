@@ -34,6 +34,7 @@ class PrivacyPolicyDialog extends ConsumerWidget {
                 '- Storage Access: We scan common document folders such as Downloads, Documents, EduSheet export folders, and messaging app document folders to help you find PDF, Word, Excel, PowerPoint, and text files. We also allow you to open documents directly from external apps like File Manager or WhatsApp.\n'
                 '- Local Previews: Supported files are previewed on your device. Unsupported legacy Office files can be opened in another app you choose.\n'
                 '- Camera/Gallery: Used to scan questions, OMR sheets, and select school logos for your papers and templates.\n'
+                '- Advertising: The mobile Free plan may show a labelled Google AdMob banner and an occasional frequency-capped ad after returning to Home. Ads are never substituted for a feature or navigation option. Google may process identifiers, approximate location from IP, interactions, and diagnostics for advertising, analytics, and fraud prevention.\n'
                 '- Store Services: Premium purchases, ratings, and update checks contact your device app store. Those services process data under their own policies.\n'
                 '- No Sale of Data: EduSheet does not sell your personal data.',
               ),

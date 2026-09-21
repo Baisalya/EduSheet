@@ -1,6 +1,8 @@
 import 'package:uuid/uuid.dart';
 
+import '../domain/models/curriculum_merge_state.dart';
 import '../domain/models/lesson_plan.dart';
+import '../domain/models/offline_sync_state.dart';
 import '../domain/models/planner_chapter.dart';
 import '../domain/models/planner_class.dart';
 import '../domain/models/planner_priority.dart';
@@ -12,6 +14,8 @@ import '../domain/models/teaching_planner_workspace.dart';
 import '../domain/models/teaching_resource.dart';
 import '../domain/models/teaching_resource_owner.dart';
 import '../domain/models/teaching_status.dart';
+import '../domain/repositories/curriculum_merge_repository.dart';
+import '../domain/repositories/offline_sync_repository.dart';
 import '../domain/repositories/teaching_planner_repository.dart';
 
 class TeachingPlannerOperationException implements Exception {
@@ -60,10 +64,87 @@ class TeachingPlannerService {
 
   Future<TeachingPlannerWorkspace> load() => _repository.load();
 
+  Future<CurriculumMergeState> loadCurriculumMergeState() async {
+    final repository = _repository;
+    final mergeRepository = switch (repository) {
+      CurriculumMergeRepository value => value,
+      _ => null,
+    };
+    if (mergeRepository == null) return CurriculumMergeState.empty();
+    return (await mergeRepository.loadCurriculumMergeSnapshot()).mergeState;
+  }
+
+  Future<TeachingPlannerWorkspace> _updateCurriculumAware(
+    CurriculumAwarePlannerMutation mutation,
+  ) {
+    final repository = _repository;
+    final mergeRepository = switch (repository) {
+      CurriculumMergeRepository value => value,
+      _ => null,
+    };
+    if (mergeRepository != null) {
+      return mergeRepository.updateCurriculumAware(mutation);
+    }
+    return repository.update(
+      (workspace) => mutation(workspace, CurriculumMergeState.empty()),
+    );
+  }
+
+  static void _requireTeacherOwned(
+    CurriculumMergeState mergeState,
+    String entityType,
+    String localId,
+    String label,
+  ) {
+    if (!mergeState.isOfficialLocalId(entityType, localId)) return;
+    throw TeachingPlannerOperationException(
+      '$label belongs to the official curriculum. Keep the master structure unchanged and add teacher notes, resources, papers or progress in your working layer instead.',
+    );
+  }
+
   Future<TeachingPlannerWorkspace> restoreWorkspace(
     TeachingPlannerWorkspace workspace,
+  ) => restoreWorkspaceWithMergeState(workspace, CurriculumMergeState.empty());
+
+  Future<TeachingPlannerWorkspace> restoreWorkspaceWithMergeState(
+    TeachingPlannerWorkspace workspace,
+    CurriculumMergeState mergeState,
+  ) => restoreWorkspaceWithSyncMetadata(
+    workspace,
+    mergeState,
+    OfflineSyncState.uninitialized(),
+  );
+
+  Future<TeachingPlannerWorkspace> restoreWorkspaceWithSyncMetadata(
+    TeachingPlannerWorkspace workspace,
+    CurriculumMergeState mergeState,
+    OfflineSyncState syncState,
   ) async {
-    await _repository.save(workspace);
+    final repository = _repository;
+    final syncRepository = switch (repository) {
+      OfflineSyncRepository value => value,
+      _ => null,
+    };
+    if (syncRepository != null) {
+      await syncRepository.replaceWorkspaceWithSyncMetadata(
+        workspace: workspace,
+        mergeState: mergeState,
+        syncState: syncState,
+      );
+      return workspace;
+    }
+    final mergeRepository = switch (repository) {
+      CurriculumMergeRepository value => value,
+      _ => null,
+    };
+    if (mergeRepository != null) {
+      await mergeRepository.replaceWorkspaceWithMergeState(
+        workspace,
+        mergeState,
+      );
+    } else {
+      await repository.save(workspace);
+    }
     return workspace;
   }
 
@@ -104,7 +185,9 @@ class TeachingPlannerService {
     final cleanYear = academicYear is String
         ? _optionalText(academicYear)
         : null;
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'class', classId, 'Class');
+
       final item = workspace.classById(classId);
       _requireActive(item != null && !item.isArchived, 'Class', classId);
       final now = _now();
@@ -133,7 +216,9 @@ class TeachingPlannerService {
   }) {
     final cleanName = _requiredName(name, 'Subject name');
     final cleanCode = _optionalText(code);
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'class', classId, 'Class');
+
       final parent = workspace.classById(classId);
       _requireActive(parent != null && !parent.isArchived, 'Class', classId);
       final now = _now();
@@ -164,7 +249,9 @@ class TeachingPlannerService {
   }) {
     final cleanName = _requiredName(name, 'Subject name');
     final cleanCode = code is String ? _optionalText(code) : null;
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'subject', subjectId, 'Subject');
+
       final item = workspace.subjectById(subjectId);
       _requireActive(item != null && !item.isArchived, 'Subject', subjectId);
       final now = _now();
@@ -192,7 +279,9 @@ class TeachingPlannerService {
   }) {
     final cleanTitle = _requiredName(title, 'Unit title');
     _requireNonNegative(plannedPeriods, 'Planned periods');
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'subject', subjectId, 'Subject');
+
       final parent = workspace.subjectById(subjectId);
       _requireActive(
         parent != null && !parent.isArchived,
@@ -229,7 +318,9 @@ class TeachingPlannerService {
   }) {
     final cleanTitle = _requiredName(title, 'Unit title');
     _requireNonNegative(plannedPeriods, 'Planned periods');
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'unit', unitId, 'Unit');
+
       final item = workspace.unitById(unitId);
       _requireActive(item != null && !item.isArchived, 'Unit', unitId);
       final now = _now();
@@ -259,7 +350,12 @@ class TeachingPlannerService {
   }) {
     final cleanTitle = _requiredName(title, 'Chapter title');
     _requireNonNegative(plannedPeriods, 'Planned periods');
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'subject', subjectId, 'Subject');
+      if (unitId != null) {
+        _requireTeacherOwned(mergeState, 'unit', unitId, 'Unit');
+      }
+
       _validateChapterParent(workspace, subjectId, unitId);
       final now = _now();
       final siblings = workspace.chapters.where(
@@ -296,7 +392,9 @@ class TeachingPlannerService {
   }) {
     final cleanTitle = _requiredName(title, 'Chapter title');
     _requireNonNegative(plannedPeriods, 'Planned periods');
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'chapter', chapterId, 'Chapter');
+
       final item = workspace.chapterById(chapterId);
       _requireActive(item != null && !item.isArchived, 'Chapter', chapterId);
       final nextUnitId = identical(unitId, _unset)
@@ -346,7 +444,9 @@ class TeachingPlannerService {
     final cleanTitle = _requiredName(title, 'Topic title');
     _requireNonNegative(plannedPeriods, 'Planned periods');
     _validateDateRange(plannedStart, plannedEnd);
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'chapter', chapterId, 'Chapter');
+
       final parent = workspace.chapterById(chapterId);
       _requireActive(
         parent != null && !parent.isArchived,
@@ -389,7 +489,9 @@ class TeachingPlannerService {
   }) {
     final cleanTitle = _requiredName(title, 'Topic title');
     _requireNonNegative(plannedPeriods, 'Planned periods');
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'topic', topicId, 'Topic');
+
       final item = workspace.topicById(topicId);
       _requireActive(item != null && !item.isArchived, 'Topic', topicId);
       final nextStart = identical(plannedStart, _unset)
@@ -590,7 +692,9 @@ class TeachingPlannerService {
   }
 
   Future<TeachingPlannerWorkspace> archiveClass(String classId) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'class', classId, 'Class');
+
       final parent = workspace.classById(classId);
       _requireActive(parent != null && !parent.isArchived, 'Class', classId);
       final now = _now();
@@ -655,7 +759,9 @@ class TeachingPlannerService {
   }
 
   Future<TeachingPlannerWorkspace> archiveSubject(String subjectId) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'subject', subjectId, 'Subject');
+
       final parent = workspace.subjectById(subjectId);
       _requireActive(
         parent != null && !parent.isArchived,
@@ -713,7 +819,9 @@ class TeachingPlannerService {
   }
 
   Future<TeachingPlannerWorkspace> archiveUnit(String unitId) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'unit', unitId, 'Unit');
+
       final parent = workspace.unitById(unitId);
       _requireActive(parent != null && !parent.isArchived, 'Unit', unitId);
       final now = _now();
@@ -755,7 +863,9 @@ class TeachingPlannerService {
   }
 
   Future<TeachingPlannerWorkspace> archiveChapter(String chapterId) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'chapter', chapterId, 'Chapter');
+
       final parent = workspace.chapterById(chapterId);
       _requireActive(
         parent != null && !parent.isArchived,
@@ -790,7 +900,9 @@ class TeachingPlannerService {
   }
 
   Future<TeachingPlannerWorkspace> archiveTopic(String topicId) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'topic', topicId, 'Topic');
+
       final topic = workspace.topicById(topicId);
       _requireActive(topic != null && !topic.isArchived, 'Topic', topicId);
       final now = _now();
@@ -817,7 +929,12 @@ class TeachingPlannerService {
     required String classId,
     required List<String> orderedSubjectIds,
   }) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'class', classId, 'Class');
+      for (final id in orderedSubjectIds) {
+        _requireTeacherOwned(mergeState, 'subject', id, 'Subject');
+      }
+
       final parent = workspace.classById(classId);
       _requireActive(parent != null && !parent.isArchived, 'Class', classId);
       final active = workspace.activeSubjectsForClass(classId);
@@ -847,7 +964,12 @@ class TeachingPlannerService {
     required String subjectId,
     required List<String> orderedUnitIds,
   }) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'subject', subjectId, 'Subject');
+      for (final id in orderedUnitIds) {
+        _requireTeacherOwned(mergeState, 'unit', id, 'Unit');
+      }
+
       final parent = workspace.subjectById(subjectId);
       _requireActive(
         parent != null && !parent.isArchived,
@@ -880,7 +1002,12 @@ class TeachingPlannerService {
     required String chapterId,
     required List<String> orderedTopicIds,
   }) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'chapter', chapterId, 'Chapter');
+      for (final id in orderedTopicIds) {
+        _requireTeacherOwned(mergeState, 'topic', id, 'Topic');
+      }
+
       final chapter = workspace.chapterById(chapterId);
       _requireActive(
         chapter != null && !chapter.isArchived,
@@ -914,7 +1041,15 @@ class TeachingPlannerService {
     String? unitId,
     required List<String> orderedChapterIds,
   }) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(mergeState, 'subject', subjectId, 'Subject');
+      if (unitId != null) {
+        _requireTeacherOwned(mergeState, 'unit', unitId, 'Unit');
+      }
+      for (final id in orderedChapterIds) {
+        _requireTeacherOwned(mergeState, 'chapter', id, 'Chapter');
+      }
+
       final subject = workspace.subjectById(subjectId);
       _requireActive(
         subject != null && !subject.isArchived,
@@ -1098,7 +1233,14 @@ class TeachingPlannerService {
     final cleanTitle = _requiredName(title, 'Resource title');
     final cleanBody = _optionalText(body);
     final cleanUrl = _optionalText(url);
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(
+        mergeState,
+        'resource',
+        resourceId,
+        'Teaching resource',
+      );
+
       final existing = workspace.resourceById(resourceId);
       _requireActive(
         existing != null && !existing.isArchived,
@@ -1211,7 +1353,14 @@ class TeachingPlannerService {
   }
 
   Future<TeachingPlannerWorkspace> archiveTeachingResource(String resourceId) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(
+        mergeState,
+        'resource',
+        resourceId,
+        'Teaching resource',
+      );
+
       final existing = workspace.resourceById(resourceId);
       _requireActive(
         existing != null && !existing.isArchived,
@@ -1408,7 +1557,14 @@ class TeachingPlannerService {
     final cleanTitle = _requiredName(title, 'Lesson title');
     final cleanObjective = _requiredName(objective, 'Lesson objective');
     _requireNonNegative(plannedPeriods, 'Planned periods');
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(
+        mergeState,
+        'lessonPlan',
+        lessonPlanId,
+        'Lesson plan',
+      );
+
       final existing = workspace.lessonPlanById(lessonPlanId);
       _requireActive(
         existing != null && !existing.isArchived,
@@ -1542,7 +1698,14 @@ class TeachingPlannerService {
   }
 
   Future<TeachingPlannerWorkspace> archiveLessonPlan(String lessonPlanId) {
-    return _repository.update((workspace) {
+    return _updateCurriculumAware((workspace, mergeState) {
+      _requireTeacherOwned(
+        mergeState,
+        'lessonPlan',
+        lessonPlanId,
+        'Lesson plan',
+      );
+
       final existing = workspace.lessonPlanById(lessonPlanId);
       _requireActive(
         existing != null && !existing.isArchived,

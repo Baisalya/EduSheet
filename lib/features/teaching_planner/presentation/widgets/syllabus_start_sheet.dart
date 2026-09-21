@@ -46,35 +46,35 @@ class _SyllabusStartSheetState extends State<SyllabusStartSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-            const TeachingPlannerSectionHeader(
-              title: 'Class details',
-              subtitle:
-                  'Only the fields already supported by Teaching Planner are shown here.',
-              icon: Icons.school_outlined,
-            ),
-            const SizedBox(height: TeachingPlannerDesign.space12),
-            TextFormField(
-              controller: _nameController,
-              autofocus: true,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Class / syllabus name',
-                hintText: 'Example: Class 10',
+              const TeachingPlannerSectionHeader(
+                title: 'Class details',
+                subtitle:
+                    'Only the fields already supported by Teaching Planner are shown here.',
+                icon: Icons.school_outlined,
               ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter a class or syllabus name.'
-                  : null,
-            ),
-            const SizedBox(height: TeachingPlannerDesign.space10),
-            TextFormField(
-              controller: _yearController,
-              textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                labelText: 'Academic year (optional)',
-                hintText: 'Example: 2026–27',
+              const SizedBox(height: TeachingPlannerDesign.space12),
+              TextFormField(
+                controller: _nameController,
+                autofocus: true,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Class / syllabus name',
+                  hintText: 'Example: Class 10',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter a class or syllabus name.'
+                    : null,
               ),
-              onFieldSubmitted: (_) => _submit(),
-            ),
+              const SizedBox(height: TeachingPlannerDesign.space10),
+              TextFormField(
+                controller: _yearController,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'Academic year (optional)',
+                  hintText: 'Example: 2026–27',
+                ),
+                onFieldSubmitted: (_) => _submit(),
+              ),
             ],
           ),
         ),

@@ -17,6 +17,7 @@ class SyllabusAttachmentSection extends StatelessWidget {
     required this.onAddFiles,
     required this.onOpen,
     required this.onRemove,
+    this.canRemove,
   });
 
   final List<TeachingResource> resources;
@@ -27,6 +28,7 @@ class SyllabusAttachmentSection extends StatelessWidget {
   final VoidCallback onAddFiles;
   final ValueChanged<TeachingResource> onOpen;
   final ValueChanged<TeachingResource> onRemove;
+  final bool Function(TeachingResource resource)? canRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -38,8 +40,8 @@ class SyllabusAttachmentSection extends StatelessWidget {
           key: ValueKey('syllabus-resources-papers-section'),
           child: TeachingPlannerSectionHeader(
             title: 'Resources & Papers',
-          subtitle:
-              'Create or attach an EduSheet paper here, or keep Word, PDF, images and other teaching files with this syllabus item.',
+            subtitle:
+                'Create or attach an EduSheet paper here, or keep Word, PDF, images and other teaching files with this syllabus item.',
             icon: Icons.folder_copy_outlined,
           ),
         ),
@@ -130,12 +132,16 @@ class SyllabusAttachmentSection extends StatelessWidget {
                           ? _PaperResourceCard(
                               resource: resource,
                               onOpen: () => onOpen(resource),
-                              onRemove: () => onRemove(resource),
+                              onRemove: canRemove?.call(resource) == false
+                                  ? null
+                                  : () => onRemove(resource),
                             )
                           : _AttachmentCard(
                               resource: resource,
                               onOpen: () => onOpen(resource),
-                              onRemove: () => onRemove(resource),
+                              onRemove: canRemove?.call(resource) == false
+                                  ? null
+                                  : () => onRemove(resource),
                             ),
                     ),
                 ],
@@ -151,12 +157,12 @@ class _PaperResourceCard extends StatelessWidget {
   const _PaperResourceCard({
     required this.resource,
     required this.onOpen,
-    required this.onRemove,
+    this.onRemove,
   });
 
   final TeachingResource resource;
   final VoidCallback onOpen;
-  final VoidCallback onRemove;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -192,9 +198,9 @@ class _PaperResourceCard extends StatelessWidget {
                   'EduSheet paper • Saved Papers',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colors.inkMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: colors.inkMuted),
                 ),
               ],
             ),
@@ -204,18 +210,27 @@ class _PaperResourceCard extends StatelessWidget {
             onPressed: onOpen,
             icon: const Icon(Icons.edit_outlined),
           ),
-          PopupMenuButton<String>(
-            tooltip: 'Paper actions',
-            onSelected: (value) {
-              if (value == 'remove') onRemove();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: 'remove',
-                child: Text('Remove from syllabus'),
+          if (onRemove != null)
+            PopupMenuButton<String>(
+              tooltip: 'Paper actions',
+              onSelected: (value) {
+                if (value == 'remove') onRemove?.call();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Text('Remove from syllabus'),
+                ),
+              ],
+            )
+          else
+            const Tooltip(
+              message: 'Official curriculum paper',
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.lock_outline_rounded, size: 18),
               ),
-            ],
-          ),
+            ),
         ],
       ),
     );
@@ -226,12 +241,12 @@ class _AttachmentCard extends StatelessWidget {
   const _AttachmentCard({
     required this.resource,
     required this.onOpen,
-    required this.onRemove,
+    this.onRemove,
   });
 
   final TeachingResource resource;
   final VoidCallback onOpen;
-  final VoidCallback onRemove;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -271,9 +286,9 @@ class _AttachmentCard extends StatelessWidget {
                   '${_categoryLabel(category)} • ${_formatBytes(resource.sizeBytes)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colors.inkMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: colors.inkMuted),
                 ),
               ],
             ),
@@ -283,18 +298,27 @@ class _AttachmentCard extends StatelessWidget {
             onPressed: onOpen,
             icon: const Icon(Icons.open_in_new_rounded),
           ),
-          PopupMenuButton<String>(
-            tooltip: 'File actions',
-            onSelected: (value) {
-              if (value == 'remove') onRemove();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: 'remove',
-                child: Text('Remove from syllabus'),
+          if (onRemove != null)
+            PopupMenuButton<String>(
+              tooltip: 'File actions',
+              onSelected: (value) {
+                if (value == 'remove') onRemove?.call();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Text('Remove from syllabus'),
+                ),
+              ],
+            )
+          else
+            const Tooltip(
+              message: 'Official curriculum resource',
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.lock_outline_rounded, size: 18),
               ),
-            ],
-          ),
+            ),
         ],
       ),
     );

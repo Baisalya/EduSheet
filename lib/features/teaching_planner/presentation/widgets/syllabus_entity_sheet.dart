@@ -143,7 +143,8 @@ class _SyllabusEntitySheetState extends State<SyllabusEntitySheet> {
       SyllabusEntityKind.topic =>
         widget.topicValue == null ? 'Add topic' : 'Edit topic',
     };
-    final isTimed = kind == SyllabusEntityKind.unit ||
+    final isTimed =
+        kind == SyllabusEntityKind.unit ||
         kind == SyllabusEntityKind.chapter ||
         kind == SyllabusEntityKind.topic;
     final actionLabel = widget.isEditing
@@ -168,126 +169,131 @@ class _SyllabusEntitySheetState extends State<SyllabusEntitySheet> {
         Form(
           key: _formKey,
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TeachingPlannerSectionHeader(
-              title: _sectionTitle(kind),
-              subtitle: _sectionSubtitle(kind),
-              icon: _iconForKind(kind),
-            ),
-            const SizedBox(height: TeachingPlannerDesign.space12),
-            TextFormField(
-              controller: _nameController,
-              autofocus: true,
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(labelText: _nameLabel(kind)),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter a name.'
-                  : null,
-            ),
-            if (kind == SyllabusEntityKind.classValue ||
-                kind == SyllabusEntityKind.subject) ...[
-              const SizedBox(height: TeachingPlannerDesign.space10),
-              TextFormField(
-                controller: _secondaryController,
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(
-                  labelText: kind == SyllabusEntityKind.classValue
-                      ? 'Academic year (optional)'
-                      : 'Subject code (optional)',
-                ),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TeachingPlannerSectionHeader(
+                title: _sectionTitle(kind),
+                subtitle: _sectionSubtitle(kind),
+                icon: _iconForKind(kind),
               ),
-            ],
-            if (isTimed) ...[
-              const SizedBox(height: TeachingPlannerDesign.space10),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 520;
-                  final periodField = TextFormField(
-                    controller: _periodController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Planned periods',
-                      helperText: 'Use 0 when the duration is not known yet.',
-                    ),
-                    validator: (value) {
-                      final periods = int.tryParse(value?.trim() ?? '');
-                      if (periods == null || periods < 0) {
-                        return 'Enter a whole number 0 or greater.';
-                      }
-                      return null;
-                    },
-                  );
-                  final priorityField = DropdownButtonFormField<PlannerPriority>(
-                    initialValue: _priority,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Priority'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: PlannerPriority.low,
-                        child: Text('Low'),
+              const SizedBox(height: TeachingPlannerDesign.space12),
+              TextFormField(
+                controller: _nameController,
+                autofocus: true,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(labelText: _nameLabel(kind)),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter a name.'
+                    : null,
+              ),
+              if (kind == SyllabusEntityKind.classValue ||
+                  kind == SyllabusEntityKind.subject) ...[
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                TextFormField(
+                  controller: _secondaryController,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    labelText: kind == SyllabusEntityKind.classValue
+                        ? 'Academic year (optional)'
+                        : 'Subject code (optional)',
+                  ),
+                ),
+              ],
+              if (isTimed) ...[
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 520;
+                    final periodField = TextFormField(
+                      controller: _periodController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Planned periods',
+                        helperText: 'Use 0 when the duration is not known yet.',
                       ),
-                      DropdownMenuItem(
-                        value: PlannerPriority.normal,
-                        child: Text('Normal'),
-                      ),
-                      DropdownMenuItem(
-                        value: PlannerPriority.high,
-                        child: Text('High'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _priority = value);
-                      }
-                    },
-                  );
-                  if (compact) {
-                    return Column(
+                      validator: (value) {
+                        final periods = int.tryParse(value?.trim() ?? '');
+                        if (periods == null || periods < 0) {
+                          return 'Enter a whole number 0 or greater.';
+                        }
+                        return null;
+                      },
+                    );
+                    final priorityField =
+                        DropdownButtonFormField<PlannerPriority>(
+                          initialValue: _priority,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Priority',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: PlannerPriority.low,
+                              child: Text('Low'),
+                            ),
+                            DropdownMenuItem(
+                              value: PlannerPriority.normal,
+                              child: Text('Normal'),
+                            ),
+                            DropdownMenuItem(
+                              value: PlannerPriority.high,
+                              child: Text('High'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() => _priority = value);
+                            }
+                          },
+                        );
+                    if (compact) {
+                      return Column(
+                        children: [
+                          periodField,
+                          const SizedBox(height: TeachingPlannerDesign.space10),
+                          priorityField,
+                        ],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        periodField,
-                        const SizedBox(height: TeachingPlannerDesign.space10),
-                        priorityField,
+                        Expanded(child: periodField),
+                        const SizedBox(width: TeachingPlannerDesign.space10),
+                        Expanded(child: priorityField),
                       ],
                     );
-                  }
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: periodField),
-                      const SizedBox(width: TeachingPlannerDesign.space10),
-                      Expanded(child: priorityField),
-                    ],
-                  );
-                },
-              ),
-            ],
-            if (kind == SyllabusEntityKind.chapter) ...[
-              const SizedBox(height: TeachingPlannerDesign.space10),
-              DropdownButtonFormField<String>(
-                initialValue: _unitSelection,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Unit (optional)'),
-                items: [
-                  const DropdownMenuItem(
-                    value: _rootUnit,
-                    child: Text('No unit / subject-level chapter'),
+                  },
+                ),
+              ],
+              if (kind == SyllabusEntityKind.chapter) ...[
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                DropdownButtonFormField<String>(
+                  initialValue: _unitSelection,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit (optional)',
                   ),
-                  ...widget.units.map(
-                    (unit) => DropdownMenuItem(
-                      value: unit.id,
-                      child: Text(
-                        unit.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                  items: [
+                    const DropdownMenuItem(
+                      value: _rootUnit,
+                      child: Text('No unit / subject-level chapter'),
+                    ),
+                    ...widget.units.map(
+                      (unit) => DropdownMenuItem(
+                        value: unit.id,
+                        child: Text(
+                          unit.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-                onChanged: (value) =>
-                    setState(() => _unitSelection = value ?? _rootUnit),
-              ),
-            ],
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _unitSelection = value ?? _rootUnit),
+                ),
+              ],
             ],
           ),
         ),
@@ -298,13 +304,13 @@ class _SyllabusEntitySheetState extends State<SyllabusEntitySheet> {
   Widget _guideFormAnchor(SyllabusEntityKind kind, Widget child) {
     return switch (kind) {
       SyllabusEntityKind.subject => GuideAnchor(
-          targetId: CreateSyllabusGuideTargets.subjectForm,
-          child: child,
-        ),
+        targetId: CreateSyllabusGuideTargets.subjectForm,
+        child: child,
+      ),
       SyllabusEntityKind.chapter => GuideAnchor(
-          targetId: CreateSyllabusGuideTargets.chapterForm,
-          child: child,
-        ),
+        targetId: CreateSyllabusGuideTargets.chapterForm,
+        child: child,
+      ),
       _ => child,
     };
   }
@@ -331,11 +337,16 @@ class _SyllabusEntitySheetState extends State<SyllabusEntitySheet> {
 
   static String _sectionSubtitle(SyllabusEntityKind kind) {
     return switch (kind) {
-      SyllabusEntityKind.classValue => 'Name the class and optionally keep its academic year.',
-      SyllabusEntityKind.subject => 'Name the subject and optionally keep its existing subject code.',
-      SyllabusEntityKind.unit => 'Keep the unit title, planned periods and priority together.',
-      SyllabusEntityKind.chapter => 'Keep the chapter linked to its real unit or subject level.',
-      SyllabusEntityKind.topic => 'Keep the topic title, planned periods and priority together.',
+      SyllabusEntityKind.classValue =>
+        'Name the class and optionally keep its academic year.',
+      SyllabusEntityKind.subject =>
+        'Name the subject and optionally keep its existing subject code.',
+      SyllabusEntityKind.unit =>
+        'Keep the unit title, planned periods and priority together.',
+      SyllabusEntityKind.chapter =>
+        'Keep the chapter linked to its real unit or subject level.',
+      SyllabusEntityKind.topic =>
+        'Keep the topic title, planned periods and priority together.',
     };
   }
 

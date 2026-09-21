@@ -1696,64 +1696,64 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
       targetId: CreatePaperGuideTargets.questionTools,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            QuestionInsertAction(
-              icon: Icons.add_rounded,
-              label: 'Add',
-              onTap: _showAddContent,
-            ),
-            QuestionInsertAction(
-              icon: Icons.functions_rounded,
-              label: 'Math',
-              onTap: () => _insertFormula(),
-            ),
-            if (_hasMathTextSurfaces)
-              QuestionInsertAction(
-                icon: Icons.data_object_rounded,
-                label: _draft.mathContent.structuredSurfaceCount == 0
-                    ? 'Math in fields'
-                    : 'Field math (${_draft.mathContent.structuredSurfaceCount})',
-                onTap: _editMathEverywhere,
-              ),
-            QuestionInsertAction(
-              icon: Icons.category_outlined,
-              label: 'Geometry',
-              onTap: () => _insertGeometry(),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        _buildInsertionGuidance(context),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 34,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              for (final prompt in const [
-                ('Solve', 'Solve: '),
-                ('Find', 'Find the value of '),
-                ('Calculate', 'Calculate '),
-                ('Prove', 'Prove that '),
-                ('Given', 'Given that '),
-                ('Draw', 'Draw a neat labelled diagram of '),
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ActionChip(
-                    label: Text(prompt.$1),
-                    onPressed: () => _insertPrompt(prompt.$2),
-                    visualDensity: VisualDensity.compact,
-                  ),
+              QuestionInsertAction(
+                icon: Icons.add_rounded,
+                label: 'Add',
+                onTap: _showAddContent,
+              ),
+              QuestionInsertAction(
+                icon: Icons.functions_rounded,
+                label: 'Math',
+                onTap: () => _insertFormula(),
+              ),
+              if (_hasMathTextSurfaces)
+                QuestionInsertAction(
+                  icon: Icons.data_object_rounded,
+                  label: _draft.mathContent.structuredSurfaceCount == 0
+                      ? 'Math in fields'
+                      : 'Field math (${_draft.mathContent.structuredSurfaceCount})',
+                  onTap: _editMathEverywhere,
                 ),
+              QuestionInsertAction(
+                icon: Icons.category_outlined,
+                label: 'Geometry',
+                onTap: () => _insertGeometry(),
+              ),
             ],
           ),
-        ),
-      ],
+          const SizedBox(height: 6),
+          _buildInsertionGuidance(context),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final prompt in const [
+                  ('Solve', 'Solve: '),
+                  ('Find', 'Find the value of '),
+                  ('Calculate', 'Calculate '),
+                  ('Prove', 'Prove that '),
+                  ('Given', 'Given that '),
+                  ('Draw', 'Draw a neat labelled diagram of '),
+                ])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ActionChip(
+                      label: Text(prompt.$1),
+                      onPressed: () => _insertPrompt(prompt.$2),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1920,22 +1920,22 @@ class _QuestionComposerPageState extends ConsumerState<QuestionComposerPage> {
                             targetId: CreatePaperGuideTargets.questionTools,
                             child: QuestionMobileAuthoringToolbar(
                               anchor: anchor,
-                                formattingActive: _showFormatting,
-                                canUndo: _bodyController.hasUndo,
-                                canRedo: _bodyController.hasRedo,
-                                onReturnToCursor: _returnToSavedInsertion,
-                                onAdd: _showAddContent,
-                                onMath: () => _insertFormula(
-                                  insertionAnchor: _toolInsertionAnchor(),
-                                ),
-                                onGeometry: () => _insertGeometry(
-                                  insertionAnchor: _toolInsertionAnchor(),
-                                ),
-                                onFormat: _toggleFormatting,
-                                onUndo: _undoBody,
-                                onRedo: _redoBody,
+                              formattingActive: _showFormatting,
+                              canUndo: _bodyController.hasUndo,
+                              canRedo: _bodyController.hasRedo,
+                              onReturnToCursor: _returnToSavedInsertion,
+                              onAdd: _showAddContent,
+                              onMath: () => _insertFormula(
+                                insertionAnchor: _toolInsertionAnchor(),
                               ),
+                              onGeometry: () => _insertGeometry(
+                                insertionAnchor: _toolInsertionAnchor(),
+                              ),
+                              onFormat: _toggleFormatting,
+                              onUndo: _undoBody,
+                              onRedo: _redoBody,
                             ),
+                          ),
                         ),
                   ),
                 if (compact && !mathVisible) ...[

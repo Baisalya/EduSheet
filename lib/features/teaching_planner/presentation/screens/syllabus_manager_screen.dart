@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 
@@ -21,6 +22,7 @@ import '../../../guided_experience/presentation/widgets/contextual_help_prompt.d
 import '../../../guided_experience/presentation/widgets/guide_anchor.dart';
 
 import '../../data/syllabus_import_codec.dart';
+import '../../domain/models/curriculum_merge_state.dart';
 import '../../domain/models/planner_chapter.dart';
 import '../../domain/models/planner_class.dart';
 import '../../domain/models/planner_subject.dart';
@@ -39,6 +41,7 @@ import '../providers/teaching_planner_provider.dart';
 import '../services/syllabus_attachment_controller.dart';
 import '../services/syllabus_manager_controller.dart';
 import '../services/syllabus_navigation_policy.dart';
+import 'curriculum_package_builder_screen.dart';
 import '../widgets/syllabus_adaptive_shell.dart';
 import '../widgets/syllabus_detail_panel.dart';
 import '../widgets/syllabus_entity_sheet.dart';
@@ -109,90 +112,90 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
 
     final pageBody = SafeArea(
       child: Column(
-            children: [
-            _SyllabusReferenceHeader(
-              selected: selected,
-              guidedSetup: widget.guidedSetup,
-              isLoading: state.isLoading,
-              onBack: widget.guidedSetup
-                  ? () => Navigator.of(context).maybePop()
-                  : null,
-              onCreateSyllabus: _createSyllabus,
-              onImportSyllabus: _importSyllabus,
-              onShowGuide: _showSyllabusGuide,
-              onRefresh: () =>
-                  ref.read(teachingPlannerProvider.notifier).load(),
+        children: [
+          _SyllabusReferenceHeader(
+            selected: selected,
+            guidedSetup: widget.guidedSetup,
+            isLoading: state.isLoading,
+            onBack: widget.guidedSetup
+                ? () => Navigator.of(context).maybePop()
+                : null,
+            onCreateSyllabus: _createSyllabus,
+            onImportSyllabus: _importSyllabus,
+            onShareCurriculum: () => _openCurriculumPackageBuilder(selected),
+            onShowGuide: _showSyllabusGuide,
+            onRefresh: () => ref.read(teachingPlannerProvider.notifier).load(),
+          ),
+          if (widget.guidedSetup)
+            _GuidedSyllabusSetupBanner(
+              workspace: workspace,
+              classId: widget.initialClassId,
+              onContinue: _continueGuidedSetup,
             ),
-            if (widget.guidedSetup)
-              _GuidedSyllabusSetupBanner(
-                workspace: workspace,
-                classId: widget.initialClassId,
-                onContinue: _continueGuidedSetup,
-              ),
-            SyllabusAdaptiveToolbar(
-              filter: _filter,
-              searchController: _searchController,
-              onQueryChanged: (value) => setState(() => _query = value),
-              onFilterChanged: (value) => setState(() => _filter = value),
-              onCreateSyllabus: _createSyllabus,
-            ),
-            if (state.errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                child: Semantics(
-                  liveRegion: true,
-                  child: MaterialBanner(
-                    content: Text(state.errorMessage!),
-                    actions: [
-                      TextButton(
-                        onPressed: () =>
-                            ref.read(teachingPlannerProvider.notifier).load(),
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
+          SyllabusAdaptiveToolbar(
+            filter: _filter,
+            searchController: _searchController,
+            onQueryChanged: (value) => setState(() => _query = value),
+            onFilterChanged: (value) => setState(() => _filter = value),
+            onCreateSyllabus: _createSyllabus,
+          ),
+          if (state.errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              child: Semantics(
+                liveRegion: true,
+                child: MaterialBanner(
+                  content: Text(state.errorMessage!),
+                  actions: [
+                    TextButton(
+                      onPressed: () =>
+                          ref.read(teachingPlannerProvider.notifier).load(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
                 ),
               ),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final useWideEditor =
-                      constraints.maxWidth >=
-                          TeachingPlannerBreakpoints.syllabusWide &&
-                      constraints.maxHeight >= 500;
-                  if (useWideEditor) {
-                    return _buildWideEditor(workspace, selected);
-                  }
-                  final hasActiveSearch =
-                      _query.trim().isNotEmpty || _filter != SyllabusFilter.all;
-                  return PopScope<Object?>(
-                    canPop: selected == null && !hasActiveSearch,
-                    onPopInvokedWithResult: (didPop, _) {
-                      if (didPop) return;
-                      if (hasActiveSearch) {
-                        _searchController.clear();
-                        setState(() {
-                          _query = '';
-                          _filter = SyllabusFilter.all;
-                        });
-                        return;
-                      }
-                      if (selected == null) return;
-                      setState(
-                        () => _selected = SyllabusNavigationPolicy.parentOf(
-                          workspace,
-                          selected,
-                        ),
-                      );
-                    },
-                    child: _buildCompactEditor(workspace, selected),
-                  );
-                },
-              ),
             ),
-          ],
-        ),
-      );
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final useWideEditor =
+                    constraints.maxWidth >=
+                        TeachingPlannerBreakpoints.syllabusWide &&
+                    constraints.maxHeight >= 500;
+                if (useWideEditor) {
+                  return _buildWideEditor(workspace, selected);
+                }
+                final hasActiveSearch =
+                    _query.trim().isNotEmpty || _filter != SyllabusFilter.all;
+                return PopScope<Object?>(
+                  canPop: selected == null && !hasActiveSearch,
+                  onPopInvokedWithResult: (didPop, _) {
+                    if (didPop) return;
+                    if (hasActiveSearch) {
+                      _searchController.clear();
+                      setState(() {
+                        _query = '';
+                        _filter = SyllabusFilter.all;
+                      });
+                      return;
+                    }
+                    if (selected == null) return;
+                    setState(
+                      () => _selected = SyllabusNavigationPolicy.parentOf(
+                        workspace,
+                        selected,
+                      ),
+                    );
+                  },
+                  child: _buildCompactEditor(workspace, selected),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
 
     final assistantBody = smartRecommendation == null
         ? pageBody
@@ -291,10 +294,14 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
     TeachingPlannerWorkspace workspace,
     SyllabusNodeRef selected,
   ) {
+    final mergeState =
+        ref.watch(curriculumMergeStateProvider).asData?.value ??
+        CurriculumMergeState.empty();
     return GuideAnchor(
       targetId: CreateSyllabusGuideTargets.manageSyllabus,
       child: SyllabusDetailPanel(
         workspace: workspace,
+        mergeState: mergeState,
         selected: selected,
         query: _query,
         filter: _filter,
@@ -354,14 +361,16 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
     );
     if (!mounted) return;
 
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const CreatePaperScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const CreatePaperScreen()));
     if (!mounted) return;
 
     await editor.flushPendingAutosave();
     if (!editor.isPaperPersisted(paperId)) {
-      _showMessage('Paper was not saved, so nothing was added to the syllabus.');
+      _showMessage(
+        'Paper was not saved, so nothing was added to the syllabus.',
+      );
       return;
     }
 
@@ -468,10 +477,40 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
       );
       return;
     }
+
+    final mergeState = await ref.read(curriculumMergeStateProvider.future);
+    if (!mounted) return;
+    if (mergeState.isOfficialLocalId('paper', paper.id)) {
+      final createCopy = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.lock_outline_rounded),
+          title: const Text('Official paper is protected'),
+          content: const Text(
+            'This paper came from the official curriculum. Create a teacher copy to edit it; the official version will stay unchanged and can still receive future updates.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Keep official'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(context, true),
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('Create teacher copy'),
+            ),
+          ],
+        ),
+      );
+      if (createCopy != true || !mounted) return;
+      await _openTeacherPaperCopy(resource, paper);
+      return;
+    }
+
     ref.read(editorStateProvider.notifier).loadPaper(paper);
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const CreatePaperScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const CreatePaperScreen()));
     if (!mounted) return;
 
     List<Paper> refreshedPapers;
@@ -491,11 +530,98 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
     if (refreshedTitle != null &&
         refreshedTitle.isNotEmpty &&
         refreshedTitle != resource.title) {
-      await ref.read(teachingPlannerProvider.notifier).updateTeachingResource(
-        resource.id,
-        role: resource.role,
-        title: refreshedTitle,
-      );
+      await ref
+          .read(teachingPlannerProvider.notifier)
+          .updateTeachingResource(
+            resource.id,
+            role: resource.role,
+            title: refreshedTitle,
+          );
+    }
+  }
+
+  Future<void> _openTeacherPaperCopy(
+    TeachingResource officialResource,
+    Paper officialPaper,
+  ) async {
+    final now = DateTime.now().toUtc();
+    final copyId = const Uuid().v4();
+    final linkId = const Uuid().v4();
+    final teacherCopy = officialPaper.copyWith(
+      id: copyId,
+      originId: copyId,
+      revision: 1,
+      updatedAt: now,
+      createdAt: now,
+      title: '${officialPaper.title} — Teacher Copy',
+    );
+
+    try {
+      await ref.read(paperRepositoryProvider).savePaper(teacherCopy);
+    } catch (_) {
+      if (mounted) {
+        _showMessage('The teacher copy could not be created safely.');
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final linked = await ref
+        .read(teachingPlannerProvider.notifier)
+        .createTeachingResource(
+          resourceId: linkId,
+          owner: officialResource.owner,
+          kind: TeachingResourceKind.paper,
+          role: officialResource.role,
+          title: teacherCopy.title,
+          linkedPaperId: teacherCopy.id,
+        );
+    if (!linked) {
+      try {
+        await ref.read(paperRepositoryProvider).deletePaper(copyId);
+      } catch (_) {
+        // Best-effort cleanup. Never alter the protected official paper.
+      }
+      if (mounted) {
+        _showMessage(
+          ref.read(teachingPlannerProvider).errorMessage ??
+              'The teacher copy could not be linked safely.',
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    ref.invalidate(savedPapersProvider);
+    ref.read(editorStateProvider.notifier).loadPaper(teacherCopy);
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const CreatePaperScreen()));
+    if (!mounted) return;
+
+    try {
+      final refreshedPapers = await ref
+          .read(paperRepositoryProvider)
+          .getAllPapers();
+      Paper? refreshed;
+      for (final candidate in refreshedPapers) {
+        if (candidate.id == copyId) {
+          refreshed = candidate;
+          break;
+        }
+      }
+      final title = refreshed?.title.trim();
+      if (title != null && title.isNotEmpty && title != teacherCopy.title) {
+        await ref
+            .read(teachingPlannerProvider.notifier)
+            .updateTeachingResource(
+              linkId,
+              role: officialResource.role,
+              title: title,
+            );
+      }
+    } catch (_) {
+      // The editable copy is already safe. A display-title refresh failure
+      // must not imply that the copy or official paper was lost.
     }
   }
 
@@ -558,9 +684,9 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
 
   void _showMessage(String message) {
     if (!mounted || message.trim().isEmpty) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _addAttachments(SyllabusNodeRef node) async {
@@ -816,7 +942,9 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
 
     if (stepId == CreateSyllabusGuideSteps.finishSetup && !widget.guidedSetup) {
       unawaited(
-        controller.notifyConditionSatisfied(CreateSyllabusGuideSteps.finishSetup),
+        controller.notifyConditionSatisfied(
+          CreateSyllabusGuideSteps.finishSetup,
+        ),
       );
     }
   }
@@ -1155,6 +1283,22 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
     _showError();
   }
 
+  Future<void> _openCurriculumPackageBuilder(SyllabusNodeRef? selected) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(
+          name: 'teaching-planner/curriculum-package-builder',
+        ),
+        builder: (_) => CurriculumPackageBuilderScreen(
+          initialClassId: selected?.classId,
+          initialSubjectId: selected?.subjectId,
+          initialUnitId: selected?.unitId,
+          initialChapterId: selected?.chapterId,
+        ),
+      ),
+    );
+  }
+
   Future<void> _importSyllabus() async {
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -1270,7 +1414,6 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
   }
 }
 
-
 class _SyllabusPaperContext {
   const _SyllabusPaperContext({
     required this.className,
@@ -1289,6 +1432,7 @@ class _SyllabusReferenceHeader extends StatelessWidget {
     required this.onBack,
     required this.onCreateSyllabus,
     required this.onImportSyllabus,
+    required this.onShareCurriculum,
     required this.onRefresh,
     required this.onShowGuide,
   });
@@ -1299,6 +1443,7 @@ class _SyllabusReferenceHeader extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback onCreateSyllabus;
   final VoidCallback onImportSyllabus;
+  final VoidCallback? onShareCurriculum;
   final VoidCallback onRefresh;
   final VoidCallback onShowGuide;
 
@@ -1309,7 +1454,8 @@ class _SyllabusReferenceHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 620;
+          final compact = constraints.maxWidth < 900;
+          final veryCompact = constraints.maxWidth < 420;
           final title = Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1335,11 +1481,12 @@ class _SyllabusReferenceHeader extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       selected == null ? 'Add Syllabus' : 'Manage Syllabus',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: colors.ink,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -.8,
-                      ),
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(
+                            color: colors.ink,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -.8,
+                          ),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -1348,15 +1495,21 @@ class _SyllabusReferenceHeader extends StatelessWidget {
                           : 'Edit the selected syllabus without changing its planning logic.',
                       maxLines: compact && selected != null ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colors.inkMuted,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: colors.inkMuted),
                     ),
                   ],
                 ),
               ),
               if (compact && selected != null) ...[
                 const SizedBox(width: 8),
+                if (onShareCurriculum != null)
+                  IconButton(
+                    tooltip: 'Share or assign curriculum',
+                    onPressed: isLoading ? null : onShareCurriculum,
+                    icon: const Icon(Icons.ios_share_rounded),
+                  ),
                 IconButton(
                   tooltip: 'Show Create Syllabus guide',
                   onPressed: onShowGuide,
@@ -1397,6 +1550,24 @@ class _SyllabusReferenceHeader extends StatelessWidget {
                     label: const Text('Create syllabus'),
                   ),
                 ),
+              if (onShareCurriculum != null)
+                if (veryCompact)
+                  IconButton(
+                    tooltip: 'Share or assign curriculum',
+                    onPressed: isLoading ? null : onShareCurriculum,
+                    style: IconButton.styleFrom(
+                      backgroundColor: colors.surface,
+                      foregroundColor: colors.inkMuted,
+                      side: BorderSide(color: colors.border),
+                    ),
+                    icon: const Icon(Icons.ios_share_rounded),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: isLoading ? null : onShareCurriculum,
+                    icon: const Icon(Icons.ios_share_rounded),
+                    label: const Text('Share / assign'),
+                  ),
               IconButton(
                 tooltip: 'Show Create Syllabus guide',
                 onPressed: onShowGuide,

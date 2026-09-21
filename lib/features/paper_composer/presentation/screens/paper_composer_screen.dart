@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:edusheet/features/editor/application/saved_paper_eds_service.dart';
+import 'package:edusheet/features/editor/data/portable/saved_paper_eds_codec.dart';
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 import 'package:edusheet/features/editor/presentation/widgets/paper_rename_dialog.dart';
@@ -33,6 +35,10 @@ import 'package:edusheet/features/question_bank/domain/models/question_bank_mode
 import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
 import 'package:edusheet/features/question_bank/presentation/widgets/question_bank_picker_sheet.dart';
 import 'package:edusheet/features/question_bank/presentation/widgets/save_to_question_bank_sheet.dart';
+import 'package:edusheet/features/premium/presentation/widgets/premium_gate_dialog.dart';
+import 'package:edusheet/features/premium/presentation/widgets/premium_operation_gate.dart';
+import 'package:edusheet/features/premium/domain/freemium_policy.dart';
+import 'package:edusheet/features/premium/application/premium_controller.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:edusheet/shared/services/review_service.dart';
 import 'package:file_picker/file_picker.dart';
@@ -70,10 +76,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   PaperComposerActions get _actions =>
       PaperComposerActions(ref.read(editorStateProvider.notifier));
 
-  void _showCreatePaperGuide(
-    Paper paper, {
-    bool persistFirstUse = false,
-  }) {
+  void _showCreatePaperGuide(Paper paper, {bool persistFirstUse = false}) {
     if (_editingMode != _PaperEditingMode.smart) {
       setState(() => _editingMode = _PaperEditingMode.smart);
     }
@@ -88,7 +91,8 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
       createPaperGuideDefinition.id,
     );
     final controller = ref.read(guidedExperienceControllerProvider.notifier);
-    final replayCompletedGuide = !persistFirstUse &&
+    final replayCompletedGuide =
+        !persistFirstUse &&
         existingProgress?.status == GuideProgressStatus.completed;
 
     if (replayCompletedGuide) {
@@ -120,7 +124,17 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   }
 
   Future<void> _saveNow() async {
-    await ref.read(editorStateProvider.notifier).savePaper();
+    final saved = await ref.read(editorStateProvider.notifier).savePaper();
+    if (!mounted) return;
+    if (!saved) {
+      await showPremiumGateDialog(
+        context,
+        title: 'Free paper limit reached',
+        message:
+            'Existing papers remain editable and personal .eds backup stays available. Premium is required only to save additional new papers.',
+      );
+      return;
+    }
     ref.invalidate(savedPapersProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -130,6 +144,56 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         duration: Duration(milliseconds: 800),
       ),
     );
+  }
+
+  Future<void> _exportEds(Paper paper) async {
+    try {
+      final editor = ref.read(editorStateProvider.notifier);
+      final savedLocally = await editor.savePaper();
+      final saveStatus = ref.read(editorSaveStatusProvider);
+      if (!savedLocally && saveStatus.error is! FreemiumLimitException) {
+        throw StateError(
+          'The paper could not be saved before creating the .eds file.',
+        );
+      }
+      if (savedLocally) ref.invalidate(savedPapersProvider);
+
+      final repository = ref.read(paperRepositoryProvider);
+      final persisted = savedLocally
+          ? (await repository.getAllPapers())
+                .where((item) => item.id == paper.id)
+                .firstOrNull
+          : null;
+      final service = SavedPaperEdsService(paperRepository: repository);
+      final backupPaper = persisted ?? paper;
+      final source = await service.exportPaper(backupPaper);
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save editable EduSheet paper',
+        fileName: SavedPaperEdsCodec.suggestedFileName(backupPaper),
+        type: FileType.custom,
+        allowedExtensions: const ['eds'],
+      );
+      if (path == null || !mounted) return;
+      final portablePath = path.toLowerCase().endsWith('.eds')
+          ? path
+          : '$path.eds';
+      await File(portablePath).writeAsString(source, flush: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Editable EduSheet paper saved: $portablePath'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save editable .eds paper: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _renameCurrentPaper(Paper paper) async {
@@ -165,35 +229,42 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              _UnsavedPaperExitAction.cancel,
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, _UnsavedPaperExitAction.cancel),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              _UnsavedPaperExitAction.discard,
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, _UnsavedPaperExitAction.discard),
             child: const Text('Discard'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              _UnsavedPaperExitAction.save,
-            ),
+            onPressed: () =>
+                Navigator.pop(dialogContext, _UnsavedPaperExitAction.save),
             child: const Text('Save & exit'),
           ),
         ],
       ),
     );
-    if (!mounted || action == null || action == _UnsavedPaperExitAction.cancel) {
+    if (!mounted ||
+        action == null ||
+        action == _UnsavedPaperExitAction.cancel) {
       return;
     }
 
     if (action == _UnsavedPaperExitAction.save) {
-      await editor.savePaper();
+      final saved = await editor.savePaper();
+      if (!saved) {
+        if (mounted) {
+          await showPremiumGateDialog(
+            context,
+            title: 'Free paper limit reached',
+            message:
+                'This new paper cannot be added to Saved Papers on Free. Existing papers remain editable, and you can still save a personal .eds backup.',
+          );
+        }
+        return;
+      }
       ref.invalidate(savedPapersProvider);
     } else {
       editor.discardCurrentUnsavedPaper();
@@ -688,6 +759,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   }
 
   Future<void> _exportPdf(Paper paper) async {
+    if (!await allowPdfExport(context, ref) || !mounted) return;
     try {
       final file = await QuestionPaperExportService.exportPdf(
         paper: paper,
@@ -704,6 +776,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         ),
       );
       await ReviewService.instance.recordSuccessfulExport();
+      await recordPdfExport(ref);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -713,6 +786,7 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
   }
 
   Future<void> _exportWord(Paper paper) async {
+    if (!await allowWordExport(context, ref) || !mounted) return;
     try {
       final file = await QuestionPaperExportService.exportWord(
         paper: paper,
@@ -772,6 +846,13 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     final paper = ref.watch(editorStateProvider);
     final saveStatus = ref.watch(editorSaveStatusProvider);
     final editor = ref.read(editorStateProvider.notifier);
+    final premium = ref.watch(premiumProvider);
+    final canAddBranding = FreemiumPolicy.canAddBranding(
+      premium: premium,
+      paperAlreadyHasBranding: paper.logos.any(
+        (path) => path.trim().isNotEmpty,
+      ),
+    );
     final template = PaperTemplateResolver.resolve(
       paper.templateId,
       ref.watch(templateProvider).all,
@@ -782,7 +863,8 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     );
     final createPaperGuideCompleted =
         createPaperProgress?.status == GuideProgressStatus.completed;
-    final createPaperFirstUse = createPaperProgress == null ||
+    final createPaperFirstUse =
+        createPaperProgress == null ||
         createPaperProgress.status == GuideProgressStatus.notStarted;
 
     _sectionKeys.removeWhere(
@@ -820,218 +902,236 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         child: Focus(
           autofocus: true,
           child: LayoutBuilder(
-          builder: (context, constraints) {
-            final width = constraints.maxWidth;
-            final compact = PaperComposerBreakpoints.isCompact(width);
-            final expanded = PaperComposerBreakpoints.isExpanded(width);
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final compact = PaperComposerBreakpoints.isCompact(width);
+              final expanded = PaperComposerBreakpoints.isExpanded(width);
 
-            final scaffold = Scaffold(
-              appBar: _buildAppBar(
-                context,
-                paper,
-                saveStatus,
-                editor,
-                compact,
-                expanded,
-              ),
-              body: Column(
-                children: [
-                  _buildModeSwitch(context, compact),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: _editingMode == _PaperEditingMode.word
-                        ? WordPaperEditor(
-                            paper: paper,
-                            compact: compact,
-                            template: template,
-                            onTitleChanged: editor.updateTitle,
-                            onSchoolNameChanged: (value) =>
-                                editor.updateBranding(schoolName: value),
-                            onInstructionChanged: editor.updateInstruction,
-                            onInstructionAlignmentChanged:
-                                editor.updateInstructionAlignment,
-                            onHeaderFieldChanged: (fieldId, value) =>
-                                editor.updateHeaderField(
-                                  fieldId,
-                                  value: value,
-                                  isPlaceholder: value.trim().isEmpty,
-                                ),
-                            onLogoChanged: (logoIndex, path) =>
-                                editor.updateBranding(
-                                  logoIndex: logoIndex,
-                                  logo: path,
-                                ),
-                            onSectionTitleChanged: (sectionId, value) =>
-                                editor.updateSection(sectionId, title: value),
-                            onSectionInstructionChanged: (sectionId, value) =>
-                                editor.updateSection(
-                                  sectionId,
-                                  instruction: value,
-                                ),
-                            onReplaceSection: editor.replaceSectionObject,
-                            onEditQuestion: (sectionId, question) =>
-                                _openQuestion(sectionId, question: question),
-                            onReplaceQuestion: (sectionId, question) =>
-                                _actions.replaceQuestion(sectionId, question),
-                            onInsertWordBlock:
-                                (sectionId, question, insertAt) =>
-                                    _actions.insertQuestionBlock(
-                                      sectionId,
-                                      question,
-                                      insertAt: insertAt,
-                                    ),
-                            onDeleteQuestion: (sectionId, questionId) =>
-                                _actions.deleteQuestion(sectionId, questionId),
-                            onAddSection: _addSection,
-                            onAddFromQuestionBank: (sectionId) async {
-                              if (sectionId == null) {
-                                await _startFromQuestionBank();
-                                return;
-                              }
-                              final currentSection = ref
-                                  .read(editorStateProvider)
-                                  .sections
-                                  .where((section) => section.id == sectionId)
-                                  .firstOrNull;
-                              if (currentSection != null) {
-                                await _addFromQuestionBank(currentSection);
-                              }
-                            },
-                            onImportWord: _importEduSheetWordRoundTrip,
-                            onArrangeHeader: () async {
-                              final layout =
-                                  await WordHeaderLayoutEditorSheet.show(
+              final scaffold = Scaffold(
+                appBar: _buildAppBar(
+                  context,
+                  paper,
+                  saveStatus,
+                  editor,
+                  compact,
+                  expanded,
+                ),
+                body: Column(
+                  children: [
+                    _buildModeSwitch(context, compact),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: _editingMode == _PaperEditingMode.word
+                          ? WordPaperEditor(
+                              paper: paper,
+                              compact: compact,
+                              template: template,
+                              canAddBranding: canAddBranding,
+                              onPremiumBrandingRequired: () =>
+                                  showPremiumGateDialog(
                                     context,
-                                    paper: paper,
-                                    template: template,
-                                  );
-                              if (layout == null || !context.mounted) {
-                                return;
-                              }
-
-                              final editingExistingCustom =
-                                  template.headerLayout ==
-                                      HeaderLayout.custom &&
-                                  template.customLayout != null;
-                              final custom = template.copyWith(
-                                id: editingExistingCustom
-                                    ? template.id
-                                    : const Uuid().v4(),
-                                name: editingExistingCustom
-                                    ? template.name
-                                    : '${template.name} Custom Header',
-                                headerLayout: HeaderLayout.custom,
-                                customLayout: layout,
-                              );
-                              try {
-                                await ref
-                                    .read(templateProvider.notifier)
-                                    .saveTemplate(custom);
-                                if (!context.mounted) {
+                                    title: 'School logos are Premium',
+                                    message:
+                                        'Premium adds new school branding and logo layouts. Existing logos remain editable after expiry.',
+                                  ),
+                              onTitleChanged: editor.updateTitle,
+                              onSchoolNameChanged: (value) =>
+                                  editor.updateBranding(schoolName: value),
+                              onInstructionChanged: editor.updateInstruction,
+                              onInstructionAlignmentChanged:
+                                  editor.updateInstructionAlignment,
+                              onHeaderFieldChanged: (fieldId, value) =>
+                                  editor.updateHeaderField(
+                                    fieldId,
+                                    value: value,
+                                    isPlaceholder: value.trim().isEmpty,
+                                  ),
+                              onLogoChanged: (logoIndex, path) =>
+                                  editor.updateBranding(
+                                    logoIndex: logoIndex,
+                                    logo: path,
+                                  ),
+                              onSectionTitleChanged: (sectionId, value) =>
+                                  editor.updateSection(sectionId, title: value),
+                              onSectionInstructionChanged: (sectionId, value) =>
+                                  editor.updateSection(
+                                    sectionId,
+                                    instruction: value,
+                                  ),
+                              onReplaceSection: editor.replaceSectionObject,
+                              onEditQuestion: (sectionId, question) =>
+                                  _openQuestion(sectionId, question: question),
+                              onReplaceQuestion: (sectionId, question) =>
+                                  _actions.replaceQuestion(sectionId, question),
+                              onInsertWordBlock:
+                                  (sectionId, question, insertAt) =>
+                                      _actions.insertQuestionBlock(
+                                        sectionId,
+                                        question,
+                                        insertAt: insertAt,
+                                      ),
+                              onDeleteQuestion: (sectionId, questionId) =>
+                                  _actions.deleteQuestion(
+                                    sectionId,
+                                    questionId,
+                                  ),
+                              onAddSection: _addSection,
+                              onAddFromQuestionBank: (sectionId) async {
+                                if (sectionId == null) {
+                                  await _startFromQuestionBank();
                                   return;
                                 }
-                                editor.updateTemplate(custom.id);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      editingExistingCustom
-                                          ? 'Header layout updated.'
-                                          : 'Custom header saved and applied.',
-                                    ),
-                                  ),
-                                );
-                              } catch (error) {
-                                if (!context.mounted) {
-                                  return;
+                                final currentSection = ref
+                                    .read(editorStateProvider)
+                                    .sections
+                                    .where((section) => section.id == sectionId)
+                                    .firstOrNull;
+                                if (currentSection != null) {
+                                  await _addFromQuestionBank(currentSection);
                                 }
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Unable to save header layout: $error',
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            onApplyPageLayout:
-                                (
-                                  layout,
-                                  headerText,
-                                  footerText,
-                                  showPageNumbers,
-                                ) => editor.applyPageLayout(
-                                  layout: layout,
-                                  headerText: headerText,
-                                  footerText: footerText,
-                                  showPageNumbers: showPageNumbers,
-                                ),
-                          )
-                        : Row(
-                            children: [
-                              if (expanded) ...[
-                                SizedBox(
-                                  width: 260,
-                                  child: PaperOutlinePanel(
-                                    paper: paper,
-                                    onAddSection: _addSection,
-                                    onSelectSection: _scrollToSection,
-                                    onSelectQuestion: _scrollToQuestion,
-                                  ),
-                                ),
-                                const VerticalDivider(width: 1),
-                              ],
-                              Expanded(
-                                child: _buildDocument(context, paper, compact),
-                              ),
-                              if (expanded) ...[
-                                const VerticalDivider(width: 1),
-                                SizedBox(
-                                  width: 280,
-                                  child: PaperInspectorPanel(
-                                    paper: paper,
-                                    onEditDetails: () =>
-                                        PaperDetailsSheet.show(context, paper),
-                                    onChooseStyle: () => PaperStyleSheet.show(
+                              },
+                              onImportWord: _importEduSheetWordRoundTrip,
+                              onArrangeHeader: () async {
+                                final layout =
+                                    await WordHeaderLayoutEditorSheet.show(
                                       context,
-                                      selectedTemplateId: paper.templateId,
+                                      paper: paper,
+                                      template: template,
+                                    );
+                                if (layout == null || !context.mounted) {
+                                  return;
+                                }
+
+                                final editingExistingCustom =
+                                    template.headerLayout ==
+                                        HeaderLayout.custom &&
+                                    template.customLayout != null;
+                                final custom = template.copyWith(
+                                  id: editingExistingCustom
+                                      ? template.id
+                                      : const Uuid().v4(),
+                                  name: editingExistingCustom
+                                      ? template.name
+                                      : '${template.name} Custom Header',
+                                  headerLayout: HeaderLayout.custom,
+                                  customLayout: layout,
+                                );
+                                try {
+                                  await ref
+                                      .read(templateProvider.notifier)
+                                      .saveTemplate(custom);
+                                  if (!context.mounted) {
+                                    return;
+                                  }
+                                  editor.updateTemplate(custom.id);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        editingExistingCustom
+                                            ? 'Header layout updated.'
+                                            : 'Custom header saved and applied.',
+                                      ),
                                     ),
-                                    onPreview: () => _openPreview(paper),
-                                    onExportPdf: () => _exportPdf(paper),
-                                    onExportWord: () => _exportWord(paper),
+                                  );
+                                } catch (error) {
+                                  if (!context.mounted) {
+                                    return;
+                                  }
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Unable to save header layout: $error',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                              onApplyPageLayout:
+                                  (
+                                    layout,
+                                    headerText,
+                                    footerText,
+                                    showPageNumbers,
+                                  ) => editor.applyPageLayout(
+                                    layout: layout,
+                                    headerText: headerText,
+                                    footerText: footerText,
+                                    showPageNumbers: showPageNumbers,
+                                  ),
+                            )
+                          : Row(
+                              children: [
+                                if (expanded) ...[
+                                  SizedBox(
+                                    width: 260,
+                                    child: PaperOutlinePanel(
+                                      paper: paper,
+                                      onAddSection: _addSection,
+                                      onSelectSection: _scrollToSection,
+                                      onSelectQuestion: _scrollToQuestion,
+                                    ),
+                                  ),
+                                  const VerticalDivider(width: 1),
+                                ],
+                                Expanded(
+                                  child: _buildDocument(
+                                    context,
+                                    paper,
+                                    compact,
                                   ),
                                 ),
+                                if (expanded) ...[
+                                  const VerticalDivider(width: 1),
+                                  SizedBox(
+                                    width: 280,
+                                    child: PaperInspectorPanel(
+                                      paper: paper,
+                                      onEditDetails: () =>
+                                          PaperDetailsSheet.show(
+                                            context,
+                                            paper,
+                                          ),
+                                      onChooseStyle: () => PaperStyleSheet.show(
+                                        context,
+                                        selectedTemplateId: paper.templateId,
+                                      ),
+                                      onPreview: () => _openPreview(paper),
+                                      onExportPdf: () => _exportPdf(paper),
+                                      onExportWord: () => _exportWord(paper),
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
-                          ),
-                  ),
-                ],
-              ),
-              floatingActionButton:
-                  _editingMode == _PaperEditingMode.smart &&
-                      compact &&
-                      paper.sections.isNotEmpty
-                  ? FloatingActionButton.extended(
-                      onPressed: () => _openQuestion(paper.sections.last.id),
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Question'),
-                    )
-                  : null,
-            );
-            return ContextualHelpOffer(
-              suggestion: createPaperContextualSuggestion,
-              signals: ContextualHelpSignals(
-                currentScreen: GuidedScreenContext.createPaper,
-                hasIncompleteAction: _questionCount(paper) == 0,
-                isFirstTimeUse: createPaperFirstUse,
-                relatedGuideCompleted: createPaperGuideCompleted,
-              ),
-              onShowMe: () =>
-                  _showCreatePaperGuide(paper, persistFirstUse: true),
-              child: scaffold,
-            );
-          },
+                            ),
+                    ),
+                  ],
+                ),
+                floatingActionButton:
+                    _editingMode == _PaperEditingMode.smart &&
+                        compact &&
+                        paper.sections.isNotEmpty
+                    ? FloatingActionButton.extended(
+                        onPressed: () => _openQuestion(paper.sections.last.id),
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Question'),
+                      )
+                    : null,
+              );
+              return ContextualHelpOffer(
+                suggestion: createPaperContextualSuggestion,
+                signals: ContextualHelpSignals(
+                  currentScreen: GuidedScreenContext.createPaper,
+                  hasIncompleteAction: _questionCount(paper) == 0,
+                  isFirstTimeUse: createPaperFirstUse,
+                  relatedGuideCompleted: createPaperGuideCompleted,
+                ),
+                onShowMe: () =>
+                    _showCreatePaperGuide(paper, persistFirstUse: true),
+                child: scaffold,
+              );
+            },
+          ),
         ),
-      ),
       ),
     );
   }
@@ -1203,6 +1303,9 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                   case _PaperMenuAction.exportWord:
                     _exportWord(paper);
                     break;
+                  case _PaperMenuAction.exportEds:
+                    _exportEds(paper);
+                    break;
                   case _PaperMenuAction.save:
                     _saveNow();
                     break;
@@ -1247,6 +1350,15 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.description_outlined),
                     title: Text('Export Word'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _PaperMenuAction.exportEds,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.archive_outlined),
+                    title: Text('Save as EduSheet Paper (.eds)'),
+                    subtitle: Text('Keeps the paper fully editable'),
                   ),
                 ),
                 PopupMenuItem(
@@ -1458,4 +1570,12 @@ extension _IterableFirstOrNull<T> on Iterable<T> {
   }
 }
 
-enum _PaperMenuAction { details, rename, style, exportPdf, exportWord, save }
+enum _PaperMenuAction {
+  details,
+  rename,
+  style,
+  exportPdf,
+  exportWord,
+  exportEds,
+  save,
+}
