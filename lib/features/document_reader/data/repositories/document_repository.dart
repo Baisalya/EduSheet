@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../../domain/models/document_model.dart';
-import '../../domain/models/document_open_request.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_open_request.dart';
 
 class DocumentRepository {
   static const Set<String> supportedExtensions =

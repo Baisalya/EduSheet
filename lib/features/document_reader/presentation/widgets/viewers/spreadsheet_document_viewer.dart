@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/services/document_file_read_service.dart';
 import '../../../data/services/spreadsheet_parser_service.dart';
-import '../../../domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 import '../../../domain/models/spreadsheet_model.dart';
 
 class SpreadsheetDocumentViewer extends StatefulWidget {

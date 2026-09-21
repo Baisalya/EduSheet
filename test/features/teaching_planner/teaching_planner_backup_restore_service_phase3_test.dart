@@ -106,7 +106,7 @@ void main() {
     expect(await repository.getAllPapers(), isEmpty);
   });
 
-  test('save rejection restores previous bytes and filename without stale files', () async {
+  test('save rejection keeps previous managed bytes and leaves only a cleanable staged blob', () async {
     final temp = await Directory.systemTemp.createTemp('eds-phase3-rollback-');
     addTearDown(() => temp.delete(recursive: true));
     final store = TeachingResourceFileStore(rootResolver: () async => temp);
@@ -145,11 +145,17 @@ void main() {
 
     expect(result.saved, isFalse);
     expect(await store.readBytes(oldPath), <int>[1, 2, 3]);
-    final resourceDirectory = Directory('${temp.path}/file-resource');
-    final entities = await resourceDirectory.list().toList();
-    final files = entities.whereType<File>().toList();
-    expect(files.length, 1);
-    expect(files.single.path, endsWith('old-notes.txt'));
+    final audit = await store.auditManagedStorage(
+      TeachingPlannerWorkspace(resources: [current]),
+    );
+    expect(audit.missingManagedFileCount, 0);
+    expect(audit.orphanBlobCount, 1);
+    final cleaned = await store.auditManagedStorage(
+      TeachingPlannerWorkspace(resources: [current]),
+      removeOrphanBlobs: true,
+    );
+    expect(cleaned.orphanBlobCount, 1);
+    expect(await store.readBytes(oldPath), <int>[1, 2, 3]);
   });
 }
 

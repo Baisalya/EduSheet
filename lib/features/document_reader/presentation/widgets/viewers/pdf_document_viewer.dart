@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
-import '../../../domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 import '../../responsive/document_viewport_policy.dart';
 
 enum _PdfFitMode { fitWidth, fitPage, custom }

@@ -2,10 +2,13 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../domain/models/document_model.dart';
-import '../../domain/models/document_open_request.dart';
-import '../providers/document_provider.dart';
-import 'file_preview_screen.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_open_request.dart';
+import 'package:edusheet/features/document_reader/presentation/providers/document_provider.dart';
+import 'package:edusheet/features/document_reader/presentation/screens/file_preview_screen.dart';
+import 'package:edusheet/features/guided_experience/domain/contextual_help.dart';
+import 'package:edusheet/features/guided_experience/presentation/screens/user_manual_screen.dart';
+import 'package:edusheet/features/guided_experience/presentation/widgets/contextual_help_prompt.dart';
 
 class DocumentReaderScreen extends ConsumerStatefulWidget {
   const DocumentReaderScreen({super.key});
@@ -31,7 +34,7 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -43,6 +46,18 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Reader help',
+            icon: const Icon(Icons.help_outline_rounded),
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => const EduSheetUserManualScreen(
+                  focus: EduSheetManualSection.reader,
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Refresh documents',
             icon: const Icon(Icons.refresh),
             onPressed: () =>
                 ref.read(documentProvider.notifier).refreshDocuments(),
@@ -62,6 +77,28 @@ class _DocumentReaderScreenState extends ConsumerState<DocumentReaderScreen> {
         icon: const Icon(Icons.upload_file),
         label: const Text('Open file'),
       ),
+    );
+
+    if (state.allDocuments.isNotEmpty) return scaffold;
+
+    return ContextualHelpOffer(
+      suggestion: const ContextualHelpSuggestion(
+        id: 'reader.open_first_file',
+        screen: GuidedScreenContext.documentReader,
+        title: 'Open your first document?',
+        message:
+            'Tap Open file and choose a PDF, Word, Excel, PowerPoint or text file. I can open the picker for you.',
+        primaryLabel: 'Open file',
+        minimumInactivity: Duration(minutes: 1),
+        requiresIncompleteAction: true,
+        suppressWhenRelatedGuideCompleted: false,
+      ),
+      signals: const ContextualHelpSignals(
+        currentScreen: GuidedScreenContext.documentReader,
+        hasIncompleteAction: true,
+      ),
+      onShowMe: _pickDocument,
+      child: scaffold,
     );
   }
 

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
+
 import '../domain/models/teaching_resource.dart';
 
 class TeachingPackResourcePayload {
@@ -46,11 +48,27 @@ class TeachingPackCodec {
       },
       'resources': payload.resources.map((item) {
         final resource = Map<String, dynamic>.from(item.resource.toJson())
-          ..remove('localRelativePath');
+          ..remove('localRelativePath')
+          ..remove('externalFilePath');
+        if (item.resource.kind == TeachingResourceKind.file) {
+          resource['fileOwnership'] =
+              TeachingResourceFileOwnership.managed.name;
+          resource.remove('externalFilePath');
+          if (item.fileBytes != null) {
+            resource['sizeBytes'] = item.fileBytes!.length;
+            resource['contentSha256'] =
+                sha256.convert(item.fileBytes!).toString();
+          } else {
+            resource.remove('contentSha256');
+          }
+        }
         return {
           'resource': resource,
           if (item.fileBytes != null)
             'fileBase64': base64Encode(item.fileBytes!),
+          if (item.fileBytes != null) 'fileSize': item.fileBytes!.length,
+          if (item.fileBytes != null)
+            'fileSha256': sha256.convert(item.fileBytes!).toString(),
         };
       }).toList(),
     };
@@ -100,10 +118,34 @@ class TeachingPackCodec {
         Map<String, dynamic>.from(resourceJson),
       );
       final encodedBytes = item['fileBase64'];
+      final fileBytes = encodedBytes is String ? base64Decode(encodedBytes) : null;
+      if (fileBytes != null) {
+        final expectedSize = item['fileSize'];
+        final parsedSize = expectedSize is int
+            ? expectedSize
+            : expectedSize is num
+            ? expectedSize.toInt()
+            : int.tryParse(expectedSize?.toString() ?? '');
+        final expectedHash = item['fileSha256']?.toString().trim().toLowerCase();
+        if (parsedSize != null && parsedSize != fileBytes.length) {
+          throw const FormatException('Teaching Pack attachment size is invalid.');
+        }
+        if (expectedHash != null && expectedHash.isNotEmpty &&
+            expectedHash != sha256.convert(fileBytes).toString()) {
+          throw const FormatException('Teaching Pack attachment is corrupt.');
+        }
+        final resourceHash = resource.contentSha256?.trim().toLowerCase();
+        if (resourceHash != null && resourceHash.isNotEmpty &&
+            resourceHash != sha256.convert(fileBytes).toString()) {
+          throw const FormatException(
+            'Teaching Pack attachment metadata does not match its file.',
+          );
+        }
+      }
       resources.add(
         TeachingPackResourcePayload(
           resource: resource,
-          fileBytes: encodedBytes is String ? base64Decode(encodedBytes) : null,
+          fileBytes: fileBytes,
         ),
       );
     }

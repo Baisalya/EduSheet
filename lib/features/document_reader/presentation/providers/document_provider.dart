@@ -1,12 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../application/document_open_coordinator.dart';
-import '../../data/repositories/document_repository.dart';
-import '../../domain/models/document_model.dart';
+import 'package:edusheet/core/files/recent_native_file_store.dart';
+import 'package:edusheet/features/document_reader/application/document_open_coordinator.dart';
+import 'package:edusheet/features/document_reader/data/repositories/document_repository.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 
 final documentRepositoryProvider = Provider((ref) => DocumentRepository());
 
 final documentOpenCoordinatorProvider = Provider(
-  (ref) => DocumentOpenCoordinator(ref.watch(documentRepositoryProvider)),
+  (ref) => DocumentOpenCoordinator(
+    ref.watch(documentRepositoryProvider),
+    ref.watch(recentNativeFileStoreProvider),
+  ),
 );
 
 class DocumentState {

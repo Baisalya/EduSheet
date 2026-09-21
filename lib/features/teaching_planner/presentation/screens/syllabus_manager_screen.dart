@@ -5,13 +5,17 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 
+import '../../../eds_import/presentation/screens/eds_import_center_screen.dart';
 import '../../../editor/domain/models/paper_model.dart';
 import '../../../editor/presentation/providers/editor_provider.dart';
 import '../../../editor/presentation/screens/create_paper_screen.dart';
+import 'package:edusheet/features/document_reader/presentation/providers/document_provider.dart';
+import 'package:edusheet/features/document_reader/presentation/screens/file_preview_screen.dart';
 
 import '../../../guided_experience/application/guided_experience_providers.dart';
 import '../../../guided_experience/domain/contextual_help.dart';
@@ -30,6 +34,7 @@ import '../../domain/models/planner_topic.dart';
 import '../../domain/models/planner_unit.dart';
 import '../../domain/models/syllabus_import_package.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
+import '../../domain/models/teaching_status.dart';
 import '../../domain/models/teaching_resource.dart';
 import '../design/teaching_planner_design_system.dart';
 import '../layout/teaching_planner_breakpoints.dart';
@@ -39,10 +44,14 @@ import '../navigation/teaching_planner_navigation.dart';
 import '../models/syllabus_node_ref.dart';
 import '../providers/teaching_planner_provider.dart';
 import '../services/syllabus_attachment_controller.dart';
+import '../services/teaching_attachment_open_coordinator.dart';
 import '../services/syllabus_manager_controller.dart';
 import '../services/syllabus_navigation_policy.dart';
 import 'curriculum_package_builder_screen.dart';
+import 'teaching_attachment_image_preview_screen.dart';
+import 'teaching_workspace_screen.dart';
 import '../widgets/syllabus_adaptive_shell.dart';
+import '../widgets/syllabus_hierarchy_cards.dart';
 import '../widgets/syllabus_detail_panel.dart';
 import '../widgets/syllabus_entity_sheet.dart';
 import '../widgets/syllabus_outline.dart';
@@ -123,6 +132,8 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
             onCreateSyllabus: _createSyllabus,
             onImportSyllabus: _importSyllabus,
             onShareCurriculum: () => _openCurriculumPackageBuilder(selected),
+            trashCount: _managerController.trashEntries().length,
+            onOpenTrash: _openTrash,
             onShowGuide: _showSyllabusGuide,
             onRefresh: () => ref.read(teachingPlannerProvider.notifier).load(),
           ),
@@ -273,6 +284,34 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
         onSelected: _select,
         onCreateSyllabus: _createSyllabus,
         onImportSyllabus: _importSyllabus,
+        actionsForNode: (node) {
+          final mergeState =
+              ref.read(curriculumMergeStateProvider).asData?.value ??
+              CurriculumMergeState.empty();
+          if (mergeState.isOfficialLocalId('class', node.id)) {
+            return const <SyllabusCardAction>[];
+          }
+          return [
+            SyllabusCardAction(
+              id: 'edit',
+              label: 'Edit',
+              icon: Icons.edit_outlined,
+              onSelected: () => _editNode(node),
+            ),
+            SyllabusCardAction(
+              id: 'archive',
+              label: 'Archive',
+              icon: Icons.archive_outlined,
+              onSelected: () => _archiveNode(node),
+            ),
+            SyllabusCardAction(
+              id: 'trash',
+              label: 'Move to Trash',
+              icon: Icons.delete_outline_rounded,
+              onSelected: () => _trashNode(node),
+            ),
+          ];
+        },
       );
     }
 
@@ -309,15 +348,21 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
         onSelected: _select,
         onEdit: _editNode,
         onArchive: _archiveNode,
+        onMove: _moveNode,
+        onDuplicate: _duplicateNode,
+        onDelete: _trashNode,
         onCreatePaper: _createPaperForNode,
         onAttachSavedPaper: _attachSavedPaper,
         onAddAttachments: _addAttachments,
+        onLinkAttachments: Platform.isWindows ? _linkAttachments : null,
         onOpenAttachment: _openResource,
         onRemoveAttachment: _removeResource,
         onCreateSubject: _createSubject,
         onCreateUnit: _createUnit,
         onCreateChapter: _createChapter,
         onCreateTopic: _createTopic,
+        onPlanChapterLesson: _planChapterLesson,
+        onToggleChapterComplete: _toggleChapterComplete,
         onReorderSubjects: (classId, ids) => _reorderSubjects(classId, ids),
         onReorderUnits: (subjectId, ids) => _reorderUnits(subjectId, ids),
         onReorderChapters: (subjectId, unitId, ids) =>
@@ -339,10 +384,61 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
     final notifier = ref.read(teachingPlannerProvider.notifier);
     return SyllabusAttachmentController(
       picker: ref.read(teachingResourceFilePickerProvider),
-      fileStore: ref.read(teachingResourceFileStoreProvider),
+      openCoordinator: TeachingAttachmentOpenCoordinator(
+        fileStore: ref.read(teachingResourceFileStoreProvider),
+        documentRepository: ref.read(documentRepositoryProvider),
+      ),
       attachFiles: ({required owner, required files}) =>
           notifier.attachTeachingFiles(owner: owner, files: files),
+      attachLinkedFiles: ({required owner, required files}) =>
+          notifier.attachLinkedTeachingFiles(owner: owner, files: files),
       archiveResource: notifier.archiveTeachingResource,
+      replaceManagedResource: ({required resource, required file}) =>
+          notifier.replaceTeachingFileWithManagedCopy(
+            resource: resource,
+            file: file,
+          ),
+      relinkResource: ({required resource, required file}) =>
+          notifier.relinkTeachingFile(resource: resource, file: file),
+    );
+  }
+
+  Future<void> _planChapterLesson(SyllabusNodeRef node) async {
+    final workspace = ref.read(teachingPlannerProvider).workspace;
+    final chapterId = node.chapterId ?? node.id;
+    final chapter = workspace.chapterById(chapterId);
+    final subject = chapter == null
+        ? null
+        : workspace.subjectById(chapter.subjectId);
+    if (chapter == null || subject == null || chapter.isArchived) {
+      _showMessage('This chapter is no longer available.');
+      return;
+    }
+    await TeachingPlannerNavigation.openLessons(
+      context,
+      createImmediately: true,
+      initialClassId: subject.classId,
+      initialSubjectId: subject.id,
+      initialChapterId: chapter.id,
+    );
+  }
+
+  Future<void> _toggleChapterComplete(PlannerChapter chapter) async {
+    final target = chapter.status == TeachingProgressStatus.completed
+        ? TeachingProgressStatus.inProgress
+        : TeachingProgressStatus.completed;
+    final saved = await ref
+        .read(teachingPlannerProvider.notifier)
+        .updateChapterProgress(chapter.id, status: target);
+    if (!mounted) return;
+    if (!saved) {
+      _showError();
+      return;
+    }
+    _showMessage(
+      target == TeachingProgressStatus.completed
+          ? '${chapter.title} marked complete.'
+          : '${chapter.title} reopened and kept in progress.',
     );
   }
 
@@ -691,17 +787,125 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
 
   Future<void> _addAttachments(SyllabusNodeRef node) async {
     final result = await _attachmentController.addFiles(node);
-    if (!mounted || result.cancelled) {
-      return;
-    }
+    if (!mounted || result.cancelled) return;
+    _showAttachmentResult(result);
+  }
+
+  Future<void> _linkAttachments(SyllabusNodeRef node) async {
+    final result = await _attachmentController.linkFiles(node);
+    if (!mounted || result.cancelled) return;
     _showAttachmentResult(result);
   }
 
   Future<void> _openAttachment(TeachingResource resource) async {
-    final result = await _attachmentController.open(resource);
-    if (!mounted || result.cancelled) {
+    final result = await _attachmentController.resolveOpen(resource);
+    if (!mounted) return;
+    switch (result.kind) {
+      case TeachingAttachmentOpenKind.document:
+        final document = result.document;
+        if (document == null) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => FilePreviewScreen(document: document),
+          ),
+        );
+        return;
+      case TeachingAttachmentOpenKind.image:
+        final file = result.file;
+        if (file == null) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => TeachingAttachmentImagePreviewScreen(
+              file: file,
+              title: resource.originalFileName ?? resource.title,
+            ),
+          ),
+        );
+        return;
+      case TeachingAttachmentOpenKind.eds:
+        final file = result.file;
+        if (file == null) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => EdsImportCenterScreen(
+              initialFilePath: file.path,
+              initialDisplayName: resource.originalFileName ?? resource.title,
+            ),
+          ),
+        );
+        return;
+      case TeachingAttachmentOpenKind.edtp:
+        final file = result.file;
+        if (file == null) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => TeachingWorkspaceScreen(
+              initialTeachingPackPath: file.path,
+            ),
+          ),
+        );
+        return;
+      case TeachingAttachmentOpenKind.external:
+        final file = result.file;
+        if (file == null) return;
+        final external = await OpenFilex.open(file.path);
+        if (!mounted || external.type == ResultType.done) return;
+        _showMessage(
+          external.message.isEmpty
+              ? 'No compatible app was found for this file.'
+              : external.message,
+        );
+        return;
+      case TeachingAttachmentOpenKind.missing:
+        await _showMissingAttachmentRecovery(
+          resource,
+          result.message ?? 'This attachment is missing.',
+        );
+        return;
+      case TeachingAttachmentOpenKind.invalid:
+        _showMessage(result.message ?? 'This attachment could not be opened.');
+        return;
+    }
+  }
+
+  Future<void> _showMissingAttachmentRecovery(
+    TeachingResource resource,
+    String message,
+  ) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Attachment not found'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'remove'),
+            child: const Text('Remove'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'locate'),
+            child: const Text('Locate'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(context, 'replace'),
+            child: const Text('Replace'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'remove') {
+      await _removeResource(resource);
       return;
     }
+    final result = action == 'locate'
+        ? await _attachmentController.locate(resource)
+        : await _attachmentController.replace(resource);
+    if (!mounted || result.cancelled) return;
     _showAttachmentResult(result);
   }
 
@@ -1219,6 +1423,516 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
     );
   }
 
+
+  Future<void> _moveNode(SyllabusNodeRef node) async {
+    final workspace = ref.read(teachingPlannerProvider).workspace;
+    late SyllabusMutationOutcome outcome;
+    switch (node.kind) {
+      case SyllabusNodeKind.classValue:
+        return;
+      case SyllabusNodeKind.subject:
+        final subject = workspace.subjectById(node.id);
+        if (subject == null) return;
+        final classId = await _chooseClassDestination(
+          workspace,
+          title: 'Move ${subject.name}',
+          helper: 'Choose the class that should own this subject.',
+          selectedId: subject.classId,
+          excludeSelected: true,
+        );
+        if (classId == null || !mounted) return;
+        outcome = await _managerController.moveSubject(
+          subjectId: subject.id,
+          destinationClassId: classId,
+        );
+        break;
+      case SyllabusNodeKind.unit:
+        final unit = workspace.unitById(node.id);
+        if (unit == null) return;
+        final subjectId = await _chooseSubjectDestination(
+          workspace,
+          title: 'Move ${unit.title}',
+          helper: 'Choose the subject that should own this unit.',
+          selectedId: unit.subjectId,
+          excludeSelected: true,
+        );
+        if (subjectId == null || !mounted) return;
+        outcome = await _managerController.moveUnit(
+          unitId: unit.id,
+          destinationSubjectId: subjectId,
+        );
+        break;
+      case SyllabusNodeKind.chapter:
+        final chapter = workspace.chapterById(node.id);
+        if (chapter == null) return;
+        final destination = await _chooseChapterDestination(
+          workspace,
+          title: 'Move ${chapter.title}',
+          initialSubjectId: chapter.subjectId,
+          initialUnitId: chapter.unitId,
+          actionLabel: 'Move',
+        );
+        if (destination == null || !mounted) return;
+        if (destination.subjectId == chapter.subjectId &&
+            destination.unitId == chapter.unitId) {
+          _showMessage('Choose a different chapter location.');
+          return;
+        }
+        outcome = await _managerController.moveChapter(
+          chapterId: chapter.id,
+          destinationSubjectId: destination.subjectId,
+          destinationUnitId: destination.unitId,
+        );
+        break;
+      case SyllabusNodeKind.topic:
+        final topic = workspace.topicById(node.id);
+        if (topic == null) return;
+        final chapterId = await _chooseChapterForTopic(
+          workspace,
+          title: 'Move ${topic.title}',
+          selectedId: topic.chapterId,
+          excludeSelected: true,
+        );
+        if (chapterId == null || !mounted) return;
+        outcome = await _managerController.moveTopic(
+          topicId: topic.id,
+          destinationChapterId: chapterId,
+        );
+        break;
+    }
+    if (!mounted) return;
+    if (!outcome.success) {
+      _showError();
+      return;
+    }
+    _applyMutationOutcome(outcome);
+    _showMessage('Moved successfully. Existing teaching links were kept consistent.');
+  }
+
+  Future<void> _duplicateNode(SyllabusNodeRef node) async {
+    final workspace = ref.read(teachingPlannerProvider).workspace;
+    late SyllabusMutationOutcome outcome;
+    switch (node.kind) {
+      case SyllabusNodeKind.classValue:
+        return;
+      case SyllabusNodeKind.subject:
+        final subject = workspace.subjectById(node.id);
+        if (subject == null) return;
+        final classId = await _chooseClassDestination(
+          workspace,
+          title: 'Duplicate ${subject.name}',
+          helper: 'Choose where the copied subject structure should be created.',
+          selectedId: subject.classId,
+        );
+        if (classId == null || !mounted) return;
+        outcome = await _managerController.duplicateSubject(
+          subjectId: subject.id,
+          destinationClassId: classId,
+        );
+        break;
+      case SyllabusNodeKind.unit:
+        final unit = workspace.unitById(node.id);
+        if (unit == null) return;
+        final subjectId = await _chooseSubjectDestination(
+          workspace,
+          title: 'Duplicate ${unit.title}',
+          helper: 'Choose where the copied unit structure should be created.',
+          selectedId: unit.subjectId,
+        );
+        if (subjectId == null || !mounted) return;
+        outcome = await _managerController.duplicateUnit(
+          unitId: unit.id,
+          destinationSubjectId: subjectId,
+        );
+        break;
+      case SyllabusNodeKind.chapter:
+        final chapter = workspace.chapterById(node.id);
+        if (chapter == null) return;
+        final destination = await _chooseChapterDestination(
+          workspace,
+          title: 'Duplicate ${chapter.title}',
+          initialSubjectId: chapter.subjectId,
+          initialUnitId: chapter.unitId,
+          actionLabel: 'Duplicate',
+        );
+        if (destination == null || !mounted) return;
+        outcome = await _managerController.duplicateChapter(
+          chapterId: chapter.id,
+          destinationSubjectId: destination.subjectId,
+          destinationUnitId: destination.unitId,
+        );
+        break;
+      case SyllabusNodeKind.topic:
+        final topic = workspace.topicById(node.id);
+        if (topic == null) return;
+        final chapterId = await _chooseChapterForTopic(
+          workspace,
+          title: 'Duplicate ${topic.title}',
+          selectedId: topic.chapterId,
+        );
+        if (chapterId == null || !mounted) return;
+        outcome = await _managerController.duplicateTopic(
+          topicId: topic.id,
+          destinationChapterId: chapterId,
+        );
+        break;
+    }
+    if (!mounted) return;
+    if (!outcome.success) {
+      _showError();
+      return;
+    }
+    _applyMutationOutcome(outcome);
+    _showMessage(
+      'Structure duplicated. Teaching history, completion progress and attachments were not copied.',
+    );
+  }
+
+  Future<String?> _chooseClassDestination(
+    TeachingPlannerWorkspace workspace, {
+    required String title,
+    required String helper,
+    String? selectedId,
+    bool excludeSelected = false,
+  }) {
+    final mergeState =
+        ref.read(curriculumMergeStateProvider).asData?.value ??
+        CurriculumMergeState.empty();
+    final values = workspace.activeClasses
+        .where(
+          (item) =>
+              !mergeState.isOfficialLocalId('class', item.id) &&
+              (!excludeSelected || item.id != selectedId),
+        )
+        .toList(growable: false);
+    return _chooseDestinationId(
+      title: title,
+      helper: helper,
+      emptyMessage: 'No other class is available.',
+      entries: [
+        for (final item in values)
+          _DestinationEntry(
+            id: item.id,
+            title: item.name,
+            subtitle: item.academicYear ?? 'Academic year not set',
+          ),
+      ],
+    );
+  }
+
+  Future<String?> _chooseSubjectDestination(
+    TeachingPlannerWorkspace workspace, {
+    required String title,
+    required String helper,
+    String? selectedId,
+    bool excludeSelected = false,
+  }) {
+    final mergeState =
+        ref.read(curriculumMergeStateProvider).asData?.value ??
+        CurriculumMergeState.empty();
+    final values = workspace.subjects
+        .where(
+          (item) =>
+              !item.isArchived &&
+              !mergeState.isOfficialLocalId('subject', item.id) &&
+              (!excludeSelected || item.id != selectedId),
+        )
+        .toList(growable: false);
+    return _chooseDestinationId(
+      title: title,
+      helper: helper,
+      emptyMessage: 'No other subject is available.',
+      entries: [
+        for (final item in values)
+          _DestinationEntry(
+            id: item.id,
+            title: item.name,
+            subtitle: workspace.classById(item.classId)?.name ?? 'Unknown class',
+          ),
+      ],
+    );
+  }
+
+  Future<String?> _chooseChapterForTopic(
+    TeachingPlannerWorkspace workspace, {
+    required String title,
+    String? selectedId,
+    bool excludeSelected = false,
+  }) {
+    final mergeState =
+        ref.read(curriculumMergeStateProvider).asData?.value ??
+        CurriculumMergeState.empty();
+    final values = workspace.chapters
+        .where(
+          (item) =>
+              !item.isArchived &&
+              !mergeState.isOfficialLocalId('chapter', item.id) &&
+              (!excludeSelected || item.id != selectedId),
+        )
+        .toList(growable: false);
+    return _chooseDestinationId(
+      title: title,
+      helper: 'Choose the destination chapter.',
+      emptyMessage: 'No other chapter is available.',
+      entries: [
+        for (final item in values)
+          _DestinationEntry(
+            id: item.id,
+            title: item.title,
+            subtitle: _chapterDestinationSubtitle(workspace, item),
+          ),
+      ],
+    );
+  }
+
+  Future<String?> _chooseDestinationId({
+    required String title,
+    required String helper,
+    required String emptyMessage,
+    required List<_DestinationEntry> entries,
+  }) {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(helper),
+              const SizedBox(height: 12),
+              if (entries.isEmpty)
+                Text(emptyMessage)
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 380),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: entries.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final entry = entries[index];
+                      return ListTile(
+                        title: Text(entry.title),
+                        subtitle: entry.subtitle == null
+                            ? null
+                            : Text(entry.subtitle!),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => Navigator.pop(context, entry.id),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<_ChapterDestinationChoice?> _chooseChapterDestination(
+    TeachingPlannerWorkspace workspace, {
+    required String title,
+    required String initialSubjectId,
+    required String? initialUnitId,
+    required String actionLabel,
+  }) {
+    final mergeState =
+        ref.read(curriculumMergeStateProvider).asData?.value ??
+        CurriculumMergeState.empty();
+    final subjects = workspace.subjects
+        .where(
+          (item) =>
+              !item.isArchived &&
+              !mergeState.isOfficialLocalId('subject', item.id),
+        )
+        .toList(growable: false);
+    return showDialog<_ChapterDestinationChoice>(
+      context: context,
+      builder: (context) {
+        var subjectId = initialSubjectId;
+        var unitId = initialUnitId;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            if (!subjects.any((item) => item.id == subjectId) && subjects.isNotEmpty) {
+              subjectId = subjects.first.id;
+              unitId = null;
+            }
+            final units = workspace
+                .activeUnitsForSubject(subjectId)
+                .where(
+                  (item) =>
+                      !mergeState.isOfficialLocalId('unit', item.id),
+                )
+                .toList(growable: false);
+            if (unitId != null && !units.any((item) => item.id == unitId)) {
+              unitId = null;
+            }
+            return AlertDialog(
+              title: Text(title),
+              content: SizedBox(
+                width: 460,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      key: ValueKey('phase1b-chapter-subject-$subjectId'),
+                      initialValue: subjectId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Subject'),
+                      items: [
+                        for (final subject in subjects)
+                          DropdownMenuItem(
+                            value: subject.id,
+                            child: Text(
+                              "${workspace.classById(subject.classId)?.name ?? 'Class'} · ${subject.name}",
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() {
+                          subjectId = value;
+                          unitId = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String?>(
+                      key: ValueKey("phase1b-chapter-unit-$subjectId-${unitId ?? 'root'}"),
+                      initialValue: unitId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Unit'),
+                      items: [
+                        const DropdownMenuItem<String?>(
+                          value: null,
+                          child: Text('No unit / subject root'),
+                        ),
+                        for (final unit in units)
+                          DropdownMenuItem<String?>(
+                            value: unit.id,
+                            child: Text(unit.title, overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                      onChanged: (value) => setDialogState(() => unitId = value),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Existing lesson history stays linked when moving. Duplicating copies only the syllabus structure.',
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: subjects.isEmpty
+                      ? null
+                      : () => Navigator.pop(
+                            context,
+                            _ChapterDestinationChoice(
+                              subjectId: subjectId,
+                              unitId: unitId,
+                            ),
+                          ),
+                  child: Text(actionLabel),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _chapterDestinationSubtitle(
+    TeachingPlannerWorkspace workspace,
+    PlannerChapter chapter,
+  ) {
+    final subject = workspace.subjectById(chapter.subjectId);
+    final plannerClass = subject == null ? null : workspace.classById(subject.classId);
+    final unit = chapter.unitId == null ? null : workspace.unitById(chapter.unitId!);
+    return [
+      if (plannerClass != null) plannerClass.name,
+      if (subject != null) subject.name,
+      if (unit != null) unit.title,
+    ].join(' · ');
+  }
+
+  Future<void> _trashNode(SyllabusNodeRef node) async {
+    final prompt = _managerController.trashPrompt(node);
+    if (prompt == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.delete_outline_rounded),
+        title: Text(prompt.title),
+        content: Text(prompt.message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: const Text('Move to Trash'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final outcome = await _managerController.moveToTrash(node);
+    if (!mounted) return;
+    if (!outcome.success) {
+      _showError();
+      return;
+    }
+    setState(() => _selected = outcome.selection);
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('Moved to Trash.'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            final restored = await _managerController.restoreFromTrash(node);
+            if (!mounted) return;
+            if (!restored) {
+              _showError();
+              return;
+            }
+            setState(() => _selected = node);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTrash() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: 'teaching-planner/syllabus-trash'),
+        builder: (_) => const _SyllabusTrashScreen(),
+      ),
+    );
+  }
+
   Future<void> _archiveNode(SyllabusNodeRef node) async {
     final prompt = _managerController.archivePrompt(node);
     if (prompt == null) return;
@@ -1433,6 +2147,8 @@ class _SyllabusReferenceHeader extends StatelessWidget {
     required this.onCreateSyllabus,
     required this.onImportSyllabus,
     required this.onShareCurriculum,
+    required this.trashCount,
+    required this.onOpenTrash,
     required this.onRefresh,
     required this.onShowGuide,
   });
@@ -1444,6 +2160,8 @@ class _SyllabusReferenceHeader extends StatelessWidget {
   final VoidCallback onCreateSyllabus;
   final VoidCallback onImportSyllabus;
   final VoidCallback? onShareCurriculum;
+  final int trashCount;
+  final VoidCallback onOpenTrash;
   final VoidCallback onRefresh;
   final VoidCallback onShowGuide;
 
@@ -1511,6 +2229,15 @@ class _SyllabusReferenceHeader extends StatelessWidget {
                     icon: const Icon(Icons.ios_share_rounded),
                   ),
                 IconButton(
+                  tooltip: trashCount == 0 ? 'Trash' : 'Trash ($trashCount)',
+                  onPressed: onOpenTrash,
+                  icon: Badge(
+                    isLabelVisible: trashCount > 0,
+                    label: Text('$trashCount'),
+                    child: const Icon(Icons.delete_outline_rounded),
+                  ),
+                ),
+                IconButton(
                   tooltip: 'Show Create Syllabus guide',
                   onPressed: onShowGuide,
                   icon: const Icon(Icons.help_outline_rounded),
@@ -1569,6 +2296,20 @@ class _SyllabusReferenceHeader extends StatelessWidget {
                     label: const Text('Share / assign'),
                   ),
               IconButton(
+                tooltip: trashCount == 0 ? 'Trash' : 'Trash ($trashCount)',
+                onPressed: onOpenTrash,
+                style: IconButton.styleFrom(
+                  backgroundColor: colors.surface,
+                  foregroundColor: colors.inkMuted,
+                  side: BorderSide(color: colors.border),
+                ),
+                icon: Badge(
+                  isLabelVisible: trashCount > 0,
+                  label: Text('$trashCount'),
+                  child: const Icon(Icons.delete_outline_rounded),
+                ),
+              ),
+              IconButton(
                 tooltip: 'Show Create Syllabus guide',
                 onPressed: onShowGuide,
                 icon: const Icon(Icons.help_outline_rounded),
@@ -1611,6 +2352,357 @@ class _SyllabusReferenceHeader extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+
+class _SyllabusTrashScreen extends ConsumerStatefulWidget {
+  const _SyllabusTrashScreen();
+
+  @override
+  ConsumerState<_SyllabusTrashScreen> createState() => _SyllabusTrashScreenState();
+}
+
+class _SyllabusTrashScreenState extends ConsumerState<_SyllabusTrashScreen> {
+  final Set<SyllabusNodeRef> _selected = <SyllabusNodeRef>{};
+
+  SyllabusManagerController _controller() {
+    final notifier = ref.read(teachingPlannerProvider.notifier);
+    return SyllabusManagerController(
+      notifier: notifier,
+      readWorkspace: () => ref.read(teachingPlannerProvider).workspace,
+    );
+  }
+
+  void _toggleSelection(SyllabusNodeRef node) {
+    setState(() {
+      if (!_selected.add(node)) _selected.remove(node);
+    });
+  }
+
+  Future<SyllabusRestoreDestination?> _chooseRestoreDestination(
+    List<SyllabusRestoreDestination> destinations,
+  ) {
+    if (destinations.isEmpty) return Future.value(null);
+    return showDialog<SyllabusRestoreDestination>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Restore to another location'),
+        content: SizedBox(
+          width: 520,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 420),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: destinations.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (_, index) {
+                final destination = destinations[index];
+                return ListTile(
+                  title: Text(destination.title),
+                  subtitle: Text(destination.subtitle),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.pop(dialogContext, destination),
+                );
+              },
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _restoreEntry(
+    SyllabusManagerController controller,
+    SyllabusTrashEntry entry,
+  ) async {
+    final prompt = controller.restorePrompt(entry.node);
+    if (!prompt.requiresParentRecovery) {
+      return controller.restoreFromTrash(entry.node);
+    }
+
+    final destinations = controller.restoreDestinations(entry.node);
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.restore_rounded),
+        title: Text(prompt.title),
+        content: Text(prompt.message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          if (destinations.isNotEmpty)
+            OutlinedButton(
+              onPressed: () => Navigator.pop(dialogContext, 'elsewhere'),
+              child: const Text('Restore elsewhere'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'hierarchy'),
+            child: const Text('Restore hierarchy'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return false;
+    if (action == 'hierarchy') {
+      return controller.restoreHierarchyAndNode(entry.node);
+    }
+    final destination = await _chooseRestoreDestination(destinations);
+    if (!mounted || destination == null) return false;
+    return controller.restoreToDestination(entry.node, destination);
+  }
+
+  List<SyllabusTrashEntry> _topLevelSelectedEntries(
+    List<SyllabusTrashEntry> entries,
+  ) {
+    final selectedEntries = entries
+        .where((item) => _selected.contains(item.node))
+        .toList(growable: false);
+    return selectedEntries
+        .where(
+          (entry) => !selectedEntries.any(
+            (other) => other.node != entry.node && other.node.contains(entry.node),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> _restoreSelected(
+    SyllabusManagerController controller,
+    List<SyllabusTrashEntry> entries,
+  ) async {
+    final selectedEntries = _topLevelSelectedEntries(entries);
+    if (selectedEntries.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.restore_rounded),
+        title: Text('Restore ${selectedEntries.length} item(s)?'),
+        content: const Text(
+          'EduSheet will also restore any required parent hierarchy. Existing active items are never overwritten; a name conflict will leave that item in Trash.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    var restored = 0;
+    for (final entry in selectedEntries) {
+      if (await controller.restoreHierarchyAndNode(entry.node)) restored++;
+    }
+    if (!mounted) return;
+    setState(_selected.clear);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$restored of ${selectedEntries.length} item(s) restored.')),
+    );
+  }
+
+  Future<void> _deleteSelectedPermanently(
+    SyllabusManagerController controller,
+    List<SyllabusTrashEntry> entries,
+  ) async {
+    final selectedEntries = _topLevelSelectedEntries(entries);
+    if (selectedEntries.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded),
+        title: Text('Delete ${selectedEntries.length} item(s) permanently?'),
+        content: const Text(
+          'This cannot be undone. Saved Papers themselves are not deleted, but planner hierarchy, lesson links and resource links inside these Trash scopes can be removed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete permanently'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    var deleted = 0;
+    for (final entry in selectedEntries) {
+      if (await controller.deletePermanently(entry.node)) deleted++;
+    }
+    if (!mounted) return;
+    setState(_selected.clear);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$deleted of ${selectedEntries.length} item(s) permanently deleted.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(teachingPlannerProvider);
+    final controller = _controller();
+    final entries = controller.trashEntries();
+    final selecting = _selected.isNotEmpty;
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: selecting
+            ? IconButton(
+                tooltip: 'Clear selection',
+                onPressed: () => setState(_selected.clear),
+                icon: const Icon(Icons.close_rounded),
+              )
+            : null,
+        title: Text(selecting ? '${_selected.length} selected' : 'Syllabus Trash'),
+        actions: selecting
+            ? [
+                IconButton(
+                  tooltip: 'Restore selected',
+                  onPressed: () => _restoreSelected(controller, entries),
+                  icon: const Icon(Icons.restore_rounded),
+                ),
+                IconButton(
+                  tooltip: 'Delete selected permanently',
+                  onPressed: () => _deleteSelectedPermanently(controller, entries),
+                  icon: const Icon(Icons.delete_forever_outlined),
+                ),
+              ]
+            : null,
+      ),
+      body: entries.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.delete_outline_rounded, size: 48),
+                    SizedBox(height: 12),
+                    Text(
+                      'Trash is empty',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Deleted syllabus items stay recoverable here until you delete them permanently.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: entries.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final entry = entries[index];
+                final selected = _selected.contains(entry.node);
+                return Card(
+                  child: ListTile(
+                    selected: selected,
+                    leading: selecting
+                        ? Checkbox(
+                            value: selected,
+                            onChanged: (_) => _toggleSelection(entry.node),
+                          )
+                        : const Icon(Icons.delete_outline_rounded),
+                    title: Text(entry.title),
+                    subtitle: Text('${entry.typeLabel} • ${entry.impactLabel}'),
+                    onLongPress: () => _toggleSelection(entry.node),
+                    onTap: selecting ? () => _toggleSelection(entry.node) : null,
+                    trailing: selecting
+                        ? null
+                        : PopupMenuButton<String>(
+                            tooltip: 'Trash actions',
+                            onSelected: (value) async {
+                              if (value == 'restore') {
+                                final ok = await _restoreEntry(controller, entry);
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      ok
+                                          ? '${entry.title} restored.'
+                                          : 'Could not restore ${entry.title}. Check its parent or same-name conflicts.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+                              if (value == 'delete') {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (dialogContext) => AlertDialog(
+                                    icon: const Icon(Icons.warning_amber_rounded),
+                                    title: Text('Delete ${entry.title} permanently?'),
+                                    content: Text(
+                                      'This cannot be undone. ${entry.impactLabel} will be permanently removed from this Teaching Planner. Saved Papers themselves are not deleted.',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(dialogContext, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(dialogContext, true),
+                                        child: const Text('Delete permanently'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirmed != true) return;
+                                final ok = await controller.deletePermanently(entry.node);
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      ok
+                                          ? '${entry.title} permanently deleted.'
+                                          : 'Could not delete ${entry.title}.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            itemBuilder: (context) => const [
+                              PopupMenuItem(
+                                value: 'restore',
+                                child: ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(Icons.restore_rounded),
+                                  title: Text('Restore'),
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'delete',
+                                child: ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: Icon(Icons.delete_forever_outlined),
+                                  title: Text('Delete permanently'),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
@@ -1688,4 +2780,26 @@ class _GuidedSyllabusSetupBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DestinationEntry {
+  const _DestinationEntry({
+    required this.id,
+    required this.title,
+    this.subtitle,
+  });
+
+  final String id;
+  final String title;
+  final String? subtitle;
+}
+
+class _ChapterDestinationChoice {
+  const _ChapterDestinationChoice({
+    required this.subjectId,
+    required this.unitId,
+  });
+
+  final String subjectId;
+  final String? unitId;
 }

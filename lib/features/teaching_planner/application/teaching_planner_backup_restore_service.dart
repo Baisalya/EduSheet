@@ -34,8 +34,10 @@ class TeachingPlannerBackupRestoreResult {
 ///
 /// It owns the cross-feature side effects that make a planner backup portable:
 /// embedded Saved Papers, attached teaching files, and the final workspace
-/// commit. Any failure before the workspace commit restores the previous file
-/// bytes and rolls back newly-created paper copies/assets.
+/// commit. Attachment restore is copy-on-write: existing referenced files are
+/// never deleted before the workspace commit. Failed restores may leave only
+/// unreferenced content-addressed blobs, which the storage maintenance tool can
+/// safely clean later. Newly-created paper copies/assets are rolled back.
 class TeachingPlannerBackupRestoreService {
   TeachingPlannerBackupRestoreService({
     required PaperRepository paperRepository,
@@ -56,9 +58,6 @@ class TeachingPlannerBackupRestoreService {
   }) async {
     var workspace = payload.workspace;
     PortablePaperImportResult? paperImport;
-    final rollbackBytes = <String, List<int>>{};
-    final rollbackNames = <String, String>{};
-    final touchedResourceIds = <String>[];
 
     try {
       final importedPapers = await _paperImportService.importSnapshots(
@@ -90,30 +89,17 @@ class TeachingPlannerBackupRestoreService {
           );
         }
 
-        final current = currentWorkspace.resourceById(resource.id);
-        if (current != null) {
-          final currentPath = current.localRelativePath;
-          if (currentPath != null &&
-              await _resourceFileStore.exists(currentPath)) {
-            rollbackBytes[resource.id] = await _resourceFileStore.readBytes(
-              currentPath,
-            );
-            rollbackNames[resource.id] =
-                current.originalFileName ?? current.title;
-          }
-        }
-
-        touchedResourceIds.add(resource.id);
-        await _resourceFileStore.deleteResourceFiles(resource.id);
-        final relativePath = await _resourceFileStore.writeBytes(
-          resourceId: resource.id,
+        final blob = await _resourceFileStore.writeManagedBlob(
           fileName: resource.originalFileName ?? resource.title,
           bytes: bytes,
         );
         restoredResources.add(
           resource.copyWith(
-            localRelativePath: relativePath,
+            fileOwnership: TeachingResourceFileOwnership.managed,
+            localRelativePath: blob.relativePath,
+            externalFilePath: null,
             sizeBytes: bytes.length,
+            contentSha256: blob.sha256Hex,
           ),
         );
       }
@@ -125,11 +111,6 @@ class TeachingPlannerBackupRestoreService {
         restoredSyncState,
       );
       if (!saved) {
-        await _rollbackFiles(
-          touchedResourceIds: touchedResourceIds,
-          rollbackBytes: rollbackBytes,
-          rollbackNames: rollbackNames,
-        );
         await _paperImportService.rollback(importedPapers);
       }
 
@@ -140,11 +121,6 @@ class TeachingPlannerBackupRestoreService {
         conflictCopyCount: importedPapers.conflictCopyCount,
       );
     } catch (_) {
-      await _rollbackFiles(
-        touchedResourceIds: touchedResourceIds,
-        rollbackBytes: rollbackBytes,
-        rollbackNames: rollbackNames,
-      );
       if (paperImport != null) {
         await _paperImportService.rollback(paperImport);
       }
@@ -221,23 +197,4 @@ class TeachingPlannerBackupRestoreService {
     );
   }
 
-  Future<void> _rollbackFiles({
-    required List<String> touchedResourceIds,
-    required Map<String, List<int>> rollbackBytes,
-    required Map<String, String> rollbackNames,
-  }) async {
-    for (final id in touchedResourceIds.reversed) {
-      await _resourceFileStore.deleteResourceFiles(id);
-      final old = rollbackBytes[id];
-      if (old != null) {
-        await _resourceFileStore.writeBytes(
-          resourceId: id,
-          fileName: rollbackNames[id] ?? 'resource.bin',
-          bytes: old,
-        );
-      } else {
-        await _resourceFileStore.deleteResourceFiles(id);
-      }
-    }
-  }
 }

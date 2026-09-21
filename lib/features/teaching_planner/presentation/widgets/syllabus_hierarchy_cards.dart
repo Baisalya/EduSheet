@@ -16,6 +16,9 @@ class SyllabusEntityHero extends StatelessWidget {
     this.onEdit,
     required this.onAttach,
     this.onArchive,
+    this.onMove,
+    this.onDuplicate,
+    this.onDelete,
     this.layerLabel,
     this.layerDetail,
     this.completion,
@@ -29,6 +32,9 @@ class SyllabusEntityHero extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback onAttach;
   final VoidCallback? onArchive;
+  final VoidCallback? onMove;
+  final VoidCallback? onDuplicate;
+  final VoidCallback? onDelete;
   final String? layerLabel;
   final String? layerDetail;
   final double? completion;
@@ -131,8 +137,17 @@ class SyllabusEntityHero extends StatelessWidget {
                         case 'attach':
                           onAttach();
                           break;
+                        case 'move':
+                          onMove?.call();
+                          break;
+                        case 'duplicate':
+                          onDuplicate?.call();
+                          break;
                         case 'archive':
                           onArchive?.call();
+                          break;
+                        case 'delete':
+                          onDelete?.call();
                           break;
                       }
                     },
@@ -145,6 +160,24 @@ class SyllabusEntityHero extends StatelessWidget {
                           title: Text('Attach files'),
                         ),
                       ),
+                      if (onMove != null)
+                        const PopupMenuItem(
+                          value: 'move',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.drive_file_move_outline),
+                            title: Text('Move to…'),
+                          ),
+                        ),
+                      if (onDuplicate != null)
+                        const PopupMenuItem(
+                          value: 'duplicate',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.copy_rounded),
+                            title: Text('Duplicate structure'),
+                          ),
+                        ),
                       if (onArchive != null)
                         const PopupMenuItem(
                           value: 'archive',
@@ -152,6 +185,15 @@ class SyllabusEntityHero extends StatelessWidget {
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(Icons.archive_outlined),
                             title: Text('Archive'),
+                          ),
+                        ),
+                      if (onDelete != null)
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.delete_outline_rounded),
+                            title: Text('Move to Trash'),
                           ),
                         ),
                     ],
@@ -411,6 +453,90 @@ class SyllabusSectionHeader extends StatelessWidget {
   }
 }
 
+
+class SyllabusCardAction {
+  const SyllabusCardAction({
+    required this.id,
+    required this.label,
+    required this.icon,
+    required this.onSelected,
+  });
+
+  final String id;
+  final String label;
+  final IconData icon;
+  final VoidCallback onSelected;
+}
+
+
+Future<void> _showSyllabusCardActionSheet(
+  BuildContext context,
+  List<SyllabusCardAction> actions,
+) async {
+  if (actions.isEmpty) return;
+  final selected = await showModalBottomSheet<String>(
+    context: context,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (sheetContext) => ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+      children: [
+        for (final action in actions)
+          ListTile(
+            leading: Icon(action.icon),
+            title: Text(action.label),
+            onTap: () => Navigator.pop(sheetContext, action.id),
+          ),
+      ],
+    ),
+  );
+  if (selected == null) return;
+  for (final action in actions) {
+    if (action.id == selected) {
+      action.onSelected();
+      return;
+    }
+  }
+}
+
+Future<void> _showSyllabusCardContextMenu(
+  BuildContext context,
+  List<SyllabusCardAction> actions,
+  Offset globalPosition,
+) async {
+  if (actions.isEmpty) return;
+  final overlay = Overlay.of(context).context.findRenderObject();
+  if (overlay is! RenderBox) return;
+  final selected = await showMenu<String>(
+    context: context,
+    position: RelativeRect.fromRect(
+      Rect.fromPoints(globalPosition, globalPosition),
+      Offset.zero & overlay.size,
+    ),
+    items: [
+      for (final action in actions)
+        PopupMenuItem<String>(
+          value: action.id,
+          child: Row(
+            children: [
+              Icon(action.icon, size: 20),
+              const SizedBox(width: 10),
+              Flexible(child: Text(action.label)),
+            ],
+          ),
+        ),
+    ],
+  );
+  if (selected == null) return;
+  for (final action in actions) {
+    if (action.id == selected) {
+      action.onSelected();
+      return;
+    }
+  }
+}
+
 class SyllabusHierarchyCard extends StatelessWidget {
   const SyllabusHierarchyCard({
     super.key,
@@ -423,6 +549,9 @@ class SyllabusHierarchyCard extends StatelessWidget {
     this.status,
     this.completion,
     this.dragHandle,
+    this.onStatusToggle,
+    this.statusToggleTooltip,
+    this.actions = const [],
   });
 
   final IconData icon;
@@ -434,6 +563,9 @@ class SyllabusHierarchyCard extends StatelessWidget {
   final TeachingProgressStatus? status;
   final double? completion;
   final Widget? dragHandle;
+  final VoidCallback? onStatusToggle;
+  final String? statusToggleTooltip;
+  final List<SyllabusCardAction> actions;
 
   @override
   Widget build(BuildContext context) {
@@ -453,15 +585,27 @@ class SyllabusHierarchyCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Material(
-          color: colors.surface,
-          borderRadius: radius,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onSecondaryTapDown: actions.isEmpty
+              ? null
+              : (details) => _showSyllabusCardContextMenu(
+                  context,
+                  actions,
+                  details.globalPosition,
+                ),
+          child: Material(
+            color: colors.surface,
             borderRadius: radius,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(10, 11, 8, 11),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              onLongPress: actions.isEmpty
+                  ? null
+                  : () => _showSyllabusCardActionSheet(context, actions),
+              borderRadius: radius,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 11, 8, 11),
               decoration: BoxDecoration(
                 borderRadius: radius,
                 border: Border.all(color: colors.border),
@@ -503,29 +647,56 @@ class SyllabusHierarchyCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleSmall
-                                    ?.copyWith(
-                                      color: colors.ink,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                              ),
-                            ),
-                            if (priority != null) ...[
-                              const SizedBox(width: 7),
-                              _PriorityBadge(priority: priority!),
-                            ],
-                            if (status != null) ...[
-                              const SizedBox(width: 7),
-                              _StatusBadge(status: status!),
-                            ],
-                          ],
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final stackMetadata =
+                                constraints.maxWidth < 210 &&
+                                (priority != null || status != null);
+                            final titleText = Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(
+                                    color: colors.ink,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                            );
+
+                            if (stackMetadata) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  titleText,
+                                  const SizedBox(height: 5),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      if (priority != null)
+                                        _PriorityBadge(priority: priority!),
+                                      if (status != null)
+                                        _StatusBadge(status: status!),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              children: [
+                                Expanded(child: titleText),
+                                if (priority != null) ...[
+                                  const SizedBox(width: 7),
+                                  _PriorityBadge(priority: priority!),
+                                ],
+                                if (status != null) ...[
+                                  const SizedBox(width: 7),
+                                  _StatusBadge(status: status!),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 3),
                         Text(
@@ -551,7 +722,48 @@ class SyllabusHierarchyCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  if (dragHandle == null)
+                  if (onStatusToggle != null)
+                    IconButton(
+                      key: ValueKey(
+                        'syllabus-status-toggle-${title.toLowerCase().replaceAll(' ', '-')}',
+                      ),
+                      tooltip: statusToggleTooltip ?? 'Toggle completion',
+                      onPressed: onStatusToggle,
+                      icon: Icon(
+                        status == TeachingProgressStatus.completed
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: status == TeachingProgressStatus.completed
+                            ? colors.teal
+                            : colors.inkMuted,
+                      ),
+                    ),
+                  if (actions.isNotEmpty)
+                    PopupMenuButton<String>(
+                      key: ValueKey('syllabus-card-actions-${title.toLowerCase().replaceAll(' ', '-')}'),
+                      tooltip: 'More actions',
+                      onSelected: (id) {
+                        for (final action in actions) {
+                          if (action.id == id) {
+                            action.onSelected();
+                            return;
+                          }
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        for (final action in actions)
+                          PopupMenuItem<String>(
+                            value: action.id,
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(action.icon, size: 20),
+                              title: Text(action.label),
+                            ),
+                          ),
+                      ],
+                    )
+                  else if (dragHandle == null)
                     Icon(Icons.chevron_right_rounded, color: colors.inkMuted),
                 ],
               ),
@@ -559,6 +771,7 @@ class SyllabusHierarchyCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

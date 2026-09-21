@@ -4,6 +4,7 @@ import '../../domain/models/planner_chapter.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
 import '../design/teaching_planner_design_system.dart';
 import '../models/syllabus_filter.dart';
+import '../models/syllabus_chapter_progress.dart';
 import '../models/syllabus_node_ref.dart';
 import '../models/syllabus_overview_model.dart';
 import '../services/syllabus_manager_filter.dart';
@@ -105,12 +106,14 @@ class SyllabusClassBrowser extends StatelessWidget {
     required this.onSelected,
     required this.onCreateSyllabus,
     required this.onImportSyllabus,
+    this.actionsForNode,
   });
 
   final TeachingPlannerWorkspace workspace;
   final ValueChanged<SyllabusNodeRef> onSelected;
   final VoidCallback onCreateSyllabus;
   final VoidCallback onImportSyllabus;
+  final List<SyllabusCardAction> Function(SyllabusNodeRef node)? actionsForNode;
 
   @override
   Widget build(BuildContext context) {
@@ -197,18 +200,24 @@ class SyllabusClassBrowser extends StatelessWidget {
                     workspace,
                     value.id,
                   );
+                  final coverage = SyllabusChapterProgress.forClass(
+                    workspace,
+                    value.id,
+                  );
+                  final node = SyllabusNodeRef.classValue(value.id);
                   return SyllabusHierarchyCard(
                     icon: Icons.school_outlined,
                     title: value.name,
                     subtitle: [
                       if (value.academicYear != null) value.academicYear!,
                       syllabusCountLabel(metrics.subjects, 'subject'),
-                      syllabusCountLabel(metrics.chapters, 'chapter'),
-                      syllabusCountLabel(metrics.topics, 'topic'),
+                      coverage.compactLabel,
+                      '${coverage.completionPercent}% complete',
                     ].join(' • '),
-                    completion: metrics.topics == 0 ? null : metrics.completion,
-                    onTap: () =>
-                        onSelected(SyllabusNodeRef.classValue(value.id)),
+                    status: coverage.hasChapters ? coverage.rollupStatus : null,
+                    completion: coverage.hasChapters ? coverage.completion : null,
+                    actions: actionsForNode?.call(node) ?? const [],
+                    onTap: () => onSelected(node),
                   );
                 },
               ),

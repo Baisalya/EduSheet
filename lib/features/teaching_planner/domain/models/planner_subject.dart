@@ -9,6 +9,7 @@ class PlannerSubject {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? archivedAt;
+  final DateTime? trashedAt;
 
   const PlannerSubject({
     required this.id,
@@ -19,20 +20,25 @@ class PlannerSubject {
     required this.updatedAt,
     this.code,
     this.archivedAt,
+    this.trashedAt,
   });
 
-  bool get isArchived => archivedAt != null;
+  bool get isArchived => archivedAt != null || trashedAt != null;
+  bool get isExplicitlyArchived => archivedAt != null;
+  bool get isTrashed => trashedAt != null;
 
   PlannerSubject copyWith({
+    String? classId,
     String? name,
     Object? code = _unset,
     int? sortOrder,
     DateTime? updatedAt,
     Object? archivedAt = _unset,
+    Object? trashedAt = _unset,
   }) {
     return PlannerSubject(
       id: id,
-      classId: classId,
+      classId: classId ?? this.classId,
       name: name ?? this.name,
       code: identical(code, _unset) ? this.code : code as String?,
       sortOrder: sortOrder ?? this.sortOrder,
@@ -41,6 +47,9 @@ class PlannerSubject {
       archivedAt: identical(archivedAt, _unset)
           ? this.archivedAt
           : archivedAt as DateTime?,
+      trashedAt: identical(trashedAt, _unset)
+          ? this.trashedAt
+          : trashedAt as DateTime?,
     );
   }
 
@@ -53,6 +62,7 @@ class PlannerSubject {
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
     if (archivedAt != null) 'archivedAt': archivedAt!.toUtc().toIso8601String(),
+    if (trashedAt != null) 'trashedAt': trashedAt!.toUtc().toIso8601String(),
   };
 
   factory PlannerSubject.fromJson(Map<String, dynamic> json) => PlannerSubject(
@@ -64,6 +74,7 @@ class PlannerSubject {
     createdAt: plannerRequiredDateTime(json, 'createdAt'),
     updatedAt: plannerRequiredDateTime(json, 'updatedAt'),
     archivedAt: plannerOptionalDateTime(json, 'archivedAt'),
+    trashedAt: plannerOptionalDateTime(json, 'trashedAt'),
   );
 }
 

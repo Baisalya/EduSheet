@@ -35,6 +35,7 @@ class LessonDetailModel {
     final topics = lesson.topicIds
         .map((id) => workspace.topicById(id))
         .whereType<PlannerTopic>()
+        .where((topic) => !topic.isArchived)
         .map(
           (topic) =>
               LessonDetailTopic(title: topic.title, status: topic.status),

@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter/services.dart';
 import 'core/constants/app_constants.dart';
+import 'core/files/recent_native_file_store.dart';
 import 'core/navigation/windows_escape_back_scope.dart';
 import 'shared/presentation/screens/home_screen.dart';
 import 'shared/design/app_theme.dart';
@@ -17,9 +18,9 @@ import 'shared/localization/edusheet_localizations.dart';
 import 'features/guided_experience/presentation/widgets/guide_overlay_host.dart';
 import 'features/guided_experience/presentation/widgets/smart_work_activity_host.dart';
 import 'features/pdf/services/question_paper_service.dart';
-import 'features/document_reader/domain/models/document_open_request.dart';
-import 'features/document_reader/presentation/providers/document_provider.dart';
-import 'features/document_reader/presentation/screens/file_preview_screen.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_open_request.dart';
+import 'package:edusheet/features/document_reader/presentation/providers/document_provider.dart';
+import 'package:edusheet/features/document_reader/presentation/screens/file_preview_screen.dart';
 import 'features/eds_import/presentation/screens/eds_import_center_screen.dart';
 import 'features/teaching_planner/presentation/screens/teaching_workspace_screen.dart';
 
@@ -75,11 +76,13 @@ class _MyAppState extends ConsumerState<MyApp> {
   }
 
   Future<void> _openStartupDocument() async {
-    final commandLineRequest = DocumentOpenRequest.fromCommandLine(
+    final commandLineRequests = DocumentOpenRequest.fromCommandLineAll(
       widget.startupArguments,
     );
-    if (commandLineRequest != null) {
-      await _openRequest(commandLineRequest);
+    if (commandLineRequests.isNotEmpty) {
+      for (final request in commandLineRequests) {
+        await _openRequest(request);
+      }
       return;
     }
 
@@ -109,6 +112,11 @@ class _MyAppState extends ConsumerState<MyApp> {
     if (request.effectiveExtension == '.eds' ||
         request.effectiveExtension == '.edtp') {
       if (!_handledPortableActivations.add(request.dedupeKey)) return;
+      if (!File(request.localPath).existsSync()) {
+        _showIncomingFileError('This EduSheet file is no longer available.');
+        return;
+      }
+      await ref.read(recentNativeFileStoreProvider).record(request);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final screen = request.effectiveExtension == '.eds'

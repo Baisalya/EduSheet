@@ -287,6 +287,106 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
     );
   }
 
+  Future<bool> moveSubject({
+    required String subjectId,
+    required String destinationClassId,
+  }) {
+    return _run(
+      () => _service.moveSubject(
+        subjectId: subjectId,
+        destinationClassId: destinationClassId,
+      ),
+    );
+  }
+
+  Future<bool> moveUnit({
+    required String unitId,
+    required String destinationSubjectId,
+  }) {
+    return _run(
+      () => _service.moveUnit(
+        unitId: unitId,
+        destinationSubjectId: destinationSubjectId,
+      ),
+    );
+  }
+
+  Future<bool> moveChapter({
+    required String chapterId,
+    required String destinationSubjectId,
+    String? destinationUnitId,
+  }) {
+    return _run(
+      () => _service.moveChapter(
+        chapterId: chapterId,
+        destinationSubjectId: destinationSubjectId,
+        destinationUnitId: destinationUnitId,
+      ),
+    );
+  }
+
+  Future<bool> moveTopic({
+    required String topicId,
+    required String destinationChapterId,
+  }) {
+    return _run(
+      () => _service.moveTopic(
+        topicId: topicId,
+        destinationChapterId: destinationChapterId,
+      ),
+    );
+  }
+
+  Future<bool> duplicateSubjectStructure({
+    required String subjectId,
+    required String destinationClassId,
+  }) {
+    return _run(
+      () => _service.duplicateSubjectStructure(
+        subjectId: subjectId,
+        destinationClassId: destinationClassId,
+      ),
+    );
+  }
+
+  Future<bool> duplicateUnitStructure({
+    required String unitId,
+    required String destinationSubjectId,
+  }) {
+    return _run(
+      () => _service.duplicateUnitStructure(
+        unitId: unitId,
+        destinationSubjectId: destinationSubjectId,
+      ),
+    );
+  }
+
+  Future<bool> duplicateChapterStructure({
+    required String chapterId,
+    required String destinationSubjectId,
+    String? destinationUnitId,
+  }) {
+    return _run(
+      () => _service.duplicateChapterStructure(
+        chapterId: chapterId,
+        destinationSubjectId: destinationSubjectId,
+        destinationUnitId: destinationUnitId,
+      ),
+    );
+  }
+
+  Future<bool> duplicateTopicStructure({
+    required String topicId,
+    required String destinationChapterId,
+  }) {
+    return _run(
+      () => _service.duplicateTopicStructure(
+        topicId: topicId,
+        destinationChapterId: destinationChapterId,
+      ),
+    );
+  }
+
   Future<bool> importSyllabus(SyllabusImportPackage package) {
     if (!_canCreateClass()) return Future<bool>.value(false);
     return _run(() => _service.importSyllabus(package));
@@ -323,6 +423,117 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
 
   Future<bool> archiveTopic(String topicId) {
     return _run(() => _service.archiveTopic(topicId));
+  }
+
+
+  Future<bool> trashClass(String classId) {
+    return _run(() => _service.trashClass(classId));
+  }
+
+  Future<bool> trashSubject(String subjectId) {
+    return _run(() => _service.trashSubject(subjectId));
+  }
+
+  Future<bool> trashUnit(String unitId) {
+    return _run(() => _service.trashUnit(unitId));
+  }
+
+  Future<bool> trashChapter(String chapterId) {
+    return _run(() => _service.trashChapter(chapterId));
+  }
+
+  Future<bool> trashTopic(String topicId) {
+    return _run(() => _service.trashTopic(topicId));
+  }
+
+  Future<bool> restoreTrashedClass(String classId) {
+    return _run(() => _service.restoreTrashedClass(classId));
+  }
+
+  Future<bool> restoreTrashedSubject(String subjectId) {
+    return _run(() => _service.restoreTrashedSubject(subjectId));
+  }
+
+  Future<bool> restoreTrashedUnit(String unitId) {
+    return _run(() => _service.restoreTrashedUnit(unitId));
+  }
+
+  Future<bool> restoreTrashedChapter(String chapterId) {
+    return _run(() => _service.restoreTrashedChapter(chapterId));
+  }
+
+  Future<bool> restoreTrashedTopic(String topicId) {
+    return _run(() => _service.restoreTrashedTopic(topicId));
+  }
+
+  Future<bool> restoreTrashedSubjectToClass({
+    required String subjectId,
+    required String destinationClassId,
+  }) {
+    return _run(
+      () => _service.restoreTrashedSubjectToClass(
+        subjectId: subjectId,
+        destinationClassId: destinationClassId,
+      ),
+    );
+  }
+
+  Future<bool> restoreTrashedUnitToSubject({
+    required String unitId,
+    required String destinationSubjectId,
+  }) {
+    return _run(
+      () => _service.restoreTrashedUnitToSubject(
+        unitId: unitId,
+        destinationSubjectId: destinationSubjectId,
+      ),
+    );
+  }
+
+  Future<bool> restoreTrashedChapterToLocation({
+    required String chapterId,
+    required String destinationSubjectId,
+    String? destinationUnitId,
+  }) {
+    return _run(
+      () => _service.restoreTrashedChapterToLocation(
+        chapterId: chapterId,
+        destinationSubjectId: destinationSubjectId,
+        destinationUnitId: destinationUnitId,
+      ),
+    );
+  }
+
+  Future<bool> restoreTrashedTopicToChapter({
+    required String topicId,
+    required String destinationChapterId,
+  }) {
+    return _run(
+      () => _service.restoreTrashedTopicToChapter(
+        topicId: topicId,
+        destinationChapterId: destinationChapterId,
+      ),
+    );
+  }
+
+  Future<bool> deleteClassPermanently(String classId) {
+    return _run(() => _service.deleteClassPermanently(classId));
+  }
+
+  Future<bool> deleteSubjectPermanently(String subjectId) {
+    return _run(() => _service.deleteSubjectPermanently(subjectId));
+  }
+
+  Future<bool> deleteUnitPermanently(String unitId) {
+    return _run(() => _service.deleteUnitPermanently(unitId));
+  }
+
+  Future<bool> deleteChapterPermanently(String chapterId) {
+    return _run(() => _service.deleteChapterPermanently(chapterId));
+  }
+
+  Future<bool> deleteTopicPermanently(String topicId) {
+    return _run(() => _service.deleteTopicPermanently(topicId));
   }
 
   Future<bool> reorderSubjects({
@@ -451,6 +662,7 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
     required int actualPeriods,
     DateTime? taughtAt,
     String? reflection,
+    TeachingProgressStatus? chapterStatus,
   }) {
     return _run(
       () => _service.recordLessonProgress(
@@ -459,7 +671,17 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
         actualPeriods: actualPeriods,
         taughtAt: taughtAt,
         reflection: reflection,
+        chapterStatus: chapterStatus,
       ),
+    );
+  }
+
+  Future<bool> updateChapterProgress(
+    String chapterId, {
+    required TeachingProgressStatus status,
+  }) {
+    return _run(
+      () => _service.updateChapterProgress(chapterId, status: status),
     );
   }
 
@@ -575,6 +797,44 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
         owner: owner,
         files: files,
         role: role,
+      ),
+    );
+  }
+
+  Future<bool> attachLinkedTeachingFiles({
+    required TeachingResourceOwner owner,
+    required List<TeachingAttachmentCandidate> files,
+    TeachingResourceRole role = TeachingResourceRole.teachInClass,
+  }) {
+    return _run(
+      () => _attachmentService.attachLinkedFiles(
+        owner: owner,
+        files: files,
+        role: role,
+      ),
+    );
+  }
+
+  Future<bool> replaceTeachingFileWithManagedCopy({
+    required TeachingResource resource,
+    required TeachingAttachmentCandidate file,
+  }) {
+    return _run(
+      () => _attachmentService.replaceWithManagedCopy(
+        resource: resource,
+        file: file,
+      ),
+    );
+  }
+
+  Future<bool> relinkTeachingFile({
+    required TeachingResource resource,
+    required TeachingAttachmentCandidate file,
+  }) {
+    return _run(
+      () => _attachmentService.relinkExternalFile(
+        resource: resource,
+        file: file,
       ),
     );
   }

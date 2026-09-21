@@ -1,3 +1,5 @@
+import 'package:edusheet/features/teaching_planner/domain/models/planner_priority.dart';
+import 'package:edusheet/features/teaching_planner/domain/models/teaching_status.dart';
 import 'package:edusheet/features/teaching_planner/presentation/design/teaching_planner_design_system.dart';
 import 'package:edusheet/features/teaching_planner/presentation/widgets/syllabus_hierarchy_cards.dart';
 import 'package:flutter/material.dart';
@@ -64,4 +66,47 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'hierarchy card wraps status metadata without overflowing at compact width',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 568));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(12),
+              child: SyllabusHierarchyCard(
+                icon: Icons.menu_book_outlined,
+                title: 'Real Numbers',
+                subtitle: '3 topics • 5 periods',
+                priority: PlannerPriority.high,
+                status: TeachingProgressStatus.inProgress,
+                completion: .5,
+                onStatusToggle: () {},
+                actions: [
+                  SyllabusCardAction(
+                    id: 'plan',
+                    label: 'Plan lesson',
+                    icon: Icons.event_note_outlined,
+                    onSelected: () {},
+                  ),
+                ],
+                onTap: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Real Numbers'), findsOneWidget);
+      expect(find.text('3 topics • 5 periods'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
 }

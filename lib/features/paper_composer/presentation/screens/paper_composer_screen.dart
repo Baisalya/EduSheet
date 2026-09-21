@@ -42,6 +42,7 @@ import 'package:edusheet/features/premium/application/premium_controller.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 import 'package:edusheet/shared/services/review_service.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:edusheet/shared/services/eds_export_file_saver.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -167,17 +168,12 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
       final service = SavedPaperEdsService(paperRepository: repository);
       final backupPaper = persisted ?? paper;
       final source = await service.exportPaper(backupPaper);
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save editable EduSheet paper',
+      final portablePath = await EdsExportFileSaver().save(
+        source: source,
         fileName: SavedPaperEdsCodec.suggestedFileName(backupPaper),
-        type: FileType.custom,
-        allowedExtensions: const ['eds'],
+        dialogTitle: 'Save editable EduSheet paper',
       );
-      if (path == null || !mounted) return;
-      final portablePath = path.toLowerCase().endsWith('.eds')
-          ? path
-          : '$path.eds';
-      await File(portablePath).writeAsString(source, flush: true);
+      if (portablePath == null || !mounted) return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

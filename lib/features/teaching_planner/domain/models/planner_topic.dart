@@ -16,6 +16,7 @@ class PlannerTopic {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? archivedAt;
+  final DateTime? trashedAt;
 
   const PlannerTopic({
     required this.id,
@@ -31,11 +32,15 @@ class PlannerTopic {
     this.plannedStart,
     this.plannedEnd,
     this.archivedAt,
+    this.trashedAt,
   });
 
-  bool get isArchived => archivedAt != null;
+  bool get isArchived => archivedAt != null || trashedAt != null;
+  bool get isExplicitlyArchived => archivedAt != null;
+  bool get isTrashed => trashedAt != null;
 
   PlannerTopic copyWith({
+    String? chapterId,
     String? title,
     int? sortOrder,
     int? plannedPeriods,
@@ -46,10 +51,11 @@ class PlannerTopic {
     Object? plannedEnd = _unset,
     DateTime? updatedAt,
     Object? archivedAt = _unset,
+    Object? trashedAt = _unset,
   }) {
     return PlannerTopic(
       id: id,
-      chapterId: chapterId,
+      chapterId: chapterId ?? this.chapterId,
       title: title ?? this.title,
       sortOrder: sortOrder ?? this.sortOrder,
       plannedPeriods: plannedPeriods ?? this.plannedPeriods,
@@ -67,6 +73,9 @@ class PlannerTopic {
       archivedAt: identical(archivedAt, _unset)
           ? this.archivedAt
           : archivedAt as DateTime?,
+      trashedAt: identical(trashedAt, _unset)
+          ? this.trashedAt
+          : trashedAt as DateTime?,
     );
   }
 
@@ -85,6 +94,7 @@ class PlannerTopic {
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
     if (archivedAt != null) 'archivedAt': archivedAt!.toUtc().toIso8601String(),
+    if (trashedAt != null) 'trashedAt': trashedAt!.toUtc().toIso8601String(),
   };
 
   factory PlannerTopic.fromJson(Map<String, dynamic> json) => PlannerTopic(
@@ -101,6 +111,7 @@ class PlannerTopic {
     createdAt: plannerRequiredDateTime(json, 'createdAt'),
     updatedAt: plannerRequiredDateTime(json, 'updatedAt'),
     archivedAt: plannerOptionalDateTime(json, 'archivedAt'),
+    trashedAt: plannerOptionalDateTime(json, 'trashedAt'),
   );
 }
 

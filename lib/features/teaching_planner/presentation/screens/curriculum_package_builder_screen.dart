@@ -1,6 +1,4 @@
-import 'dart:io';
-
-import 'package:file_picker/file_picker.dart';
+import 'package:edusheet/shared/services/eds_export_file_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -569,19 +567,14 @@ class _CurriculumPackageBuilderScreenState
         sourceSchool: sourceSchool,
       );
       final fileName = '${_safeFileName(build.title)}.eds';
-      final path = await FilePicker.platform.saveFile(
+      final finalPath = await EdsExportFileSaver().save(
+        source: source,
+        fileName: fileName,
         dialogTitle: _teacherAssignment
             ? 'Save teacher assignment pack'
             : 'Save EduSheet curriculum package',
-        fileName: fileName,
-        type: FileType.custom,
-        allowedExtensions: const ['eds'],
       );
-      if (path == null) return;
-      final finalPath = path.toLowerCase().endsWith('.eds')
-          ? path
-          : '$path.eds';
-      await File(finalPath).writeAsString(source, flush: true);
+      if (finalPath == null) return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

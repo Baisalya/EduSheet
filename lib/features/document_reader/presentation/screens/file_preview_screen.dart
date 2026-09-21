@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 
-import '../../domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 import '../widgets/viewers/pdf_document_viewer.dart';
 import '../widgets/viewers/presentation_document_viewer.dart';
 import '../widgets/viewers/spreadsheet_document_viewer.dart';

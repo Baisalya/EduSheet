@@ -339,7 +339,6 @@ void main() {
     ]);
     final controller = SyllabusAttachmentController(
       picker: picker,
-      fileStore: store,
       attachFiles: ({required owner, required files}) async {
         await attachmentService.attachFiles(owner: owner, files: files);
         return true;
@@ -469,6 +468,7 @@ class _FakePicker extends TeachingResourceFilePicker {
   Future<List<TeachingAttachmentCandidate>> pickFiles({
     String dialogTitle = 'Add teaching material',
     bool allowMultiple = true,
+    bool readBytes = true,
   }) async {
     pickCount += 1;
     return files;

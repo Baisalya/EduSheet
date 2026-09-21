@@ -10,10 +10,19 @@ import '../../../features/advertising/presentation/widgets/home_sponsored_banner
 import '../../../features/advertising/application/home_interstitial_controller.dart';
 import '../../../features/guided_experience/guides/create_paper_guide.dart';
 import '../../../features/guided_experience/guides/create_syllabus_guide.dart';
+import '../../../features/guided_experience/domain/contextual_help.dart';
+import '../../../features/guided_experience/presentation/screens/user_manual_screen.dart';
+import '../../../features/guided_experience/presentation/widgets/contextual_help_prompt.dart';
 import '../../../features/guided_experience/presentation/widgets/guide_anchor.dart';
 import '../../../features/omr/presentation/pages/omr_generator_page.dart';
 import '../../../features/question_bank/presentation/screens/question_bank_screen.dart';
-import '../../../features/document_reader/presentation/screens/document_reader_screen.dart';
+import 'package:edusheet/features/document_reader/presentation/screens/document_reader_screen.dart';
+import '../../../core/files/recent_native_file_store.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_open_request.dart';
+import 'package:edusheet/features/document_reader/presentation/providers/document_provider.dart';
+import 'package:edusheet/features/document_reader/presentation/screens/file_preview_screen.dart';
+import '../../../features/eds_import/presentation/screens/eds_import_center_screen.dart';
+import '../../../features/teaching_planner/presentation/screens/teaching_workspace_screen.dart';
 import '../../../features/calculator/presentation/screens/calculator_screen.dart';
 import '../../../features/word_converter/presentation/screens/word_converter_screen.dart';
 import '../../../features/teaching_planner/presentation/screens/teaching_planner_screen.dart';
@@ -74,6 +83,144 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     if (!mounted) return;
     await interstitial.onReturnedHome();
+  }
+
+  Future<void> _openManual({EduSheetManualSection? focus}) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => EduSheetUserManualScreen(focus: focus),
+      ),
+    );
+  }
+
+  Future<void> _showRecentFiles() async {
+    final store = ref.read(recentNativeFileStoreProvider);
+    final entries = await store.load();
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        if (entries.isEmpty) {
+          return const SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(24, 12, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.history_rounded, size: 42),
+                  SizedBox(height: 12),
+                  Text('No recent files yet'),
+                  SizedBox(height: 6),
+                  Text(
+                    'Files opened with EduSheet will appear here while they remain available.',
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 520),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Recent files',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: entries.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (_, index) {
+                      final entry = entries[index];
+                      return ListTile(
+                        leading: Icon(_recentFileIcon(entry.extension)),
+                        title: Text(
+                          entry.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          entry.path,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () async {
+                          Navigator.pop(sheetContext);
+                          await _openRecentFile(entry);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    await store.clear();
+                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  },
+                  icon: const Icon(Icons.clear_all_rounded),
+                  label: const Text('Clear recent files'),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  IconData _recentFileIcon(String extension) => switch (extension) {
+    '.eds' => Icons.inventory_2_outlined,
+    '.edtp' => Icons.school_outlined,
+    '.pdf' => Icons.picture_as_pdf_outlined,
+    '.doc' || '.docx' || '.rtf' || '.odt' => Icons.description_outlined,
+    '.xls' || '.xlsx' || '.csv' || '.ods' => Icons.grid_on_outlined,
+    '.ppt' || '.pptx' || '.odp' => Icons.slideshow_outlined,
+    _ => Icons.insert_drive_file_outlined,
+  };
+
+  Future<void> _openRecentFile(RecentNativeFileEntry entry) async {
+    final request = DocumentOpenRequest.fromReader(entry.path);
+    if (entry.extension == '.eds') {
+      await _open(
+        EdsImportCenterScreen(
+          initialFilePath: entry.path,
+          initialDisplayName: entry.displayName,
+        ),
+      );
+      return;
+    }
+    if (entry.extension == '.edtp') {
+      await _open(TeachingWorkspaceScreen(initialTeachingPackPath: entry.path));
+      return;
+    }
+
+    final result = await ref.read(documentOpenCoordinatorProvider).resolve(request);
+    if (!mounted || result.duplicate) return;
+    final session = result.session;
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.errorMessage ?? 'Unable to open this file.')),
+      );
+      return;
+    }
+    await _open(FilePreviewScreen(document: session.document));
   }
 
   Future<void> _openCreatePaper() async {
@@ -189,7 +336,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     ];
 
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Row(
@@ -207,7 +354,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             const _BrandTitle(),
           ],
         ),
-        actions: const [PremiumBadgeButton()],
+        actions: [
+          IconButton(
+            tooltip: 'User manual and safe demos',
+            onPressed: () => _openManual(),
+            icon: const Icon(Icons.help_outline_rounded),
+          ),
+          IconButton(
+            tooltip: 'Recent files',
+            onPressed: _showRecentFiles,
+            icon: const Icon(Icons.history_rounded),
+          ),
+          const PremiumBadgeButton(),
+        ],
       ),
       body: SafeArea(
         child: LayoutBuilder(
@@ -264,6 +423,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
         ),
       ),
+    );
+
+    return ContextualHelpOffer(
+      suggestion: const ContextualHelpSuggestion(
+        id: 'home.quick_start_help',
+        screen: GuidedScreenContext.home,
+        title: 'Not sure where to start?',
+        message:
+            'I can open a short User Manual with simple steps and safe practice demos. Your real work will not be changed.',
+        primaryLabel: 'Open quick help',
+        minimumInactivity: Duration(seconds: 75),
+        suppressWhenRelatedGuideCompleted: false,
+      ),
+      signals: const ContextualHelpSignals(
+        currentScreen: GuidedScreenContext.home,
+      ),
+      onShowMe: () => _openManual(focus: EduSheetManualSection.start),
+      child: scaffold,
     );
   }
 }

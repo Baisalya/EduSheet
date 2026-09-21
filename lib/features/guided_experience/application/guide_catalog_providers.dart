@@ -15,8 +15,8 @@ final guideCatalogProvider = Provider<List<GuideCatalogEntry>>(
       definition: createPaperGuideDefinition,
     ),
     GuideCatalogEntry(
-      title: 'Create Syllabus guide',
-      description: 'Class setup, subjects, chapters, optional topics and syllabus management.',
+      title: 'Planner & Syllabus guide',
+      description: 'Set up a class, subject and chapter, then learn the syllabus flow inside Teaching Planner.',
       definition: createSyllabusGuideDefinition,
     ),
   ],

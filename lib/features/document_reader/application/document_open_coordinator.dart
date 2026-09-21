@@ -1,6 +1,8 @@
-import '../data/repositories/document_repository.dart';
-import '../domain/models/document_open_request.dart';
-import '../domain/models/document_session.dart';
+import 'package:edusheet/core/files/recent_native_file_store.dart';
+
+import 'package:edusheet/features/document_reader/data/repositories/document_repository.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_open_request.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_session.dart';
 
 class DocumentOpenResult {
   final DocumentSession? session;
@@ -26,10 +28,11 @@ class DocumentOpenResult {
 
 class DocumentOpenCoordinator {
   final DocumentRepository _repository;
+  final RecentNativeFileStore? _recentFiles;
   String? _lastActivationKey;
   DateTime? _lastActivationAt;
 
-  DocumentOpenCoordinator(this._repository);
+  DocumentOpenCoordinator(this._repository, [this._recentFiles]);
 
   Future<DocumentOpenResult> resolve(DocumentOpenRequest request) async {
     if (request.localPath.trim().isEmpty) {
@@ -61,6 +64,7 @@ class DocumentOpenCoordinator {
       _lastActivationKey = request.dedupeKey;
       _lastActivationAt = now;
     }
+    await _recentFiles?.record(request);
 
     return DocumentOpenResult.success(
       DocumentSession(document: document, request: request, openedAt: now),

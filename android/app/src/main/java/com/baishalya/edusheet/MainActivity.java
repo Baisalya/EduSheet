@@ -401,6 +401,10 @@ public class MainActivity extends FlutterActivity {
                 return ".odp";
             case "text/plain":
                 return ".txt";
+            case "application/vnd.baishalya.edusheet":
+                return ".eds";
+            case "application/vnd.baishalya.edusheet-teaching-pack":
+                return ".edtp";
             default:
                 String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
                 return extension == null ? "" : "." + extension.toLowerCase(Locale.US);

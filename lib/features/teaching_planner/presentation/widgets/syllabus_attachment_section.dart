@@ -15,6 +15,7 @@ class SyllabusAttachmentSection extends StatelessWidget {
     this.createPaperEnabled = true,
     this.attachSavedPaperEnabled = true,
     required this.onAddFiles,
+    this.onLinkFiles,
     required this.onOpen,
     required this.onRemove,
     this.canRemove,
@@ -26,6 +27,7 @@ class SyllabusAttachmentSection extends StatelessWidget {
   final bool createPaperEnabled;
   final bool attachSavedPaperEnabled;
   final VoidCallback onAddFiles;
+  final VoidCallback? onLinkFiles;
   final ValueChanged<TeachingResource> onOpen;
   final ValueChanged<TeachingResource> onRemove;
   final bool Function(TeachingResource resource)? canRemove;
@@ -67,6 +69,13 @@ class SyllabusAttachmentSection extends StatelessWidget {
                 icon: const Icon(Icons.attach_file_rounded),
                 label: const Text('Add files'),
               ),
+              if (onLinkFiles != null)
+                OutlinedButton.icon(
+                  key: const ValueKey('syllabus-link-file-button'),
+                  onPressed: onLinkFiles,
+                  icon: const Icon(Icons.link_rounded),
+                  label: const Text('Link originals'),
+                ),
             ];
             if (constraints.maxWidth < TeachingPlannerBreakpoints.compact) {
               return Column(
@@ -283,7 +292,7 @@ class _AttachmentCard extends StatelessWidget {
                 ),
                 const SizedBox(height: TeachingPlannerDesign.space4),
                 Text(
-                  '${_categoryLabel(category)} • ${_formatBytes(resource.sizeBytes)}',
+                  '${_categoryLabel(category)} • ${_formatBytes(resource.sizeBytes)} • ${resource.fileOwnership == TeachingResourceFileOwnership.linkedExternal ? 'Linked original' : 'EduSheet copy'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(

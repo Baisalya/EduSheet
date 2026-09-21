@@ -211,7 +211,10 @@ void main() {
     expect(find.text('Real Numbers'), findsOneWidget);
     expect(find.text('Euclid Division Lemma'), findsNothing);
 
-    await tester.tap(find.text('Real Numbers'));
+    final realNumbers = find.text('Real Numbers');
+    await tester.ensureVisible(realNumbers);
+    await tester.pumpAndSettle();
+    await tester.tap(realNumbers);
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('syllabus-topics-section')),

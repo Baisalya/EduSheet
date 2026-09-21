@@ -123,11 +123,11 @@ class CurriculumPackageImportService {
       };
       for (final filePlan in plan.fileMaterializations) {
         createdResourceIds.add(filePlan.targetLocalResourceId);
-        final relativePath = await _resourceFileStore.writeBytes(
-          resourceId: filePlan.targetLocalResourceId,
+        final blob = await _resourceFileStore.writeManagedBlob(
           fileName: filePlan.fileName,
           bytes: filePlan.bytes,
         );
+        final relativePath = blob.relativePath;
         final resource = resources[filePlan.targetLocalResourceId];
         if (resource == null || resource.kind != TeachingResourceKind.file) {
           throw const CurriculumMergeException(
@@ -135,8 +135,11 @@ class CurriculumPackageImportService {
           );
         }
         resources[filePlan.targetLocalResourceId] = resource.copyWith(
+          fileOwnership: TeachingResourceFileOwnership.managed,
           localRelativePath: relativePath,
+          externalFilePath: null,
           sizeBytes: filePlan.bytes.length,
+          contentSha256: blob.sha256Hex,
         );
       }
       workspace = workspace.copyWith(

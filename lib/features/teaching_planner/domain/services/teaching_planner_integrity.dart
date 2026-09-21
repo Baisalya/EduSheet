@@ -317,14 +317,32 @@ class TeachingPlannerIntegrity {
           }
           break;
         case TeachingResourceKind.file:
-          if ((item.localRelativePath ?? '').trim().isEmpty ||
+          final hasLocation = switch (item.fileOwnership) {
+            TeachingResourceFileOwnership.managed =>
+              (item.localRelativePath ?? '').trim().isNotEmpty,
+            TeachingResourceFileOwnership.linkedExternal =>
+              (item.externalFilePath ?? '').trim().isNotEmpty,
+          };
+          if (!hasLocation ||
               (item.originalFileName ?? '').trim().isEmpty) {
             issues.add(
               TeachingPlannerIntegrityIssue(
                 code: 'invalid_resource_file',
                 entityId: item.id,
                 message:
-                    'Teaching file resource is missing local file metadata.',
+                    'Teaching file resource is missing file location metadata.',
+              ),
+            );
+          }
+          final contentHash = item.contentSha256?.trim().toLowerCase();
+          if (contentHash != null &&
+              contentHash.isNotEmpty &&
+              !RegExp(r'^[a-f0-9]{64}$').hasMatch(contentHash)) {
+            issues.add(
+              TeachingPlannerIntegrityIssue(
+                code: 'invalid_resource_hash',
+                entityId: item.id,
+                message: 'Teaching file resource has an invalid content hash.',
               ),
             );
           }

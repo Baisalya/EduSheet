@@ -5,6 +5,8 @@ enum GuidedScreenContext {
   createPaper,
   teachingPlanner,
   syllabus,
+  teachingWorkspace,
+  documentReader,
   settings,
 }
 

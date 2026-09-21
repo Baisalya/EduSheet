@@ -15,6 +15,7 @@ import '../../domain/models/teaching_status.dart';
 import '../../domain/models/teaching_resource.dart';
 import '../../domain/models/teaching_resource_owner.dart';
 import '../models/syllabus_filter.dart';
+import '../models/syllabus_chapter_progress.dart';
 import '../models/syllabus_node_ref.dart';
 import '../models/syllabus_overview_model.dart';
 import '../services/syllabus_manager_filter.dart';
@@ -33,15 +34,21 @@ class SyllabusDetailPanel extends StatelessWidget {
     required this.onSelected,
     required this.onEdit,
     required this.onArchive,
+    this.onMove,
+    this.onDuplicate,
+    this.onDelete,
     this.onCreatePaper,
     this.onAttachSavedPaper,
     required this.onAddAttachments,
+    this.onLinkAttachments,
     required this.onOpenAttachment,
     required this.onRemoveAttachment,
     required this.onCreateSubject,
     required this.onCreateUnit,
     required this.onCreateChapter,
     required this.onCreateTopic,
+    this.onPlanChapterLesson,
+    this.onToggleChapterComplete,
     required this.onReorderSubjects,
     required this.onReorderUnits,
     required this.onReorderChapters,
@@ -57,15 +64,21 @@ class SyllabusDetailPanel extends StatelessWidget {
   final ValueChanged<SyllabusNodeRef> onSelected;
   final ValueChanged<SyllabusNodeRef> onEdit;
   final ValueChanged<SyllabusNodeRef> onArchive;
+  final ValueChanged<SyllabusNodeRef>? onMove;
+  final ValueChanged<SyllabusNodeRef>? onDuplicate;
+  final ValueChanged<SyllabusNodeRef>? onDelete;
   final ValueChanged<SyllabusNodeRef>? onCreatePaper;
   final ValueChanged<SyllabusNodeRef>? onAttachSavedPaper;
   final ValueChanged<SyllabusNodeRef> onAddAttachments;
+  final ValueChanged<SyllabusNodeRef>? onLinkAttachments;
   final ValueChanged<TeachingResource> onOpenAttachment;
   final ValueChanged<TeachingResource> onRemoveAttachment;
   final ValueChanged<String> onCreateSubject;
   final ValueChanged<String> onCreateUnit;
   final void Function(String subjectId, String? unitId) onCreateChapter;
   final ValueChanged<String> onCreateTopic;
+  final ValueChanged<SyllabusNodeRef>? onPlanChapterLesson;
+  final ValueChanged<PlannerChapter>? onToggleChapterComplete;
   final void Function(String classId, List<String> orderedIds)
   onReorderSubjects;
   final void Function(String subjectId, List<String> orderedIds) onReorderUnits;
@@ -126,6 +139,7 @@ class SyllabusDetailPanel extends StatelessWidget {
       filter,
     );
     final metrics = SyllabusOverviewModel.forClass(workspace, value.id);
+    final coverage = SyllabusChapterProgress.forClass(workspace, value.id);
     final layer = _layer('class', value.id);
 
     return _EntityPage(
@@ -146,17 +160,23 @@ class SyllabusDetailPanel extends StatelessWidget {
             Icons.article_outlined,
           ),
           SyllabusMetricData(
+            'done',
+            '${coverage.completedChapters}/${coverage.totalChapters}',
+            Icons.task_alt_rounded,
+          ),
+          SyllabusMetricData(
             'topics',
             '${metrics.topics}',
             Icons.checklist_rounded,
           ),
         ],
-        completion: metrics.topics == 0 ? null : metrics.completion,
+        completion: coverage.hasChapters ? coverage.completion : null,
         layerLabel: layer.isOfficial ? layer.label : null,
         layerDetail: _officialLayerDetail(layer),
         onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
         onArchive: layer.isOfficial ? null : () => onArchive(selected),
+        onDelete: layer.isOfficial || onDelete == null ? null : () => onDelete!(selected),
       ),
       attachments: _attachmentSection(),
       children: [
@@ -176,26 +196,28 @@ class SyllabusDetailPanel extends StatelessWidget {
               ),
           itemId: (item) => item.id,
           cardBuilder: (context, item, index, dragHandle) {
-            final itemMetrics = SyllabusOverviewModel.forSubject(
+            final itemCoverage = SyllabusChapterProgress.forSubject(
               workspace,
               item.id,
             );
             final details = <String>[
               if (item.code != null) item.code!,
-              syllabusCountLabel(itemMetrics.chapters, 'chapter'),
-              syllabusCountLabel(itemMetrics.topics, 'topic'),
+              itemCoverage.compactLabel,
+              '${itemCoverage.completionPercent}% complete',
             ];
+            final node = SyllabusNodeRef.subject(
+              classId: value.id,
+              subjectId: item.id,
+            );
             return SyllabusHierarchyCard(
               icon: Icons.menu_book_outlined,
               title: item.name,
               subtitle: details.join(' • '),
-              completion: itemMetrics.topics == 0
-                  ? null
-                  : itemMetrics.completion,
+              status: itemCoverage.hasChapters ? itemCoverage.rollupStatus : null,
+              completion: itemCoverage.hasChapters ? itemCoverage.completion : null,
               dragHandle: dragHandle,
-              onTap: () => onSelected(
-                SyllabusNodeRef.subject(classId: value.id, subjectId: item.id),
-              ),
+              actions: _cardActions(node, 'subject'),
+              onTap: () => onSelected(node),
             );
           },
           onReordered: (ids) => onReorderSubjects(value.id, ids),
@@ -229,6 +251,7 @@ class SyllabusDetailPanel extends StatelessWidget {
       filter,
     );
     final metrics = SyllabusOverviewModel.forSubject(workspace, value.id);
+    final coverage = SyllabusChapterProgress.forSubject(workspace, value.id);
     final layer = _layer('subject', value.id);
 
     return _EntityPage(
@@ -249,9 +272,9 @@ class SyllabusDetailPanel extends StatelessWidget {
             Icons.article_outlined,
           ),
           SyllabusMetricData(
-            'topics',
-            '${metrics.topics}',
-            Icons.checklist_rounded,
+            'done',
+            '${coverage.completedChapters}/${coverage.totalChapters}',
+            Icons.task_alt_rounded,
           ),
           SyllabusMetricData(
             'periods',
@@ -259,12 +282,15 @@ class SyllabusDetailPanel extends StatelessWidget {
             Icons.schedule_rounded,
           ),
         ],
-        completion: metrics.topics == 0 ? null : metrics.completion,
+        completion: coverage.hasChapters ? coverage.completion : null,
         layerLabel: layer.isOfficial ? layer.label : null,
         layerDetail: _officialLayerDetail(layer),
         onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
         onArchive: layer.isOfficial ? null : () => onArchive(selected),
+        onMove: layer.isOfficial || onMove == null ? null : () => onMove!(selected),
+        onDuplicate: layer.isOfficial || onDuplicate == null ? null : () => onDuplicate!(selected),
+        onDelete: layer.isOfficial || onDelete == null ? null : () => onDelete!(selected),
       ),
       attachments: _attachmentSection(),
       children: [
@@ -282,27 +308,26 @@ class SyllabusDetailPanel extends StatelessWidget {
               units.every((item) => !_layerPolicy.isOfficial('unit', item.id)),
           itemId: (item) => item.id,
           cardBuilder: (context, item, index, dragHandle) {
-            final itemMetrics = SyllabusOverviewModel.forUnit(
+            final itemCoverage = SyllabusChapterProgress.forUnit(
               workspace,
               item.id,
+            );
+            final node = SyllabusNodeRef.unit(
+              classId: value.classId,
+              subjectId: value.id,
+              unitId: item.id,
             );
             return SyllabusHierarchyCard(
               icon: Icons.folder_outlined,
               title: item.title,
               subtitle:
-                  '${syllabusCountLabel(itemMetrics.chapters, 'chapter')} • ${syllabusCountLabel(itemMetrics.topics, 'topic')} • ${syllabusCountLabel(item.plannedPeriods, 'planned period')}',
+                  '${itemCoverage.compactLabel} • ${itemCoverage.completionPercent}% complete',
               priority: item.priority,
-              completion: itemMetrics.topics == 0
-                  ? null
-                  : itemMetrics.completion,
+              status: itemCoverage.hasChapters ? itemCoverage.rollupStatus : null,
+              completion: itemCoverage.hasChapters ? itemCoverage.completion : null,
               dragHandle: dragHandle,
-              onTap: () => onSelected(
-                SyllabusNodeRef.unit(
-                  classId: value.classId,
-                  subjectId: value.id,
-                  unitId: item.id,
-                ),
-              ),
+              actions: _cardActions(node, 'unit'),
+              onTap: () => onSelected(node),
             );
           },
           onReordered: (ids) => onReorderUnits(value.id, ids),
@@ -371,6 +396,7 @@ class SyllabusDetailPanel extends StatelessWidget {
       filter,
     );
     final metrics = SyllabusOverviewModel.forUnit(workspace, value.id);
+    final coverage = SyllabusChapterProgress.forUnit(workspace, value.id);
     final layer = _layer('unit', value.id);
 
     return _EntityPage(
@@ -386,17 +412,20 @@ class SyllabusDetailPanel extends StatelessWidget {
             Icons.article_outlined,
           ),
           SyllabusMetricData(
-            'topics',
-            '${metrics.topics}',
-            Icons.checklist_rounded,
+            'done',
+            '${coverage.completedChapters}/${coverage.totalChapters}',
+            Icons.task_alt_rounded,
           ),
         ],
-        completion: metrics.topics == 0 ? null : metrics.completion,
+        completion: coverage.hasChapters ? coverage.completion : null,
         layerLabel: layer.isOfficial ? layer.label : null,
         layerDetail: _officialLayerDetail(layer),
         onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
         onArchive: layer.isOfficial ? null : () => onArchive(selected),
+        onMove: layer.isOfficial || onMove == null ? null : () => onMove!(selected),
+        onDuplicate: layer.isOfficial || onDuplicate == null ? null : () => onDuplicate!(selected),
+        onDelete: layer.isOfficial || onDelete == null ? null : () => onDelete!(selected),
       ),
       attachments: _attachmentSection(),
       children: [
@@ -464,20 +493,58 @@ class SyllabusDetailPanel extends StatelessWidget {
             Icons.checklist_rounded,
           ),
           SyllabusMetricData(
-            'completed',
-            '${metrics.completedTopics}',
+            'status',
+            _statusLabel(value.status),
             Icons.task_alt_rounded,
           ),
         ],
-        completion: metrics.topics == 0 ? null : metrics.completion,
+        completion: value.status == TeachingProgressStatus.completed
+            ? 1.0
+            : value.status == TeachingProgressStatus.inProgress
+            ? .5
+            : 0.0,
         layerLabel: layer.isOfficial ? layer.label : null,
         layerDetail: _officialLayerDetail(layer),
         onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
         onArchive: layer.isOfficial ? null : () => onArchive(selected),
+        onMove: layer.isOfficial || onMove == null ? null : () => onMove!(selected),
+        onDuplicate: layer.isOfficial || onDuplicate == null ? null : () => onDuplicate!(selected),
+        onDelete: layer.isOfficial || onDelete == null ? null : () => onDelete!(selected),
       ),
       attachments: _attachmentSection(),
       children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.tonalIcon(
+              key: ValueKey('syllabus-plan-chapter-${value.id}'),
+              onPressed: onPlanChapterLesson == null
+                  ? null
+                  : () => onPlanChapterLesson!(selected),
+              icon: const Icon(Icons.event_note_rounded),
+              label: const Text('Plan lesson'),
+            ),
+            OutlinedButton.icon(
+              key: ValueKey('syllabus-toggle-chapter-${value.id}'),
+              onPressed: onToggleChapterComplete == null
+                  ? null
+                  : () => onToggleChapterComplete!(value),
+              icon: Icon(
+                value.status == TeachingProgressStatus.completed
+                    ? Icons.replay_rounded
+                    : Icons.task_alt_rounded,
+              ),
+              label: Text(
+                value.status == TeachingProgressStatus.completed
+                    ? 'Reopen chapter'
+                    : 'Mark chapter complete',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
         SyllabusSectionHeader(
           key: const ValueKey('syllabus-topics-section'),
           title: 'Topics',
@@ -494,6 +561,13 @@ class SyllabusDetailPanel extends StatelessWidget {
               ),
           itemId: (item) => item.id,
           cardBuilder: (context, item, index, dragHandle) {
+            final node = SyllabusNodeRef.topic(
+              classId: subject.classId,
+              subjectId: subject.id,
+              unitId: value.unitId,
+              chapterId: value.id,
+              topicId: item.id,
+            );
             return SyllabusHierarchyCard(
               icon: Icons.check_circle_outline_rounded,
               index: index + 1,
@@ -503,15 +577,8 @@ class SyllabusDetailPanel extends StatelessWidget {
               priority: item.priority,
               status: item.status,
               dragHandle: dragHandle,
-              onTap: () => onSelected(
-                SyllabusNodeRef.topic(
-                  classId: subject.classId,
-                  subjectId: subject.id,
-                  unitId: value.unitId,
-                  chapterId: value.id,
-                  topicId: item.id,
-                ),
-              ),
+              actions: _cardActions(node, 'topic'),
+              onTap: () => onSelected(node),
             );
           },
           onReordered: (ids) => onReorderTopics(value.id, ids),
@@ -569,10 +636,57 @@ class SyllabusDetailPanel extends StatelessWidget {
         onEdit: layer.isOfficial ? null : () => onEdit(selected),
         onAttach: () => onAddAttachments(selected),
         onArchive: layer.isOfficial ? null : () => onArchive(selected),
+        onMove: layer.isOfficial || onMove == null ? null : () => onMove!(selected),
+        onDuplicate: layer.isOfficial || onDuplicate == null ? null : () => onDuplicate!(selected),
+        onDelete: layer.isOfficial || onDelete == null ? null : () => onDelete!(selected),
       ),
       attachments: _attachmentSection(),
       children: const [_TopicNote()],
     );
+  }
+
+  List<SyllabusCardAction> _cardActions(
+    SyllabusNodeRef node,
+    String entityType, {
+    List<SyllabusCardAction> leading = const [],
+  }) {
+    if (_layerPolicy.isOfficial(entityType, node.id)) return leading;
+    return [
+      ...leading,
+      if (onMove != null)
+        SyllabusCardAction(
+          id: 'move',
+          label: 'Move to…',
+          icon: Icons.drive_file_move_outline,
+          onSelected: () => onMove!(node),
+        ),
+      if (onDuplicate != null)
+        SyllabusCardAction(
+          id: 'duplicate',
+          label: 'Duplicate structure',
+          icon: Icons.copy_rounded,
+          onSelected: () => onDuplicate!(node),
+        ),
+      SyllabusCardAction(
+        id: 'edit',
+        label: 'Edit',
+        icon: Icons.edit_outlined,
+        onSelected: () => onEdit(node),
+      ),
+      SyllabusCardAction(
+        id: 'archive',
+        label: 'Archive',
+        icon: Icons.archive_outlined,
+        onSelected: () => onArchive(node),
+      ),
+      if (onDelete != null)
+        SyllabusCardAction(
+          id: 'trash',
+          label: 'Move to Trash',
+          icon: Icons.delete_outline_rounded,
+          onSelected: () => onDelete!(node),
+        ),
+    ];
   }
 
   Widget _chapterCard({
@@ -582,6 +696,12 @@ class SyllabusDetailPanel extends StatelessWidget {
     required Widget? dragHandle,
   }) {
     final metrics = SyllabusOverviewModel.forChapter(workspace, chapter.id);
+    final node = SyllabusNodeRef.chapter(
+      classId: subject.classId,
+      subjectId: subject.id,
+      unitId: chapter.unitId,
+      chapterId: chapter.id,
+    );
     return SyllabusHierarchyCard(
       icon: Icons.article_outlined,
       index: index + 1,
@@ -589,16 +709,44 @@ class SyllabusDetailPanel extends StatelessWidget {
       subtitle:
           '${syllabusCountLabel(metrics.topics, 'topic')} • ${syllabusCountLabel(chapter.plannedPeriods, 'planned period')}',
       priority: chapter.priority,
-      completion: metrics.topics == 0 ? null : metrics.completion,
+      status: chapter.status,
+      completion: chapter.status == TeachingProgressStatus.completed
+          ? 1.0
+          : chapter.status == TeachingProgressStatus.inProgress
+          ? .5
+          : 0.0,
       dragHandle: dragHandle,
-      onTap: () => onSelected(
-        SyllabusNodeRef.chapter(
-          classId: subject.classId,
-          subjectId: subject.id,
-          unitId: chapter.unitId,
-          chapterId: chapter.id,
-        ),
+      onStatusToggle: onToggleChapterComplete == null
+          ? null
+          : () => onToggleChapterComplete!(chapter),
+      statusToggleTooltip: chapter.status == TeachingProgressStatus.completed
+          ? 'Reopen chapter'
+          : 'Mark chapter complete',
+      actions: _cardActions(
+        node,
+        'chapter',
+        leading: [
+          if (onPlanChapterLesson != null)
+            SyllabusCardAction(
+              id: 'plan',
+              label: 'Plan lesson',
+              icon: Icons.event_note_rounded,
+              onSelected: () => onPlanChapterLesson!(node),
+            ),
+          if (onToggleChapterComplete != null)
+            SyllabusCardAction(
+              id: 'complete',
+              label: chapter.status == TeachingProgressStatus.completed
+                  ? 'Reopen chapter'
+                  : 'Mark complete',
+              icon: chapter.status == TeachingProgressStatus.completed
+                  ? Icons.replay_rounded
+                  : Icons.task_alt_rounded,
+              onSelected: () => onToggleChapterComplete!(chapter),
+            ),
+        ],
       ),
+      onTap: () => onSelected(node),
     );
   }
 
@@ -633,6 +781,9 @@ class SyllabusDetailPanel extends StatelessWidget {
         if (attachSavedPaper != null) attachSavedPaper(selected);
       },
       onAddFiles: () => onAddAttachments(selected),
+      onLinkFiles: onLinkAttachments == null
+          ? null
+          : () => onLinkAttachments!(selected),
       onOpen: onOpenAttachment,
       onRemove: onRemoveAttachment,
       canRemove: (resource) => _layerPolicy.canRemoveResource(resource.id),

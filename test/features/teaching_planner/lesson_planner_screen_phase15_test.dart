@@ -117,7 +117,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.widgetWithText(FilledButton, 'Create lesson'),
+      find.widgetWithText(FilledButton, 'Plan lesson'),
       findsOneWidget,
     );
     expect(find.text('Class 10'), findsWidgets);

@@ -4,8 +4,10 @@ import '../../domain/models/planner_chapter.dart';
 import '../../domain/models/planner_subject.dart';
 import '../../domain/models/planner_unit.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
+import '../../domain/models/teaching_status.dart';
 import '../design/teaching_planner_design_system.dart';
 import '../models/syllabus_filter.dart';
+import '../models/syllabus_chapter_progress.dart';
 import '../models/syllabus_node_ref.dart';
 import '../models/syllabus_overview_model.dart';
 import '../services/syllabus_manager_filter.dart';
@@ -101,13 +103,14 @@ class SyllabusOutline extends StatelessWidget {
       return syllabusSubjectVisible(workspace, subject, query, filter);
     }).toList();
     final node = SyllabusNodeRef.classValue(classId);
+    final coverage = SyllabusChapterProgress.forClass(workspace, classId);
 
     return ExpansionTile(
       key: ValueKey('class-$classId-${query.trim()}-${filter.name}'),
       initiallyExpanded: _forceExpanded || selected?.classId == classId,
       tilePadding: const EdgeInsets.symmetric(horizontal: 8),
       childrenPadding: const EdgeInsets.only(left: 10),
-      leading: const Icon(Icons.school_outlined),
+      leading: Icon(_outlineIcon(coverage.rollupStatus)),
       title: Text(
         classValue.name,
         maxLines: 1,
@@ -120,6 +123,7 @@ class SyllabusOutline extends StatelessWidget {
             workspace.activeSubjectsForClass(classId).length,
             'subject',
           ),
+          if (coverage.hasChapters) coverage.compactLabel,
         ].join(' • '),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -156,30 +160,23 @@ class SyllabusOutline extends StatelessWidget {
       classId: subject.classId,
       subjectId: subject.id,
     );
+    final coverage = SyllabusChapterProgress.forSubject(workspace, subject.id);
 
     return ExpansionTile(
       key: ValueKey('subject-${subject.id}-${query.trim()}-${filter.name}'),
       initiallyExpanded: _forceExpanded || selected?.subjectId == subject.id,
       tilePadding: const EdgeInsets.symmetric(horizontal: 8),
       childrenPadding: const EdgeInsets.only(left: 12),
-      leading: const Icon(Icons.menu_book_outlined, size: 20),
+      leading: Icon(_outlineIcon(coverage.rollupStatus), size: 20),
       title: Text(subject.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Builder(
-        builder: (context) {
-          final metrics = SyllabusOverviewModel.forSubject(
-            workspace,
-            subject.id,
-          );
-          return Text(
-            [
-              if (subject.code != null) subject.code!,
-              syllabusCountLabel(metrics.chapters, 'chapter'),
-              syllabusCountLabel(metrics.topics, 'topic'),
-            ].join(' • '),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          );
-        },
+      subtitle: Text(
+        [
+          if (subject.code != null) subject.code!,
+          coverage.compactLabel,
+          if (coverage.hasChapters) '${coverage.completionPercent}%',
+        ].join(' • '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       onExpansionChanged: (expanded) {
         if (expanded) {
@@ -214,15 +211,20 @@ class SyllabusOutline extends StatelessWidget {
       subjectId: subject.id,
       unitId: unit.id,
     );
+    final coverage = SyllabusChapterProgress.forUnit(workspace, unit.id);
 
     return ExpansionTile(
       key: ValueKey('unit-${unit.id}-${query.trim()}-${filter.name}'),
       initiallyExpanded: _forceExpanded || selected?.unitId == unit.id,
       tilePadding: const EdgeInsets.symmetric(horizontal: 8),
       childrenPadding: const EdgeInsets.only(left: 12),
-      leading: const Icon(Icons.folder_outlined, size: 19),
+      leading: Icon(_outlineIcon(coverage.rollupStatus), size: 19),
       title: Text(unit.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(syllabusCountLabel(unit.plannedPeriods, 'planned period')),
+      subtitle: Text(
+        coverage.hasChapters
+            ? '${coverage.compactLabel} • ${coverage.completionPercent}%'
+            : 'No chapters yet',
+      ),
       onExpansionChanged: (expanded) {
         if (expanded) {
           onSelected(node);
@@ -260,10 +262,10 @@ class SyllabusOutline extends StatelessWidget {
       initiallyExpanded: _forceExpanded || selected?.chapterId == chapter.id,
       tilePadding: const EdgeInsets.symmetric(horizontal: 8),
       childrenPadding: const EdgeInsets.only(left: 12),
-      leading: const Icon(Icons.article_outlined, size: 18),
+      leading: Icon(_outlineIcon(chapter.status), size: 18),
       title: Text(chapter.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
-        '${syllabusCountLabel(workspace.activeTopicsForChapter(chapter.id).length, 'topic')} • ${syllabusCountLabel(chapter.plannedPeriods, 'period')}',
+        '${_outlineStatusLabel(chapter.status)} • ${syllabusCountLabel(workspace.activeTopicsForChapter(chapter.id).length, 'topic')} • ${syllabusCountLabel(chapter.plannedPeriods, 'period')}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -300,6 +302,22 @@ class SyllabusOutline extends StatelessWidget {
     );
   }
 }
+
+IconData _outlineIcon(TeachingProgressStatus status) => switch (status) {
+  TeachingProgressStatus.completed => Icons.check_circle_rounded,
+  TeachingProgressStatus.inProgress => Icons.timelapse_rounded,
+  TeachingProgressStatus.skipped => Icons.remove_circle_outline_rounded,
+  TeachingProgressStatus.rescheduled => Icons.event_repeat_rounded,
+  TeachingProgressStatus.planned => Icons.radio_button_unchecked_rounded,
+};
+
+String _outlineStatusLabel(TeachingProgressStatus status) => switch (status) {
+  TeachingProgressStatus.completed => 'Done',
+  TeachingProgressStatus.inProgress => 'In progress',
+  TeachingProgressStatus.skipped => 'Skipped',
+  TeachingProgressStatus.rescheduled => 'Moved',
+  TeachingProgressStatus.planned => 'Not started',
+};
 
 class _SelectableNodeTile extends StatelessWidget {
   const _SelectableNodeTile({

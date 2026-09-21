@@ -5,6 +5,7 @@ import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet
 
 import '../../domain/models/lesson_plan.dart';
 import '../../domain/models/planner_chapter.dart';
+import '../../domain/models/planner_unit.dart';
 import '../../domain/models/teaching_planner_workspace.dart';
 import '../../domain/models/teaching_status.dart';
 import '../design/teaching_planner_design_system.dart';
@@ -60,7 +61,7 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
 
     if (widget.openCreateOnStart &&
         !_initialCreateScheduled &&
-        _canCreateLesson(workspace)) {
+        !state.isLoading) {
       _initialCreateScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -83,9 +84,7 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
         ),
       ],
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: workspace.activeClasses.isEmpty
-            ? null
-            : () => _openEditor(workspace),
+        onPressed: state.isLoading ? null : () => _openEditor(workspace),
         icon: const Icon(Icons.add_rounded),
         label: const Text('Lesson'),
       ),
@@ -96,9 +95,7 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
           children: [
             _LessonHeader(
               workspace: workspace,
-              onCreate: workspace.activeClasses.isEmpty
-                  ? null
-                  : () => _openEditor(workspace),
+              onCreate: state.isLoading ? null : () => _openEditor(workspace),
             ),
             const SizedBox(height: TeachingPlannerDesign.space16),
             if (state.errorMessage != null) ...[
@@ -141,12 +138,19 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
             const SizedBox(height: TeachingPlannerDesign.space16),
             TeachingPlannerResponsiveSplit(
               sideWidth: 280,
-              side: _LessonSummary(workspace: workspace),
+              sideFirstOnCompact: false,
+              side: _LessonSummary(
+                workspace: workspace,
+                classId: _classFilter,
+              ),
               primary: _LessonList(
                 workspace: workspace,
                 lessons: lessons,
                 onOpen: _openLessonDetail,
                 onEdit: (lesson) => _openEditor(workspace, lesson: lesson),
+                onMarkTaught: _markLessonTaught,
+                onReopen: _reopenLesson,
+                onChapterStatus: _setChapterStatus,
                 onArchive: _archiveLesson,
                 onMaterials: (lesson) => Navigator.of(context).push(
                   MaterialPageRoute(
@@ -162,18 +166,6 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
     );
   }
 
-  bool _canCreateLesson(TeachingPlannerWorkspace workspace) {
-    final activeClassIds = workspace.activeClasses
-        .map((item) => item.id)
-        .toSet();
-    final activeSubjects = workspace.subjects.where(
-      (item) => !item.isArchived && activeClassIds.contains(item.classId),
-    );
-    final activeSubjectIds = activeSubjects.map((item) => item.id).toSet();
-    return workspace.chapters.any(
-      (item) => !item.isArchived && activeSubjectIds.contains(item.subjectId),
-    );
-  }
 
   List<LessonPlan> _filteredLessons(TeachingPlannerWorkspace workspace) {
     final query = _searchController.text.trim().toLowerCase();
@@ -184,7 +176,9 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
       final subject = workspace.subjectById(lesson.subjectId)?.name ?? '';
       final chapter = workspace.chapterById(lesson.chapterId)?.title ?? '';
       final topicText = lesson.topicIds
-          .map((id) => workspace.topicById(id)?.title ?? '')
+          .map((id) => workspace.topicById(id))
+          .where((topic) => topic != null && !topic.isArchived)
+          .map((topic) => topic!.title)
           .join(' ');
       return '${lesson.title} ${lesson.objective} $subject $chapter $topicText'
           .toLowerCase()
@@ -195,6 +189,10 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
   Future<void> _openEditor(
     TeachingPlannerWorkspace workspace, {
     LessonPlan? lesson,
+    String? initialClassId,
+    String? initialSubjectId,
+    String? initialChapterId,
+    DateTime? initialPlannedDate,
   }) async {
     final draft = await showAdaptiveModalBottomSheet<_LessonDraft>(
       context: context,
@@ -204,10 +202,18 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
       builder: (context) => _LessonEditorSheet(
         workspace: workspace,
         lesson: lesson,
-        initialClassId: lesson == null ? widget.initialClassId : null,
-        initialSubjectId: lesson == null ? widget.initialSubjectId : null,
-        initialChapterId: lesson == null ? widget.initialChapterId : null,
-        initialPlannedDate: lesson == null ? widget.initialPlannedDate : null,
+        initialClassId: lesson == null
+            ? (initialClassId ?? widget.initialClassId)
+            : null,
+        initialSubjectId: lesson == null
+            ? (initialSubjectId ?? widget.initialSubjectId)
+            : null,
+        initialChapterId: lesson == null
+            ? (initialChapterId ?? widget.initialChapterId)
+            : null,
+        initialPlannedDate: lesson == null
+            ? (initialPlannedDate ?? widget.initialPlannedDate)
+            : null,
       ),
     );
     if (draft == null || !mounted) return;
@@ -250,6 +256,27 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
           widget.openCreateOnStart &&
           widget.returnAfterInitialCreate) {
         Navigator.of(context).pop();
+        return;
+      }
+      if (lesson == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Lesson planned.'),
+            action: SnackBarAction(
+              label: 'Add another',
+              onPressed: () {
+                final current = ref.read(teachingPlannerProvider).workspace;
+                _openEditor(
+                  current,
+                  initialClassId: draft.classId,
+                  initialSubjectId: draft.subjectId,
+                  initialChapterId: draft.chapterId,
+                  initialPlannedDate: draft.plannedDate,
+                );
+              },
+            ),
+          ),
+        );
       }
       return;
     }
@@ -258,6 +285,137 @@ class _LessonPlannerScreenState extends ConsumerState<LessonPlannerScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _markLessonTaught(LessonPlan lesson) async {
+    final notifier = ref.read(teachingPlannerProvider.notifier);
+    final saved = await notifier.recordLessonProgress(
+      lesson.id,
+      status: TeachingProgressStatus.completed,
+      actualPeriods: lesson.plannedPeriods,
+      taughtAt: DateTime.now(),
+      reflection: lesson.reflection,
+    );
+    if (!mounted) return;
+    if (!saved) {
+      _showSaveError();
+      return;
+    }
+    final chapter = ref
+        .read(teachingPlannerProvider)
+        .workspace
+        .chapterById(lesson.chapterId);
+    if (chapter == null || chapter.status == TeachingProgressStatus.completed) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${chapter.title} stays in progress.'),
+        action: SnackBarAction(
+          label: 'Finish chapter',
+          onPressed: () => _finishChapterFromLesson(lesson),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reopenLesson(LessonPlan lesson) async {
+    final saved = await ref
+        .read(teachingPlannerProvider.notifier)
+        .recordLessonProgress(
+          lesson.id,
+          status: TeachingProgressStatus.planned,
+          actualPeriods: 0,
+          taughtAt: null,
+          reflection: lesson.reflection,
+        );
+    if (!mounted || saved) return;
+    _showSaveError();
+  }
+
+  Future<void> _setChapterStatus(
+    LessonPlan lesson,
+    TeachingProgressStatus status,
+  ) async {
+    final saved = await ref
+        .read(teachingPlannerProvider.notifier)
+        .updateChapterProgress(lesson.chapterId, status: status);
+    if (!mounted) return;
+    if (!saved) {
+      _showSaveError();
+      return;
+    }
+    if (status == TeachingProgressStatus.completed) {
+      _offerPlanNextChapter(lesson);
+    }
+  }
+
+  Future<void> _finishChapterFromLesson(LessonPlan lesson) async {
+    await _setChapterStatus(lesson, TeachingProgressStatus.completed);
+  }
+
+  void _offerPlanNextChapter(LessonPlan lesson) {
+    final workspace = ref.read(teachingPlannerProvider).workspace;
+    final nextChapterId = _nextChapterId(workspace, lesson.chapterId);
+    if (nextChapterId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chapter completed.')),
+      );
+      return;
+    }
+    final nextChapter = workspace.chapterById(nextChapterId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          nextChapter == null
+              ? 'Chapter completed.'
+              : 'Chapter completed. Next: ${nextChapter.title}',
+        ),
+        action: SnackBarAction(
+          label: 'Plan next',
+          onPressed: () {
+            final current = ref.read(teachingPlannerProvider).workspace;
+            _openEditor(
+              current,
+              initialClassId: lesson.classId,
+              initialSubjectId: lesson.subjectId,
+              initialChapterId: nextChapterId,
+              initialPlannedDate: lesson.plannedDate,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  String? _nextChapterId(
+    TeachingPlannerWorkspace workspace,
+    String chapterId,
+  ) {
+    final chapter = workspace.chapterById(chapterId);
+    if (chapter == null) return null;
+    final ordered = <PlannerChapter>[];
+    for (final unit in workspace.activeUnitsForSubject(chapter.subjectId)) {
+      ordered.addAll(
+        workspace.activeChaptersForSubject(
+          chapter.subjectId,
+          unitId: unit.id,
+        ),
+      );
+    }
+    ordered.addAll(
+      workspace.activeChaptersForSubject(chapter.subjectId, unitId: null),
+    );
+    final index = ordered.indexWhere((item) => item.id == chapterId);
+    if (index < 0 || index + 1 >= ordered.length) return null;
+    return ordered[index + 1].id;
+  }
+
+  void _showSaveError() {
+    final message = ref.read(teachingPlannerProvider).errorMessage;
+    if (message != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -353,7 +511,7 @@ class _LessonHeader extends StatelessWidget {
               ),
               const SizedBox(height: TeachingPlannerDesign.space12),
               Text(
-                'Keep every lesson connected to the real class, subject, chapter and topics. Plan objectives, periods, materials, activities, homework and notes without changing the syllabus structure.',
+                'Keep every lesson connected to the real class, subject, chapter and topics. If something is missing, add it while planning without losing your lesson draft.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: colors.inkMuted,
                   height: 1.4,
@@ -382,11 +540,7 @@ class _LessonHeader extends StatelessWidget {
           final action = FilledButton.icon(
             onPressed: onCreate,
             icon: const Icon(Icons.add_rounded),
-            label: Text(
-              workspace.activeClasses.isEmpty
-                  ? 'Add syllabus first'
-                  : 'New lesson',
-            ),
+            label: const Text('New lesson'),
           );
 
           if (compact) {
@@ -532,52 +686,146 @@ class _Filters extends StatelessWidget {
 }
 
 class _LessonSummary extends StatelessWidget {
-  const _LessonSummary({required this.workspace});
+  const _LessonSummary({required this.workspace, this.classId});
   final TeachingPlannerWorkspace workspace;
+  final String? classId;
 
   @override
   Widget build(BuildContext context) {
-    final lessons = workspace.activeLessonPlans;
-    final completed = lessons
+    final visibleClassIds = classId == null
+        ? workspace.activeClasses.map((item) => item.id).toSet()
+        : <String>{classId!};
+    final subjects = workspace.subjects
+        .where(
+          (item) =>
+              !item.isArchived && visibleClassIds.contains(item.classId),
+        )
+        .toList();
+    final subjectIds = subjects.map((item) => item.id).toSet();
+    final chapters = workspace.chapters
+        .where(
+          (item) =>
+              !item.isArchived && subjectIds.contains(item.subjectId),
+        )
+        .toList();
+    final completed = chapters
         .where((item) => item.status == TeachingProgressStatus.completed)
         .length;
-    final plannedPeriods = lessons.fold<int>(
-      0,
-      (sum, item) => sum + item.plannedPeriods,
-    );
+    final inProgress = chapters
+        .where((item) => item.status == TeachingProgressStatus.inProgress)
+        .length;
+    final coverage = chapters.isEmpty ? 0.0 : completed / chapters.length;
+    final units = workspace.units
+        .where(
+          (item) =>
+              !item.isArchived && subjectIds.contains(item.subjectId),
+        )
+        .toList()
+      ..sort((a, b) {
+        final bySubject = a.subjectId.compareTo(b.subjectId);
+        return bySubject != 0
+            ? bySubject
+            : a.sortOrder.compareTo(b.sortOrder);
+      });
+
     return TeachingPlannerSurfaceCard(
       padding: const EdgeInsets.all(TeachingPlannerDesign.space16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const TeachingPlannerSectionHeader(
-            title: 'Lesson overview',
-            subtitle: 'Live totals from your active lesson plans.',
-            icon: Icons.insights_outlined,
+            title: 'Syllabus progress',
+            subtitle: 'Chapter completion rolls up automatically by unit.',
+            icon: Icons.track_changes_outlined,
           ),
           const SizedBox(height: TeachingPlannerDesign.space14),
           _SummaryMetric(
-            label: 'Active lessons',
-            value: '${lessons.length}',
-            icon: Icons.menu_book_outlined,
-            tone: TeachingPlannerTone.primary,
-          ),
-          const SizedBox(height: TeachingPlannerDesign.space10),
-          _SummaryMetric(
-            label: 'Completed',
-            value: '$completed',
+            label: 'Chapters complete',
+            value: '$completed/${chapters.length}',
             icon: Icons.task_alt_rounded,
             tone: TeachingPlannerTone.teal,
           ),
           const SizedBox(height: TeachingPlannerDesign.space10),
           _SummaryMetric(
-            label: 'Planned periods',
-            value: '$plannedPeriods',
-            icon: Icons.schedule_outlined,
-            tone: TeachingPlannerTone.purple,
+            label: 'In progress',
+            value: '$inProgress',
+            icon: Icons.timelapse_rounded,
+            tone: TeachingPlannerTone.orange,
           ),
+          const SizedBox(height: TeachingPlannerDesign.space12),
+          LinearProgressIndicator(value: coverage),
+          const SizedBox(height: TeachingPlannerDesign.space16),
+          if (units.isNotEmpty) ...[
+            Text(
+              'Units',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space8),
+            for (final unit in units.take(6)) ...[
+              _UnitProgressRow(
+                label: subjects.length > 1
+                    ? '${workspace.subjectById(unit.subjectId)?.name ?? 'Subject'} • ${unit.title}'
+                    : unit.title,
+                chapters: chapters
+                    .where((item) => item.unitId == unit.id)
+                    .toList(),
+              ),
+              const SizedBox(height: TeachingPlannerDesign.space8),
+            ],
+          ],
         ],
       ),
+    );
+  }
+}
+
+class _UnitProgressRow extends StatelessWidget {
+  const _UnitProgressRow({required this.label, required this.chapters});
+
+  final String label;
+  final List<PlannerChapter> chapters;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = chapters
+        .where((item) => item.status == TeachingProgressStatus.completed)
+        .length;
+    final inProgress = chapters
+        .where((item) => item.status == TeachingProgressStatus.inProgress)
+        .length;
+    final progress = chapters.isEmpty ? 0.0 : completed / chapters.length;
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+            ),
+            const SizedBox(width: TeachingPlannerDesign.space8),
+            Text(
+              '${chapters.isNotEmpty && completed == chapters.length ? '✓ ' : ''}$completed/${chapters.length}${inProgress > 0 ? ' • $inProgress active' : ''}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.inkMuted,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: TeachingPlannerDesign.space4),
+        LinearProgressIndicator(value: progress),
+      ],
     );
   }
 }
@@ -644,6 +892,9 @@ class _LessonList extends StatelessWidget {
     required this.lessons,
     required this.onOpen,
     required this.onEdit,
+    required this.onMarkTaught,
+    required this.onReopen,
+    required this.onChapterStatus,
     required this.onArchive,
     required this.onMaterials,
   });
@@ -651,6 +902,9 @@ class _LessonList extends StatelessWidget {
   final List<LessonPlan> lessons;
   final ValueChanged<LessonPlan> onOpen;
   final ValueChanged<LessonPlan> onEdit;
+  final ValueChanged<LessonPlan> onMarkTaught;
+  final ValueChanged<LessonPlan> onReopen;
+  final void Function(LessonPlan, TeachingProgressStatus) onChapterStatus;
   final ValueChanged<LessonPlan> onArchive;
   final ValueChanged<LessonPlan> onMaterials;
 
@@ -664,27 +918,115 @@ class _LessonList extends StatelessWidget {
       );
     }
 
+    final groups = <DateTime, List<LessonPlan>>{};
+    for (final lesson in lessons) {
+      final local = lesson.plannedDate.toLocal();
+      final day = DateTime(local.year, local.month, local.day);
+      groups.putIfAbsent(day, () => <LessonPlan>[]).add(lesson);
+    }
+    final days = groups.keys.toList()..sort();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TeachingPlannerSectionHeader(
-          title: 'Lessons',
+          title: 'Teaching days',
           subtitle:
-              '${lessons.length} matching lesson${lessons.length == 1 ? '' : 's'}',
-          icon: Icons.view_agenda_outlined,
+              '${lessons.length} lesson${lessons.length == 1 ? '' : 's'} grouped by date. One class can finish one chapter and start another.',
+          icon: Icons.today_outlined,
         ),
         const SizedBox(height: TeachingPlannerDesign.space12),
+        for (var dayIndex = 0; dayIndex < days.length; dayIndex++) ...[
+          _TeachingDayGroup(
+            day: days[dayIndex],
+            lessons: groups[days[dayIndex]]!,
+            workspace: workspace,
+            onOpen: onOpen,
+            onEdit: onEdit,
+            onMarkTaught: onMarkTaught,
+            onReopen: onReopen,
+            onChapterStatus: onChapterStatus,
+            onArchive: onArchive,
+            onMaterials: onMaterials,
+          ),
+          if (dayIndex != days.length - 1)
+            const SizedBox(height: TeachingPlannerDesign.space16),
+        ],
+      ],
+    );
+  }
+}
+
+class _TeachingDayGroup extends StatelessWidget {
+  const _TeachingDayGroup({
+    required this.day,
+    required this.lessons,
+    required this.workspace,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onMarkTaught,
+    required this.onReopen,
+    required this.onChapterStatus,
+    required this.onArchive,
+    required this.onMaterials,
+  });
+
+  final DateTime day;
+  final List<LessonPlan> lessons;
+  final TeachingPlannerWorkspace workspace;
+  final ValueChanged<LessonPlan> onOpen;
+  final ValueChanged<LessonPlan> onEdit;
+  final ValueChanged<LessonPlan> onMarkTaught;
+  final ValueChanged<LessonPlan> onReopen;
+  final void Function(LessonPlan, TeachingProgressStatus) onChapterStatus;
+  final ValueChanged<LessonPlan> onArchive;
+  final ValueChanged<LessonPlan> onMaterials;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = lessons
+        .where((item) => item.status == TeachingProgressStatus.completed)
+        .length;
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _friendlyDateLabel(day),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: colors.ink,
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+            ),
+            Text(
+              '$completed/${lessons.length} taught',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.inkMuted,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: TeachingPlannerDesign.space8),
         for (var index = 0; index < lessons.length; index++) ...[
           _LessonCard(
             workspace: workspace,
             lesson: lessons[index],
             onOpen: () => onOpen(lessons[index]),
             onEdit: () => onEdit(lessons[index]),
+            onMarkTaught: () => onMarkTaught(lessons[index]),
+            onReopen: () => onReopen(lessons[index]),
+            onChapterStatus: (status) =>
+                onChapterStatus(lessons[index], status),
             onArchive: () => onArchive(lessons[index]),
             onMaterials: () => onMaterials(lessons[index]),
           ),
           if (index != lessons.length - 1)
-            const SizedBox(height: TeachingPlannerDesign.space12),
+            const SizedBox(height: TeachingPlannerDesign.space10),
         ],
       ],
     );
@@ -697,6 +1039,9 @@ class _LessonCard extends StatelessWidget {
     required this.lesson,
     required this.onOpen,
     required this.onEdit,
+    required this.onMarkTaught,
+    required this.onReopen,
+    required this.onChapterStatus,
     required this.onArchive,
     required this.onMaterials,
   });
@@ -705,6 +1050,9 @@ class _LessonCard extends StatelessWidget {
   final LessonPlan lesson;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
+  final VoidCallback onMarkTaught;
+  final VoidCallback onReopen;
+  final ValueChanged<TeachingProgressStatus> onChapterStatus;
   final VoidCallback onArchive;
   final VoidCallback onMaterials;
 
@@ -713,26 +1061,34 @@ class _LessonCard extends StatelessWidget {
     final colors = TeachingPlannerTheme.colorsOf(context);
     final plannerClass = workspace.classById(lesson.classId)?.name ?? 'Class';
     final subject = workspace.subjectById(lesson.subjectId)?.name ?? 'Subject';
-    final chapter = workspace.chapterById(lesson.chapterId)?.title ?? 'Chapter';
+    final chapter = workspace.chapterById(lesson.chapterId);
+    final chapterTitle = chapter?.title ?? 'Chapter';
+    final unit = chapter?.unitId == null
+        ? null
+        : workspace.unitById(chapter!.unitId!);
     final tone = _toneForStatus(lesson.status);
+    final taught = lesson.status == TeachingProgressStatus.completed;
 
     return TeachingPlannerSurfaceCard(
       key: ValueKey('lesson-card-${lesson.id}'),
       onTap: onOpen,
-      padding: const EdgeInsets.all(TeachingPlannerDesign.space16),
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TeachingPlannerIconBadge(
-                icon: Icons.menu_book_rounded,
-                tone: tone,
-                size: 42,
-                iconSize: 21,
+              Semantics(
+                label: taught ? 'Mark lesson not taught' : 'Mark lesson taught',
+                button: true,
+                child: Checkbox(
+                  key: ValueKey('lesson-taught-${lesson.id}'),
+                  value: taught,
+                  onChanged: (_) => taught ? onReopen() : onMarkTaught(),
+                ),
               ),
-              const SizedBox(width: TeachingPlannerDesign.space12),
+              const SizedBox(width: TeachingPlannerDesign.space4),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -740,74 +1096,122 @@ class _LessonCard extends StatelessWidget {
                     Text(
                       lesson.title,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: colors.ink,
-                        fontWeight: FontWeight.w900,
-                      ),
+                            color: colors.ink,
+                            fontWeight: FontWeight.w900,
+                            decoration:
+                                taught ? TextDecoration.lineThrough : null,
+                          ),
                     ),
                     const SizedBox(height: TeachingPlannerDesign.space4),
                     Text(
-                      '$plannerClass • $subject • $chapter',
+                      '$plannerClass • $subject${unit == null ? '' : ' • ${unit.title}'} • $chapterTitle',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: colors.inkMuted),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: colors.inkMuted),
                     ),
                   ],
                 ),
               ),
               PopupMenuButton<String>(
                 tooltip: 'Lesson actions',
-                onSelected: (value) => value == 'edit' ? onEdit() : onArchive(),
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  PopupMenuItem(value: 'archive', child: Text('Archive')),
+                onSelected: (value) {
+                  switch (value) {
+                    case 'edit':
+                      onEdit();
+                      break;
+                    case 'chapter-progress':
+                      onChapterStatus(TeachingProgressStatus.inProgress);
+                      break;
+                    case 'chapter-complete':
+                      onChapterStatus(TeachingProgressStatus.completed);
+                      break;
+                    case 'chapter-reopen':
+                      onChapterStatus(TeachingProgressStatus.inProgress);
+                      break;
+                    case 'chapter-reset':
+                      onChapterStatus(TeachingProgressStatus.planned);
+                      break;
+                    case 'archive':
+                      onArchive();
+                      break;
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Text('Edit / move date'),
+                  ),
+                  if (chapter?.status != TeachingProgressStatus.inProgress &&
+                      chapter?.status != TeachingProgressStatus.completed)
+                    const PopupMenuItem(
+                      value: 'chapter-progress',
+                      child: Text('Chapter in progress'),
+                    ),
+                  if (chapter?.status != TeachingProgressStatus.completed)
+                    const PopupMenuItem(
+                      value: 'chapter-complete',
+                      child: Text('Finish chapter'),
+                    )
+                  else
+                    const PopupMenuItem(
+                      value: 'chapter-reopen',
+                      child: Text('Reopen chapter'),
+                    ),
+                  if (chapter?.status == TeachingProgressStatus.inProgress)
+                    const PopupMenuItem(
+                      value: 'chapter-reset',
+                      child: Text('Reset chapter progress'),
+                    ),
+                  const PopupMenuItem(value: 'archive', child: Text('Archive')),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: TeachingPlannerDesign.space12),
+          const SizedBox(height: TeachingPlannerDesign.space8),
           Wrap(
             spacing: TeachingPlannerDesign.space8,
             runSpacing: TeachingPlannerDesign.space8,
             children: [
               TeachingPlannerPill(
-                label: _dateLabel(lesson.plannedDate),
-                icon: Icons.calendar_today_outlined,
-              ),
-              TeachingPlannerPill(
-                label: '${lesson.plannedPeriods} periods',
+                label: '${lesson.plannedPeriods} period${lesson.plannedPeriods == 1 ? '' : 's'}',
                 icon: Icons.schedule_outlined,
                 tone: TeachingPlannerTone.purple,
               ),
               TeachingPlannerPill(
-                label: _statusLabel(lesson.status),
+                label: taught ? 'Taught' : _statusLabel(lesson.status),
                 tone: tone,
               ),
-              if (lesson.topicIds.isNotEmpty)
-                TeachingPlannerPill(
-                  label: '${lesson.topicIds.length} topics',
-                  icon: Icons.topic_outlined,
-                  tone: TeachingPlannerTone.teal,
+              TeachingPlannerPill(
+                label: _chapterStatusLabel(chapter?.status),
+                icon: Icons.account_tree_outlined,
+                tone: _toneForStatus(
+                  chapter?.status ?? TeachingProgressStatus.planned,
                 ),
+              ),
             ],
           ),
-          const SizedBox(height: TeachingPlannerDesign.space12),
-          Text(
-            lesson.objective,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: colors.ink, height: 1.4),
-          ),
-          const SizedBox(height: TeachingPlannerDesign.space12),
+          if (lesson.objective.trim().isNotEmpty) ...[
+            const SizedBox(height: TeachingPlannerDesign.space10),
+            Text(
+              lesson.objective,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: colors.ink, height: 1.35),
+            ),
+          ],
+          const SizedBox(height: TeachingPlannerDesign.space10),
           Align(
             alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
+            child: TextButton.icon(
               onPressed: onMaterials,
               icon: const Icon(Icons.inventory_2_outlined),
-              label: const Text('Teaching materials'),
+              label: const Text('Materials'),
             ),
           ),
         ],
@@ -816,7 +1220,7 @@ class _LessonCard extends StatelessWidget {
   }
 }
 
-class _LessonEditorSheet extends StatefulWidget {
+class _LessonEditorSheet extends ConsumerStatefulWidget {
   const _LessonEditorSheet({
     required this.workspace,
     this.lesson,
@@ -832,10 +1236,10 @@ class _LessonEditorSheet extends StatefulWidget {
   final String? initialChapterId;
   final DateTime? initialPlannedDate;
   @override
-  State<_LessonEditorSheet> createState() => _LessonEditorSheetState();
+  ConsumerState<_LessonEditorSheet> createState() => _LessonEditorSheetState();
 }
 
-class _LessonEditorSheetState extends State<_LessonEditorSheet> {
+class _LessonEditorSheetState extends ConsumerState<_LessonEditorSheet> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _title;
   late final TextEditingController _periods;
@@ -847,6 +1251,9 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
   String? _classId;
   String? _subjectId;
   String? _chapterId;
+  String? _preferredUnitId;
+  String? _autoTitle;
+  int _selectionRevision = 0;
   late Set<String> _topicIds;
   late DateTime _date;
   late TeachingProgressStatus _status;
@@ -883,7 +1290,8 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
         widget.initialPlannedDate?.toLocal() ??
         DateTime.now();
     _status = lesson?.status ?? TeachingProgressStatus.planned;
-    _normalizeSelections();
+    _normalizeSelections(widget.workspace);
+    if (lesson == null) _seedTitleFromChapter(widget.workspace);
   }
 
   @override
@@ -902,55 +1310,313 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
     super.dispose();
   }
 
-  void _normalizeSelections() {
+  void _normalizeSelections([TeachingPlannerWorkspace? source]) {
+    final workspace = source ?? ref.read(teachingPlannerProvider).workspace;
     final subjects = _classId == null
         ? const []
-        : widget.workspace.activeSubjectsForClass(_classId!);
+        : workspace.activeSubjectsForClass(_classId!);
     if (_subjectId == null || !subjects.any((item) => item.id == _subjectId)) {
       _subjectId = subjects.isEmpty ? null : subjects.first.id;
     }
-    final chapters = _chaptersForSelectedSubject();
+    final units = _subjectId == null
+        ? const []
+        : workspace.activeUnitsForSubject(_subjectId!);
+    if (_preferredUnitId != null &&
+        !units.any((item) => item.id == _preferredUnitId)) {
+      _preferredUnitId = null;
+    }
+    final chapters = _chaptersForSelectedSubject(workspace);
     if (_chapterId == null || !chapters.any((item) => item.id == _chapterId)) {
       _chapterId = chapters.isEmpty ? null : chapters.first.id;
     }
     final validTopicIds = _chapterId == null
         ? <String>{}
-        : widget.workspace
+        : workspace
               .activeTopicsForChapter(_chapterId!)
               .map((item) => item.id)
               .toSet();
     _topicIds = _topicIds.intersection(validTopicIds);
   }
 
-  List<PlannerChapter> _chaptersForSelectedSubject() {
+  List<PlannerChapter> _chaptersForSelectedSubject(
+    TeachingPlannerWorkspace workspace,
+  ) {
     if (_subjectId == null) return <PlannerChapter>[];
-    final result = widget.workspace.chapters
-        .where((item) => item.subjectId == _subjectId && !item.isArchived)
-        .toList();
-    result.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final result = <PlannerChapter>[];
+    for (final unit in workspace.activeUnitsForSubject(_subjectId!)) {
+      result.addAll(
+        workspace.activeChaptersForSubject(
+          _subjectId!,
+          unitId: unit.id,
+        ),
+      );
+    }
+    result.addAll(
+      workspace.activeChaptersForSubject(_subjectId!, unitId: null),
+    );
     return result;
+  }
+
+  void _seedTitleFromChapter([TeachingPlannerWorkspace? source]) {
+    if (widget.lesson != null || _chapterId == null) return;
+    final workspace = source ?? ref.read(teachingPlannerProvider).workspace;
+    final chapter = workspace.chapterById(_chapterId!);
+    if (chapter == null) return;
+    final current = _title.text.trim();
+    if (current.isEmpty || current == _autoTitle) {
+      _title.text = chapter.title;
+    }
+    _autoTitle = chapter.title;
+  }
+
+  String _chapterLabel(
+    TeachingPlannerWorkspace workspace,
+    PlannerChapter chapter,
+  ) {
+    final unit = chapter.unitId == null
+        ? null
+        : workspace.unitById(chapter.unitId!);
+    return unit == null ? chapter.title : '${unit.title} · ${chapter.title}';
+  }
+
+
+  T? _findCreated<T>(
+    Iterable<T> values,
+    Set<String> beforeIds,
+    String Function(T value) idOf,
+  ) {
+    for (final value in values.toList().reversed) {
+      if (!beforeIds.contains(idOf(value))) return value;
+    }
+    return null;
+  }
+
+  void _showMutationError() {
+    final message = ref.read(teachingPlannerProvider).errorMessage;
+    if (message == null || !mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _quickAddClass() async {
+    final input = await showDialog<_QuickNameDraft>(
+      context: context,
+      builder: (context) => const _QuickNameDialog(
+        title: 'Add class',
+        label: 'Class name',
+        hintText: 'For example, Class 8A',
+        secondaryLabel: 'Academic year (optional)',
+        secondaryHintText: 'For example, 2026–27',
+      ),
+    );
+    if (input == null || !mounted) return;
+
+    final before = ref.read(teachingPlannerProvider).workspace;
+    final beforeIds = before.classes.map((item) => item.id).toSet();
+    final saved = await ref.read(teachingPlannerProvider.notifier).createClass(
+          name: input.name,
+          academicYear: input.secondary,
+        );
+    if (!mounted) return;
+    if (!saved) {
+      _showMutationError();
+      return;
+    }
+    final fresh = ref.read(teachingPlannerProvider).workspace;
+    final created = _findCreated(
+      fresh.activeClasses,
+      beforeIds,
+      (item) => item.id,
+    );
+    if (created == null) return;
+    setState(() {
+      _classId = created.id;
+      _subjectId = null;
+      _chapterId = null;
+      _preferredUnitId = null;
+      _topicIds.clear();
+      _selectionRevision++;
+      _normalizeSelections(fresh);
+    });
+  }
+
+  Future<void> _quickAddSubject() async {
+    if (_classId == null) return;
+    final input = await showDialog<_QuickNameDraft>(
+      context: context,
+      builder: (context) => const _QuickNameDialog(
+        title: 'Add subject',
+        label: 'Subject name',
+        hintText: 'For example, Mathematics',
+      ),
+    );
+    if (input == null || !mounted) return;
+
+    final before = ref.read(teachingPlannerProvider).workspace;
+    final beforeIds = before.subjects.map((item) => item.id).toSet();
+    final saved = await ref.read(teachingPlannerProvider.notifier).createSubject(
+          classId: _classId!,
+          name: input.name,
+        );
+    if (!mounted) return;
+    if (!saved) {
+      _showMutationError();
+      return;
+    }
+    final fresh = ref.read(teachingPlannerProvider).workspace;
+    final created = _findCreated(
+      fresh.activeSubjectsForClass(_classId!),
+      beforeIds,
+      (item) => item.id,
+    );
+    if (created == null) return;
+    setState(() {
+      _subjectId = created.id;
+      _chapterId = null;
+      _preferredUnitId = null;
+      _topicIds.clear();
+      _selectionRevision++;
+      _normalizeSelections(fresh);
+    });
+  }
+
+  Future<void> _quickAddUnit() async {
+    if (_subjectId == null) return;
+    final input = await showDialog<_QuickNameDraft>(
+      context: context,
+      builder: (context) => const _QuickNameDialog(
+        title: 'Add unit',
+        label: 'Unit name',
+        hintText: 'For example, Algebra',
+      ),
+    );
+    if (input == null || !mounted) return;
+
+    final before = ref.read(teachingPlannerProvider).workspace;
+    final beforeIds = before.units.map((item) => item.id).toSet();
+    final saved = await ref.read(teachingPlannerProvider.notifier).createUnit(
+          subjectId: _subjectId!,
+          title: input.name,
+        );
+    if (!mounted) return;
+    if (!saved) {
+      _showMutationError();
+      return;
+    }
+    final fresh = ref.read(teachingPlannerProvider).workspace;
+    final created = _findCreated(
+      fresh.activeUnitsForSubject(_subjectId!),
+      beforeIds,
+      (item) => item.id,
+    );
+    if (created == null) return;
+    setState(() {
+      _preferredUnitId = created.id;
+    });
+  }
+
+  Future<void> _quickAddChapter() async {
+    if (_subjectId == null) return;
+    final current = ref.read(teachingPlannerProvider).workspace;
+    final currentChapter = _chapterId == null
+        ? null
+        : current.chapterById(_chapterId!);
+    final input = await showDialog<_QuickChapterDraft>(
+      context: context,
+      builder: (context) => _QuickChapterDialog(
+        units: current.activeUnitsForSubject(_subjectId!),
+        initialUnitId: _preferredUnitId ?? currentChapter?.unitId,
+      ),
+    );
+    if (input == null || !mounted) return;
+
+    final before = ref.read(teachingPlannerProvider).workspace;
+    final beforeIds = before.chapters.map((item) => item.id).toSet();
+    final saved = await ref.read(teachingPlannerProvider.notifier).createChapter(
+          subjectId: _subjectId!,
+          unitId: input.unitId,
+          title: input.title,
+        );
+    if (!mounted) return;
+    if (!saved) {
+      _showMutationError();
+      return;
+    }
+    final fresh = ref.read(teachingPlannerProvider).workspace;
+    final created = _findCreated(
+      _chaptersForSelectedSubject(fresh),
+      beforeIds,
+      (item) => item.id,
+    );
+    if (created == null) return;
+    setState(() {
+      _chapterId = created.id;
+      _preferredUnitId = input.unitId;
+      _topicIds.clear();
+      _selectionRevision++;
+      _seedTitleFromChapter(fresh);
+    });
+  }
+
+  Future<void> _quickAddTopic() async {
+    if (_chapterId == null) return;
+    final input = await showDialog<_QuickNameDraft>(
+      context: context,
+      builder: (context) => const _QuickNameDialog(
+        title: 'Add topic',
+        label: 'Topic name',
+        hintText: 'For example, Solving one-step equations',
+      ),
+    );
+    if (input == null || !mounted) return;
+
+    final before = ref.read(teachingPlannerProvider).workspace;
+    final beforeIds = before.topics.map((item) => item.id).toSet();
+    final saved = await ref.read(teachingPlannerProvider.notifier).createTopic(
+          chapterId: _chapterId!,
+          title: input.name,
+        );
+    if (!mounted) return;
+    if (!saved) {
+      _showMutationError();
+      return;
+    }
+    final fresh = ref.read(teachingPlannerProvider).workspace;
+    final created = _findCreated(
+      fresh.activeTopicsForChapter(_chapterId!),
+      beforeIds,
+      (item) => item.id,
+    );
+    if (created == null) return;
+    setState(() {
+      _topicIds.add(created.id);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final plannerState = ref.watch(teachingPlannerProvider);
+    final workspace = plannerState.workspace;
     final subjects = _classId == null
         ? const []
-        : widget.workspace.activeSubjectsForClass(_classId!);
-    final chapters = _chaptersForSelectedSubject();
+        : workspace.activeSubjectsForClass(_classId!);
+    final chapters = _chaptersForSelectedSubject(workspace);
     final topics = _chapterId == null
         ? const []
-        : widget.workspace.activeTopicsForChapter(_chapterId!);
+        : workspace.activeTopicsForChapter(_chapterId!);
     final editing = widget.lesson != null;
 
     return TeachingPlannerSheetFrame(
-      title: editing ? 'Edit lesson' : 'Create lesson',
-      subtitle:
-          'Link the lesson to the existing syllabus, then add only the teaching details you actually need.',
+      title: editing ? 'Edit lesson' : 'Plan lesson',
+      subtitle: editing
+          ? 'Adjust the chapter, date or details. Your syllabus structure stays unchanged.'
+          : 'Pick what you will teach and when. If something is missing, add it here without leaving the lesson.',
       icon: Icons.edit_calendar_rounded,
       action: FilledButton.icon(
         onPressed: _submit,
-        icon: const Icon(Icons.save_outlined),
-        label: Text(editing ? 'Save lesson' : 'Create lesson'),
+        icon: const Icon(Icons.check_rounded),
+        label: Text(editing ? 'Save changes' : 'Plan lesson'),
       ),
       child: Form(
         key: _formKey,
@@ -958,13 +1624,13 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const TeachingPlannerSectionHeader(
-              title: 'Syllabus link',
-              subtitle:
-                  'Choose the real class, subject and chapter for this lesson.',
+              title: 'What will you teach?',
+              subtitle: 'Select the syllabus chapter. Unit is inferred automatically.',
               icon: Icons.account_tree_outlined,
             ),
             const SizedBox(height: TeachingPlannerDesign.space12),
             LayoutBuilder(
+              key: ValueKey('lesson-editor-hierarchy-$_selectionRevision'),
               builder: (context, constraints) {
                 final compact = constraints.maxWidth < 660;
                 final classField = DropdownButtonFormField<String>(
@@ -972,7 +1638,7 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                   initialValue: _classId,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Class'),
-                  items: widget.workspace.activeClasses
+                  items: workspace.activeClasses
                       .map(
                         (item) => DropdownMenuItem<String>(
                           value: item.id,
@@ -989,7 +1655,9 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                     _subjectId = null;
                     _chapterId = null;
                     _topicIds.clear();
-                    _normalizeSelections();
+                    _preferredUnitId = null;
+                    _normalizeSelections(workspace);
+                    _seedTitleFromChapter(workspace);
                   }),
                   validator: (value) =>
                       value == null ? 'Choose a class.' : null,
@@ -1015,7 +1683,9 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                     _subjectId = value;
                     _chapterId = null;
                     _topicIds.clear();
-                    _normalizeSelections();
+                    _preferredUnitId = null;
+                    _normalizeSelections(workspace);
+                    _seedTitleFromChapter(workspace);
                   }),
                   validator: (value) =>
                       value == null ? 'Choose a subject.' : null,
@@ -1030,7 +1700,7 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                         (item) => DropdownMenuItem<String>(
                           value: item.id,
                           child: Text(
-                            item.title,
+                            _chapterLabel(workspace, item),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1040,6 +1710,7 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                   onChanged: (value) => setState(() {
                     _chapterId = value;
                     _topicIds.clear();
+                    _seedTitleFromChapter(workspace);
                   }),
                   validator: (value) =>
                       value == null ? 'Choose a chapter.' : null,
@@ -1067,138 +1738,213 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
                 );
               },
             ),
-            if (topics.isNotEmpty) ...[
-              const SizedBox(height: TeachingPlannerDesign.space14),
-              Text(
-                'Topics (optional)',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            if (!editing) ...[
+              const SizedBox(height: TeachingPlannerDesign.space10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Missing something? Add it here — this lesson draft stays open.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: TeachingPlannerTheme.colorsOf(context).inkMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
               ),
               const SizedBox(height: TeachingPlannerDesign.space8),
-              Wrap(
-                spacing: TeachingPlannerDesign.space8,
-                runSpacing: TeachingPlannerDesign.space8,
-                children: topics
-                    .map(
-                      (topic) => FilterChip(
-                        selected: _topicIds.contains(topic.id),
-                        label: Text(topic.title),
-                        onSelected: (selected) => setState(
-                          () => selected
-                              ? _topicIds.add(topic.id)
-                              : _topicIds.remove(topic.id),
-                        ),
-                      ),
-                    )
-                    .toList(),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: TeachingPlannerDesign.space6,
+                  runSpacing: TeachingPlannerDesign.space6,
+                  children: [
+                    TextButton.icon(
+                      key: const ValueKey('lesson-quick-add-class'),
+                      onPressed: _quickAddClass,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Class'),
+                    ),
+                    TextButton.icon(
+                      key: const ValueKey('lesson-quick-add-subject'),
+                      onPressed: _classId == null ? null : _quickAddSubject,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Subject'),
+                    ),
+                    TextButton.icon(
+                      key: const ValueKey('lesson-quick-add-unit'),
+                      onPressed: _subjectId == null ? null : _quickAddUnit,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Unit'),
+                    ),
+                    TextButton.icon(
+                      key: const ValueKey('lesson-quick-add-chapter'),
+                      onPressed: _subjectId == null ? null : _quickAddChapter,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Chapter'),
+                    ),
+                    TextButton.icon(
+                      key: const ValueKey('lesson-quick-add-topic'),
+                      onPressed: _chapterId == null ? null : _quickAddTopic,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Topic'),
+                    ),
+                  ],
+                ),
               ),
+              if (_preferredUnitId != null &&
+                  workspace.unitById(_preferredUnitId!) != null) ...[
+                const SizedBox(height: TeachingPlannerDesign.space6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TeachingPlannerPill(
+                    label:
+                        'New chapter unit: ${workspace.unitById(_preferredUnitId!)!.title}',
+                    icon: Icons.folder_outlined,
+                    tone: TeachingPlannerTone.primary,
+                  ),
+                ),
+              ],
             ],
-            const SizedBox(height: TeachingPlannerDesign.space20),
+            const SizedBox(height: TeachingPlannerDesign.space18),
             const TeachingPlannerSectionHeader(
-              title: 'Teaching plan',
-              subtitle:
-                  'Title, objective, timing and status stay editable without changing syllabus data.',
-              icon: Icons.fact_check_outlined,
+              title: 'When?',
+              subtitle: 'Today and one period are the default.',
+              icon: Icons.today_outlined,
             ),
             const SizedBox(height: TeachingPlannerDesign.space12),
-            TextFormField(
-              controller: _title,
-              decoration: const InputDecoration(labelText: 'Lesson title'),
-              validator: _required,
-            ),
-            const SizedBox(height: TeachingPlannerDesign.space10),
-            TextFormField(
-              controller: _objective,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Learning objective',
-              ),
-              validator: _required,
-            ),
-            const SizedBox(height: TeachingPlannerDesign.space10),
             LayoutBuilder(
               builder: (context, constraints) {
-                final compact = constraints.maxWidth < 620;
+                final compact = constraints.maxWidth < 500;
                 final dateButton = OutlinedButton.icon(
+                  key: const ValueKey('lesson-editor-date'),
                   onPressed: _pickDate,
                   icon: const Icon(Icons.calendar_today_outlined),
                   label: Text(_dateLabel(_date)),
                 );
                 final periodsField = TextFormField(
+                  key: const ValueKey('lesson-editor-periods'),
                   controller: _periods,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Periods'),
+                  decoration: const InputDecoration(
+                    labelText: 'Periods',
+                    prefixIcon: Icon(Icons.schedule_outlined),
+                  ),
                   validator: (value) {
                     final parsed = int.tryParse(value?.trim() ?? '');
-                    return parsed == null || parsed < 0
-                        ? 'Enter 0 or more.'
+                    return parsed == null || parsed < 1
+                        ? 'Enter 1 or more.'
                         : null;
                   },
                 );
-                final statusField =
-                    DropdownButtonFormField<TeachingProgressStatus>(
-                      initialValue: _status,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Status'),
-                      items: TeachingProgressStatus.values
-                          .map(
-                            (value) => DropdownMenuItem(
-                              value: value,
-                              child: Text(
-                                _statusLabel(value),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) =>
-                          setState(() => _status = value ?? _status),
-                    );
                 if (compact) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       dateButton,
                       const SizedBox(height: TeachingPlannerDesign.space10),
-                      Row(
-                        children: [
-                          Expanded(child: periodsField),
-                          const SizedBox(width: TeachingPlannerDesign.space10),
-                          Expanded(child: statusField),
-                        ],
-                      ),
+                      periodsField,
                     ],
                   );
                 }
                 return Row(
                   children: [
-                    dateButton,
+                    Expanded(child: dateButton),
                     const SizedBox(width: TeachingPlannerDesign.space10),
-                    SizedBox(width: 150, child: periodsField),
-                    const SizedBox(width: TeachingPlannerDesign.space10),
-                    Expanded(child: statusField),
+                    SizedBox(width: 180, child: periodsField),
                   ],
                 );
               },
             ),
-            const SizedBox(height: TeachingPlannerDesign.space20),
-            const TeachingPlannerSectionHeader(
-              title: 'Optional teaching details',
-              subtitle:
-                  'Use the fields that are useful for this lesson; blank fields remain blank.',
-              icon: Icons.notes_rounded,
+            const SizedBox(height: TeachingPlannerDesign.space16),
+            ExpansionTile(
+              key: const ValueKey('lesson-editor-more-details'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(
+                bottom: TeachingPlannerDesign.space8,
+              ),
+              title: const Text('Add teaching details (optional)'),
+              subtitle: const Text(
+                'Title, objective, topics, materials, activities, homework and notes',
+              ),
+              leading: const Icon(Icons.tune_rounded),
+              children: [
+                TextFormField(
+                  key: const ValueKey('lesson-editor-title'),
+                  controller: _title,
+                  decoration: const InputDecoration(
+                    labelText: 'Lesson title (optional)',
+                    helperText: 'Defaults to the selected chapter name.',
+                  ),
+                ),
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                TextFormField(
+                  controller: _objective,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Learning objective (optional)',
+                  ),
+                ),
+                if (topics.isNotEmpty) ...[
+                  const SizedBox(height: TeachingPlannerDesign.space12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Topics (optional)',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: TeachingPlannerDesign.space8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: TeachingPlannerDesign.space8,
+                      runSpacing: TeachingPlannerDesign.space8,
+                      children: topics
+                          .map(
+                            (topic) => FilterChip(
+                              selected: _topicIds.contains(topic.id),
+                              label: Text(topic.title),
+                              onSelected: (selected) => setState(
+                                () => selected
+                                    ? _topicIds.add(topic.id)
+                                    : _topicIds.remove(topic.id),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ],
+                if (editing) ...[
+                  const SizedBox(height: TeachingPlannerDesign.space10),
+                  DropdownButtonFormField<TeachingProgressStatus>(
+                    initialValue: _status,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Lesson status'),
+                    items: TeachingProgressStatus.values
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(_statusLabel(value)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _status = value ?? _status),
+                  ),
+                ],
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                _optionalField(_materials, 'Materials / resources'),
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                _optionalField(_activities, 'Teaching activities'),
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                _optionalField(_homework, 'Homework / follow-up'),
+                const SizedBox(height: TeachingPlannerDesign.space10),
+                _optionalField(_notes, 'Teacher notes'),
+              ],
             ),
-            const SizedBox(height: TeachingPlannerDesign.space12),
-            _optionalField(_materials, 'Materials / resources'),
-            const SizedBox(height: TeachingPlannerDesign.space10),
-            _optionalField(_activities, 'Teaching activities'),
-            const SizedBox(height: TeachingPlannerDesign.space10),
-            _optionalField(_homework, 'Homework / follow-up'),
-            const SizedBox(height: TeachingPlannerDesign.space10),
-            _optionalField(_notes, 'Teacher notes'),
           ],
         ),
       ),
@@ -1212,9 +1958,6 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
         maxLines: 5,
         decoration: InputDecoration(labelText: label),
       );
-
-  String? _required(String? value) =>
-      value == null || value.trim().isEmpty ? 'Required.' : null;
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -1233,6 +1976,13 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
         _chapterId == null) {
       return;
     }
+    final chapterTitle = ref
+            .read(teachingPlannerProvider)
+            .workspace
+            .chapterById(_chapterId!)
+            ?.title ??
+        'Lesson';
+    final title = _title.text.trim().isEmpty ? chapterTitle : _title.text.trim();
     Navigator.pop(
       context,
       _LessonDraft(
@@ -1240,16 +1990,243 @@ class _LessonEditorSheetState extends State<_LessonEditorSheet> {
         subjectId: _subjectId!,
         chapterId: _chapterId!,
         topicIds: _topicIds.toList(),
-        title: _title.text.trim(),
+        title: title,
         plannedDate: _date,
         plannedPeriods: int.parse(_periods.text.trim()),
-        objective: _objective.text.trim(),
+        objective: _objective.text.trim().isEmpty
+            ? 'Teach $chapterTitle.'
+            : _objective.text.trim(),
         materials: _nullIfBlank(_materials.text),
         activities: _nullIfBlank(_activities.text),
         homework: _nullIfBlank(_homework.text),
         notes: _nullIfBlank(_notes.text),
         status: _status,
       ),
+    );
+  }
+}
+
+
+class _QuickNameDraft {
+  const _QuickNameDraft({required this.name, this.secondary});
+
+  final String name;
+  final String? secondary;
+}
+
+class _QuickNameDialog extends StatefulWidget {
+  const _QuickNameDialog({
+    required this.title,
+    required this.label,
+    this.hintText,
+    this.secondaryLabel,
+    this.secondaryHintText,
+  });
+
+  final String title;
+  final String label;
+  final String? hintText;
+  final String? secondaryLabel;
+  final String? secondaryHintText;
+
+  @override
+  State<_QuickNameDialog> createState() => _QuickNameDialogState();
+}
+
+class _QuickNameDialogState extends State<_QuickNameDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _secondary = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _secondary.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Form(
+        key: _formKey,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                key: const ValueKey('lesson-quick-add-name'),
+                controller: _name,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  labelText: widget.label,
+                  hintText: widget.hintText,
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? '${widget.label} is required.'
+                    : null,
+                onFieldSubmitted: (_) => _submit(),
+              ),
+              if (widget.secondaryLabel != null) ...[
+                const SizedBox(height: TeachingPlannerDesign.space12),
+                TextFormField(
+                  key: const ValueKey('lesson-quick-add-secondary'),
+                  controller: _secondary,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: widget.secondaryLabel,
+                    hintText: widget.secondaryHintText,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('lesson-quick-add-save'),
+          onPressed: _submit,
+          child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(
+      context,
+      _QuickNameDraft(
+        name: _name.text.trim(),
+        secondary: _secondary.text.trim().isEmpty
+            ? null
+            : _secondary.text.trim(),
+      ),
+    );
+  }
+}
+
+class _QuickChapterDraft {
+  const _QuickChapterDraft({required this.title, this.unitId});
+
+  final String title;
+  final String? unitId;
+}
+
+class _QuickChapterDialog extends StatefulWidget {
+  const _QuickChapterDialog({
+    required this.units,
+    this.initialUnitId,
+  });
+
+  final List<PlannerUnit> units;
+  final String? initialUnitId;
+
+  @override
+  State<_QuickChapterDialog> createState() => _QuickChapterDialogState();
+}
+
+class _QuickChapterDialogState extends State<_QuickChapterDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _title = TextEditingController();
+  String? _unitId;
+
+  @override
+  void initState() {
+    super.initState();
+    _unitId = widget.units.any((item) => item.id == widget.initialUnitId)
+        ? widget.initialUnitId
+        : null;
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add chapter'),
+      content: Form(
+        key: _formKey,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                key: const ValueKey('lesson-quick-add-chapter-name'),
+                controller: _title,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Chapter name',
+                  hintText: 'For example, Linear Equations',
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Chapter name is required.'
+                    : null,
+              ),
+              const SizedBox(height: TeachingPlannerDesign.space12),
+              DropdownButtonFormField<String?>(
+                key: const ValueKey('lesson-quick-add-chapter-unit'),
+                initialValue: _unitId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Unit (optional)',
+                  helperText: 'Leave empty if this chapter is not inside a unit.',
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('No unit'),
+                  ),
+                  ...widget.units.map(
+                    (unit) => DropdownMenuItem<String?>(
+                      value: unit.id,
+                      child: Text(
+                        unit.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+                onChanged: (value) => setState(() => _unitId = value),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('lesson-quick-add-chapter-save'),
+          onPressed: _submit,
+          child: const Text('Add chapter'),
+        ),
+      ],
+    );
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(
+      context,
+      _QuickChapterDraft(title: _title.text.trim(), unitId: _unitId),
     );
   }
 }
@@ -1301,6 +2278,24 @@ String _statusLabel(TeachingProgressStatus status) => switch (status) {
   TeachingProgressStatus.skipped => 'Skipped',
   TeachingProgressStatus.rescheduled => 'Rescheduled',
 };
+
+String _chapterStatusLabel(TeachingProgressStatus? status) => switch (status) {
+  TeachingProgressStatus.completed => 'Chapter complete',
+  TeachingProgressStatus.inProgress => 'Chapter in progress',
+  TeachingProgressStatus.skipped => 'Chapter skipped',
+  TeachingProgressStatus.rescheduled => 'Chapter moved',
+  _ => 'Chapter not started',
+};
+
+String _friendlyDateLabel(DateTime date) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final value = DateTime(date.year, date.month, date.day);
+  if (value == today) return 'Today';
+  if (value == today.add(const Duration(days: 1))) return 'Tomorrow';
+  if (value == today.subtract(const Duration(days: 1))) return 'Yesterday';
+  return _dateLabel(value);
+}
 
 String _dateLabel(DateTime date) =>
     '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';

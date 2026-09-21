@@ -7,6 +7,7 @@ import '../domain/models/curriculum_merge_state.dart';
 import '../domain/models/offline_sync_state.dart';
 import '../domain/models/teaching_planner_workspace.dart';
 import '../domain/models/teaching_resource.dart';
+import 'portable_attachment_manifest.dart';
 import 'portable_paper_snapshot.dart';
 import 'teaching_planner_document_codec.dart';
 
@@ -75,6 +76,16 @@ class TeachingPlannerBackupCodec {
     }
 
     final exportTime = exportedAt ?? DateTime.now();
+    final attachmentManifest = resourceFiles.isEmpty
+        ? const <String, dynamic>{}
+        : buildPortableAttachmentManifest(workspace.resources, resourceFiles);
+    if (attachmentManifest.isNotEmpty) {
+      verifyPortableAttachmentManifest(
+        resources: workspace.resources,
+        files: resourceFiles,
+        rawManifest: attachmentManifest,
+      );
+    }
     final payload = <String, dynamic>{
       'format': format,
       'version': targetVersion,
@@ -95,6 +106,8 @@ class TeachingPlannerBackupCodec {
           for (final entry in resourceFiles.entries)
             entry.key: base64Encode(entry.value),
         },
+      if (attachmentManifest.isNotEmpty)
+        'attachmentManifest': attachmentManifest,
       if (targetVersion >= 3 && paperSnapshots.isNotEmpty)
         'paperSnapshots': <String, dynamic>{
           for (final entry in paperSnapshots.entries)
@@ -173,6 +186,11 @@ class TeachingPlannerBackupCodec {
     }
     if (fileVersion >= 2) {
       _validateEmbeddedFileSet(workspace, resourceFiles.keys.toSet());
+      verifyPortableAttachmentManifest(
+        resources: workspace.resources,
+        files: resourceFiles,
+        rawManifest: json['attachmentManifest'],
+      );
     }
 
     final paperSnapshots = <String, PortablePaperSnapshot>{};

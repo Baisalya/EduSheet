@@ -3,19 +3,19 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:edusheet/shared/services/eds_export_file_saver.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:edusheet/features/editor/presentation/providers/editor_provider.dart';
 
 import '../../application/planner_insights_service.dart';
+import '../../application/teaching_planner_backup_export_service.dart';
 import '../../application/teaching_planner_backup_restore_service.dart';
-import '../../data/portable_paper_snapshot.dart';
 import '../../data/teaching_planner_backup_codec.dart';
 import '../../domain/models/curriculum_merge_state.dart';
 import '../../domain/models/offline_sync_state.dart';
 import '../../domain/models/teaching_planner_capabilities.dart';
-import '../../domain/models/teaching_resource.dart';
 import '../../domain/repositories/curriculum_merge_repository.dart';
 import '../../domain/repositories/offline_sync_repository.dart';
 import '../design/teaching_planner_design_system.dart';
@@ -84,11 +84,90 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
               onRestore: () => _restoreBackup(context, ref),
             ),
             const SizedBox(height: TeachingPlannerDesign.space16),
+            _AttachmentStorageCard(
+              onCheck: () => _checkAttachmentStorage(context, ref),
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space16),
             const _SafetyGuide(),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _checkAttachmentStorage(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    try {
+      final store = ref.read(teachingResourceFileStoreProvider);
+      final workspace = ref.read(teachingPlannerProvider).workspace;
+      final audit = await store.auditManagedStorage(workspace);
+      if (!context.mounted) return;
+      final clean = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.folder_copy_outlined),
+          title: const Text('Attachment storage health'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${audit.managedReferenceCount} managed attachment reference(s)'),
+                const SizedBox(height: 6),
+                Text('${audit.uniqueReferencedBlobCount} unique stored file(s)'),
+                const SizedBox(height: 6),
+                Text('${audit.missingManagedFileCount} missing managed file(s)'),
+                const SizedBox(height: 6),
+                Text('${audit.corruptManagedFileCount} file(s) failed integrity checks'),
+                const SizedBox(height: 6),
+                Text('${audit.orphanBlobCount} unused EduSheet file(s) can be cleaned'),
+                const SizedBox(height: 14),
+                const Text(
+                  'Cleanup removes only content-addressed EduSheet files that are no longer referenced by this planner. Linked originals and files still used by another lesson or syllabus item are never deleted.',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Close'),
+            ),
+            if (audit.orphanBlobCount > 0)
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(context, true),
+                icon: const Icon(Icons.cleaning_services_outlined),
+                label: const Text('Clean unused files'),
+              ),
+          ],
+        ),
+      );
+      if (clean != true || !context.mounted) return;
+      final cleaned = await store.auditManagedStorage(
+        workspace,
+        removeOrphanBlobs: true,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unused EduSheet attachment files cleaned. ${_formatStorageBytes(cleaned.reclaimedBytes)} reclaimed.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Attachment storage could not be checked. No files were changed.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
@@ -117,64 +196,44 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
           mergeState = snapshot.mergeState;
         }
       }
-      final store = ref.read(teachingResourceFileStoreProvider);
-      final resourceFiles = <String, List<int>>{};
-      for (final resource in workspace.resources) {
-        if (resource.kind != TeachingResourceKind.file) continue;
-        final relativePath = resource.localRelativePath;
-        if (relativePath == null || !await store.exists(relativePath)) {
-          throw FileSystemException(
-            'Attached teaching file is missing: ${resource.originalFileName ?? resource.title}',
-          );
-        }
-        resourceFiles[resource.id] = await store.readBytes(relativePath);
-      }
-
-      final paperRepository = ref.read(paperRepositoryProvider);
-      final savedPapers = await paperRepository.getAllPapers();
-      final papersById = {for (final paper in savedPapers) paper.id: paper};
-      final linkedPaperIds = workspace.resources
-          .where((resource) => resource.kind == TeachingResourceKind.paper)
-          .map((resource) => resource.linkedPaperId?.trim() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet();
-      final paperSnapshots = <String, PortablePaperSnapshot>{};
-      for (final paperId in linkedPaperIds) {
-        final paper = papersById[paperId];
-        if (paper == null) {
-          throw FormatException(
-            'Linked EduSheet paper is missing on this device: $paperId',
-          );
-        }
-        paperSnapshots[paperId] = await PortablePaperSnapshot.capture(paper);
-      }
-
-      final source = const TeachingPlannerBackupCodec().encode(
-        workspace,
-        resourceFiles: resourceFiles,
-        paperSnapshots: paperSnapshots,
+      final exportService = TeachingPlannerBackupExportService(
+        paperRepository: ref.read(paperRepositoryProvider),
+        resourceFileStore: ref.read(teachingResourceFileStoreProvider),
+      );
+      final preparation = await exportService.prepare(
+        workspace: workspace,
         mergeState: mergeState,
         syncState: syncState,
       );
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save EduSheet planner file',
-        fileName: 'EduSheet_Teaching_Planner.eds',
-        type: FileType.custom,
-        allowedExtensions: const [TeachingPlannerBackupCodec.fileExtension],
+
+      var allowRecovery = false;
+      if (preparation.needsRecoveryConfirmation) {
+        if (!context.mounted) return;
+        final confirmed = await _confirmRecoveryBackup(
+          context,
+          preparation.missingLinkedPapers,
+        );
+        if (!confirmed || !context.mounted) return;
+        allowRecovery = true;
+      }
+
+      final source = exportService.encode(
+        preparation,
+        allowRecovery: allowRecovery,
       );
-      if (path == null || !context.mounted) return;
-      final portablePath =
-          path.toLowerCase().endsWith(
-            '.${TeachingPlannerBackupCodec.fileExtension}',
-          )
-          ? path
-          : '$path.${TeachingPlannerBackupCodec.fileExtension}';
-      await File(portablePath).writeAsString(source, flush: true);
+      final portablePath = await EdsExportFileSaver().save(
+        source: source,
+        fileName: 'EduSheet_Teaching_Planner.eds',
+        dialogTitle: 'Save EduSheet planner file',
+      );
+      if (portablePath == null || !context.mounted) return;
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Planner file saved. Share the .eds file to move this workspace to another device.',
+            preparation.needsRecoveryConfirmation
+                ? 'Recovery planner file saved. ${preparation.missingLinkedPapers.length} missing linked paper${preparation.missingLinkedPapers.length == 1 ? '' : 's'} were not included. Your planner on this device was not changed.'
+                : 'Planner file saved. Share the .eds file to move this workspace to another device.',
           ),
         ),
       );
@@ -188,6 +247,70 @@ class PlannerInsightsBackupScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  Future<bool> _confirmRecoveryBackup(
+    BuildContext context,
+    List<MissingLinkedPaperReference> missingPapers,
+  ) async {
+    final count = missingPapers.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded),
+        title: Text(
+          count == 1
+              ? 'Linked Saved Paper is missing'
+              : 'Linked Saved Papers are missing',
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'EduSheet found $count planner paper link${count == 1 ? '' : 's'} whose Saved Paper is no longer present on this device. Your current planner has not been changed.',
+              ),
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 180),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final missing in missingPapers)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            '• ${missing.resourceTitle}${missing.linkedPaperId == null ? ' — saved-paper id is missing' : ' — saved-paper id: ${missing.linkedPaperId}'}',
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'You can cancel and repair the link, or create a recovery .eds backup. The recovery backup omits only the broken paper link(s) so the rest of the planner can be restored safely. Available attachments and Saved Papers are still included.',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Save recovery .eds'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   Future<void> _restoreBackup(BuildContext context, WidgetRef ref) async {
@@ -727,6 +850,63 @@ class _ActionCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AttachmentStorageCard extends StatelessWidget {
+  const _AttachmentStorageCard({required this.onCheck});
+
+  final VoidCallback onCheck;
+
+  @override
+  Widget build(BuildContext context) {
+    return TeachingPlannerSurfaceCard(
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TeachingPlannerIconBadge(
+            icon: Icons.folder_copy_outlined,
+            size: 44,
+            iconSize: 22,
+          ),
+          const SizedBox(width: TeachingPlannerDesign.space12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Attachment storage',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: TeachingPlannerDesign.space4),
+                const Text(
+                  'Check managed files for missing or damaged content and safely remove unreferenced EduSheet copies. Shared files are kept while any lesson or syllabus item still uses them.',
+                ),
+                const SizedBox(height: TeachingPlannerDesign.space12),
+                OutlinedButton.icon(
+                  onPressed: onCheck,
+                  icon: const Icon(Icons.health_and_safety_outlined),
+                  label: const Text('Check storage health'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatStorageBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  final kb = bytes / 1024;
+  if (kb < 1024) return '${kb.toStringAsFixed(kb >= 100 ? 0 : 1)} KB';
+  final mb = kb / 1024;
+  if (mb < 1024) return '${mb.toStringAsFixed(mb >= 100 ? 0 : 1)} MB';
+  final gb = mb / 1024;
+  return '${gb.toStringAsFixed(gb >= 100 ? 0 : 1)} GB';
 }
 
 class _SafetyGuide extends StatelessWidget {

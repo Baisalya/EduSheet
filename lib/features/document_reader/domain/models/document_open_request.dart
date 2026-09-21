@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import 'document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 
 enum DocumentOpenSource {
   reader,
@@ -67,11 +67,13 @@ class DocumentOpenRequest {
     );
   }
 
-  static DocumentOpenRequest? fromCommandLine(List<String> arguments) {
+  static List<DocumentOpenRequest> fromCommandLineAll(List<String> arguments) {
     if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-      return null;
+      return const <DocumentOpenRequest>[];
     }
 
+    final requests = <DocumentOpenRequest>[];
+    final seen = <String>{};
     for (final raw in arguments) {
       final value = _stripWrappingQuotes(raw.trim());
       if (value.isEmpty || value.startsWith('--')) continue;
@@ -80,15 +82,24 @@ class DocumentOpenRequest {
           !portableEduSheetExtensions.contains(extension)) {
         continue;
       }
+      final normalizedKey = Platform.isWindows ? value.toLowerCase() : value;
+      if (!seen.add(normalizedKey)) continue;
 
-      return DocumentOpenRequest(
-        source: DocumentOpenSource.windowsCommandLine,
-        localPath: value,
-        displayName: p.basename(value),
-        activationId: 'desktop:$value',
+      requests.add(
+        DocumentOpenRequest(
+          source: DocumentOpenSource.windowsCommandLine,
+          localPath: value,
+          displayName: p.basename(value),
+          activationId: 'desktop:$value',
+        ),
       );
     }
-    return null;
+    return requests;
+  }
+
+  static DocumentOpenRequest? fromCommandLine(List<String> arguments) {
+    final requests = fromCommandLineAll(arguments);
+    return requests.isEmpty ? null : requests.first;
   }
 
   String get dedupeKey => activationId ?? originalUri ?? localPath;

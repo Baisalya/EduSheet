@@ -93,6 +93,12 @@ void main() {
       updatedAt: t2,
     );
     final teacherWorkspace = first.workspace.copyWith(
+      chapters: [
+        first.workspace.chapterById('chapter-1')!.copyWith(
+          status: TeachingProgressStatus.completed,
+          updatedAt: t2,
+        ),
+      ],
       topics: [localTopic],
       lessonPlans: [localLesson],
       resources: [
@@ -125,6 +131,10 @@ void main() {
     expect(
       second.workspace.chapterById('chapter-1')?.title,
       'Quadratic Equations — Revised',
+    );
+    expect(
+      second.workspace.chapterById('chapter-1')?.status,
+      TeachingProgressStatus.completed,
     );
     final mergedTopic = second.workspace.topicById('topic-1')!;
     expect(mergedTopic.title, 'Nature of Roots');

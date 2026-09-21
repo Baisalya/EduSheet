@@ -10,6 +10,9 @@ import '../../../features/guided_experience/application/guide_catalog_providers.
 import '../../../features/guided_experience/application/guided_experience_providers.dart';
 import '../../../features/guided_experience/domain/guide_progress.dart';
 import '../../../features/guided_experience/domain/guide_ids.dart';
+import '../../../features/guided_experience/domain/contextual_help.dart';
+import '../../../features/guided_experience/presentation/screens/user_manual_screen.dart';
+import '../../../features/guided_experience/presentation/widgets/contextual_help_prompt.dart';
 import '../../../features/guided_experience/demo/guided_demo_screen.dart';
 import '../../../features/guided_experience/demo/guided_demo_session.dart';
 import '../../../features/premium/application/premium_controller.dart';
@@ -46,7 +49,7 @@ class SettingsScreen extends ConsumerWidget {
     final guideCatalog = ref.watch(guideCatalogProvider);
     final isDark = themeSettings.mode == ThemeMode.dark;
 
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text(
@@ -141,6 +144,19 @@ class SettingsScreen extends ConsumerWidget {
                                   )
                                   .setHelperEnabled(value);
                             },
+                    ),
+                  ),
+                  const Divider(height: 20),
+                  _SettingsActionCard(
+                    title: 'User Manual',
+                    subtitle:
+                        'Short, simple steps for papers, planner, syllabus, files, reader and backups',
+                    icon: Icons.menu_book_rounded,
+                    color: Colors.deepPurple,
+                    onTap: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const EduSheetUserManualScreen(),
+                      ),
                     ),
                   ),
                   if (guideCatalog.isNotEmpty) ...[
@@ -354,6 +370,28 @@ class SettingsScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+
+    return ContextualHelpOffer(
+      suggestion: const ContextualHelpSuggestion(
+        id: 'settings.manual_help',
+        screen: GuidedScreenContext.settings,
+        title: 'Need a simple explanation?',
+        message:
+            'Open the short User Manual or try a safe demo. Nothing is changed unless you choose an action yourself.',
+        primaryLabel: 'Open User Manual',
+        minimumInactivity: Duration(seconds: 90),
+        suppressWhenRelatedGuideCompleted: false,
+      ),
+      signals: const ContextualHelpSignals(
+        currentScreen: GuidedScreenContext.settings,
+      ),
+      onShowMe: () => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const EduSheetUserManualScreen(),
+        ),
+      ),
+      child: scaffold,
     );
   }
 

@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../../../domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 
 class TextDocumentViewer extends StatefulWidget {
   final DocumentFile document;

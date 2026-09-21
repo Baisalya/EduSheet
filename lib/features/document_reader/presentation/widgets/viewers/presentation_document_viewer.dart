@@ -8,7 +8,7 @@ import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet
 
 import '../../../data/services/document_file_read_service.dart';
 import '../../../data/services/presentation_parser_service.dart';
-import '../../../domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 import '../../../domain/models/presentation_model.dart';
 import '../../../domain/models/presentation_animation_timeline.dart';
 import '../../responsive/presentation_stage_policy.dart';

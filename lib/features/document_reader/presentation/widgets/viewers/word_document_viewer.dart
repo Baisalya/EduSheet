@@ -2,7 +2,7 @@ import 'package:docx_file_viewer/docx_file_viewer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 import '../../responsive/document_viewport_policy.dart';
 
 enum _WordViewMode { fitWidth, printLayout }

@@ -23,6 +23,7 @@ class LessonPlan {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? archivedAt;
+  final DateTime? trashedAt;
 
   const LessonPlan({
     required this.id,
@@ -46,9 +47,12 @@ class LessonPlan {
     required this.createdAt,
     required this.updatedAt,
     this.archivedAt,
+    this.trashedAt,
   });
 
-  bool get isArchived => archivedAt != null;
+  bool get isArchived => archivedAt != null || trashedAt != null;
+  bool get isExplicitlyArchived => archivedAt != null;
+  bool get isTrashed => trashedAt != null;
 
   LessonPlan copyWith({
     String? classId,
@@ -70,6 +74,7 @@ class LessonPlan {
     Object? reflection = _unset,
     DateTime? updatedAt,
     Object? archivedAt = _unset,
+    Object? trashedAt = _unset,
   }) => LessonPlan(
     id: id,
     classId: classId ?? this.classId,
@@ -104,6 +109,9 @@ class LessonPlan {
     archivedAt: identical(archivedAt, _unset)
         ? this.archivedAt
         : archivedAt as DateTime?,
+    trashedAt: identical(trashedAt, _unset)
+        ? this.trashedAt
+        : trashedAt as DateTime?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -128,6 +136,7 @@ class LessonPlan {
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
     if (archivedAt != null) 'archivedAt': archivedAt!.toUtc().toIso8601String(),
+    if (trashedAt != null) 'trashedAt': trashedAt!.toUtc().toIso8601String(),
   };
 
   factory LessonPlan.fromJson(Map<String, dynamic> json) => LessonPlan(
@@ -152,6 +161,7 @@ class LessonPlan {
     createdAt: plannerRequiredDateTime(json, 'createdAt'),
     updatedAt: plannerRequiredDateTime(json, 'updatedAt'),
     archivedAt: plannerOptionalDateTime(json, 'archivedAt'),
+    trashedAt: plannerOptionalDateTime(json, 'trashedAt'),
   );
 }
 

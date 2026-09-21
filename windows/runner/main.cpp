@@ -35,8 +35,10 @@ bool ForwardDocumentToExistingInstance(
     return false;
   }
 
-  if (!command_line_arguments.empty()) {
-    const std::string& path = command_line_arguments.front();
+  for (const std::string& path : command_line_arguments) {
+    if (path.empty() || path.rfind("--", 0) == 0) {
+      continue;
+    }
     COPYDATASTRUCT copy_data{};
     copy_data.dwData = kEduSheetDocumentCopyDataId;
     copy_data.cbData = static_cast<DWORD>(path.size() + 1);

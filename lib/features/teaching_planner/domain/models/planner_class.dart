@@ -8,6 +8,7 @@ class PlannerClass {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? archivedAt;
+  final DateTime? trashedAt;
 
   const PlannerClass({
     required this.id,
@@ -17,9 +18,12 @@ class PlannerClass {
     required this.updatedAt,
     this.academicYear,
     this.archivedAt,
+    this.trashedAt,
   });
 
-  bool get isArchived => archivedAt != null;
+  bool get isArchived => archivedAt != null || trashedAt != null;
+  bool get isExplicitlyArchived => archivedAt != null;
+  bool get isTrashed => trashedAt != null;
 
   PlannerClass copyWith({
     String? name,
@@ -27,6 +31,7 @@ class PlannerClass {
     int? sortOrder,
     DateTime? updatedAt,
     Object? archivedAt = _unset,
+    Object? trashedAt = _unset,
   }) {
     return PlannerClass(
       id: id,
@@ -40,6 +45,9 @@ class PlannerClass {
       archivedAt: identical(archivedAt, _unset)
           ? this.archivedAt
           : archivedAt as DateTime?,
+      trashedAt: identical(trashedAt, _unset)
+          ? this.trashedAt
+          : trashedAt as DateTime?,
     );
   }
 
@@ -51,6 +59,7 @@ class PlannerClass {
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
     if (archivedAt != null) 'archivedAt': archivedAt!.toUtc().toIso8601String(),
+    if (trashedAt != null) 'trashedAt': trashedAt!.toUtc().toIso8601String(),
   };
 
   factory PlannerClass.fromJson(Map<String, dynamic> json) => PlannerClass(
@@ -61,6 +70,7 @@ class PlannerClass {
     createdAt: plannerRequiredDateTime(json, 'createdAt'),
     updatedAt: plannerRequiredDateTime(json, 'updatedAt'),
     archivedAt: plannerOptionalDateTime(json, 'archivedAt'),
+    trashedAt: plannerOptionalDateTime(json, 'trashedAt'),
   );
 }
 

@@ -14,6 +14,7 @@ import 'package:edusheet/features/pdf/presentation/providers/template_provider.d
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:edusheet/shared/services/review_service.dart';
+import 'package:edusheet/shared/services/eds_export_file_saver.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/teaching_resource.dart';
 import 'package:edusheet/features/teaching_planner/presentation/providers/teaching_planner_provider.dart';
 import '../providers/editor_provider.dart';
@@ -782,18 +783,12 @@ class _SavedPaperCard extends ConsumerWidget {
       final service = SavedPaperEdsService(paperRepository: repository);
       final source = await service.exportPaper(latest);
       final suggestedName = SavedPaperEdsCodec.suggestedFileName(latest);
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save editable EduSheet paper',
+      final portablePath = await EdsExportFileSaver().save(
+        source: source,
         fileName: suggestedName,
-        type: FileType.custom,
-        allowedExtensions: const ['eds'],
+        dialogTitle: 'Save editable EduSheet paper',
       );
-      if (path == null || !context.mounted) return;
-      final portablePath = path.toLowerCase().endsWith('.eds')
-          ? path
-          : '$path.eds';
-      await File(portablePath).writeAsString(source, flush: true);
-      if (!context.mounted) return;
+      if (portablePath == null || !context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Editable EduSheet paper saved: $portablePath'),

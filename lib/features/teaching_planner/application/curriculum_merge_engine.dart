@@ -571,6 +571,7 @@ class CurriculumMergeEngine {
           sortOrder: source.sortOrder,
           plannedPeriods: source.plannedPeriods,
           priority: source.priority,
+          status: local.status,
           createdAt: local.createdAt,
           updatedAt: _latest(local.updatedAt, source.updatedAt),
           archivedAt: source.archivedAt,
@@ -978,6 +979,7 @@ class CurriculumMergeEngine {
             ? '__pending__/$targetId'
             : source.localRelativePath,
         sizeBytes: source.sizeBytes,
+        contentSha256: source.contentSha256,
         linkedPaperId: mappedPaperId,
         geometryJson: source.geometryJson,
         createdAt: existing?.createdAt ?? source.createdAt,

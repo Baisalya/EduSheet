@@ -8,6 +8,12 @@ import 'package:open_filex/open_filex.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:edusheet/features/document_reader/presentation/providers/document_provider.dart';
+import 'package:edusheet/features/eds_import/presentation/screens/eds_import_center_screen.dart';
+import 'package:edusheet/features/document_reader/presentation/screens/file_preview_screen.dart';
+import 'package:edusheet/features/guided_experience/domain/contextual_help.dart';
+import 'package:edusheet/features/guided_experience/presentation/screens/user_manual_screen.dart';
+import 'package:edusheet/features/guided_experience/presentation/widgets/contextual_help_prompt.dart';
 import 'package:edusheet/features/geometry_builder/models/geometry_diagram.dart';
 import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_screen.dart';
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
@@ -15,6 +21,7 @@ import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboa
 import 'package:edusheet/features/premium/presentation/widgets/premium_gate_dialog.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 
+import '../../application/teaching_resource_attachment_service.dart';
 import '../../data/teaching_pack_codec.dart';
 import '../../domain/models/curriculum_layer_policy.dart';
 import '../../domain/models/curriculum_merge_state.dart';
@@ -25,7 +32,11 @@ import '../../domain/models/teaching_resource_owner.dart';
 import '../design/teaching_planner_design_system.dart';
 import '../layout/teaching_planner_breakpoints.dart';
 import '../navigation/teaching_planner_navigation.dart';
+import '../services/teaching_attachment_open_coordinator.dart';
+import '../services/teaching_resource_file_picker.dart';
+import '../services/teaching_pack_export_file_saver.dart';
 import '../providers/teaching_planner_provider.dart';
+import 'teaching_attachment_image_preview_screen.dart';
 import '../widgets/teaching_planner_page_shell.dart';
 import '../widgets/teaching_planner_responsive_content.dart';
 import '../widgets/teaching_planner_shared_components.dart';
@@ -82,11 +93,22 @@ class _TeachingWorkspaceScreenState
         ? const <TeachingResource>[]
         : workspace.activeResourcesForLesson(selected.id);
 
-    return TeachingPlannerPageShell(
+    final shell = TeachingPlannerPageShell(
       title: 'Teaching workspace',
       currentDestination: TeachingPlannerDestination.workspace,
       showGlobalNavigation: widget.initialLessonId == null,
       actions: [
+        IconButton(
+          tooltip: 'Teaching Workspace help',
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const EduSheetUserManualScreen(
+                focus: EduSheetManualSection.files,
+              ),
+            ),
+          ),
+          icon: const Icon(Icons.help_outline_rounded),
+        ),
         IconButton(
           tooltip: 'Refresh workspace',
           onPressed: () => ref.read(teachingPlannerProvider.notifier).load(),
@@ -172,6 +194,28 @@ class _TeachingWorkspaceScreenState
               ),
             ),
     );
+
+    if (selected == null || resources.isNotEmpty) return shell;
+
+    return ContextualHelpOffer(
+      suggestion: ContextualHelpSuggestion(
+        id: 'teaching_workspace.${selected.id}.add_first_material',
+        screen: GuidedScreenContext.teachingWorkspace,
+        title: 'Add teaching material for this lesson?',
+        message:
+            'You can keep a PDF, Word file, image, note, link or diagram with this lesson so it is ready before class.',
+        primaryLabel: 'Add file',
+        minimumInactivity: const Duration(minutes: 1),
+        requiresIncompleteAction: true,
+        suppressWhenRelatedGuideCompleted: false,
+      ),
+      signals: const ContextualHelpSignals(
+        currentScreen: GuidedScreenContext.teachingWorkspace,
+        hasIncompleteAction: true,
+      ),
+      onShowMe: () => _addFile(selected),
+      child: shell,
+    );
   }
 
   LessonPlan? _selectedLesson(List<LessonPlan> lessons) {
@@ -244,21 +288,67 @@ class _TeachingWorkspaceScreenState
 
   Future<void> _addFile(LessonPlan lesson) async {
     try {
+      var linkOriginal = false;
+      if (Platform.isWindows) {
+        final mode = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Add teaching file'),
+            content: const Text(
+              'Add to EduSheet is recommended for portable .eds/.edtp backups. Link original keeps the file in its current Windows location.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'link'),
+                child: const Text('Link original'),
+              ),
+              FilledButton.tonal(
+                onPressed: () => Navigator.pop(context, 'managed'),
+                child: const Text('Add to EduSheet'),
+              ),
+            ],
+          ),
+        );
+        if (mode == null || !mounted) return;
+        linkOriginal = mode == 'link';
+      }
       final files = await ref
           .read(teachingResourceFilePickerProvider)
-          .pickFiles(dialogTitle: 'Add teaching material', allowMultiple: true);
-      if (files.isEmpty || !mounted) return;
-      final ok = await ref
-          .read(teachingPlannerProvider.notifier)
-          .attachTeachingFiles(
-            owner: TeachingResourceOwner.lessonPlan(lesson.id),
-            files: files,
-            role: TeachingResourceRole.teachInClass,
+          .pickFiles(
+            dialogTitle: 'Add teaching material',
+            allowMultiple: true,
+            readBytes: !linkOriginal,
           );
+      if (files.isEmpty || !mounted) return;
+      final notifier = ref.read(teachingPlannerProvider.notifier);
+      final ok = linkOriginal
+          ? await notifier.attachLinkedTeachingFiles(
+              owner: TeachingResourceOwner.lessonPlan(lesson.id),
+              files: files,
+              role: TeachingResourceRole.teachInClass,
+            )
+          : await notifier.attachTeachingFiles(
+              owner: TeachingResourceOwner.lessonPlan(lesson.id),
+              files: files,
+              role: TeachingResourceRole.teachInClass,
+            );
       final success = files.length == 1
-          ? '${files.single.fileName} attached.'
-          : '${files.length} files attached.';
+          ? (linkOriginal
+                ? '${files.single.fileName} linked to its original file.'
+                : '${files.single.fileName} added to EduSheet.')
+          : (linkOriginal
+                ? '${files.length} original files linked.'
+                : '${files.length} files added to EduSheet.');
       _showSaveResult(ok, success: success);
+    } on TeachingAttachmentSelectionException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -298,23 +388,7 @@ class _TeachingWorkspaceScreenState
         }
         break;
       case TeachingResourceKind.file:
-        final path = item.localRelativePath;
-        if (path == null) return;
-        final file = await ref
-            .read(teachingResourceFileStoreProvider)
-            .resolve(path);
-        if (!await file.exists()) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'This file is not available on this device. Import the Teaching Pack again if needed.',
-              ),
-            ),
-          );
-          return;
-        }
-        await OpenFilex.open(file.path);
+        await _openFileResource(item);
         break;
       case TeachingResourceKind.paper:
         if (!mounted) return;
@@ -406,7 +480,7 @@ class _TeachingWorkspaceScreenState
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Archive'),
+            child: const Text('Remove'),
           ),
         ],
       ),
@@ -415,7 +489,158 @@ class _TeachingWorkspaceScreenState
     final ok = await ref
         .read(teachingPlannerProvider.notifier)
         .archiveTeachingResource(item.id);
-    _showSaveResult(ok, success: 'Resource archived.');
+    _showSaveResult(ok, success: 'Resource removed from this lesson. Managed file data was kept safely.');
+  }
+
+  void _showMessage(String message) {
+    if (!mounted || message.trim().isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _openFileResource(TeachingResource resource) async {
+    final coordinator = TeachingAttachmentOpenCoordinator(
+      fileStore: ref.read(teachingResourceFileStoreProvider),
+      documentRepository: ref.read(documentRepositoryProvider),
+    );
+    final result = await coordinator.resolve(resource);
+    if (!mounted) return;
+    switch (result.kind) {
+      case TeachingAttachmentOpenKind.document:
+        final document = result.document;
+        if (document == null) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => FilePreviewScreen(document: document),
+          ),
+        );
+        return;
+      case TeachingAttachmentOpenKind.image:
+        final file = result.file;
+        if (file == null) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => TeachingAttachmentImagePreviewScreen(
+              file: file,
+              title: resource.originalFileName ?? resource.title,
+            ),
+          ),
+        );
+        return;
+      case TeachingAttachmentOpenKind.eds:
+        final file = result.file;
+        if (file == null) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => EdsImportCenterScreen(
+              initialFilePath: file.path,
+              initialDisplayName: resource.originalFileName ?? resource.title,
+            ),
+          ),
+        );
+        return;
+      case TeachingAttachmentOpenKind.edtp:
+        final file = result.file;
+        if (file == null) return;
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => TeachingWorkspaceScreen(
+              initialTeachingPackPath: file.path,
+            ),
+          ),
+        );
+        return;
+      case TeachingAttachmentOpenKind.external:
+        final file = result.file;
+        if (file == null) return;
+        final external = await OpenFilex.open(file.path);
+        if (!mounted || external.type == ResultType.done) return;
+        _showMessage(
+          external.message.isEmpty
+              ? 'No compatible app was found for this file.'
+              : external.message,
+        );
+        return;
+      case TeachingAttachmentOpenKind.missing:
+        await _recoverMissingFile(resource, result.message);
+        return;
+      case TeachingAttachmentOpenKind.invalid:
+        _showMessage(result.message ?? 'This file could not be opened.');
+        return;
+    }
+  }
+
+  Future<void> _recoverMissingFile(
+    TeachingResource resource,
+    String? reason,
+  ) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Attachment not found'),
+        content: Text(reason ?? 'This attachment is missing.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'remove'),
+            child: const Text('Remove'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'locate'),
+            child: const Text('Locate'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(context, 'replace'),
+            child: const Text('Replace'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return;
+    final notifier = ref.read(teachingPlannerProvider.notifier);
+    if (action == 'remove') {
+      final saved = await notifier.archiveTeachingResource(resource.id);
+      if (mounted) {
+        _showMessage(saved ? 'Attachment removed.' : 'Attachment could not be removed.');
+      }
+      return;
+    }
+    final relinkOnly = action == 'locate' &&
+        resource.fileOwnership == TeachingResourceFileOwnership.linkedExternal;
+    List<TeachingAttachmentCandidate> files;
+    try {
+      files = await ref.read(teachingResourceFilePickerProvider).pickFiles(
+        dialogTitle: action == 'locate'
+            ? 'Locate attachment'
+            : 'Replace attachment',
+        allowMultiple: false,
+        readBytes: !relinkOnly,
+      );
+    } on TeachingAttachmentSelectionException catch (error) {
+      _showMessage(error.message);
+      return;
+    }
+    if (files.isEmpty || !mounted) return;
+    final file = files.single;
+    final saved = action == 'locate' &&
+            resource.fileOwnership == TeachingResourceFileOwnership.linkedExternal &&
+            (file.sourcePath ?? '').trim().isNotEmpty
+        ? await notifier.relinkTeachingFile(resource: resource, file: file)
+        : await notifier.replaceTeachingFileWithManagedCopy(
+            resource: resource,
+            file: file,
+          );
+    if (mounted) {
+      _showMessage(
+        saved
+            ? (action == 'locate' ? 'Attachment location updated.' : 'Attachment replaced.')
+            : 'Attachment could not be updated.',
+      );
+    }
   }
 
   Future<void> _exportPack(
@@ -439,13 +664,13 @@ class _TeachingWorkspaceScreenState
       for (final item in resources) {
         List<int>? bytes;
         if (item.kind == TeachingResourceKind.file) {
-          final path = item.localRelativePath;
-          if (path == null || !await store.exists(path)) {
+          if (!await store.resourceExists(item)) {
             throw FileSystemException(
               'Missing attached file: ${item.originalFileName ?? item.title}',
+              item.externalFilePath ?? item.localRelativePath,
             );
           }
-          bytes = await store.readBytes(path);
+          bytes = await store.readResourceBytes(item);
         }
         payloadResources.add(
           TeachingPackResourcePayload(resource: item, fileBytes: bytes),
@@ -467,18 +692,13 @@ class _TeachingWorkspaceScreenState
           .replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '')
           .trim()
           .replaceAll(' ', '_');
-      final path = await FilePicker.platform.saveFile(
+      final finalPath = await TeachingPackExportFileSaver().save(
+        source: source,
         dialogTitle: 'Share teaching pack',
         fileName:
             'EduSheet_${safeLesson.isEmpty ? 'Teaching_Pack' : safeLesson}.edtp',
-        type: FileType.custom,
-        allowedExtensions: const [TeachingPackCodec.fileExtension],
       );
-      if (path == null || !mounted) return;
-      final finalPath = path.toLowerCase().endsWith('.edtp')
-          ? path
-          : '$path.edtp';
-      await File(finalPath).writeAsString(source, flush: true);
+      if (finalPath == null || !mounted) return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -594,11 +814,11 @@ class _TeachingWorkspaceScreenState
                 'Teaching Pack file content is missing.',
               );
             }
-            relativePath = await store.writeBytes(
-              resourceId: id,
+            final blob = await store.writeManagedBlob(
               fileName: sourceResource.originalFileName ?? sourceResource.title,
               bytes: bytes,
             );
+            relativePath = blob.relativePath;
             writtenIds.add(id);
           }
           imported.add(
@@ -612,10 +832,16 @@ class _TeachingWorkspaceScreenState
               url: sourceResource.url,
               originalFileName: sourceResource.originalFileName,
               mimeType: sourceResource.mimeType,
+              fileOwnership: TeachingResourceFileOwnership.managed,
               localRelativePath: relativePath,
+              externalFilePath: null,
               sizeBytes: sourceResource.kind == TeachingResourceKind.file
                   ? payload.fileBytes?.length
                   : sourceResource.sizeBytes,
+              contentSha256: sourceResource.kind == TeachingResourceKind.file &&
+                      payload.fileBytes != null
+                  ? store.sha256ForBytes(payload.fileBytes!)
+                  : sourceResource.contentSha256,
               geometryJson: sourceResource.geometryJson,
               createdAt: now,
               updatedAt: now,
@@ -1013,7 +1239,7 @@ class _ResourceCard extends StatelessWidget {
                     if (onArchive != null)
                       const PopupMenuItem(
                         value: 'archive',
-                        child: Text('Archive'),
+                        child: Text('Remove from lesson'),
                       ),
                   ],
                 )
@@ -1043,6 +1269,13 @@ class _ResourceCard extends StatelessWidget {
             runSpacing: TeachingPlannerDesign.space8,
             children: [
               TeachingPlannerPill(label: _kindLabel(item), tone: tone),
+              if (item.kind == TeachingResourceKind.file)
+                TeachingPlannerPill(
+                  label: item.fileOwnership ==
+                          TeachingResourceFileOwnership.linkedExternal
+                      ? 'Linked original'
+                      : 'EduSheet copy',
+                ),
               TeachingPlannerPill(label: _roleLabel(item.role)),
             ],
           ),

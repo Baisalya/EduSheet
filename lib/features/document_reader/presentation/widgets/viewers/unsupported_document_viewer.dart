@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 
-import '../../../domain/models/document_model.dart';
+import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
 
 class UnsupportedDocumentViewer extends StatelessWidget {
   final DocumentFile document;

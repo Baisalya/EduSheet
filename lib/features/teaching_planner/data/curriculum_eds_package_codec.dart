@@ -9,6 +9,7 @@ import '../domain/models/curriculum_package.dart';
 import '../domain/models/teaching_planner_workspace.dart';
 import '../domain/models/teaching_resource.dart';
 import '../domain/models/teaching_resource_owner.dart';
+import 'portable_attachment_manifest.dart';
 import 'portable_paper_snapshot.dart';
 import 'teaching_planner_document_codec.dart';
 
@@ -97,6 +98,19 @@ class CurriculumEdsPackageCodec {
       build.workspace,
       updatedAt: exportTime,
     );
+    final attachmentManifest = build.resourceFiles.isEmpty
+        ? const <String, dynamic>{}
+        : buildPortableAttachmentManifest(
+            build.workspace.resources,
+            build.resourceFiles,
+          );
+    if (attachmentManifest.isNotEmpty) {
+      verifyPortableAttachmentManifest(
+        resources: build.workspace.resources,
+        files: build.resourceFiles,
+        rawManifest: attachmentManifest,
+      );
+    }
     final payload = <String, dynamic>{
       'format': format,
       'version': version,
@@ -110,6 +124,8 @@ class CurriculumEdsPackageCodec {
           for (final entry in build.resourceFiles.entries)
             entry.key: base64Encode(entry.value),
         },
+      if (attachmentManifest.isNotEmpty)
+        'attachmentManifest': attachmentManifest,
       if (build.paperSnapshots.isNotEmpty)
         'paperSnapshots': <String, dynamic>{
           for (final entry in build.paperSnapshots.entries)
@@ -226,6 +242,11 @@ class CurriculumEdsPackageCodec {
     final resourceFiles = _decodeResourceFiles(json['resourceFiles']);
     final paperSnapshots = _decodePaperSnapshots(json['paperSnapshots']);
     _validateDecodedAssets(workspace.resources, resourceFiles, paperSnapshots);
+    verifyPortableAttachmentManifest(
+      resources: workspace.resources,
+      files: resourceFiles,
+      rawManifest: json['attachmentManifest'],
+    );
     final lineage = _decodeLineage(json['lineage']);
     _validateLineage(workspace, paperSnapshots, lineage);
 

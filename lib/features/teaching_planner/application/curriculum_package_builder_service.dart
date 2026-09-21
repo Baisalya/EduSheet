@@ -10,6 +10,7 @@ import '../domain/models/teaching_planner_workspace.dart';
 import '../domain/models/teaching_resource.dart';
 import '../domain/models/teaching_resource_owner.dart';
 import '../domain/services/teaching_planner_integrity.dart';
+import 'teaching_resource_portability.dart';
 
 class CurriculumPackageBuildException implements Exception {
   final String message;
@@ -84,6 +85,10 @@ class CurriculumPackageBuilderService {
 
     final resourceFiles = await _captureResourceFiles(workspace);
     final paperSnapshots = await _capturePaperSnapshots(workspace);
+    final portableWorkspace = portableTeachingResourceWorkspaceWithFiles(
+      workspace,
+      resourceFiles,
+    );
     final lineage = _buildLineage(
       workspace,
       paperSnapshots.values,
@@ -115,7 +120,7 @@ class CurriculumPackageBuilderService {
 
     return CurriculumPackageBuildResult(
       contentType: contentType,
-      workspace: workspace,
+      workspace: portableWorkspace,
       resourceFiles: Map.unmodifiable(resourceFiles),
       paperSnapshots: Map.unmodifiable(paperSnapshots),
       lineage: List.unmodifiable(lineage),
@@ -530,14 +535,13 @@ class CurriculumPackageBuilderService {
     final result = <String, List<int>>{};
     for (final resource in workspace.resources) {
       if (resource.kind != TeachingResourceKind.file) continue;
-      final path = resource.localRelativePath;
-      if (path == null || !await _resourceFileStore.exists(path)) {
+      if (!await _resourceFileStore.resourceExists(resource)) {
         throw CurriculumPackageBuildException(
           'Attached teaching file is missing: '
           '${resource.originalFileName ?? resource.title}',
         );
       }
-      result[resource.id] = await _resourceFileStore.readBytes(path);
+      result[resource.id] = await _resourceFileStore.readResourceBytes(resource);
     }
     return result;
   }

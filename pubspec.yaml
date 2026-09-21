@@ -40,6 +40,7 @@ dependencies:
   syncfusion_flutter_pdfviewer: ^28.2.7
   docx_file_viewer: ^1.0.1
   archive: ^4.0.9
+  crypto: ^3.0.6
 
   flutter_localizations:
     sdk: flutter
