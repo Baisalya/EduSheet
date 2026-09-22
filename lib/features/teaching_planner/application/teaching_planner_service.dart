@@ -2247,6 +2247,7 @@ class TeachingPlannerService {
     String? externalFilePath,
     int? sizeBytes,
     String? linkedPaperId,
+    String? linkedSmartDocumentId,
     Map<String, dynamic>? geometryJson,
   }) {
     final targetOwner = _resolveResourceOwner(
@@ -2261,6 +2262,7 @@ class TeachingPlannerService {
     final cleanRelativePath = _optionalText(localRelativePath);
     final cleanExternalPath = _optionalText(externalFilePath);
     final cleanLinkedPaperId = _optionalText(linkedPaperId);
+    final cleanLinkedSmartDocumentId = _optionalText(linkedSmartDocumentId);
     if (sizeBytes != null) _requireNonNegative(sizeBytes, 'Resource size');
     _validateResourcePayload(
       kind: kind,
@@ -2271,6 +2273,7 @@ class TeachingPlannerService {
       fileOwnership: fileOwnership,
       externalFilePath: cleanExternalPath,
       linkedPaperId: cleanLinkedPaperId,
+      linkedSmartDocumentId: cleanLinkedSmartDocumentId,
       geometryJson: geometryJson,
     );
     return _repository.update((workspace) {
@@ -2285,6 +2288,18 @@ class TeachingPlannerService {
           )) {
         throw const TeachingPlannerOperationException(
           'This saved paper is already linked here.',
+        );
+      }
+      if (kind == TeachingResourceKind.smartDocument &&
+          workspace.resources.any(
+            (item) =>
+                !item.isArchived &&
+                item.owner == targetOwner &&
+                item.kind == TeachingResourceKind.smartDocument &&
+                item.linkedSmartDocumentId == cleanLinkedSmartDocumentId,
+          )) {
+        throw const TeachingPlannerOperationException(
+          'This Smart Editor document is already linked here.',
         );
       }
       final id = resourceId ?? _idGenerator();
@@ -2312,6 +2327,7 @@ class TeachingPlannerService {
             externalFilePath: cleanExternalPath,
             sizeBytes: sizeBytes,
             linkedPaperId: cleanLinkedPaperId,
+            linkedSmartDocumentId: cleanLinkedSmartDocumentId,
             geometryJson: geometryJson == null
                 ? null
                 : Map<String, dynamic>.from(geometryJson),
@@ -2479,6 +2495,7 @@ class TeachingPlannerService {
         fileOwnership: existing.fileOwnership,
         externalFilePath: existing.externalFilePath,
         linkedPaperId: existing.linkedPaperId,
+        linkedSmartDocumentId: existing.linkedSmartDocumentId,
         geometryJson: existing.kind == TeachingResourceKind.geometry
             ? geometryJson
             : existing.geometryJson,
@@ -2544,6 +2561,7 @@ class TeachingPlannerService {
           fileOwnership: item.fileOwnership,
           externalFilePath: item.externalFilePath,
           linkedPaperId: item.linkedPaperId,
+          linkedSmartDocumentId: item.linkedSmartDocumentId,
           geometryJson: item.geometryJson,
         );
         normalized.add(
@@ -2563,6 +2581,7 @@ class TeachingPlannerService {
             sizeBytes: item.sizeBytes,
             contentSha256: item.contentSha256,
             linkedPaperId: _optionalText(item.linkedPaperId),
+            linkedSmartDocumentId: _optionalText(item.linkedSmartDocumentId),
             geometryJson: item.geometryJson == null
                 ? null
                 : Map<String, dynamic>.from(item.geometryJson!),
@@ -2694,6 +2713,7 @@ class TeachingPlannerService {
         TeachingResourceFileOwnership.managed,
     String? externalFilePath,
     required String? linkedPaperId,
+    required String? linkedSmartDocumentId,
     required Map<String, dynamic>? geometryJson,
   }) {
     switch (kind) {
@@ -2719,6 +2739,12 @@ class TeachingPlannerService {
         break;
       case TeachingResourceKind.paper:
         _requiredName(linkedPaperId ?? '', 'Saved paper');
+        break;
+      case TeachingResourceKind.smartDocument:
+        _requiredName(
+          linkedSmartDocumentId ?? '',
+          'Smart Editor document',
+        );
         break;
       case TeachingResourceKind.geometry:
         if (geometryJson == null) {

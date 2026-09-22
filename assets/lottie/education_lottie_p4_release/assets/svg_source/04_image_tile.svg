@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
+<defs><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#00A98E" flood-opacity="0.20"/></filter></defs>
+<g filter="url(#s)">
+  <rect x="140" y="140" width="744" height="744" rx="90" fill="#23D3B7" stroke="#75F0DC" stroke-width="12"/>
+  <circle cx="680" cy="350" r="68" fill="#DFFFF8"/>
+  <path d="M230 700 l170 -260 150 210 95 -130 170 180 z" fill="#E8FFFA"/>
+</g>
+
+</svg>

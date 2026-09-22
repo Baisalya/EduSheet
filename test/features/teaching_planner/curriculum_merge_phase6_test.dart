@@ -767,7 +767,7 @@ void main() {
     );
   });
 
-  test('schema 8 migrates through schema 10 with empty merge and sync state', () {
+  test('schema 8 migrates through schema 11 with empty merge and sync state', () {
     final codec = const TeachingPlannerDocumentCodec();
     final legacy = <String, dynamic>{
       'schemaVersion': 8,

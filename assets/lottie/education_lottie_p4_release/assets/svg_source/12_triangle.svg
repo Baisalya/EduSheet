@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
+<g fill="none" stroke="#5687D9" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M180 760 L700 220 L700 760 Z"/>
+  <path d="M645 705 L700 705 L700 760"/>
+</g>
+<g fill="#5687D9" font-family="Arial, sans-serif" font-size="100" font-weight="600">
+  <text x="430" y="875">a</text><text x="735" y="520">b</text>
+</g>
+
+</svg>

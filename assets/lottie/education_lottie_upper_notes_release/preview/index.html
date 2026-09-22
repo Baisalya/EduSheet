@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Education Lottie — Final Release Preview</title>
+<style>
+html,body{height:100%;margin:0;font-family:system-ui,sans-serif;background:#eef5ff}
+main{height:100%;display:grid;place-items:center}
+#anim{width:min(86vmin,900px);height:min(86vmin,900px)}
+.panel{position:fixed;left:16px;top:16px;background:#fff;padding:10px 14px;border-radius:14px;box-shadow:0 8px 30px #4b79a522;color:#234b77}
+small{display:block;color:#657a92;margin-top:4px}
+</style>
+</head>
+<body>
+<div class="panel"><strong>P4 Final Release</strong><small>Vector-only · Transparent · 60 fps</small></div>
+<main><div id="anim"></div></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+<script>
+lottie.loadAnimation({
+  container: document.getElementById('anim'),
+  renderer: 'svg',
+  loop: true,
+  autoplay: true,
+  path: '../assets/lottie/education_document_final.json',
+  rendererSettings: {preserveAspectRatio:'xMidYMid meet'}
+});
+</script>
+</body>
+</html>

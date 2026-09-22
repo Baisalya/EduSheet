@@ -1,0 +1,12 @@
+{
+  "change": "Filled upper blank note area with math-style vector content",
+  "standard_file": "education_document_final_upper_notes.json",
+  "lite_file": "education_document_final_upper_notes_lite_30fps.json",
+  "layer_count": 21,
+  "standard_bytes": 76927,
+  "lite_bytes": 69823,
+  "sha256_standard": "4aba14193da5ed49ad5d6ed03c08f4f196b02847d577c646f6f7932c2327a76c",
+  "sha256_lite": "8264aebf7375afe52e4b7e1423ad28cf4ac4ac0d296cfa590c4c576877b6895c",
+  "still_vector_only": true,
+  "transparent": true
+}

@@ -73,7 +73,7 @@ void main() {
       'workspace': _workspace(now).toJson(),
     });
 
-    expect(codec.encode(workspace)['schemaVersion'], 10);
+    expect(codec.encode(workspace)['schemaVersion'], 11);
   });
 
   test('portable v2 backup keeps paper link metadata without requiring file bytes', () {

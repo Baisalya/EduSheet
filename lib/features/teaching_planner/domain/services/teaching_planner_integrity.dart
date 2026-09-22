@@ -358,6 +358,18 @@ class TeachingPlannerIntegrity {
             );
           }
           break;
+        case TeachingResourceKind.smartDocument:
+          if ((item.linkedSmartDocumentId ?? '').trim().isEmpty) {
+            issues.add(
+              TeachingPlannerIntegrityIssue(
+                code: 'missing_linked_smart_document_id',
+                entityId: item.id,
+                message:
+                    'Smart Editor resource is missing its document id.',
+              ),
+            );
+          }
+          break;
         case TeachingResourceKind.geometry:
           if (item.geometryJson == null) {
             issues.add(

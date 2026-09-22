@@ -33,6 +33,7 @@ class AutosaveCoordinator<T> {
 
   Timer? _timer;
   T? _pendingValue;
+  T Function()? _pendingFactory;
   bool _hasPendingValue = false;
   bool _disposed = false;
   Future<void> _writeTail = Future<void>.value();
@@ -49,6 +50,23 @@ class AutosaveCoordinator<T> {
   void schedule(T value) {
     if (_disposed) return;
     _pendingValue = value;
+    _pendingFactory = null;
+    _hasPendingValue = true;
+    _timer?.cancel();
+    _emit(const AutosaveStatus(AutosavePhase.waiting));
+    _timer = Timer(delay, _queuePendingWrite);
+  }
+
+  /// Schedules a value that is only materialized when the debounce expires.
+  ///
+  /// This is useful for editors where building a persistence snapshot (for
+  /// example serializing a large rich-text document) is itself expensive. The
+  /// latest factory wins, exactly like [schedule], but typing does not pay the
+  /// serialization cost on every keystroke.
+  void scheduleLazy(T Function() valueFactory) {
+    if (_disposed) return;
+    _pendingValue = null;
+    _pendingFactory = valueFactory;
     _hasPendingValue = true;
     _timer?.cancel();
     _emit(const AutosaveStatus(AutosavePhase.waiting));
@@ -73,6 +91,7 @@ class AutosaveCoordinator<T> {
     _timer?.cancel();
     _timer = null;
     _pendingValue = null;
+    _pendingFactory = null;
     _hasPendingValue = false;
     if (resetStatus) {
       _emit(const AutosaveStatus(AutosavePhase.idle));
@@ -81,10 +100,20 @@ class AutosaveCoordinator<T> {
 
   Future<void> _queuePendingWrite() async {
     if (_disposed || !_hasPendingValue) return;
-    final value = _pendingValue as T;
+    final factory = _pendingFactory;
+    final pendingValue = _pendingValue;
     _pendingValue = null;
+    _pendingFactory = null;
     _hasPendingValue = false;
     _emit(const AutosaveStatus(AutosavePhase.saving));
+
+    late final T value;
+    try {
+      value = factory != null ? factory() : pendingValue as T;
+    } catch (error) {
+      _emit(AutosaveStatus(AutosavePhase.failed, error: error));
+      return;
+    }
 
     final operation = _writeTail.then((_) => save(value));
     _writeTail = operation.then<void>(
@@ -114,6 +143,7 @@ class AutosaveCoordinator<T> {
     _timer?.cancel();
     _timer = null;
     _pendingValue = null;
+    _pendingFactory = null;
     _hasPendingValue = false;
   }
 }

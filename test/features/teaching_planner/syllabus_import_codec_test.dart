@@ -97,7 +97,7 @@ void main() {
     final codec = const TeachingPlannerDocumentCodec();
     final workspace = codec.decode(document);
 
-    expect(TeachingPlannerDocumentCodec.currentSchemaVersion, 10);
+    expect(TeachingPlannerDocumentCodec.currentSchemaVersion, 11);
     expect(workspace.units.single.priority, PlannerPriority.normal);
   });
 }

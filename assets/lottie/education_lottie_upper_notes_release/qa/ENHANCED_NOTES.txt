@@ -1,0 +1,18 @@
+ENHANCED LOTTIE POLISH
+
+What was enhanced beyond P4:
+1. Ambient halo behind the illustration for a softer premium presence.
+2. Orbiting micro-dots for more alive negative space.
+3. Small math-plus particles to reinforce the educational theme.
+4. Header accent chips on the blue document title bar.
+5. Extra micro sparkles near the right image tile.
+6. Bottom glow ribbon to anchor the composition visually.
+7. Existing main-sheet, purple-panel, image-tile, sparkles and pencil motions were slightly upgraded.
+
+Still preserved:
+- vector-only
+- transparent background
+- no raster assets
+- no font dependency
+- no masks/effects/expressions
+- Flutter-friendly

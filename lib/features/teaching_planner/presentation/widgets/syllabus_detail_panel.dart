@@ -39,6 +39,8 @@ class SyllabusDetailPanel extends StatelessWidget {
     this.onDelete,
     this.onCreatePaper,
     this.onAttachSavedPaper,
+    this.onCreateSmartDocument,
+    this.onAttachSmartDocument,
     required this.onAddAttachments,
     this.onLinkAttachments,
     required this.onOpenAttachment,
@@ -69,6 +71,8 @@ class SyllabusDetailPanel extends StatelessWidget {
   final ValueChanged<SyllabusNodeRef>? onDelete;
   final ValueChanged<SyllabusNodeRef>? onCreatePaper;
   final ValueChanged<SyllabusNodeRef>? onAttachSavedPaper;
+  final ValueChanged<SyllabusNodeRef>? onCreateSmartDocument;
+  final ValueChanged<SyllabusNodeRef>? onAttachSmartDocument;
   final ValueChanged<SyllabusNodeRef> onAddAttachments;
   final ValueChanged<SyllabusNodeRef>? onLinkAttachments;
   final ValueChanged<TeachingResource> onOpenAttachment;
@@ -765,11 +769,14 @@ class SyllabusDetailPanel extends StatelessWidget {
         .where(
           (item) =>
               item.kind == TeachingResourceKind.file ||
-              item.kind == TeachingResourceKind.paper,
+              item.kind == TeachingResourceKind.paper ||
+              item.kind == TeachingResourceKind.smartDocument,
         )
         .toList(growable: false);
     final createPaper = onCreatePaper;
     final attachSavedPaper = onAttachSavedPaper;
+    final createSmartDocument = onCreateSmartDocument;
+    final attachSmartDocument = onAttachSmartDocument;
     return SyllabusAttachmentSection(
       resources: resources,
       createPaperEnabled: createPaper != null,
@@ -779,6 +786,14 @@ class SyllabusDetailPanel extends StatelessWidget {
       },
       onAttachSavedPaper: () {
         if (attachSavedPaper != null) attachSavedPaper(selected);
+      },
+      createSmartDocumentEnabled: createSmartDocument != null,
+      attachSmartDocumentEnabled: attachSmartDocument != null,
+      onCreateSmartDocument: () {
+        if (createSmartDocument != null) createSmartDocument(selected);
+      },
+      onAttachSmartDocument: () {
+        if (attachSmartDocument != null) attachSmartDocument(selected);
       },
       onAddFiles: () => onAddAttachments(selected),
       onLinkFiles: onLinkAttachments == null

@@ -1,0 +1,17 @@
+// Enhanced default:
+const Center(
+  child: EducationDocumentLottieEnhanced(
+    size: 280,
+    repeat: true,
+    useLite: false,
+  ),
+);
+
+// Lower-end devices:
+const Center(
+  child: EducationDocumentLottieEnhanced(
+    size: 280,
+    repeat: true,
+    useLite: true,
+  ),
+);

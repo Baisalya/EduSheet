@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
+<g fill="none" stroke="#5687D9" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M130 520 l55 0 48 150 95 -320 160 0"/>
+  <line x1="500" y1="560" x2="700" y2="560"/><line x1="600" y1="460" x2="600" y2="660"/>
+</g>
+<g fill="#5687D9" font-family="Arial, sans-serif" font-size="150" font-weight="600">
+  <text x="730" y="615">3</text>
+</g>
+
+</svg>

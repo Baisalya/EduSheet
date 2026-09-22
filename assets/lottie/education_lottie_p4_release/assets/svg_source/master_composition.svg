@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
+<defs>
+  <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+    <feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#1C64B5" flood-opacity="0.18"/>
+  </filter>
+</defs>
+<g transform="translate(110,35) rotate(-10 350 420)">
+  <rect x="190" y="170" width="470" height="620" rx="45" fill="#EEF6FF" stroke="#72B4FF" stroke-width="8"/>
+</g>
+<g transform="translate(540,130) rotate(13 190 130)" filter="url(#shadow)">
+  <rect x="0" y="0" width="340" height="245" rx="45" fill="#7536F3" stroke="#A36AFF" stroke-width="8"/>
+  <circle cx="78" cy="80" r="20" fill="#D9CBFF"/><circle cx="78" cy="150" r="20" fill="#D9CBFF"/>
+  <rect x="130" y="60" width="145" height="30" rx="15" fill="white"/><rect x="130" y="130" width="125" height="30" rx="15" fill="white"/>
+</g>
+<g transform="translate(685,580) rotate(11 130 130)" filter="url(#shadow)">
+  <rect x="0" y="0" width="250" height="250" rx="45" fill="#23D3B7" stroke="#77F1DD" stroke-width="8"/>
+  <circle cx="175" cy="75" r="30" fill="#DFFFF8"/>
+  <path d="M45 190 l58 -88 50 70 35 -45 55 63 z" fill="#E8FFFA"/>
+</g>
+<g transform="translate(40,610) rotate(-6 160 160)" filter="url(#shadow)">
+  <path d="M0 300 L135 0 L310 300 Z" fill="#FFC925" stroke="#FFAD13" stroke-width="8"/>
+  <path d="M88 250 L138 132 L210 250 Z" fill="#FFF4B6" stroke="#FFAD13" stroke-width="8"/>
+</g>
+<g transform="translate(188,180)" filter="url(#shadow)">
+  <rect x="0" y="0" width="520" height="650" rx="55" fill="#FFFFFF" stroke="#55A7FF" stroke-width="8"/>
+  <rect x="80" y="80" width="330" height="55" rx="22" fill="#168BFF"/>
+  <g stroke="#A9C6F0" stroke-width="18" stroke-linecap="round">
+    <line x1="200" y1="210" x2="430" y2="210"/><line x1="200" y1="265" x2="390" y2="265"/>
+    <line x1="200" y1="320" x2="440" y2="320"/><line x1="200" y1="375" x2="400" y2="375"/>
+    <line x1="90" y1="445" x2="410" y2="445"/>
+  </g>
+  <rect x="85" y="185" width="55" height="55" rx="14" fill="#17D2B3"/>
+  <path d="M100 211 l14 14 26 -33" fill="none" stroke="white" stroke-width="11" stroke-linecap="round"/>
+  <rect x="85" y="260" width="55" height="55" rx="14" fill="#17D2B3"/>
+  <path d="M100 286 l14 14 26 -33" fill="none" stroke="white" stroke-width="11" stroke-linecap="round"/>
+  <g fill="none" stroke="#5687D9" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M90 540 l20 0 18 48 32 -90 75 0"/>
+    <path d="M300 590 l100 -88 0 88 z"/>
+    <path d="M382 573 l18 0 0 17"/>
+  </g>
+</g>
+<g transform="translate(565,405) rotate(36 80 200)" filter="url(#shadow)">
+  <rect x="35" y="0" width="90" height="330" rx="45" fill="#167CF4"/>
+  <rect x="35" y="0" width="90" height="62" rx="31" fill="#FFC72D"/>
+  <rect x="35" y="62" width="90" height="34" fill="#ECF1FF"/>
+  <path d="M35 330 l45 80 45 -80 z" fill="#F7D5A3"/>
+  <path d="M67 384 l13 26 14 -26 z" fill="#173A78"/>
+</g>
+<g fill="#FFD72B" stroke="#FFB90F" stroke-width="5">
+  <path d="M105 350 C118 395 135 412 180 425 C135 438 118 455 105 500 C92 455 75 438 30 425 C75 412 92 395 105 350Z"/>
+  <path d="M145 505 C152 530 162 540 187 547 C162 554 152 564 145 589 C138 564 128 554 103 547 C128 540 138 530 145 505Z"/>
+</g>
+<g fill="#1D9BFF" stroke="#066EE8" stroke-width="4">
+  <rect x="470" y="75" width="28" height="80" rx="14" transform="rotate(-12 484 115)"/>
+  <rect x="560" y="85" width="28" height="80" rx="14" transform="rotate(22 574 125)"/>
+</g>
+
+</svg>

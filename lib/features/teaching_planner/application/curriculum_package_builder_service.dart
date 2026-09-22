@@ -526,6 +526,9 @@ class CurriculumPackageBuilderService {
       TeachingResourceKind.link => inclusions.includeLinks,
       TeachingResourceKind.geometry => inclusions.includeGeometry,
       TeachingResourceKind.paper => inclusions.includePapers,
+      // Smart Editor documents are planner links in TP-S1/S2. Their portable
+      // document payload is added in the dedicated portability phase.
+      TeachingResourceKind.smartDocument => false,
     };
   }
 

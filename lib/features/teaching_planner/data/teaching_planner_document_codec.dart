@@ -41,7 +41,7 @@ class TeachingPlannerStoredDocument {
 class TeachingPlannerDocumentCodec {
   const TeachingPlannerDocumentCodec();
 
-  static const int currentSchemaVersion = 10;
+  static const int currentSchemaVersion = 11;
 
   Map<String, dynamic> encode(
     TeachingPlannerWorkspace workspace, {
@@ -150,6 +150,11 @@ class TeachingPlannerDocumentCodec {
     if (fromVersion == currentSchemaVersion) {
       return Map<String, dynamic>.from(source);
     }
+    if (fromVersion == 10) {
+      final migrated = _deepCopyMap(source);
+      migrated['schemaVersion'] = 11;
+      return migrated;
+    }
     if (fromVersion == 9) {
       final migrated = _deepCopyMap(source);
       migrated['offlineSync'] = <String, dynamic>{
@@ -160,7 +165,7 @@ class TeachingPlannerDocumentCodec {
         'appliedInboundChangeIds': <dynamic>[],
       };
       migrated['schemaVersion'] = 10;
-      return migrated;
+      return _migrate(migrated, fromVersion: 10);
     }
     if (fromVersion == 8) {
       final migrated = _deepCopyMap(source);

@@ -1,0 +1,10 @@
+// Example:
+const Center(
+  child: EducationDocumentLottie(
+    size: 280,
+    repeat: true,
+  ),
+);
+
+// For lower-end devices, use:
+// assets/lottie/education_document_final_lite_30fps.json

@@ -17,7 +17,7 @@ void main() {
     expect(restored.isEmpty, isTrue);
     expect(text, startsWith('EDUSHEET/4\n'));
     expect(text, contains('edusheet.teaching-planner-backup'));
-    expect(text, contains('"schemaVersion": 10'));
+    expect(text, contains('"schemaVersion": 11'));
   });
 
   test('backup rejects unrelated json before restore', () {

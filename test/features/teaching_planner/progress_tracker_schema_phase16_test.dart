@@ -60,6 +60,6 @@ void main() {
       },
     });
     expect(workspace.lessonPlans.single.actualPeriods, 0);
-    expect(codec.encode(workspace)['schemaVersion'], 10);
+    expect(codec.encode(workspace)['schemaVersion'], 11);
   });
 }

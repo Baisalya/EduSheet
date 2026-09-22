@@ -1,0 +1,8 @@
+Default updated asset:
+- education_document_final_upper_notes.json
+
+What changed:
+- upper blank note area is no longer empty
+- added vector-drawn math formulas / question-style writing
+- lower geometry portion remains preserved
+- still transparent, vector-only, Flutter-friendly

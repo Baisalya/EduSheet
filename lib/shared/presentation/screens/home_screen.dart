@@ -26,6 +26,7 @@ import '../../../features/teaching_planner/presentation/screens/teaching_workspa
 import '../../../features/calculator/presentation/screens/calculator_screen.dart';
 import '../../../features/word_converter/presentation/screens/word_converter_screen.dart';
 import '../../../features/teaching_planner/presentation/screens/teaching_planner_screen.dart';
+import 'package:edusheet/features/smart_editor/presentation/screens/smart_editor_library_screen.dart';
 import '../../../features/premium/presentation/widgets/premium_badge_button.dart';
 import '../../../features/premium/application/premium_controller.dart';
 import '../../../features/premium/domain/freemium_policy.dart';
@@ -269,12 +270,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         targetId: CreatePaperGuideTargets.homeCreatePaper,
         reportPointerActivation: true,
         child: _HomeCard(
+          lottieAsset: 'assets/lottie/education_document_final_upper_notes.json',
           title: 'Create Paper',
-          lottieAsset: 'assets/lottie/WritePaper.json',
           icon: Icons.note_add,
           color: Colors.blue,
           onTap: _openCreatePaper,
         ),
+      ),
+      _HomeCard(
+        title: 'Smart Editor',
+        lottieAsset: 'assets/lottie/WritePaper.json',
+        icon: Icons.edit_note_rounded,
+        color: Colors.blueAccent,
+        onTap: () => _open(const SmartEditorLibraryScreen()),
       ),
       _HomeCard(
         title: 'Saved Papers',

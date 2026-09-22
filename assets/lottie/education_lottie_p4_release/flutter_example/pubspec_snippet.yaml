@@ -1,0 +1,8 @@
+# Add under flutter:
+flutter:
+  assets:
+    - assets/lottie/education_document_final.json
+
+# Package dependency example:
+dependencies:
+  lottie: ^3.3.1

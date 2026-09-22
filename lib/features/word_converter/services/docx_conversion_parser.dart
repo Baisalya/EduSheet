@@ -278,6 +278,21 @@ class _ParseContext {
             ),
           );
         }
+      } else if (child.name.local == 'oMath' ||
+          child.name.local == 'oMathPara') {
+        final mathText = child.descendants
+            .whereType<xml.XmlElement>()
+            .where((element) => element.name.local == 't')
+            .map((element) => element.innerText)
+            .join();
+        if (mathText.trim().isNotEmpty) {
+          inlines.add(
+            ConversionTextRun(
+              text: mathText,
+              style: paragraphRunBase.toModel(),
+            ),
+          );
+        }
       } else if (child.name.local == 'fldSimple') {
         final dynamicField = _dynamicField(_attribute(child, 'instr'));
         final runs = child.descendants

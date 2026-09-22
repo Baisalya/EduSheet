@@ -321,18 +321,30 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
               onChanged: (value) =>
                   setState(() => _answerRuleAlignment = value),
             ),
-            const SizedBox(height: 8),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Line above section heading'),
-              value: _showTopDivider,
-              onChanged: (value) => setState(() => _showTopDivider = value),
+            const SizedBox(height: 14),
+            _SectionHeading(
+              title: 'Section lines',
+              subtitle:
+                  'Nothing is forced: choose no line, only the top line, only the bottom line, or both.',
             ),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Line below section heading'),
-              value: _showBottomDivider,
-              onChanged: (value) => setState(() => _showBottomDivider = value),
+            const SizedBox(height: 8),
+            Wrap(
+              key: const Key('section-divider-style'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final preset in _SectionDividerPreset.values)
+                  ChoiceChip(
+                    label: Text(switch (preset) {
+                      _SectionDividerPreset.none => 'None',
+                      _SectionDividerPreset.top => 'Top',
+                      _SectionDividerPreset.bottom => 'Bottom',
+                      _SectionDividerPreset.both => 'Both',
+                    }),
+                    selected: _currentDividerPreset == preset,
+                    onSelected: (_) => _applyDividerPreset(preset),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             _SectionHeading(
@@ -344,16 +356,16 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
             SegmentedButton<_HeadingPreset>(
               segments: const [
                 ButtonSegment(
-                  value: _HeadingPreset.plain,
-                  label: Text('Plain'),
+                  value: _HeadingPreset.regular,
+                  label: Text('Regular'),
                 ),
                 ButtonSegment(
-                  value: _HeadingPreset.underline,
-                  label: Text('Underline'),
+                  value: _HeadingPreset.strong,
+                  label: Text('Strong'),
                 ),
                 ButtonSegment(
-                  value: _HeadingPreset.ruled,
-                  label: Text('Ruled'),
+                  value: _HeadingPreset.uppercase,
+                  label: Text('CAPS'),
                 ),
                 ButtonSegment(
                   value: _HeadingPreset.boxed,
@@ -605,25 +617,39 @@ class _SectionFormatSheetState extends State<SectionFormatSheet> {
     );
   }
 
-  _HeadingPreset get _currentHeadingPreset {
-    if (_headingBoxed) {
-      return _HeadingPreset.boxed;
-    }
+
+  _SectionDividerPreset get _currentDividerPreset {
     if (_showTopDivider && _showBottomDivider) {
-      return _HeadingPreset.ruled;
+      return _SectionDividerPreset.both;
     }
-    if (!_showTopDivider && _showBottomDivider) {
-      return _HeadingPreset.underline;
-    }
-    return _HeadingPreset.plain;
+    if (_showTopDivider) return _SectionDividerPreset.top;
+    if (_showBottomDivider) return _SectionDividerPreset.bottom;
+    return _SectionDividerPreset.none;
+  }
+
+  void _applyDividerPreset(_SectionDividerPreset preset) {
+    setState(() {
+      _showTopDivider =
+          preset == _SectionDividerPreset.top ||
+          preset == _SectionDividerPreset.both;
+      _showBottomDivider =
+          preset == _SectionDividerPreset.bottom ||
+          preset == _SectionDividerPreset.both;
+    });
+  }
+
+  _HeadingPreset get _currentHeadingPreset {
+    if (_headingBoxed) return _HeadingPreset.boxed;
+    if (_headingUppercase) return _HeadingPreset.uppercase;
+    if (_headingBold) return _HeadingPreset.strong;
+    return _HeadingPreset.regular;
   }
 
   void _applyHeadingPreset(_HeadingPreset preset) {
     setState(() {
       _headingBoxed = preset == _HeadingPreset.boxed;
-      _showTopDivider = preset == _HeadingPreset.ruled;
-      _showBottomDivider =
-          preset == _HeadingPreset.underline || preset == _HeadingPreset.ruled;
+      _headingUppercase = preset == _HeadingPreset.uppercase;
+      _headingBold = preset != _HeadingPreset.regular;
     });
   }
 
@@ -678,7 +704,9 @@ class _AlignmentPicker extends StatelessWidget {
   }
 }
 
-enum _HeadingPreset { plain, underline, ruled, boxed }
+enum _SectionDividerPreset { none, top, bottom, both }
+
+enum _HeadingPreset { regular, strong, uppercase, boxed }
 
 enum _AnswerAreaKind { plain, ruled, graph }
 

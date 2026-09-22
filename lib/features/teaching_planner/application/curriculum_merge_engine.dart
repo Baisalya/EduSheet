@@ -981,6 +981,7 @@ class CurriculumMergeEngine {
         sizeBytes: source.sizeBytes,
         contentSha256: source.contentSha256,
         linkedPaperId: mappedPaperId,
+        linkedSmartDocumentId: source.linkedSmartDocumentId,
         geometryJson: source.geometryJson,
         createdAt: existing?.createdAt ?? source.createdAt,
         updatedAt: source.updatedAt,
@@ -1275,6 +1276,7 @@ String _fingerprintResource(
   item.mimeType,
   item.sizeBytes,
   linkedPaperOrigin,
+  item.linkedSmartDocumentId,
   item.geometryJson,
   item.archivedAt?.toUtc().toIso8601String(),
 ]);

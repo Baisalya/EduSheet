@@ -12,8 +12,12 @@ class SyllabusAttachmentSection extends StatelessWidget {
     required this.resources,
     this.onCreatePaper,
     this.onAttachSavedPaper,
+    this.onCreateSmartDocument,
+    this.onAttachSmartDocument,
     this.createPaperEnabled = true,
     this.attachSavedPaperEnabled = true,
+    this.createSmartDocumentEnabled = true,
+    this.attachSmartDocumentEnabled = true,
     required this.onAddFiles,
     this.onLinkFiles,
     required this.onOpen,
@@ -24,8 +28,12 @@ class SyllabusAttachmentSection extends StatelessWidget {
   final List<TeachingResource> resources;
   final VoidCallback? onCreatePaper;
   final VoidCallback? onAttachSavedPaper;
+  final VoidCallback? onCreateSmartDocument;
+  final VoidCallback? onAttachSmartDocument;
   final bool createPaperEnabled;
   final bool attachSavedPaperEnabled;
+  final bool createSmartDocumentEnabled;
+  final bool attachSmartDocumentEnabled;
   final VoidCallback onAddFiles;
   final VoidCallback? onLinkFiles;
   final ValueChanged<TeachingResource> onOpen;
@@ -43,7 +51,7 @@ class SyllabusAttachmentSection extends StatelessWidget {
           child: TeachingPlannerSectionHeader(
             title: 'Resources & Papers',
             subtitle:
-                'Create or attach an EduSheet paper here, or keep Word, PDF, images and other teaching files with this syllabus item.',
+                'Create an EduSheet paper or Smart Editor document here, or keep Word, PDF, images and other teaching files with this syllabus item.',
             icon: Icons.folder_copy_outlined,
           ),
         ),
@@ -62,6 +70,20 @@ class SyllabusAttachmentSection extends StatelessWidget {
                 onPressed: attachSavedPaperEnabled ? onAttachSavedPaper : null,
                 icon: const Icon(Icons.link_rounded),
                 label: const Text('Attach Saved Paper'),
+              ),
+              FilledButton.tonalIcon(
+                key: const ValueKey('syllabus-create-smart-document-button'),
+                onPressed:
+                    createSmartDocumentEnabled ? onCreateSmartDocument : null,
+                icon: const Icon(Icons.edit_note_rounded),
+                label: const Text('Create Smart Document'),
+              ),
+              OutlinedButton.icon(
+                key: const ValueKey('syllabus-attach-smart-document-button'),
+                onPressed:
+                    attachSmartDocumentEnabled ? onAttachSmartDocument : null,
+                icon: const Icon(Icons.library_add_outlined),
+                label: const Text('Attach Smart Document'),
               ),
               OutlinedButton.icon(
                 key: const ValueKey('syllabus-add-file-button'),
@@ -113,7 +135,7 @@ class SyllabusAttachmentSection extends StatelessWidget {
                 SizedBox(width: TeachingPlannerDesign.space10),
                 Expanded(
                   child: Text(
-                    'No papers or files here yet. You can add them when you need them.',
+                    'No papers, Smart Documents or files here yet. Add only what you need for this syllabus item.',
                   ),
                 ),
               ],
@@ -139,6 +161,14 @@ class SyllabusAttachmentSection extends StatelessWidget {
                       width: width,
                       child: resource.kind == TeachingResourceKind.paper
                           ? _PaperResourceCard(
+                              resource: resource,
+                              onOpen: () => onOpen(resource),
+                              onRemove: canRemove?.call(resource) == false
+                                  ? null
+                                  : () => onRemove(resource),
+                            )
+                          : resource.kind == TeachingResourceKind.smartDocument
+                          ? _SmartDocumentResourceCard(
                               resource: resource,
                               onOpen: () => onOpen(resource),
                               onRemove: canRemove?.call(resource) == false
@@ -235,6 +265,92 @@ class _PaperResourceCard extends StatelessWidget {
           else
             const Tooltip(
               message: 'Official curriculum paper',
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(Icons.lock_outline_rounded, size: 18),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SmartDocumentResourceCard extends StatelessWidget {
+  const _SmartDocumentResourceCard({
+    required this.resource,
+    required this.onOpen,
+    this.onRemove,
+  });
+
+  final TeachingResource resource;
+  final VoidCallback onOpen;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = TeachingPlannerTheme.colorsOf(context);
+    return TeachingPlannerSurfaceCard(
+      key: ValueKey(
+        'syllabus-smart-document-${resource.linkedSmartDocumentId}',
+      ),
+      onTap: onOpen,
+      padding: const EdgeInsets.all(TeachingPlannerDesign.space12),
+      child: Row(
+        children: [
+          const TeachingPlannerIconBadge(
+            icon: Icons.edit_note_rounded,
+            tone: TeachingPlannerTone.purple,
+            size: 40,
+            iconSize: 20,
+          ),
+          const SizedBox(width: TeachingPlannerDesign.space10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  resource.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: TeachingPlannerDesign.space4),
+                Text(
+                  'Smart Editor • Free-form academic document',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: colors.inkMuted),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Open Smart Document',
+            onPressed: onOpen,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          if (onRemove != null)
+            PopupMenuButton<String>(
+              tooltip: 'Smart Document actions',
+              onSelected: (value) {
+                if (value == 'remove') onRemove?.call();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'remove',
+                  child: Text('Remove from syllabus'),
+                ),
+              ],
+            )
+          else
+            const Tooltip(
+              message: 'Official curriculum resource',
               child: Padding(
                 padding: EdgeInsets.all(8),
                 child: Icon(Icons.lock_outline_rounded, size: 18),

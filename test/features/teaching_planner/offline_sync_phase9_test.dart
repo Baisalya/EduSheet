@@ -21,7 +21,7 @@ void main() {
   final t3 = DateTime.utc(2026, 9, 18, 12);
 
   test(
-    'schema 9 migrates to schema 10 with an uninitialized local sync sidecar',
+    'schema 9 migrates through schema 11 with an uninitialized local sync sidecar',
     () {
       const codec = TeachingPlannerDocumentCodec();
       final legacy = <String, dynamic>{
@@ -36,7 +36,7 @@ void main() {
 
       final migrated = codec.decodeStored(legacy);
 
-      expect(TeachingPlannerDocumentCodec.currentSchemaVersion, 10);
+      expect(TeachingPlannerDocumentCodec.currentSchemaVersion, 11);
       expect(migrated.localRevision, 7);
       expect(migrated.syncState.isInitialized, isFalse);
       expect(migrated.syncState.nextSequence, 1);

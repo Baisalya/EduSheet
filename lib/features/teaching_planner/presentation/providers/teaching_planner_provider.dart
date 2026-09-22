@@ -731,6 +731,7 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
     String? localRelativePath,
     int? sizeBytes,
     String? linkedPaperId,
+    String? linkedSmartDocumentId,
     Map<String, dynamic>? geometryJson,
   }) {
     return _run(
@@ -748,6 +749,7 @@ class TeachingPlannerNotifier extends StateNotifier<TeachingPlannerState> {
         localRelativePath: localRelativePath,
         sizeBytes: sizeBytes,
         linkedPaperId: linkedPaperId,
+        linkedSmartDocumentId: linkedSmartDocumentId,
         geometryJson: geometryJson,
       ),
     );

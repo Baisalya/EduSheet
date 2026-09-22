@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+
+<defs><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#D98B00" flood-opacity="0.22"/></filter></defs>
+<g filter="url(#s)">
+  <path d="M150 820 L450 180 L760 820 Z" fill="#FFC925" stroke="#FFAD13" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M322 710 L450 420 L585 710 Z" fill="#FFF4B6" stroke="#FFAD13" stroke-width="10"/>
+  <g stroke="#E98D11" stroke-width="18" stroke-linecap="round">
+    <line x1="625" y1="600" x2="715" y2="600"/><line x1="610" y1="655" x2="715" y2="655"/><line x1="595" y1="710" x2="715" y2="710"/>
+  </g>
+</g>
+
+</svg>

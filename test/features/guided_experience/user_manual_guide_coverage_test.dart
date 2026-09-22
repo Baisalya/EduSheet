@@ -7,6 +7,11 @@ void main() {
   testWidgets('user manual exposes simple teacher tasks and safe demos', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(
       const MaterialApp(home: EduSheetUserManualScreen()),
     );
@@ -15,15 +20,42 @@ void main() {
     expect(find.text('Short, simple help'), findsOneWidget);
     expect(find.text('Create Paper demo'), findsOneWidget);
     expect(find.text('Planner & Syllabus demo'), findsOneWidget);
-    expect(find.text('Start here'), findsOneWidget);
-    expect(find.text('Create a question paper'), findsOneWidget);
-    expect(find.text('Teaching Planner'), findsOneWidget);
-    expect(find.text('Syllabus'), findsOneWidget);
-    expect(find.text('Plan a lesson'), findsOneWidget);
-    expect(find.text('Teaching files and materials'), findsOneWidget);
-    expect(find.text('Open documents'), findsOneWidget);
-    expect(find.text('Backup, import and share'), findsOneWidget);
-    expect(find.text('Other useful Home tools'), findsOneWidget);
+    const sectionTitles = <String>[
+      'Start here',
+      'Create a question paper',
+      'Smart Editor',
+      'Teaching Planner',
+      'Syllabus',
+      'Plan a lesson',
+      'Teaching files and materials',
+      'Open documents',
+      'Backup, import and share',
+      'Other useful Home tools',
+    ];
+    for (final title in sectionTitles) {
+      expect(find.text(title), findsOneWidget);
+    }
+    final smartEditorSection = find.text('Smart Editor');
+    await tester.ensureVisible(smartEditorSection);
+    await tester.tap(smartEditorSection);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Resources & Papers → Create Smart Document'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Attach Smart Document'),
+      findsOneWidget,
+    );
+
+    final plannerSection = find.text('Teaching Planner');
+    await tester.ensureVisible(plannerSection);
+    await tester.tap(plannerSection);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('original document stays safely in Smart Editor'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('focused manual section opens first and expanded', (tester) async {

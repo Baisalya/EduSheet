@@ -14,6 +14,10 @@ import '../../../eds_import/presentation/screens/eds_import_center_screen.dart';
 import '../../../editor/domain/models/paper_model.dart';
 import '../../../editor/presentation/providers/editor_provider.dart';
 import '../../../editor/presentation/screens/create_paper_screen.dart';
+import '../../../smart_editor/domain/smart_document.dart';
+import '../../../smart_editor/presentation/providers/smart_editor_provider.dart';
+import '../../../smart_editor/presentation/screens/smart_editor_screen.dart';
+import '../../../smart_editor/services/smart_editor_docx_service.dart';
 import 'package:edusheet/features/document_reader/presentation/providers/document_provider.dart';
 import 'package:edusheet/features/document_reader/presentation/screens/file_preview_screen.dart';
 
@@ -58,6 +62,7 @@ import '../widgets/syllabus_outline.dart';
 import '../widgets/saved_paper_picker_sheet.dart';
 import '../widgets/syllabus_start_sheet.dart';
 import '../widgets/teaching_planner_page_shell.dart';
+import '../widgets/teaching_planner_responsive_content.dart';
 
 class SyllabusManagerScreen extends ConsumerStatefulWidget {
   const SyllabusManagerScreen({
@@ -353,6 +358,8 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
         onDelete: _trashNode,
         onCreatePaper: _createPaperForNode,
         onAttachSavedPaper: _attachSavedPaper,
+        onCreateSmartDocument: _createSmartDocumentForNode,
+        onAttachSmartDocument: _attachSmartDocument,
         onAddAttachments: _addAttachments,
         onLinkAttachments: Platform.isWindows ? _linkAttachments : null,
         onOpenAttachment: _openResource,
@@ -538,9 +545,301 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
     );
   }
 
+  Future<void> _createSmartDocumentForNode(SyllabusNodeRef node) async {
+    final workspace = ref.read(teachingPlannerProvider).workspace;
+    final suggestedTitle = _smartDocumentSuggestedTitle(workspace, node);
+    if (suggestedTitle == null) {
+      _showMessage('This syllabus item is no longer available.');
+      return;
+    }
+
+    final draft = await showAdaptiveModalBottomSheet<_SmartDocumentStartDraft>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      maximumSheetWidth: 560,
+      builder: (_) => _SmartDocumentStartSheet(
+        suggestedTitle: suggestedTitle,
+      ),
+    );
+    if (draft == null || !mounted) return;
+
+    SmartDocument document;
+    List<String> importWarnings = const <String>[];
+    if (draft.importWord) {
+      final imported = await _pickSmartDocumentFromWord();
+      if (imported == null || !mounted) return;
+      final cleanTitle = draft.title.trim();
+      document = cleanTitle.isEmpty
+          ? imported.document
+          : imported.document.copyWith(
+              title: cleanTitle,
+              updatedAt: DateTime.now().toUtc(),
+            );
+      importWarnings = imported.warnings;
+    } else {
+      document = SmartDocument.blank(title: draft.title.trim());
+    }
+
+    try {
+      await ref.read(smartDocumentRepositoryProvider).save(document);
+      try {
+        await ref.read(smartEditorRecoveryStoreProvider).clear(document.id);
+      } catch (_) {
+        // Primary Smart Document save is authoritative.
+      }
+      ref.invalidate(smartDocumentsProvider);
+    } catch (_) {
+      if (mounted) {
+        _showMessage('The Smart Document could not be created safely.');
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final resourceId = const Uuid().v4();
+    final linked = await ref
+        .read(teachingPlannerProvider.notifier)
+        .createTeachingResource(
+          resourceId: resourceId,
+          owner: SyllabusAttachmentController.ownerForNode(node),
+          kind: TeachingResourceKind.smartDocument,
+          role: TeachingResourceRole.reference,
+          title: document.title,
+          linkedSmartDocumentId: document.id,
+        );
+    if (!mounted) return;
+    if (!linked) {
+      _showMessage(
+        '${ref.read(teachingPlannerProvider).errorMessage ?? 'The Smart Document could not be linked here.'} The document is still safe in Smart Editor.',
+      );
+      return;
+    }
+
+    if (importWarnings.isNotEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Word import notes'),
+          content: SingleChildScrollView(
+            child: Text(importWarnings.map((item) => '• $item').join('\n\n')),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SmartEditorScreen(document: document),
+      ),
+    );
+    if (!mounted) return;
+    ref.invalidate(smartDocumentsProvider);
+    await _syncSmartDocumentResourceTitle(resourceId, document.id);
+  }
+
+  Future<SmartEditorDocxImportResult?> _pickSmartDocumentFromWord() async {
+    final picked = await FilePicker.platform.pickFiles(
+      dialogTitle: 'Import Word into Smart Editor',
+      type: FileType.custom,
+      allowedExtensions: const <String>['docx'],
+      allowMultiple: false,
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return null;
+    final item = picked.files.single;
+    File? temporary;
+    try {
+      File source;
+      if (item.path != null && item.path!.trim().isNotEmpty) {
+        source = File(item.path!);
+      } else if (item.bytes != null) {
+        final directory = await Directory.systemTemp.createTemp(
+          'edusheet-planner-smart-docx-',
+        );
+        temporary = File(
+          '${directory.path}${Platform.pathSeparator}${item.name}',
+        );
+        await temporary.writeAsBytes(item.bytes!, flush: true);
+        source = temporary;
+      } else {
+        throw const FormatException('The selected Word file could not be read.');
+      }
+      return await const SmartEditorDocxService().importFile(source);
+    } catch (error) {
+      if (mounted) {
+        _showMessage('Could not import Word document: $error');
+      }
+      return null;
+    } finally {
+      if (temporary != null) {
+        try {
+          final directory = temporary.parent;
+          if (await directory.exists()) {
+            await directory.delete(recursive: true);
+          }
+        } catch (_) {
+          // Best-effort temporary cleanup only.
+        }
+      }
+    }
+  }
+
+  Future<void> _attachSmartDocument(SyllabusNodeRef node) async {
+    List<SmartDocument> allDocuments;
+    try {
+      allDocuments = await ref.read(smartDocumentRepositoryProvider).getAll();
+    } catch (_) {
+      if (mounted) _showMessage('Smart Editor documents could not be loaded.');
+      return;
+    }
+    if (!mounted) return;
+
+    final owner = SyllabusAttachmentController.ownerForNode(node);
+    final linkedIds = ref
+        .read(teachingPlannerProvider)
+        .workspace
+        .activeResourcesForOwner(owner)
+        .where((item) => item.kind == TeachingResourceKind.smartDocument)
+        .map((item) => item.linkedSmartDocumentId)
+        .whereType<String>()
+        .toSet();
+    final available = allDocuments
+        .where((document) => !linkedIds.contains(document.id))
+        .toList(growable: false);
+    if (allDocuments.isNotEmpty && available.isEmpty) {
+      _showMessage('All Smart Editor documents are already linked here.');
+      return;
+    }
+
+    final selected = await showAdaptiveModalBottomSheet<SmartDocument>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      maximumSheetWidth: 620,
+      builder: (_) => _SmartDocumentPickerSheet(documents: available),
+    );
+    if (selected == null || !mounted) return;
+
+    final saved = await ref
+        .read(teachingPlannerProvider.notifier)
+        .createTeachingResource(
+          owner: owner,
+          kind: TeachingResourceKind.smartDocument,
+          role: TeachingResourceRole.reference,
+          title: selected.title,
+          linkedSmartDocumentId: selected.id,
+        );
+    if (!mounted) return;
+    _showMessage(
+      saved
+          ? 'Smart Document added to this syllabus.'
+          : (ref.read(teachingPlannerProvider).errorMessage ??
+                'The Smart Document could not be linked here.'),
+    );
+  }
+
+  Future<void> _openLinkedSmartDocument(TeachingResource resource) async {
+    final documentId = resource.linkedSmartDocumentId;
+    if (documentId == null || documentId.trim().isEmpty) {
+      _showMessage('This Smart Document link is incomplete.');
+      return;
+    }
+
+    SmartDocument? document;
+    try {
+      document = await ref.read(smartDocumentRepositoryProvider).getById(
+        documentId,
+      );
+    } catch (_) {
+      if (mounted) _showMessage('Smart Editor documents could not be loaded.');
+      return;
+    }
+    if (!mounted) return;
+    if (document == null) {
+      _showMessage(
+        'This Smart Document is not on this device. The planner link was kept safely.',
+      );
+      return;
+    }
+
+    var documentToOpen = document;
+    try {
+      final recovery = await ref
+          .read(smartEditorRecoveryStoreProvider)
+          .newerSnapshotFor(document);
+      if (recovery != null) {
+        documentToOpen = recovery;
+        try {
+          await ref.read(smartDocumentRepositoryProvider).save(recovery);
+          await ref.read(smartEditorRecoveryStoreProvider).clear(document.id);
+          ref.invalidate(smartDocumentsProvider);
+        } catch (_) {
+          // Open the recovered in-memory snapshot even if promotion cleanup fails.
+        }
+        if (mounted) {
+          _showMessage('Recovered unsaved Smart Editor changes.');
+        }
+      }
+    } catch (_) {
+      // A damaged recovery journal must never block the primary document.
+    }
+    if (!mounted) return;
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => SmartEditorScreen(document: documentToOpen),
+      ),
+    );
+    if (!mounted) return;
+    ref.invalidate(smartDocumentsProvider);
+    await _syncSmartDocumentResourceTitle(resource.id, document.id);
+  }
+
+  Future<void> _syncSmartDocumentResourceTitle(
+    String resourceId,
+    String documentId,
+  ) async {
+    try {
+      final refreshed = await ref
+          .read(smartDocumentRepositoryProvider)
+          .getById(documentId);
+      if (refreshed == null || !mounted) return;
+      final current = ref
+          .read(teachingPlannerProvider)
+          .workspace
+          .resourceById(resourceId);
+      if (current == null || current.isArchived) return;
+      final title = refreshed.title.trim();
+      if (title.isEmpty || title == current.title) return;
+      await ref
+          .read(teachingPlannerProvider.notifier)
+          .updateTeachingResource(
+            resourceId,
+            role: current.role,
+            title: title,
+          );
+    } catch (_) {
+      // The Smart Document is already safe; title syncing is best effort.
+    }
+  }
+
   Future<void> _openResource(TeachingResource resource) async {
     if (resource.kind == TeachingResourceKind.paper) {
       await _openLinkedPaper(resource);
+      return;
+    }
+    if (resource.kind == TeachingResourceKind.smartDocument) {
+      await _openLinkedSmartDocument(resource);
       return;
     }
     await _openAttachment(resource);
@@ -723,13 +1022,23 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
 
   Future<void> _removeResource(TeachingResource resource) async {
     final isPaper = resource.kind == TeachingResourceKind.paper;
+    final isSmartDocument =
+        resource.kind == TeachingResourceKind.smartDocument;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(isPaper ? 'Remove paper from syllabus?' : 'Remove file?'),
+        title: Text(
+          isPaper
+              ? 'Remove paper from syllabus?'
+              : isSmartDocument
+              ? 'Remove Smart Document from syllabus?'
+              : 'Remove file?',
+        ),
         content: Text(
           isPaper
               ? 'This only removes the syllabus link. The original paper stays safely in Saved Papers.'
+              : isSmartDocument
+              ? 'This only removes the syllabus link. The original document stays safely in Smart Editor.'
               : '${resource.originalFileName ?? resource.title} will disappear from this syllabus. EduSheet keeps archived resource data safely for recovery.',
         ),
         actions: [
@@ -753,10 +1062,27 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
       saved
           ? (isPaper
                 ? 'Paper removed from this syllabus. Saved Papers is unchanged.'
+                : isSmartDocument
+                ? 'Smart Document removed from this syllabus. Smart Editor is unchanged.'
                 : 'File removed from syllabus.')
           : (ref.read(teachingPlannerProvider).errorMessage ??
                 'The item could not be removed from this syllabus.'),
     );
+  }
+
+  String? _smartDocumentSuggestedTitle(
+    TeachingPlannerWorkspace workspace,
+    SyllabusNodeRef node,
+  ) {
+    final value = switch (node.kind) {
+      SyllabusNodeKind.classValue => workspace.classById(node.id)?.name,
+      SyllabusNodeKind.subject => workspace.subjectById(node.id)?.name,
+      SyllabusNodeKind.unit => workspace.unitById(node.id)?.title,
+      SyllabusNodeKind.chapter => workspace.chapterById(node.id)?.title,
+      SyllabusNodeKind.topic => workspace.topicById(node.id)?.title,
+    };
+    final clean = value?.trim();
+    return clean == null || clean.isEmpty ? null : '$clean Notes';
   }
 
   _SyllabusPaperContext? _paperContextForNode(
@@ -2125,6 +2451,198 @@ class _SyllabusManagerScreenState extends ConsumerState<SyllabusManagerScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _SmartDocumentStartDraft {
+  const _SmartDocumentStartDraft({
+    required this.title,
+    required this.importWord,
+  });
+
+  final String title;
+  final bool importWord;
+}
+
+class _SmartDocumentStartSheet extends StatefulWidget {
+  const _SmartDocumentStartSheet({required this.suggestedTitle});
+
+  final String suggestedTitle;
+
+  @override
+  State<_SmartDocumentStartSheet> createState() =>
+      _SmartDocumentStartSheetState();
+}
+
+class _SmartDocumentStartSheetState extends State<_SmartDocumentStartSheet> {
+  late final TextEditingController _title;
+  bool _importWord = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _title = TextEditingController(text: widget.suggestedTitle);
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TeachingPlannerSheetFrame(
+      title: 'Create Smart Document',
+      subtitle:
+          'Start a free-form document inside this syllabus item. It stays available in Smart Editor too.',
+      icon: Icons.edit_note_rounded,
+      action: FilledButton.icon(
+        key: const ValueKey('planner-create-smart-document-confirm'),
+        onPressed: () {
+          final title = _title.text.trim();
+          if (title.isEmpty && !_importWord) return;
+          Navigator.pop(
+            context,
+            _SmartDocumentStartDraft(
+              title: title,
+              importWord: _importWord,
+            ),
+          );
+        },
+        icon: Icon(_importWord ? Icons.file_open_outlined : Icons.add_rounded),
+        label: Text(_importWord ? 'Choose Word file' : 'Create'),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const ValueKey('planner-smart-document-title'),
+            controller: _title,
+            decoration: InputDecoration(
+              labelText: _importWord
+                  ? 'Document title (optional override)'
+                  : 'Document title',
+              prefixIcon: const Icon(Icons.title_rounded),
+            ),
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space14),
+          SegmentedButton<bool>(
+            key: const ValueKey('planner-smart-document-source'),
+            segments: const [
+              ButtonSegment<bool>(
+                value: false,
+                icon: Icon(Icons.note_add_outlined),
+                label: Text('Blank'),
+              ),
+              ButtonSegment<bool>(
+                value: true,
+                icon: Icon(Icons.file_open_outlined),
+                label: Text('Import Word'),
+              ),
+            ],
+            selected: <bool>{_importWord},
+            onSelectionChanged: (value) {
+              setState(() => _importWord = value.first);
+            },
+          ),
+          const SizedBox(height: TeachingPlannerDesign.space12),
+          Text(
+            _importWord
+                ? 'Choose a .docx file. EduSheet will import supported Word content into the same editable Smart Editor.'
+                : 'Blank starts immediately with normal Word/WPS-style typing, Math and Geometry available when needed.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SmartDocumentPickerSheet extends StatefulWidget {
+  const _SmartDocumentPickerSheet({required this.documents});
+
+  final List<SmartDocument> documents;
+
+  @override
+  State<_SmartDocumentPickerSheet> createState() =>
+      _SmartDocumentPickerSheetState();
+}
+
+class _SmartDocumentPickerSheetState extends State<_SmartDocumentPickerSheet> {
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query.trim().toLowerCase();
+    final documents = widget.documents
+        .where(
+          (item) => query.isEmpty || item.title.toLowerCase().contains(query),
+        )
+        .toList(growable: false);
+    return TeachingPlannerSheetFrame(
+      title: 'Attach Smart Document',
+      subtitle:
+          'Choose an existing Smart Editor document. The original stays in the Smart Editor library.',
+      icon: Icons.library_add_outlined,
+      action: TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      child: SizedBox(
+        height: 430,
+        child: Column(
+          children: [
+            TextField(
+              controller: _search,
+              decoration: const InputDecoration(
+                labelText: 'Search documents',
+                prefixIcon: Icon(Icons.search_rounded),
+              ),
+              onChanged: (value) => setState(() => _query = value),
+            ),
+            const SizedBox(height: TeachingPlannerDesign.space12),
+            Expanded(
+              child: documents.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No available Smart Documents. Create a new one instead.',
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount: documents.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final document = documents[index];
+                        return ListTile(
+                          key: ValueKey(
+                            'planner-smart-document-${document.id}',
+                          ),
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.edit_note_rounded),
+                          ),
+                          title: Text(
+                            document.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: const Text('Smart Editor document'),
+                          trailing: const Icon(Icons.add_link_rounded),
+                          onTap: () => Navigator.pop(context, document),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

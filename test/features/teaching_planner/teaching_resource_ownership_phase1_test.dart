@@ -44,7 +44,7 @@ void main() {
     final resource = workspace.resources.single;
     expect(resource.owner, const TeachingResourceOwner.lessonPlan('lesson'));
     expect(resource.lessonPlanId, 'lesson');
-    expect(codec.encode(workspace)['schemaVersion'], 10);
+    expect(codec.encode(workspace)['schemaVersion'], 11);
     expect(
       (codec.encode(workspace)['workspace'] as Map)['resources'],
       isNotEmpty,

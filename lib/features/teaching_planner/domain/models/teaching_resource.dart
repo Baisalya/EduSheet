@@ -1,7 +1,7 @@
 import 'planner_json.dart';
 import 'teaching_resource_owner.dart';
 
-enum TeachingResourceKind { note, file, link, geometry, paper }
+enum TeachingResourceKind { note, file, link, geometry, paper, smartDocument }
 
 enum TeachingResourceFileOwnership { managed, linkedExternal }
 
@@ -56,6 +56,7 @@ class TeachingResource {
   final int? sizeBytes;
   final String? contentSha256;
   final String? linkedPaperId;
+  final String? linkedSmartDocumentId;
   final Map<String, dynamic>? geometryJson;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -79,6 +80,7 @@ class TeachingResource {
     this.sizeBytes,
     this.contentSha256,
     this.linkedPaperId,
+    this.linkedSmartDocumentId,
     this.geometryJson,
     required this.createdAt,
     required this.updatedAt,
@@ -122,6 +124,7 @@ class TeachingResource {
     Object? sizeBytes = _unset,
     Object? contentSha256 = _unset,
     Object? linkedPaperId = _unset,
+    Object? linkedSmartDocumentId = _unset,
     Object? geometryJson = _unset,
     DateTime? updatedAt,
     Object? archivedAt = _unset,
@@ -162,6 +165,9 @@ class TeachingResource {
       linkedPaperId: identical(linkedPaperId, _unset)
           ? this.linkedPaperId
           : linkedPaperId as String?,
+      linkedSmartDocumentId: identical(linkedSmartDocumentId, _unset)
+          ? this.linkedSmartDocumentId
+          : linkedSmartDocumentId as String?,
       geometryJson: identical(geometryJson, _unset)
           ? this.geometryJson
           : geometryJson as Map<String, dynamic>?,
@@ -193,6 +199,8 @@ class TeachingResource {
     if (sizeBytes != null) 'sizeBytes': sizeBytes,
     if (contentSha256 != null) 'contentSha256': contentSha256,
     if (linkedPaperId != null) 'linkedPaperId': linkedPaperId,
+    if (linkedSmartDocumentId != null)
+      'linkedSmartDocumentId': linkedSmartDocumentId,
     if (geometryJson != null) 'geometryJson': geometryJson,
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
@@ -219,6 +227,10 @@ class TeachingResource {
         sizeBytes: _optionalInt(json['sizeBytes']),
         contentSha256: plannerOptionalString(json, 'contentSha256'),
         linkedPaperId: plannerOptionalString(json, 'linkedPaperId'),
+        linkedSmartDocumentId: plannerOptionalString(
+          json,
+          'linkedSmartDocumentId',
+        ),
         geometryJson: json['geometryJson'] is Map
             ? Map<String, dynamic>.from(json['geometryJson'] as Map)
             : null,

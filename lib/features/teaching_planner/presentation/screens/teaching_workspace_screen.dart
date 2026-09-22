@@ -19,6 +19,8 @@ import 'package:edusheet/features/geometry_builder/widgets/geometry_builder_scre
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_keyboard_field.dart';
 import 'package:edusheet/features/premium/presentation/widgets/premium_gate_dialog.dart';
+import 'package:edusheet/features/smart_editor/presentation/providers/smart_editor_provider.dart';
+import 'package:edusheet/features/smart_editor/presentation/screens/smart_editor_screen.dart';
 import 'package:edusheet/shared/presentation/widgets/adaptive_modal_bottom_sheet.dart';
 
 import '../../application/teaching_resource_attachment_service.dart';
@@ -400,6 +402,9 @@ class _TeachingWorkspaceScreenState
           ),
         );
         break;
+      case TeachingResourceKind.smartDocument:
+        await _openSmartDocumentResource(item);
+        break;
       case TeachingResourceKind.geometry:
         final mergeState = await ref.read(curriculumMergeStateProvider.future);
         if (!mounted) return;
@@ -435,12 +440,77 @@ class _TeachingWorkspaceScreenState
     }
   }
 
+  Future<void> _openSmartDocumentResource(TeachingResource item) async {
+    final documentId = item.linkedSmartDocumentId;
+    if (documentId == null || documentId.trim().isEmpty) {
+      _showMessage('This Smart Document link is incomplete.');
+      return;
+    }
+    try {
+      var document = await ref
+          .read(smartDocumentRepositoryProvider)
+          .getById(documentId);
+      if (!mounted) return;
+      if (document == null) {
+        _showMessage(
+          'This Smart Document is not on this device. The lesson link was kept safely.',
+        );
+        return;
+      }
+      try {
+        final recovery = await ref
+            .read(smartEditorRecoveryStoreProvider)
+            .newerSnapshotFor(document);
+        if (recovery != null) {
+          document = recovery;
+          await ref.read(smartDocumentRepositoryProvider).save(recovery);
+          try {
+            await ref.read(smartEditorRecoveryStoreProvider).clear(documentId);
+          } catch (_) {
+            // Primary repository now has the recovered snapshot.
+          }
+        }
+      } catch (_) {
+        // Recovery must not block opening the primary copy.
+      }
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => SmartEditorScreen(document: document!),
+        ),
+      );
+      ref.invalidate(smartDocumentsProvider);
+      if (!mounted) return;
+      final refreshed = await ref
+          .read(smartDocumentRepositoryProvider)
+          .getById(documentId);
+      final cleanTitle = refreshed?.title.trim();
+      if (cleanTitle != null &&
+          cleanTitle.isNotEmpty &&
+          cleanTitle != item.title) {
+        await ref
+            .read(teachingPlannerProvider.notifier)
+            .updateTeachingResource(
+              item.id,
+              role: item.role,
+              title: cleanTitle,
+            );
+      }
+    } catch (_) {
+      if (mounted) _showMessage('Smart Document could not be opened.');
+    }
+  }
+
   Future<void> _editResource(TeachingResource item) async {
-    if (item.kind == TeachingResourceKind.geometry) {
+    if (item.kind == TeachingResourceKind.geometry ||
+        item.kind == TeachingResourceKind.smartDocument) {
       await _openResource(item);
       return;
     }
-    if (item.kind == TeachingResourceKind.file) return;
+    if (item.kind == TeachingResourceKind.file ||
+        item.kind == TeachingResourceKind.paper) {
+      return;
+    }
     final draft = await showAdaptiveModalBottomSheet<_TextResourceDraft>(
       context: context,
       useSafeArea: true,
@@ -466,12 +536,15 @@ class _TeachingWorkspaceScreenState
   }
 
   Future<void> _archiveResource(TeachingResource item) async {
+    final isSmartDocument = item.kind == TeachingResourceKind.smartDocument;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Remove from this lesson?'),
         content: Text(
-          '${item.title} will be archived. Attached file data is kept safely for recovery/export.',
+          isSmartDocument
+              ? '${item.title} will be unlinked from this lesson. The original document stays safely in Smart Editor.'
+              : '${item.title} will be archived. Attached file data is kept safely for recovery/export.',
         ),
         actions: [
           TextButton(
@@ -489,7 +562,12 @@ class _TeachingWorkspaceScreenState
     final ok = await ref
         .read(teachingPlannerProvider.notifier)
         .archiveTeachingResource(item.id);
-    _showSaveResult(ok, success: 'Resource removed from this lesson. Managed file data was kept safely.');
+    _showSaveResult(
+      ok,
+      success: isSmartDocument
+          ? 'Smart Document removed from this lesson. Smart Editor is unchanged.'
+          : 'Resource removed from this lesson. Managed file data was kept safely.',
+    );
   }
 
   void _showMessage(String message) {
@@ -842,6 +920,7 @@ class _TeachingWorkspaceScreenState
                       payload.fileBytes != null
                   ? store.sha256ForBytes(payload.fileBytes!)
                   : sourceResource.contentSha256,
+              linkedSmartDocumentId: sourceResource.linkedSmartDocumentId,
               geometryJson: sourceResource.geometryJson,
               createdAt: now,
               updatedAt: now,
@@ -1660,6 +1739,7 @@ TeachingPlannerTone _toneForResource(TeachingResource item) {
     TeachingResourceKind.link => TeachingPlannerTone.orange,
     TeachingResourceKind.paper => TeachingPlannerTone.primary,
     TeachingResourceKind.geometry => TeachingPlannerTone.purple,
+    TeachingResourceKind.smartDocument => TeachingPlannerTone.purple,
   };
 }
 
@@ -1677,6 +1757,7 @@ IconData _iconFor(TeachingResource item) {
     TeachingResourceKind.link => Icons.link_rounded,
     TeachingResourceKind.paper => Icons.description_outlined,
     TeachingResourceKind.geometry => Icons.architecture_rounded,
+    TeachingResourceKind.smartDocument => Icons.edit_note_rounded,
   };
 }
 
@@ -1694,6 +1775,7 @@ String _kindLabel(TeachingResource item) {
     TeachingResourceKind.link => 'Link',
     TeachingResourceKind.paper => 'Paper',
     TeachingResourceKind.geometry => 'Geometry',
+    TeachingResourceKind.smartDocument => 'Smart Document',
   };
 }
 
@@ -1703,6 +1785,8 @@ String _resourceSummary(TeachingResource item) => switch (item.kind) {
   TeachingResourceKind.file => item.originalFileName ?? 'Attached file',
   TeachingResourceKind.paper => 'Linked EduSheet saved paper',
   TeachingResourceKind.geometry => 'Editable EduSheet geometry diagram',
+  TeachingResourceKind.smartDocument =>
+    'Linked editable Smart Editor document',
 };
 
 String _roleLabel(TeachingResourceRole role) => switch (role) {
