@@ -1,5 +1,6 @@
 param(
-    [int] $BuildNumber = 0
+    [int] $BuildNumber = 0,
+    [switch] $RunQualityChecks
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,8 +61,12 @@ Push-Location $repositoryRoot
 try {
     Invoke-ReleaseCommand -Arguments @('clean')
     Invoke-ReleaseCommand -Arguments @('pub', 'get')
-    Invoke-ReleaseCommand -Arguments @('test', '--no-pub')
-    Invoke-ReleaseCommand -Arguments @('analyze', '--no-pub', '--no-fatal-infos')
+    if ($RunQualityChecks) {
+        Invoke-ReleaseCommand -Arguments @('test', '--no-pub')
+        Invoke-ReleaseCommand -Arguments @('analyze', '--no-pub', '--no-fatal-infos')
+    } else {
+        Write-Host 'Quality checks skipped. This command is packaging-only; use -RunQualityChecks for fresh test/analyze.' -ForegroundColor Yellow
+    }
     Invoke-ReleaseCommand -Arguments @(
         'build',
         'appbundle',
@@ -93,6 +98,7 @@ try {
     Write-Host "Size: $($bundle.Length) bytes"
     Write-Host "SHA-256: $($hash.Hash)"
     Write-Host 'Mode: ads-ready Free; Premium activates remotely when the Play base plan becomes active.'
+    Write-Host "Fresh quality checks: $($RunQualityChecks.IsPresent)"
 } finally {
     Pop-Location
 }

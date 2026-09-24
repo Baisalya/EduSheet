@@ -3,7 +3,12 @@
 Before running a command, read the release-mode gate in
 `release/STORE_RELEASE_RUNBOOK.md`. If the owner's current request does not say
 Free or Microsoft monetized, ask for that choice first. The current Store MSIX
-script is Free-only; it must not be used to activate Microsoft monetization.
+is remote-ready but remains complimentary while the add-on is unavailable; the
+packaging script alone must not be treated as monetization activation.
+
+QA and MSIX packaging are separate. `BUILD_STORE_MSIX.ps1` is packaging-only by
+default; add `-RunQualityChecks` only for explicitly requested fresh QA. Partner
+Center upload/submission reuses the exact existing MSIX without rebuilding it.
 
 This file is the release contract for a human or AI preparing the next EduSheet package. Read it before changing versions or generating an MSIX. Update it in the same change as every release.
 

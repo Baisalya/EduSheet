@@ -38,6 +38,31 @@ Follow only the matching path:
   and grants complimentary full access. Do not submit or publish the add-on
   until the separate activation checklist passes.
 
+### QA is separate from AAB/MSIX packaging
+
+After the release mode is known, treat these as independent jobs:
+
+1. QA/testing only.
+2. Android AAB packaging only.
+3. Windows MSIX packaging only.
+4. Store upload or promotion of an existing artifact.
+
+Do not automatically run the full Flutter test suite because an AAB or MSIX was
+requested. If the owner says the current source is already tested, use the
+default packaging-only command and record the reused QA evidence in
+`release/RELEASE_LOG.md`. Fresh QA is required only when explicitly requested,
+when source/dependency/build configuration changed after that evidence, or when
+the owner chooses it because no usable evidence exists. Store upload and
+Production promotion never rebuild the artifact.
+
+QA-only commands:
+
+```powershell
+flutter pub get
+flutter analyze --no-fatal-infos
+flutter test
+```
+
 ## Product decision in force
 
 EduSheet Android is an ads-supported Free app. The current closed-test and
@@ -133,8 +158,16 @@ $env:EDUSHEET_PURCHASE_VERIFICATION_URL = 'https://baisalya-entitlement-api.bais
 .\release\google_play\BUILD_PLAY_AAB.ps1 -BuildNumber 10
 ```
 
-The script rejects missing/malformed IDs and Google sample IDs, then runs clean,
-dependency restore, tests, analysis, and an equivalent release build with:
+The default command is packaging-only: it rejects missing/malformed IDs and
+Google sample IDs, runs clean/dependency restore, builds the AAB, then verifies
+its identity/version and records its hash. To run fresh QA in the same
+invocation, append `-RunQualityChecks`:
+
+```powershell
+.\release\google_play\BUILD_PLAY_AAB.ps1 -BuildNumber 10 -RunQualityChecks
+```
+
+The release build is equivalent to:
 
 ```powershell
 flutter build appbundle --release --build-number=10 `
@@ -167,7 +200,7 @@ Signature: verified release upload certificate
 The full release build with version code 9 completed successfully (`SHA-256: D325AEAD99AF4F8A6171494E5C2D3E04470FB824BC463EC0C8840656E37899B6`).
 All 1,012 unit tests and static analysis passed (`No issues found!`). This artifact is verified and ready for Play Console upload.
 
-Before upload, verify:
+Before upload, verify or cite existing evidence for:
 
 1. Tests pass.
 2. Analysis contains no errors or warnings. Existing info-level style findings
@@ -235,6 +268,11 @@ From the repository root run:
   -MicrosoftStoreId '9N0ZK8C31X94'
 ```
 
+That is the packaging-only command. Add `-RunQualityChecks` only when fresh
+analysis/tests are wanted in the same invocation. `-SkipChecks` remains accepted
+for older automation but is no longer necessary because packaging-only is the
+default.
+
 The script builds Windows with `PREMIUM_ENABLED=true`, the known Microsoft
 product ID and Store ID. Because the add-on is still unpublished/unavailable,
 runtime discovery fails open to complimentary full access and no checkout is
@@ -277,6 +315,10 @@ to Partner Center.
    for certification only when the owner asks for the external submission.
 9. After certification, publish the free app with the requested visibility and
    record every status change in `release/RELEASE_LOG.md`.
+
+Uploading this MSIX or promoting an Android Closed release is a Store action.
+Do not rebuild either artifact and do not rerun the full Flutter suite during
+that action; use its recorded version, hash, build flags, and QA evidence.
 
 ## Activate Google Play Free + Premium monetization later
 

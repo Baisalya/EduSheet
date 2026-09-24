@@ -291,6 +291,19 @@ Next required action: Upload AAB to Play Console closed testing track and MSIX t
 - Runtime Mode: ads-ready Free; Premium activates remotely when the Play base plan becomes active.
 - Next required action: Upload `app-release.aab` to Play Console closed testing track / internal testing, verify UMP consent and ads on test devices, then promote to production.
 
+## 2026-09-24 — QA and packaging actions separated
+
+- QA, Android AAB packaging, Windows MSIX packaging, Store upload, and Store
+  promotion/submission are now independent release actions.
+- `release/google_play/BUILD_PLAY_AAB.ps1` and
+  `release/microsoft_store/BUILD_STORE_MSIX.ps1` package by default. Fresh
+  analysis and tests run only when `-RunQualityChecks` is supplied.
+- Matching QA evidence may be reused when the exact source and build settings
+  were already tested. Artifact identity, version, signature, size, and SHA-256
+  checks remain required before upload.
+- This entry records a process-only change. No tests, build, Store upload,
+  submission, promotion, or monetization change was performed.
+
 ## Entry template
 
 ```text
