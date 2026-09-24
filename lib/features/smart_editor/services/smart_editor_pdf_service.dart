@@ -40,6 +40,8 @@ class SmartEditorPdfService {
         for (final inline in block.inlines) {
           allText.write(inline.plainText);
         }
+      } else if (block is SmartEditorExportShape) {
+        allText.write(block.payload.text);
       } else if (block is SmartEditorExportTable) {
         for (final row in block.payload.rows) {
           for (final cell in row.cells) {
@@ -58,7 +60,7 @@ class SmartEditorPdfService {
     final pageFormat = PdfPageFormat(size.$1, size.$2);
     final contentWidth = math.max(
       72.0,
-      size.$1 - layout.leftMarginPoints - layout.rightMarginPoints,
+      size.$1 - layout.exportLeftMarginPoints - layout.exportRightMarginPoints,
     );
     final renderer = _SmartPdfRenderer(
       contentWidth: contentWidth,
@@ -73,10 +75,10 @@ class SmartEditorPdfService {
         pageTheme: pw.PageTheme(
           pageFormat: pageFormat,
           margin: pw.EdgeInsets.fromLTRB(
-            layout.leftMarginPoints,
-            layout.topMarginPoints,
-            layout.rightMarginPoints,
-            layout.bottomMarginPoints,
+            layout.exportLeftMarginPoints,
+            layout.exportTopMarginPoints,
+            layout.exportRightMarginPoints,
+            layout.exportBottomMarginPoints,
           ),
           buildBackground: layout.borderStyle == SmartDocumentPageBorderStyle.none
               ? null
@@ -99,14 +101,7 @@ class SmartEditorPdfService {
   }
 
   static (double, double) _pageSize(SmartDocumentPageLayout layout) {
-    var width = layout.pageSize == SmartDocumentPageSize.a4 ? 595.3 : 612.0;
-    var height = layout.pageSize == SmartDocumentPageSize.a4 ? 841.9 : 792.0;
-    if (layout.orientation == SmartDocumentOrientation.landscape) {
-      final value = width;
-      width = height;
-      height = value;
-    }
-    return (width, height);
+    return (layout.exportPageWidthPoints, layout.exportPageHeightPoints);
   }
 
   static pw.Widget _pageBorder(SmartDocumentPageBorderStyle style) {
@@ -239,6 +234,17 @@ class _SmartPdfRenderer {
               result.add(_placeholder('[Geometry diagram]'));
             }
           }
+        case SmartEditorExportShape():
+          result.add(_shape(block));
+        case SmartEditorExportWordOpaqueBlock():
+          final fallback = block.payload.contentText.trim();
+          result.add(
+            _placeholder(
+              fallback.isEmpty
+                  ? '[Word ${block.payload.featureKind ?? 'object'} preserved]'
+                  : fallback,
+            ),
+          );
         case SmartEditorExportTable():
           result.add(_table(block));
       }
@@ -302,6 +308,15 @@ class _SmartPdfRenderer {
             ),
           );
         }
+      } else if (inline is SmartEditorExportWordAdvanced &&
+          inline.plainText.isNotEmpty) {
+        pieces.add(
+          _text(
+            inline.plainText,
+            const <String, dynamic>{},
+            defaultSize,
+          ),
+        );
       }
     }
     if (pieces.isEmpty) pieces.add(pw.SizedBox(height: defaultSize));
@@ -370,6 +385,43 @@ class _SmartPdfRenderer {
           width: safeWidth,
           height: safeHeight,
           fit: pw.BoxFit.contain,
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _shape(SmartEditorExportShape block) {
+    final shape = block.payload;
+    final width = shape.widthPoints.clamp(36.0, contentWidth).toDouble();
+    final height = shape.heightPoints.clamp(18.0, 560.0).toDouble();
+    final fill = _pdfColor(shape.fillColorHex);
+    final stroke = _pdfColor(shape.strokeColorHex) ?? PdfColors.grey700;
+    final strokeWidth = shape.strokeWidthPoints.clamp(0.5, 12.0).toDouble();
+    final label = shape.text.trim();
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 6),
+      child: pw.Align(
+        alignment: pw.Alignment.centerLeft,
+        child: pw.Container(
+          width: width,
+          height: height,
+          alignment: pw.Alignment.center,
+          padding: const pw.EdgeInsets.all(6),
+          decoration: shape.kind == 'textPath'
+              ? pw.BoxDecoration()
+              : pw.BoxDecoration(
+                  color: fill,
+                  border: pw.Border.all(color: stroke, width: strokeWidth),
+                  borderRadius: shape.kind == 'roundedRectangle'
+                      ? pw.BorderRadius.circular(8)
+                      : null,
+                ),
+          child: label.isEmpty
+              ? pw.SizedBox()
+              : PdfComplexTextService.styledText(
+                  label,
+                  style: const pw.TextStyle(fontSize: 9.5),
+                ),
         ),
       ),
     );

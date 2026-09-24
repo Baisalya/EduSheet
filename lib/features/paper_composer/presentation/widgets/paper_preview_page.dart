@@ -24,6 +24,9 @@ import 'package:edusheet/features/pdf/application/paper_marks_resolver.dart';
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
+import 'package:edusheet/features/pdf/services/pdf_service.dart';
+import 'package:edusheet/features/printing/domain/print_document_source.dart';
+import 'package:edusheet/features/printing/presentation/screens/print_center_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -67,6 +70,34 @@ class PaperPreviewPage extends ConsumerWidget {
           child: BackButton(onPressed: () => Navigator.of(context).maybePop()),
         ),
         title: const Text('Paper preview'),
+        actions: [
+          IconButton(
+            key: const Key('paper-preview-print'),
+            tooltip: 'Print paper',
+            onPressed: () {
+              final source = PrintDocumentSource.fixed(
+                title: paper.title.trim().isEmpty
+                    ? 'EduSheet Paper'
+                    : paper.title,
+                description: 'Create Paper document',
+                initialPageFormat: PdfService.resolvePageFormat(
+                  paper,
+                  template,
+                ),
+                load: () => PdfService.generateBytes(paper, template),
+              );
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => PrintCenterScreen(
+                    source: source,
+                    allowChooseFile: false,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.print_outlined),
+          ),
+        ],
       ),
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       body: SingleChildScrollView(

@@ -377,6 +377,7 @@ void main() {
 
     await tester.pumpWidget(app(SmartEditorScreen(document: document)));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('smart-editor-open-docx')), findsOneWidget);
     expect(find.byKey(const Key('smart-editor-export')), findsOneWidget);
     await tester.tap(find.byKey(const Key('smart-editor-export')));
     await tester.pumpAndSettle();
@@ -421,6 +422,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('smart-editor-mobile-more')));
     await tester.pumpAndSettle();
+    expect(find.text('Open / import Word (.docx)'), findsOneWidget);
     expect(find.text('Export Word (.docx)'), findsOneWidget);
     expect(find.text('Export PDF'), findsOneWidget);
     expect(find.text('Save now'), findsOneWidget);

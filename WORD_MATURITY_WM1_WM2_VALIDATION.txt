@@ -1,0 +1,146 @@
+EduSheet Word Maturity WM1 + WM2
+=================================
+Scope: OOXML Foundation + Relationship/Media Fidelity + Style/Theme Engine
+
+Why this phase exists
+---------------------
+Real Microsoft Word documents can carry visual intent outside the visible text:
+relationship-scoped media, DrawingML crop rectangles, picture transforms,
+styles.xml inheritance, docDefaults, default styles and theme fonts/colors.
+Ignoring those parts makes a document structurally readable but visually wrong.
+
+WM1 implemented - OOXML / media foundation
+-------------------------------------------
+1. DrawingML crop geometry
+   - parses a:srcRect l/t/r/b 1/100000 percentages
+   - stores normalized crop fractions in ConversionImageCrop
+   - viewer clips the original image to the same Word source rectangle
+   - uses the Word frame dimensions instead of showing the uncropped bitmap
+
+2. Picture transforms
+   - parses a:xfrm rotation (1/60000 degrees)
+   - parses flipH / flipV
+   - viewer applies crop + flip + rotation to the Word image frame
+
+3. VML compatibility crop
+   - parses cropleft/croptop/cropright/cropbottom
+   - supports fixed-point `f`, percent and decimal forms
+
+4. Relationship provenance / story scope
+   - image model retains original relationship id + resolved package part path
+   - document/header relationship scopes remain independent
+   - regression fixture intentionally reuses the same rId in document.xml and
+     header1.xml but points it at different media parts
+
+5. Smart Editor media preservation
+   - smart DOCX image payload now keeps crop/rotation/flip metadata
+   - image resize preserves those properties
+   - Smart Editor viewer applies the same crop/transform metadata
+   - DOCX export emits a:srcRect and a:xfrm transform attributes
+   - exported DOCX can be reparsed with crop/rotation/flip intact
+
+WM2 implemented - style/theme engine
+------------------------------------
+1. theme1.xml font scheme
+   - major/minor Latin theme fonts
+   - east-Asia / complex-script fallbacks to theme families
+   - w:rFonts asciiTheme/hAnsiTheme/eastAsiaTheme/cstheme resolution
+
+2. theme1.xml color scheme
+   - dk/lt/accent/hyperlink color slots
+   - text1/text2/background1/background2 aliases
+   - themeTint / themeShade application
+   - explicit w:color remains a fallback when theme resolution is unavailable
+
+3. styles.xml inheritance
+   - docDefaults remain the base layer
+   - default paragraph style is applied when w:pStyle is omitted
+   - basedOn chains are resolved ancestor -> descendant
+   - paragraph style run properties + character style + direct run formatting
+     keep the existing override precedence
+
+4. Additional Word run semantics
+   - w:caps
+   - w:smallCaps (viewer approximation uses uppercase + reduced size)
+   - w:spacing character spacing
+   - underline variants: single/double/dotted/dashed/wavy
+   - w:dstrike
+   - w:shd fill fallback for run background
+
+5. Smart table-cell rich-run preservation
+   - imported structured Word table-cell runs retain caps/smallCaps,
+     underline style, double strike and character spacing
+   - Smart DOCX export writes those supported properties back to standard OOXML
+
+Regression coverage added
+-------------------------
+test/features/document_reader/word_wm1_wm2_ooxml_style_media_test.dart
+- scoped document/header relationships
+- DrawingML crop
+- rotation + flip
+- theme font resolution
+- theme color + tint
+- default style + basedOn
+- caps display
+- cropped-image viewer mount
+- Smart Editor image payload persistence
+
+test/features/smart_editor/smart_editor_docx_wm1_wm2_test.dart
+- Smart image embed export emits a:srcRect
+- transform rotation/flip emitted
+- standard DOCX reparses with crop/transform preserved
+
+tool/run_word_maturity_wm1_wm2_gate.ps1
+- flutter pub get
+- full static analysis
+- WM1+WM2 media/style contracts
+- Smart Editor crop round-trip
+- real-document nested-table runtime regression
+- DF5 responsive/performance regression
+- DF4 round-trip regression
+- DF2 advanced layout regression
+- DF6 production-like DOCX regression
+
+Cumulative compatibility retained in FullSource
+------------------------------------------------
+- DF5 ScrollCacheExtent.pixels API fix
+- real-document nested-table LayoutBuilder re-entry hotfix
+- nested-table RichText finder regression
+- DF6 production certification files
+- Android portable .eds/.edtp pathPattern fix
+- DF6 Android build uses `flutter build appbundle --release` (without --no-pub)
+- DF6 Windows PowerShell native-stderr warning handling
+
+Intentionally NOT claimed complete yet
+--------------------------------------
+WM1+WM2 does not make EduSheet a full Microsoft Word layout clone. The following
+remain planned for later maturity phases:
+- paragraph tabs/leaders and paragraph-border fidelity
+- complete numbering/list glyph/font rules
+- complete table-style conditional formatting and border inheritance
+- all drawing shapes / effects / shadows / WordArt / SmartArt
+- exact tight/through text wrap polygons
+- complete pagination, columns and multi-section flow behavior
+- fields beyond currently modeled common page fields
+- comments/footnotes/endnotes/content controls/advanced equations
+- full non-destructive preservation of every unknown OOXML extension
+
+Local validation in this environment
+------------------------------------
+PASS - changed Dart delimiter/string/comment structural scan
+PASS - WM1/WM2 test files and gate are present
+PASS - crop metadata is parsed, rendered, carried through Smart Editor and emitted
+PASS - theme/style resolver source contracts are present
+PASS - cumulative full-source ZIP integrity will be checked after packaging
+
+Flutter/Dart SDK is not installed in this execution environment. Therefore no
+claim is made here that flutter analyze/test passed locally. The user's Windows
+Flutter environment is the execution authority.
+
+Windows certification
+---------------------
+powershell -ExecutionPolicy Bypass -File .\tool\run_word_maturity_wm1_wm2_gate.ps1
+
+After automated gate PASS, manually reopen the same real Microsoft Word resume
+used for the screenshots and compare page 1/page 2, especially the profile photo
+crop, heading case/theme colors and image frame placement.

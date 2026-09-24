@@ -1,0 +1,12 @@
+lib/features/word_converter/domain/models/conversion_document.dart
+lib/features/word_converter/services/docx_conversion_parser.dart
+lib/features/document_reader/presentation/widgets/viewers/word_fidelity_document_view.dart
+lib/features/word_converter/services/docx_pdf_renderer.dart
+lib/features/smart_editor/presentation/widgets/smart_editor_interop_embed_builders.dart
+lib/features/smart_editor/application/smart_editor_docx_structure_editing.dart
+lib/features/smart_editor/services/smart_editor_docx_service.dart
+test/features/document_reader/word_wm3_wm4_paragraph_table_engine_test.dart
+test/features/smart_editor/smart_editor_docx_wm3_wm4_test.dart
+tool/run_word_maturity_wm3_wm4_gate.ps1
+WORD_MATURITY_WM3_WM4_HANDOFF.md
+WM3_WM4_MODIFIED_FILES.txt

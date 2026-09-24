@@ -11,6 +11,7 @@ class SmartEditorBreakEmbedBuilder extends EmbedBuilder {
   Widget build(BuildContext context, EmbedContext embedContext) {
     final type = embedContext.node.value.data?.toString() ?? 'page';
     final section = type == 'section';
+    final column = type == 'column';
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -26,13 +27,19 @@ class SmartEditorBreakEmbedBuilder extends EmbedBuilder {
           Icon(
             section
                 ? Icons.segment_rounded
-                : Icons.insert_page_break_outlined,
+                : column
+                    ? Icons.view_column_outlined
+                    : Icons.insert_page_break_outlined,
             size: 16,
             color: theme.colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 6),
           Text(
-            section ? 'Section break' : 'Page break',
+            section
+                ? 'Section break'
+                : column
+                    ? 'Column break'
+                    : 'Page break',
             style: theme.textTheme.labelMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w700,

@@ -8,31 +8,42 @@ import 'package:edusheet/features/geometry_builder/widgets/geometry_embed_builde
 import 'package:edusheet/features/math_keyboard/presentation/providers/math_keyboard_controller.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/formula_editor_sheet.dart';
 import 'package:edusheet/features/math_keyboard/presentation/widgets/math_expression_embed_builder.dart';
+import 'package:edusheet/features/printing/domain/print_document_source.dart';
+import 'package:edusheet/features/printing/presentation/screens/print_center_screen.dart';
 import 'package:edusheet/features/smart_editor/application/smart_editor_object_commands.dart';
+import 'package:edusheet/features/smart_editor/application/smart_editor_docx_structure_editing.dart';
 import 'package:edusheet/features/smart_editor/application/smart_editor_smart_commands.dart';
 import 'package:edusheet/features/smart_editor/domain/smart_document.dart';
 import 'package:edusheet/features/smart_editor/presentation/providers/smart_editor_provider.dart';
 import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_break_embed_builder.dart';
 import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_command_palette.dart';
+import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_docx_structure_editors.dart';
+import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_document_actions.dart';
 import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_header_footer_sheet.dart';
 import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_interop_embed_builders.dart';
 import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_page_layout_sheet.dart';
+import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_word_advanced_embed_builder.dart';
 import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_properties_panel.dart';
 import 'package:edusheet/features/smart_editor/services/smart_editor_binary_file_saver.dart';
+import 'package:edusheet/features/smart_editor/services/smart_editor_docx_file_opener.dart';
 import 'package:edusheet/features/smart_editor/services/smart_editor_docx_service.dart';
+import 'package:edusheet/features/smart_editor/services/smart_editor_open_import_workflow.dart';
 import 'package:edusheet/features/smart_editor/services/smart_editor_pdf_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pdf/pdf.dart';
 
 class SmartEditorScreen extends ConsumerStatefulWidget {
   const SmartEditorScreen({
     super.key,
     required this.document,
+    this.docxFileOpener,
   });
 
   final SmartDocument document;
+  final SmartEditorDocxFileOpener? docxFileOpener;
 
   @override
   ConsumerState<SmartEditorScreen> createState() => _SmartEditorScreenState();
@@ -62,6 +73,7 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
   bool _showProperties = false;
   bool _fullMode = false;
   bool _exporting = false;
+  bool _openingDocx = false;
   String? _ignoredSuggestionSignature;
 
   @override
@@ -492,6 +504,9 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
           compact: MediaQuery.sizeOf(context).width < 720,
         );
         break;
+      case SmartEditorCommandId.importDocx:
+        await _openWordDocument();
+        break;
       case SmartEditorCommandId.exportDocx:
         await _exportDocument('docx');
         break;
@@ -500,6 +515,69 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
         break;
     }
     if (mounted) _focusNode.requestFocus();
+  }
+
+  Future<void> _openWordDocument() async {
+    if (_openingDocx || _exporting) return;
+    setState(() => _openingDocx = true);
+    try {
+      final workflow = SmartEditorOpenImportWorkflow(
+        opener: widget.docxFileOpener ?? SmartEditorDocxFileOpener(),
+      );
+      final result = await workflow.run(
+        persistCurrent: () => _persistNow(showFailure: true),
+        saveImported: ref.read(smartDocumentRepositoryProvider).save,
+        clearImportedRecovery: (documentId) => ref
+            .read(smartEditorRecoveryStoreProvider)
+            .clear(documentId),
+      );
+      if (result == null || !mounted) return;
+
+      ref.invalidate(smartDocumentsProvider);
+      if (!mounted) return;
+
+      if (result.warnings.isNotEmpty) {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(
+              result.nativeRoundTrip
+                  ? 'EduSheet document restored'
+                  : 'Word import notes',
+            ),
+            content: SingleChildScrollView(
+              child: Text(result.warnings.map((item) => '• $item').join('\n\n')),
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Open document'),
+              ),
+            ],
+          ),
+        );
+      }
+      if (!mounted) return;
+
+      _exitApproved = true;
+      unawaited(
+        Navigator.of(context).pushReplacement<void, void>(
+          MaterialPageRoute<void>(
+            builder: (_) => SmartEditorScreen(document: result.document),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open/import Word document: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _openingDocx = false);
+    }
   }
 
   Future<void> _exportDocument(String format) async {
@@ -568,6 +646,36 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
     }
   }
 
+  Future<void> _openPrintCenter() async {
+    if (_exporting || _openingDocx) return;
+    final persisted = await _persistNow(showFailure: true);
+    if (!persisted || !mounted) return;
+
+    final printDocument = _document;
+    final source = PrintDocumentSource.fixed(
+      title: printDocument.title.trim().isEmpty
+          ? 'EduSheet Document'
+          : printDocument.title,
+      description: 'Smart Editor document',
+      initialPageFormat: PdfPageFormat(
+        printDocument.pageLayout.exportPageWidthPoints,
+        printDocument.pageLayout.exportPageHeightPoints,
+      ),
+      load: () async {
+        final result = await const SmartEditorPdfService().export(printDocument);
+        return result.bytes;
+      },
+    );
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PrintCenterScreen(
+          source: source,
+          allowChooseFile: false,
+        ),
+      ),
+    );
+  }
+
   static String _safeExportName(String value) {
     final cleaned = value
         .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
@@ -634,6 +742,24 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
     return updated;
   }
 
+  Future<SmartEditorWordAdvancedPayload?> _editImportedWordAdvanced(
+    BuildContext context,
+    SmartEditorWordAdvancedPayload payload,
+  ) async {
+    ref.read(mathKeyboardControllerProvider.notifier).hideKeyboard();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final updated = await SmartEditorWordAdvancedEditorDialog.show(
+      context,
+      payload,
+    );
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    }
+    return updated;
+  }
+
   Future<void> _insertGeometry() async {
     final selection = _controller.selection;
     final range = SmartEditorObjectCommands.selectionRange(_controller);
@@ -650,6 +776,84 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
       range: range,
     );
     _focusNode.requestFocus();
+  }
+
+  Future<void> _editImportedWordTable(
+    BuildContext context,
+    SmartEditorInteropTablePayload payload,
+  ) async {
+    final objectId = payload.objectId;
+    if (objectId == null || objectId.isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final updated = await SmartEditorDocxTableEditorSheet.show(context, payload);
+    if (updated == null || !mounted || !context.mounted) return;
+    final replaced = SmartEditorDocxStructureEditing.replaceEmbedByObjectId(
+      _controller,
+      keyName: SmartEditorInteropTableEmbedBuilder.keyName,
+      objectId: objectId,
+      encodedPayload: updated.encode(),
+    );
+    if (!replaced && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('The imported Word object could not be updated.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    if (mounted) _focusNode.requestFocus();
+  }
+
+  Future<void> _editImportedWordImage(
+    BuildContext context,
+    SmartEditorInteropImagePayload payload,
+  ) async {
+    final objectId = payload.objectId;
+    if (objectId == null || objectId.isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final updated = await SmartEditorDocxImageEditorSheet.show(context, payload);
+    if (updated == null || !mounted || !context.mounted) return;
+    final replaced = SmartEditorDocxStructureEditing.replaceEmbedByObjectId(
+      _controller,
+      keyName: SmartEditorInteropImageEmbedBuilder.keyName,
+      objectId: objectId,
+      encodedPayload: updated.encode(),
+    );
+    if (!replaced && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('The imported Word image could not be updated.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    if (mounted) _focusNode.requestFocus();
+  }
+
+  Future<void> _editImportedWordShape(
+    BuildContext context,
+    SmartEditorInteropShapePayload payload,
+  ) async {
+    final objectId = payload.objectId;
+    if (objectId == null || objectId.isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final updated = await SmartEditorDocxShapeEditorDialog.show(context, payload);
+    if (updated == null || !mounted || !context.mounted) return;
+    final replaced = SmartEditorDocxStructureEditing.replaceEmbedByObjectId(
+      _controller,
+      keyName: SmartEditorInteropShapeEmbedBuilder.keyName,
+      objectId: objectId,
+      encodedPayload: updated.encode(),
+    );
+    if (!replaced && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('The imported Word shape could not be updated.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    if (mounted) _focusNode.requestFocus();
   }
 
   void _insertBreak(String type) {
@@ -698,10 +902,18 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
               () => unawaited(_openCommandPalette()),
           const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
               () => unawaited(_openCommandPalette()),
+          const SingleActivator(LogicalKeyboardKey.keyO, control: true):
+              () => unawaited(_openWordDocument()),
+          const SingleActivator(LogicalKeyboardKey.keyO, meta: true):
+              () => unawaited(_openWordDocument()),
           const SingleActivator(LogicalKeyboardKey.keyS, control: true):
               () => unawaited(_saveNow()),
           const SingleActivator(LogicalKeyboardKey.keyS, meta: true):
               () => unawaited(_saveNow()),
+          const SingleActivator(LogicalKeyboardKey.keyP, control: true):
+              () => unawaited(_openPrintCenter()),
+          const SingleActivator(LogicalKeyboardKey.keyP, meta: true):
+              () => unawaited(_openPrintCenter()),
         },
         child: Scaffold(
       appBar: AppBar(
@@ -764,11 +976,16 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
               icon: const Icon(Icons.straighten_rounded),
             ),
           if (!compact)
+            SmartEditorDesktopOpenDocxButton(
+              busy: _openingDocx || _exporting,
+              onOpen: () => unawaited(_openWordDocument()),
+            ),
+          if (!compact)
             PopupMenuButton<String>(
               key: const Key('smart-editor-export'),
               tooltip: 'Export',
-              enabled: !_exporting,
-              icon: _exporting
+              enabled: !_exporting && !_openingDocx,
+              icon: _exporting || _openingDocx
                   ? const SizedBox.square(
                       dimension: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
@@ -806,88 +1023,29 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
             ),
           if (!compact)
             IconButton(
+              key: const Key('smart-editor-print'),
+              tooltip: 'Print (system dialog)',
+              onPressed: _exporting || _openingDocx
+                  ? null
+                  : () => unawaited(_openPrintCenter()),
+              icon: const Icon(Icons.print_outlined),
+            ),
+          if (!compact)
+            IconButton(
               key: const Key('smart-editor-save'),
               tooltip: 'Save now',
               onPressed: _saveNow,
               icon: const Icon(Icons.save_outlined),
             ),
           if (compact)
-            PopupMenuButton<String>(
-              key: const Key('smart-editor-mobile-more'),
-              tooltip: 'More document actions',
-              enabled: !_exporting,
-              icon: _exporting
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.more_vert_rounded),
-              onSelected: (value) {
-                switch (value) {
-                  case 'mode':
-                    _toggleEditorMode();
-                    break;
-                  case 'docx':
-                  case 'pdf':
-                    unawaited(_exportDocument(value));
-                    break;
-                  case 'save':
-                    unawaited(_saveNow());
-                    break;
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: 'mode',
-                  child: Row(
-                    children: [
-                      Icon(
-                        _fullMode
-                            ? Icons.auto_awesome_rounded
-                            : Icons.dashboard_customize_outlined,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(_fullMode ? 'Smart mode' : 'Full tools'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'docx',
-                  child: Row(
-                    children: [
-                      Icon(Icons.description_outlined),
-                      SizedBox(width: 10),
-                      Flexible(
-                        child: Text(
-                          'Export Word (.docx)',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'pdf',
-                  child: Row(
-                    children: [
-                      Icon(Icons.picture_as_pdf_outlined),
-                      SizedBox(width: 10),
-                      Text('Export PDF'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'save',
-                  child: Row(
-                    children: [
-                      Icon(Icons.save_outlined),
-                      SizedBox(width: 10),
-                      Text('Save now'),
-                    ],
-                  ),
-                ),
-              ],
+            SmartEditorMobileDocumentMenu(
+              fullMode: _fullMode,
+              busy: _exporting || _openingDocx,
+              onToggleMode: _toggleEditorMode,
+              onOpenDocx: () => unawaited(_openWordDocument()),
+              onExport: (value) => unawaited(_exportDocument(value)),
+              onPrint: () => unawaited(_openPrintCenter()),
+              onSave: () => unawaited(_saveNow()),
             ),
         ],
       ),
@@ -954,6 +1112,10 @@ class _SmartEditorScreenState extends ConsumerState<SmartEditorScreen>
                               document: _document,
                               availableWidth: constraints.maxWidth,
                               onEditMath: _editEmbeddedMath,
+                              onEditImportedWordImage: _editImportedWordImage,
+                              onEditImportedWordTable: _editImportedWordTable,
+                              onEditImportedWordShape: _editImportedWordShape,
+                              onEditWordAdvanced: _editImportedWordAdvanced,
                             ),
                           ),
                         );
@@ -1435,6 +1597,10 @@ class _SmartEditorPage extends StatelessWidget {
     required this.document,
     required this.availableWidth,
     required this.onEditMath,
+    required this.onEditImportedWordImage,
+    required this.onEditImportedWordTable,
+    required this.onEditImportedWordShape,
+    required this.onEditWordAdvanced,
   });
 
   final QuillController controller;
@@ -1443,6 +1609,10 @@ class _SmartEditorPage extends StatelessWidget {
   final SmartDocument document;
   final double availableWidth;
   final MathExpressionEditCallback onEditMath;
+  final SmartEditorInteropImageEditCallback onEditImportedWordImage;
+  final SmartEditorInteropTableEditCallback onEditImportedWordTable;
+  final SmartEditorInteropShapeEditCallback onEditImportedWordShape;
+  final SmartEditorWordAdvancedEditCallback onEditWordAdvanced;
 
   @override
   Widget build(BuildContext context) {
@@ -1469,7 +1639,7 @@ class _SmartEditorPage extends StatelessWidget {
       width: pageWidth,
       constraints: BoxConstraints(minHeight: minHeight),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _wordBackgroundColor(document.wordBackgroundColorHex),
         border: _pageBorder(layout.borderStyle),
         boxShadow: const [
           BoxShadow(
@@ -1527,8 +1697,18 @@ class _SmartEditorPage extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     embedBuilders: [
                       SmartEditorBreakEmbedBuilder(),
-                      SmartEditorInteropImageEmbedBuilder(),
-                      SmartEditorInteropTableEmbedBuilder(),
+                      SmartEditorInteropImageEmbedBuilder(
+                        onEdit: onEditImportedWordImage,
+                      ),
+                      SmartEditorInteropShapeEmbedBuilder(
+                        onEdit: onEditImportedWordShape,
+                      ),
+                      SmartEditorInteropTableEmbedBuilder(
+                        onEdit: onEditImportedWordTable,
+                      ),
+                      SmartEditorWordAdvancedEmbedBuilder(
+                        onEdit: onEditWordAdvanced,
+                      ),
                       GeometryEmbedBuilder(),
                       MathExpressionEmbedBuilder(onEdit: onEditMath),
                     ],
@@ -1546,6 +1726,14 @@ class _SmartEditorPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _wordBackgroundColor(String? rawHex) {
+    final raw = rawHex?.replaceAll('#', '').trim();
+    if (raw == null || !RegExp(r'^[0-9A-Fa-f]{6}$').hasMatch(raw)) {
+      return Colors.white;
+    }
+    return Color(int.parse('FF$raw', radix: 16));
   }
 
   Border? _pageBorder(SmartDocumentPageBorderStyle style) => switch (style) {

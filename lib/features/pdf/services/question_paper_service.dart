@@ -211,6 +211,30 @@ class QuestionPaperService {
     return format;
   }
 
+  /// Resolves the exact page geometry used by [generateDocument].
+  ///
+  /// Print preview and the native system print dialog use this so landscape,
+  /// A3/A5, Letter, and Legal papers are not initially treated as A4.
+  static PdfPageFormat resolvePageFormat(
+    Paper paper,
+    PaperTemplate template, {
+    PaperExportConfig? config,
+  }) {
+    if (config == null) {
+      return _pageFormatForPaper(paper.pageLayout, template.paperSize);
+    }
+
+    var format = switch (config.pageSize) {
+      ExportPageSize.useTemplate => _getPageFormat(template.paperSize),
+      ExportPageSize.a4 => PdfPageFormat.a4,
+      ExportPageSize.letter => PdfPageFormat.letter,
+    };
+    if (config.orientation == ExportOrientation.landscape) {
+      format = format.landscape;
+    }
+    return format;
+  }
+
   static Future<pw.Document> generateDocument(
     Paper inputPaper,
     PaperTemplate template, {
@@ -290,17 +314,11 @@ class QuestionPaperService {
     }
 
     final headerBuilder = CustomHeaderBuilder();
-    var pageFormat = usePaperLayout
-        ? _pageFormatForPaper(paper.pageLayout, template.paperSize)
-        : switch (exportConfig.pageSize) {
-            ExportPageSize.useTemplate => _getPageFormat(template.paperSize),
-            ExportPageSize.a4 => PdfPageFormat.a4,
-            ExportPageSize.letter => PdfPageFormat.letter,
-          };
-    if (!usePaperLayout &&
-        exportConfig.orientation == ExportOrientation.landscape) {
-      pageFormat = pageFormat.landscape;
-    }
+    final pageFormat = resolvePageFormat(
+      paper,
+      template,
+      config: usePaperLayout ? null : exportConfig,
+    );
     final bookletExtra = exportConfig.booklet.enabled
         ? exportConfig.booklet.gutterPoints / 2
         : 0.0;

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "requiredProfiles": [
+    "resumeTable",
+    "formInvoice",
+    "proseReport",
+    "imageFloatingHeavy",
+    "multiColumnEditorial",
+    "academicTechnical",
+    "multilingualMixedScript"
+  ],
+  "realWordReferences": [
+    {
+      "id": "wm10-microsoft-word-seed",
+      "path": "test/fixtures/word_maturity/real_word/edusheet_powerpaper_microsoft_word.docx",
+      "producer": "Microsoft Word",
+      "sourceSha256": "aedc90f0cd5ced4b355cef5738432e7ae8e8775dab9d9fd92625fc1f3f69e37a",
+      "minimumTables": 1,
+      "minimumImages": 1
+    }
+  ],
+  "visualPolicy": {
+    "pageWidthTolerancePixels": 0.5,
+    "pageHeightTolerancePixels": 0.5,
+    "runtimeExceptionBudget": 0,
+    "structuralFingerprintRequired": true,
+    "referenceScreenshotReady": true
+  }
+}

@@ -116,10 +116,10 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" />
                 <data android:scheme="file" />
-                <data android:pathPattern=".*\\.eds" />
-                <data android:pathPattern=".*\\.EDS" />
-                <data android:pathPattern=".*\\.edtp" />
-                <data android:pathPattern=".*\\.EDTP" />
+                <data android:pathPattern=".*\.eds" />
+                <data android:pathPattern=".*\.EDS" />
+                <data android:pathPattern=".*\.edtp" />
+                <data android:pathPattern=".*\.EDTP" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

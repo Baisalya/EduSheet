@@ -1,0 +1,61 @@
+EduSheet DF6 - Word Real-Document Runtime Hotfix
+=================================================
+
+Evidence from the supplied Windows runtime log
+----------------------------------------------
+The log shows a rendering/layout failure in:
+  lib/features/document_reader/presentation/widgets/viewers/
+  word_fidelity_document_view.dart
+
+The first useful renderer assertion identifies a LayoutBuilder around line 540
+and reports re-entrant layout:
+  !_debugDoingThisLayout
+
+Later failures are cascading consequences:
+- child RenderBoxes have no size;
+- the lazy Word ListView/RenderSliverList cannot obtain child geometry;
+- paint/hit-test then sees null/missing layout state;
+- mouse tracking emits secondary assertions.
+
+Why real documents can trigger it
+---------------------------------
+DF2 table rendering uses:
+- IntrinsicHeight for Word table rows;
+- nested Word tables inside cells;
+- LayoutBuilder inside _WordTableView to resolve table width.
+
+A nested table can therefore place LayoutBuilder inside an intrinsic
+measurement path. Real Word documents exercise this structure more aggressively
+than the synthetic DF5/DF6 fixtures.
+
+Production hotfix
+-----------------
+Remove LayoutBuilder from _WordTableView only.
+
+Preserve:
+- percentage table widths with FractionallySizedBox;
+- fixed Word widths with Align + SizedBox (clamped by finite parent);
+- auto-width tables;
+- table indentation;
+- row/gridSpan/cell/vertical-alignment logic;
+- DF5 page virtualization.
+
+This avoids a layout callback during IntrinsicHeight measurement while retaining
+the modeled Word geometry.
+
+Regression added
+----------------
+A desktop-size widget test creates an outer Word table containing a nested
+percentage-width table and repeatedly pumps frames, asserting:
+- no layout exception;
+- lazy fidelity page list remains active;
+- page renders;
+- nested table text renders.
+
+Important
+---------
+This package addresses the runtime DOCX layout crash from the supplied log.
+It does NOT perform the separate Built-in Kotlin/KGP dependency migration.
+
+Flutter/Dart are not installed in this execution environment. The included
+Windows gate is the authoritative verification.

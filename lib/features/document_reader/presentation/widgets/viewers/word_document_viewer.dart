@@ -1,16 +1,32 @@
+import 'dart:io';
+
 import 'package:docx_file_viewer/docx_file_viewer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:edusheet/features/document_reader/data/services/word_fidelity_document_cache.dart';
 import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
+import 'package:edusheet/features/word_converter/domain/models/conversion_document.dart';
+import 'package:edusheet/features/word_converter/services/docx_conversion_parser.dart';
 import '../../responsive/document_viewport_policy.dart';
+import 'word_fidelity_document_view.dart';
 
 enum _WordViewMode { fitWidth, printLayout }
+
+typedef WordFidelityDocumentLoader = Future<ConversionDocument> Function(File file);
 
 class WordDocumentViewer extends StatefulWidget {
   final DocumentFile document;
 
-  const WordDocumentViewer({super.key, required this.document});
+  /// Optional seam for deterministic widget tests. Production callers leave
+  /// this null and continue to use [DocxConversionParser.parse].
+  final WordFidelityDocumentLoader? fidelityLoader;
+
+  const WordDocumentViewer({
+    super.key,
+    required this.document,
+    this.fidelityLoader,
+  });
 
   @override
   State<WordDocumentViewer> createState() => _WordDocumentViewerState();
@@ -24,11 +40,70 @@ class _WordDocumentViewerState extends State<WordDocumentViewer> {
 
   _WordViewMode? _userViewMode;
   bool _showSearch = false;
+  bool _checkingFidelity = false;
+  ConversionDocument? _fidelityDocument;
+  String _fidelitySearchQuery = '';
+  int _fidelityMatchCount = 0;
+
+  static final WordFidelityDocumentCache _sharedFidelityCache =
+      WordFidelityDocumentCache(maxEntries: 2);
 
   @override
   void initState() {
     super.initState();
     _docxSearchController.addListener(_handleSearchUpdate);
+    _prepareFidelityDocument();
+  }
+
+  @override
+  void didUpdateWidget(covariant WordDocumentViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.document.path != widget.document.path) {
+      _fidelityDocument = null;
+      _fidelitySearchQuery = '';
+      _fidelityMatchCount = 0;
+      _prepareFidelityDocument();
+    }
+  }
+
+  Future<void> _prepareFidelityDocument() async {
+    final file = File(widget.document.path);
+    if (!file.existsSync()) {
+      _checkingFidelity = false;
+      _fidelityDocument = null;
+      return;
+    }
+
+    final requestedPath = widget.document.path;
+    _checkingFidelity = true;
+    try {
+      final loader = widget.fidelityLoader ?? DocxConversionParser.parse;
+      final parsed = widget.fidelityLoader == null
+          ? await _sharedFidelityCache.load(file, loader)
+          : await loader(file);
+      if (!mounted || widget.document.path != requestedPath) return;
+      setState(() {
+        _checkingFidelity = false;
+        _fidelityDocument =
+            WordFidelityDocumentView.shouldUseFor(parsed) ? parsed : null;
+        _fidelityMatchCount = _fidelityDocument == null ||
+                _fidelitySearchQuery.trim().isEmpty
+            ? 0
+            : WordFidelityDocumentView.countMatches(
+                _fidelityDocument!,
+                _fidelitySearchQuery,
+              );
+      });
+    } catch (_) {
+      if (!mounted || widget.document.path != requestedPath) return;
+      // A malformed/unsupported edge case still falls back to the established
+      // package renderer instead of blocking document access.
+      setState(() {
+        _checkingFidelity = false;
+        _fidelityDocument = null;
+        _fidelityMatchCount = 0;
+      });
+    }
   }
 
   @override
@@ -51,9 +126,17 @@ class _WordDocumentViewerState extends State<WordDocumentViewer> {
           height: constraints.maxHeight,
         );
         final mode = _effectiveMode(policy);
+        final fidelityPage = _fidelityDocument?.sections.firstOrNull?.page;
+        final fidelityPrintWidth = fidelityPage == null
+            ? policy.wordPrintLayoutPageWidth
+            : fidelityPage.widthPoints * (96 / 72);
         final pageWidth = mode == _WordViewMode.fitWidth
             ? policy.wordFitWidthPageWidth
-            : policy.wordPrintLayoutPageWidth;
+            : policy.isDesktop
+                ? fidelityPrintWidth
+                    .clamp(1.0, policy.wordAvailableWidth)
+                    .toDouble()
+                : fidelityPrintWidth;
 
         return Focus(
           focusNode: _viewerFocusNode,
@@ -66,46 +149,36 @@ class _WordDocumentViewerState extends State<WordDocumentViewer> {
               Expanded(
                 child: ColoredBox(
                   color: scheme.surfaceContainerHigh,
-                  child: DocxView(
-                    // Use the stable path value instead of constructing a new
-                    // File object on every parent rebuild. docx_file_viewer
-                    // compares its source in didUpdateWidget; a fresh File
-                    // instance is identity-unequal even when the path is the
-                    // same, which can restart parsing after the search
-                    // controller notifies listeners and leave the viewer in a
-                    // perpetual reload/spinner loop.
-                    path: widget.document.path,
-                    // Keep the DocxView identity stable for the lifetime of
-                    // this document. View-mode or viewport-width changes are
-                    // layout operations only; changing the key here remounts
-                    // the package widget and repeats DOCX parsing, embedded
-                    // font loading, widget generation, and search indexing.
-                    key: ValueKey('docx-${widget.document.path}'),
-                    searchController: _docxSearchController,
-                    config: DocxViewConfig(
-                      enableSearch: true,
-                      enableSelection: true,
-                      enableZoom: true,
-                      minScale: 0.5,
-                      maxScale: 3.5,
-                      // Generate the document tree once using the lighter
-                      // continuous path. Fit Width and Print Layout are then
-                      // represented only by the outer page-width shell below;
-                      // docx_file_viewer reads pageWidth during build for this
-                      // mode, so toggling it does not require re-parsing the
-                      // DOCX or re-generating the document widgets.
-                      pageMode: DocxPageMode.continuous,
-                      pageWidth: pageWidth,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: policy.wordHorizontalGutter,
-                        vertical: policy.wordVerticalGutter,
-                      ),
-                      backgroundColor: scheme.surfaceContainerHigh,
-                      // Keep Word page/document defaults document-faithful. The
-                      // surrounding reader chrome follows EduSheet Day/Night.
-                      theme: DocxViewTheme.light(),
-                    ),
-                  ),
+                  child: _checkingFidelity
+                      ? const Center(child: CircularProgressIndicator())
+                      : _fidelityDocument != null
+                          ? WordFidelityDocumentView(
+                              document: _fidelityDocument!,
+                              pageWidth: pageWidth,
+                              searchQuery: _fidelitySearchQuery,
+                            )
+                          : DocxView(
+                              // Use the stable path value instead of constructing
+                              // a new File object on every parent rebuild.
+                              path: widget.document.path,
+                              key: ValueKey('docx-${widget.document.path}'),
+                              searchController: _docxSearchController,
+                              config: DocxViewConfig(
+                                enableSearch: true,
+                                enableSelection: true,
+                                enableZoom: true,
+                                minScale: 0.5,
+                                maxScale: 3.5,
+                                pageMode: DocxPageMode.continuous,
+                                pageWidth: pageWidth,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: policy.wordHorizontalGutter,
+                                  vertical: policy.wordVerticalGutter,
+                                ),
+                                backgroundColor: scheme.surfaceContainerHigh,
+                                theme: DocxViewTheme.light(),
+                              ),
+                            ),
                 ),
               ),
             ],
@@ -128,8 +201,8 @@ class _WordDocumentViewerState extends State<WordDocumentViewer> {
     _WordViewMode mode,
   ) {
     final scheme = Theme.of(context).colorScheme;
-    final resultCount = _docxSearchController.matchCount;
-    final currentIndex = _docxSearchController.currentMatchIndex;
+    final resultCount = _searchResultCount;
+    final currentIndex = _searchCurrentIndex;
     final resultLabel = resultCount > 0
         ? '${currentIndex + 1}/$resultCount'
         : null;
@@ -228,8 +301,8 @@ class _WordDocumentViewerState extends State<WordDocumentViewer> {
 
   Widget _buildSearchBar(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final resultCount = _docxSearchController.matchCount;
-    final currentIndex = _docxSearchController.currentMatchIndex;
+    final resultCount = _searchResultCount;
+    final currentIndex = _searchCurrentIndex;
 
     return Material(
       color: scheme.surfaceContainerLow,
@@ -273,14 +346,14 @@ class _WordDocumentViewerState extends State<WordDocumentViewer> {
             const SizedBox(width: 4),
             IconButton(
               tooltip: 'Previous match',
-              onPressed: resultCount > 0
+              onPressed: resultCount > 0 && _fidelityDocument == null
                   ? _docxSearchController.previousMatch
                   : null,
               icon: const Icon(Icons.keyboard_arrow_up),
             ),
             IconButton(
               tooltip: 'Next match',
-              onPressed: resultCount > 0
+              onPressed: resultCount > 0 && _fidelityDocument == null
                   ? _docxSearchController.nextMatch
                   : null,
               icon: const Icon(Icons.keyboard_arrow_down),
@@ -317,13 +390,36 @@ class _WordDocumentViewerState extends State<WordDocumentViewer> {
       _clearSearch();
       return;
     }
-    _docxSearchController.search(query);
+    if (_fidelityDocument != null) {
+      final matches = WordFidelityDocumentView.countMatches(
+        _fidelityDocument!,
+        query,
+      );
+      setState(() {
+        _fidelitySearchQuery = query;
+        _fidelityMatchCount = matches;
+      });
+    } else {
+      _docxSearchController.search(query);
+    }
   }
 
   void _clearSearch() {
     _docxSearchController.clear();
+    _fidelitySearchQuery = '';
+    _fidelityMatchCount = 0;
     _searchTextController.clear();
     if (mounted) setState(() {});
+  }
+
+  int get _searchResultCount {
+    if (_fidelityDocument == null) return _docxSearchController.matchCount;
+    return _fidelityMatchCount;
+  }
+
+  int get _searchCurrentIndex {
+    if (_fidelityDocument != null) return _searchResultCount > 0 ? 0 : -1;
+    return _docxSearchController.currentMatchIndex;
   }
 
   void _handleSearchUpdate() {

@@ -4,6 +4,7 @@ import 'package:edusheet/features/editor/domain/models/math_expression.dart';
 import 'package:edusheet/features/geometry_builder/application/geometry_embed_layout.dart';
 import 'package:edusheet/features/smart_editor/domain/smart_document.dart';
 import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_interop_embed_builders.dart';
+import 'package:edusheet/features/smart_editor/presentation/widgets/smart_editor_word_advanced_embed_builder.dart';
 
 sealed class SmartEditorExportBlock {
   const SmartEditorExportBlock();
@@ -31,9 +32,20 @@ class SmartEditorExportImage extends SmartEditorExportBlock {
   final SmartEditorInteropImagePayload payload;
 }
 
+class SmartEditorExportShape extends SmartEditorExportBlock {
+  const SmartEditorExportShape(this.payload);
+  final SmartEditorInteropShapePayload payload;
+}
+
 class SmartEditorExportTable extends SmartEditorExportBlock {
   const SmartEditorExportTable(this.payload);
   final SmartEditorInteropTablePayload payload;
+}
+
+
+class SmartEditorExportWordOpaqueBlock extends SmartEditorExportBlock {
+  const SmartEditorExportWordOpaqueBlock(this.payload);
+  final SmartEditorWordAdvancedPayload payload;
 }
 
 class SmartEditorExportBreak extends SmartEditorExportBlock {
@@ -63,6 +75,18 @@ class SmartEditorExportMath extends SmartEditorExportInline {
   String get plainText => expression.plainText.trim().isEmpty
       ? expression.latex
       : expression.plainText;
+}
+
+class SmartEditorExportWordAdvanced extends SmartEditorExportInline {
+  const SmartEditorExportWordAdvanced(this.payload);
+
+  final SmartEditorWordAdvancedPayload payload;
+
+  @override
+  String get plainText => payload.isMarker ||
+          payload.kind == SmartEditorWordAdvancedPayload.commentReferenceKind
+      ? ''
+      : payload.visibleText;
 }
 
 class SmartEditorExportProjection {
@@ -112,6 +136,20 @@ class SmartEditorExportProjection {
       final embed = _embedMap(insert);
       if (embed == null) continue;
 
+      if (embed.containsKey(SmartEditorWordAdvancedEmbedBuilder.keyName)) {
+        final payload = SmartEditorWordAdvancedPayload.fromData(
+          embed[SmartEditorWordAdvancedEmbedBuilder.keyName],
+        );
+        if (payload.kind == SmartEditorWordAdvancedPayload.opaqueOoxmlKind &&
+            payload.ooxmlScope == 'block') {
+          if (inlines.isNotEmpty) flushParagraph();
+          blocks.add(SmartEditorExportWordOpaqueBlock(payload));
+        } else {
+          inlines.add(SmartEditorExportWordAdvanced(payload));
+        }
+        continue;
+      }
+
       if (embed.containsKey(MathExpression.quillEmbedKey)) {
         final expression = MathExpression.tryFromQuillEmbedData(
           embed[MathExpression.quillEmbedKey],
@@ -153,6 +191,18 @@ class SmartEditorExportProjection {
           SmartEditorExportImage(
             SmartEditorInteropImagePayload.fromData(
               embed[SmartEditorInteropImageEmbedBuilder.keyName],
+            ),
+          ),
+        );
+        continue;
+      }
+
+      if (embed.containsKey(SmartEditorInteropShapeEmbedBuilder.keyName)) {
+        if (inlines.isNotEmpty) flushParagraph();
+        blocks.add(
+          SmartEditorExportShape(
+            SmartEditorInteropShapePayload.fromData(
+              embed[SmartEditorInteropShapeEmbedBuilder.keyName],
             ),
           ),
         );

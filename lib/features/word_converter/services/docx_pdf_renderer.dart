@@ -107,6 +107,23 @@ class _SectionRenderer {
             pageCount: pageCount,
           ),
         );
+      } else if (block case final ConversionOpaqueOoxmlBlock opaque) {
+        if (opaque.fallbackBlocks.isNotEmpty) {
+          widgets.addAll(
+            renderBlocks(
+              opaque.fallbackBlocks,
+              pageNumber: pageNumber,
+              pageCount: pageCount,
+            ),
+          );
+        } else {
+          widgets.add(
+            pw.Text(
+              '[Word ${opaque.featureKind} preserved]',
+              style: const pw.TextStyle(fontSize: 9),
+            ),
+          );
+        }
       } else if (block case final ConversionTable table) {
         widgets.add(
           _table(
@@ -185,7 +202,8 @@ class _SectionRenderer {
     final spans = <pw.InlineSpan>[];
     final listLabel = paragraph.listLabel;
     if (listLabel != null && listLabel.isNotEmpty) {
-      final markerStyle = paragraph.inlines.whereType<ConversionTextRun>().firstOrNull?.style ??
+      final markerStyle = paragraph.listLabelStyle ??
+          paragraph.inlines.whereType<ConversionTextRun>().firstOrNull?.style ??
           const ConversionTextStyle();
       spans.add(pw.TextSpan(text: listLabel, style: _textStyle(markerStyle)));
     }
@@ -214,6 +232,15 @@ class _SectionRenderer {
               pageNumber: pageNumber,
               pageCount: pageCount,
             ),
+            style: _textStyle(inline.style),
+          ),
+        );
+      } else if (inline is ConversionOpaqueOoxmlRun) {
+        spans.add(
+          pw.TextSpan(
+            text: inline.fallbackText.isEmpty
+                ? '[Word ${inline.featureKind} preserved]'
+                : inline.fallbackText,
             style: _textStyle(inline.style),
           ),
         );
@@ -372,6 +399,7 @@ class _DocxFontResolver {
           final style = switch (inline) {
             ConversionTextRun run => run.style,
             ConversionDynamicFieldRun field => field.style,
+            ConversionOpaqueOoxmlRun opaque => opaque.style,
             _ => null,
           };
           if (style == null) continue;
@@ -380,6 +408,8 @@ class _DocxFontResolver {
             keys.add(_FontKey(family, style.bold, style.italic));
           }
         }
+      } else if (block is ConversionOpaqueOoxmlBlock) {
+        _collectFromBlocks(block.fallbackBlocks, keys);
       } else if (block is ConversionTable) {
         for (final row in block.rows) {
           for (final cell in row.cells) {

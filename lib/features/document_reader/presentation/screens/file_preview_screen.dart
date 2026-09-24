@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 
 import 'package:edusheet/features/document_reader/domain/models/document_model.dart';
+import 'package:edusheet/features/printing/application/file_print_source_factory.dart';
+import 'package:edusheet/features/printing/presentation/screens/print_center_screen.dart';
 import '../widgets/viewers/pdf_document_viewer.dart';
 import '../widgets/viewers/presentation_document_viewer.dart';
 import '../widgets/viewers/spreadsheet_document_viewer.dart';
@@ -46,6 +48,13 @@ class FilePreviewScreen extends StatelessWidget {
           ],
         ),
         actions: [
+          if (FilePrintSourceFactory.supportsPath(document.path))
+            IconButton(
+              key: const Key('document-reader-print'),
+              tooltip: 'Print document',
+              onPressed: () => _openPrintCenter(context),
+              icon: const Icon(Icons.print_outlined),
+            ),
           IconButton(
             tooltip: 'Open in another app',
             onPressed: () => _openExternally(context),
@@ -58,6 +67,21 @@ class FilePreviewScreen extends StatelessWidget {
           _DocumentCapabilityStrip(document: document),
           Expanded(child: _DocumentViewerHost(document: document)),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openPrintCenter(BuildContext context) async {
+    final source = FilePrintSourceFactory.fromPath(
+      document.path,
+      displayName: document.name,
+    );
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PrintCenterScreen(
+          source: source,
+          allowChooseFile: false,
+        ),
       ),
     );
   }

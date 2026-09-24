@@ -1,15 +1,31 @@
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+
 import 'package:edusheet/features/editor/domain/models/paper_model.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_export_config.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/services/export_file_service.dart';
 import 'package:edusheet/features/pdf/services/export_task.dart';
 import 'package:edusheet/features/pdf/services/question_paper_service.dart';
+import 'package:edusheet/features/printing/domain/print_document_source.dart';
+import 'package:edusheet/features/printing/services/global_print_service.dart';
 
 class PdfService {
-  static Future<void> generateAndPreview(
+  static PdfPageFormat resolvePageFormat(
+    Paper paper,
+    PaperTemplate template, {
+    PaperExportConfig? config,
+  }) {
+    return QuestionPaperService.resolvePageFormat(
+      paper,
+      template,
+      config: config,
+    );
+  }
+
+  static Future<Uint8List> generateBytes(
     Paper paper,
     PaperTemplate template, {
     PaperExportConfig? config,
@@ -19,8 +35,21 @@ class PdfService {
       template,
       config: config,
     );
-    final bytes = await pdf.save();
-    await Printing.layoutPdf(onLayout: (_) async => bytes);
+    return Uint8List.fromList(await pdf.save());
+  }
+
+  static Future<void> generateAndPreview(
+    Paper paper,
+    PaperTemplate template, {
+    PaperExportConfig? config,
+  }) async {
+    final source = PrintDocumentSource.fixed(
+      title: paper.title,
+      description: 'EduSheet question paper',
+      initialPageFormat: resolvePageFormat(paper, template, config: config),
+      load: () => generateBytes(paper, template, config: config),
+    );
+    await const GlobalPrintService().openSystemPrintDialog(source);
   }
 
   static Future<File> export(

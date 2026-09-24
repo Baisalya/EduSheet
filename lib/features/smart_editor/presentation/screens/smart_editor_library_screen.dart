@@ -1,12 +1,9 @@
-import 'dart:io';
-
 import 'package:edusheet/features/smart_editor/domain/smart_document.dart';
 import 'package:edusheet/features/smart_editor/presentation/providers/smart_editor_provider.dart';
 import 'package:edusheet/features/smart_editor/presentation/screens/smart_editor_screen.dart';
-import 'package:edusheet/features/smart_editor/services/smart_editor_docx_service.dart';
+import 'package:edusheet/features/smart_editor/services/smart_editor_docx_file_opener.dart';
 import 'package:edusheet/features/teaching_planner/domain/models/teaching_resource.dart';
 import 'package:edusheet/features/teaching_planner/presentation/providers/teaching_planner_provider.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -123,29 +120,10 @@ class SmartEditorLibraryScreen extends ConsumerWidget {
   }
 
   Future<void> _importDocx(BuildContext context, WidgetRef ref) async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const <String>['docx'],
-      allowMultiple: false,
-      withData: true,
-    );
-    if (picked == null || picked.files.isEmpty || !context.mounted) return;
-    final item = picked.files.single;
-    File? temporary;
     try {
-      File source;
-      if (item.path != null && item.path!.trim().isNotEmpty) {
-        source = File(item.path!);
-      } else if (item.bytes != null) {
-        final directory = await Directory.systemTemp.createTemp('edusheet-smart-docx-');
-        temporary = File('${directory.path}${Platform.pathSeparator}${item.name}');
-        await temporary.writeAsBytes(item.bytes!, flush: true);
-        source = temporary;
-      } else {
-        throw const FormatException('The selected Word file could not be read.');
-      }
+      final result = await SmartEditorDocxFileOpener().pickAndImport();
+      if (result == null || !context.mounted) return;
 
-      final result = await const SmartEditorDocxService().importFile(source);
       await ref.read(smartDocumentRepositoryProvider).save(result.document);
       try {
         await ref
@@ -192,15 +170,6 @@ class SmartEditorLibraryScreen extends ConsumerWidget {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } finally {
-      if (temporary != null) {
-        try {
-          final directory = temporary.parent;
-          if (await directory.exists()) await directory.delete(recursive: true);
-        } catch (_) {
-          // Best-effort cleanup only.
-        }
-      }
     }
   }
 

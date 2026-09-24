@@ -31,6 +31,9 @@ import 'package:edusheet/features/pdf/application/question_paper_export_service.
 import 'package:edusheet/features/pdf/application/paper_template_resolver.dart';
 import 'package:edusheet/features/pdf/domain/models/paper_template.dart';
 import 'package:edusheet/features/pdf/presentation/providers/template_provider.dart';
+import 'package:edusheet/features/pdf/services/pdf_service.dart';
+import 'package:edusheet/features/printing/domain/print_document_source.dart';
+import 'package:edusheet/features/printing/presentation/screens/print_center_screen.dart';
 import 'package:edusheet/features/question_bank/domain/models/question_bank_model.dart';
 import 'package:edusheet/features/question_bank/presentation/providers/question_bank_provider.dart';
 import 'package:edusheet/features/question_bank/presentation/widgets/question_bank_picker_sheet.dart';
@@ -754,6 +757,27 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
     );
   }
 
+  Future<void> _printPaper(Paper paper) async {
+    final template = PaperTemplateResolver.resolve(
+      paper.templateId,
+      ref.read(templateProvider).all,
+    );
+    final source = PrintDocumentSource.fixed(
+      title: paper.title.trim().isEmpty ? 'EduSheet Paper' : paper.title,
+      description: 'Create Paper document',
+      initialPageFormat: PdfService.resolvePageFormat(paper, template),
+      load: () => PdfService.generateBytes(paper, template),
+    );
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => PrintCenterScreen(
+          source: source,
+          allowChooseFile: false,
+        ),
+      ),
+    );
+  }
+
   Future<void> _exportPdf(Paper paper) async {
     if (!await allowPdfExport(context, ref) || !mounted) return;
     try {
@@ -893,6 +917,9 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
         bindings: {
           const SingleActivator(LogicalKeyboardKey.keyS, control: true): () {
             _saveNow();
+          },
+          const SingleActivator(LogicalKeyboardKey.keyP, control: true): () {
+            unawaited(_printPaper(paper));
           },
         },
         child: Focus(
@@ -1249,6 +1276,12 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
             icon: const Icon(Icons.visibility_outlined),
           ),
         ),
+        IconButton(
+          key: const Key('paper-composer-print'),
+          tooltip: 'Print paper',
+          onPressed: () => _printPaper(paper),
+          icon: const Icon(Icons.print_outlined),
+        ),
         if (expanded)
           GuideAnchor(
             targetId: CreatePaperGuideTargets.outputOptions,
@@ -1293,6 +1326,9 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                       selectedTemplateId: paper.templateId,
                     );
                     break;
+                  case _PaperMenuAction.print:
+                    _printPaper(paper);
+                    break;
                   case _PaperMenuAction.exportPdf:
                     _exportPdf(paper);
                     break;
@@ -1330,6 +1366,14 @@ class _PaperComposerScreenState extends ConsumerState<PaperComposerScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(Icons.style_outlined),
                     title: Text('Appearance'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _PaperMenuAction.print,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.print_outlined),
+                    title: Text('Print paper'),
                   ),
                 ),
                 PopupMenuItem(
@@ -1570,6 +1614,7 @@ enum _PaperMenuAction {
   details,
   rename,
   style,
+  print,
   exportPdf,
   exportWord,
   exportEds,

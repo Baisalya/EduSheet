@@ -25,6 +25,7 @@ import '../../../features/eds_import/presentation/screens/eds_import_center_scre
 import '../../../features/teaching_planner/presentation/screens/teaching_workspace_screen.dart';
 import '../../../features/calculator/presentation/screens/calculator_screen.dart';
 import '../../../features/word_converter/presentation/screens/word_converter_screen.dart';
+import '../../../features/printing/presentation/screens/print_center_screen.dart';
 import '../../../features/teaching_planner/presentation/screens/teaching_planner_screen.dart';
 import 'package:edusheet/features/smart_editor/presentation/screens/smart_editor_library_screen.dart';
 import '../../../features/premium/presentation/widgets/premium_badge_button.dart';
@@ -270,8 +271,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         targetId: CreatePaperGuideTargets.homeCreatePaper,
         reportPointerActivation: true,
         child: _HomeCard(
-          lottieAsset: 'assets/lottie/education_document_final_upper_notes.json',
           title: 'Create Paper',
+          lottieAsset: 'assets/lottie/WritePaper.json',
           icon: Icons.note_add,
           color: Colors.blue,
           onTap: _openCreatePaper,
@@ -333,6 +334,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         icon: Icons.transform,
         color: Colors.indigo,
         onTap: () => _open(const WordConverterScreen()),
+      ),
+
+      _HomeCard(
+        title: 'Print Center',
+        lottieAsset: 'assets/lottie/DocumentReader.json',
+        icon: Icons.print_rounded,
+        color: Colors.blueGrey,
+        onTap: () => _open(const PrintCenterScreen()),
       ),
 
       _HomeCard(

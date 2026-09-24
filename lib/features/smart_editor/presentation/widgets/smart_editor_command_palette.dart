@@ -18,6 +18,7 @@ enum SmartEditorCommandId {
   pageLayout,
   headerFooter,
   properties,
+  importDocx,
   exportDocx,
   exportPdf,
 }
@@ -40,7 +41,9 @@ class SmartEditorCommandDescriptor {
   bool matches(String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return true;
-    return '$title $subtitle $keywords'.toLowerCase().contains(q);
+    final haystack = '$title $subtitle $keywords'.toLowerCase();
+    final terms = q.split(RegExp(r'\s+')).where((term) => term.isNotEmpty);
+    return terms.every(haystack.contains);
   }
 }
 
@@ -163,6 +166,13 @@ const smartEditorAllCommands = <SmartEditorCommandDescriptor>[
     subtitle: 'Open paragraph and page controls',
     icon: Icons.tune_rounded,
     keywords: 'properties panel formatting',
+  ),
+  SmartEditorCommandDescriptor(
+    id: SmartEditorCommandId.importDocx,
+    title: 'Open / import Word (.docx)',
+    subtitle: 'Open a Word file as a new editable Smart Editor document',
+    icon: Icons.file_open_outlined,
+    keywords: 'open import word docx file windows android',
   ),
   SmartEditorCommandDescriptor(
     id: SmartEditorCommandId.exportDocx,

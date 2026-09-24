@@ -5,6 +5,8 @@ import 'dart:io';
 import '../providers/omr_provider.dart';
 import '../../domain/models/omr_config.dart';
 import '../../services/omr_pdf_service.dart';
+import 'package:edusheet/features/printing/domain/print_document_source.dart';
+import 'package:edusheet/features/printing/presentation/screens/print_center_screen.dart';
 
 class OmrGeneratorPage extends ConsumerWidget {
   const OmrGeneratorPage({super.key});
@@ -14,6 +16,25 @@ class OmrGeneratorPage extends ConsumerWidget {
     final config = ref.watch(omrProvider);
     final notifier = ref.read(omrProvider.notifier);
     final scheme = Theme.of(context).colorScheme;
+
+    Future<void> openPrintCenter() {
+      final title = config.examName.trim().isEmpty
+          ? 'OMR Sheet'
+          : '${config.examName.trim()} OMR Sheet';
+      final source = PrintDocumentSource.fixed(
+        title: title,
+        description: 'EduSheet OMR sheet',
+        load: () => OmrPdfService.generateBytes(config),
+      );
+      return Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => PrintCenterScreen(
+            source: source,
+            allowChooseFile: false,
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -27,8 +48,8 @@ class OmrGeneratorPage extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: () => OmrPdfService.generateAndPreview(config),
+            icon: const Icon(Icons.print_outlined),
+            onPressed: openPrintCenter,
           ),
         ],
       ),
@@ -105,10 +126,10 @@ class OmrGeneratorPage extends ConsumerWidget {
                 ],
               ),
               child: ElevatedButton.icon(
-                onPressed: () => OmrPdfService.generateAndPreview(config),
-                icon: Icon(Icons.picture_as_pdf, color: scheme.onPrimary),
+                onPressed: openPrintCenter,
+                icon: Icon(Icons.print_rounded, color: scheme.onPrimary),
                 label: Text(
-                  'Generate & Export PDF',
+                  'Preview & Print OMR',
                   style: TextStyle(
                     color: scheme.onPrimary,
                     fontWeight: FontWeight.bold,
