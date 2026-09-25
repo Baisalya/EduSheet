@@ -40,20 +40,20 @@ Follow only the matching path:
 
 ### QA is separate from AAB/MSIX packaging
 
-After the release mode is known, treat these as independent jobs:
+After the release mode is known, the AI may ask which of these three jobs to
+perform:
 
 1. QA/testing only.
-2. Android AAB packaging only.
-3. Windows MSIX packaging only.
-4. Store upload or promotion of an existing artifact.
+2. Generate only: choose Android AAB or Windows MSIX.
+3. Store action only: upload an existing artifact or promote/submit the exact
+   tested Store release.
 
-Do not automatically run the full Flutter test suite because an AAB or MSIX was
-requested. If the owner says the current source is already tested, use the
-default packaging-only command and record the reused QA evidence in
-`release/RELEASE_LOG.md`. Fresh QA is required only when explicitly requested,
-when source/dependency/build configuration changed after that evidence, or when
-the owner chooses it because no usable evidence exists. Store upload and
-Production promotion never rebuild the artifact.
+The AAB and MSIX packaging commands never run `flutter analyze` or `flutter
+test`, and they do not accept a switch that combines QA with packaging. Run the
+QA-only block below as its own action when fresh QA is requested. If the owner
+says the exact current source is already tested, record the reused evidence in
+`release/RELEASE_LOG.md` and perform only the requested job. Store upload and
+Production promotion never rebuild or retest the artifact.
 
 QA-only commands:
 
@@ -158,14 +158,9 @@ $env:EDUSHEET_PURCHASE_VERIFICATION_URL = 'https://baisalya-entitlement-api.bais
 .\release\google_play\BUILD_PLAY_AAB.ps1 -BuildNumber 10
 ```
 
-The default command is packaging-only: it rejects missing/malformed IDs and
-Google sample IDs, runs clean/dependency restore, builds the AAB, then verifies
-its identity/version and records its hash. To run fresh QA in the same
-invocation, append `-RunQualityChecks`:
-
-```powershell
-.\release\google_play\BUILD_PLAY_AAB.ps1 -BuildNumber 10 -RunQualityChecks
-```
+The command is packaging-only: it rejects missing/malformed IDs and Google
+sample IDs, runs clean/dependency restore, builds the AAB, then verifies its
+identity/version and records its hash. It never runs analysis or tests.
 
 The release build is equivalent to:
 
@@ -268,10 +263,9 @@ From the repository root run:
   -MicrosoftStoreId '9N0ZK8C31X94'
 ```
 
-That is the packaging-only command. Add `-RunQualityChecks` only when fresh
-analysis/tests are wanted in the same invocation. `-SkipChecks` remains accepted
-for older automation but is no longer necessary because packaging-only is the
-default.
+That is the packaging-only command. It never runs analysis/tests and accepts no
+switch that combines QA with packaging. Use the QA-only command block near the
+top of this runbook when fresh QA is wanted.
 
 The script builds Windows with `PREMIUM_ENABLED=true`, the known Microsoft
 product ID and Store ID. Because the add-on is still unpublished/unavailable,
@@ -294,8 +288,9 @@ Signature: NotSigned (correct for this Partner Center upload artifact)
 Mode: remote-ready Free; complimentary full access while add-on is unavailable
 ```
 
-For local install testing, use `BUILD_QA_MSIX.ps1`; do not upload the QA package
-to Partner Center.
+For a local-install package, use `BUILD_QA_MSIX.ps1`; despite its historical
+name, this is packaging-only and never runs the QA suite. Do not upload that
+package to Partner Center.
 
 ## Upload and release the free Windows app
 

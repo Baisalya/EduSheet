@@ -6,10 +6,10 @@ ads-ready Free closed test, ads-ready Free production promotion, or remote
 Premium activation,
 ask for that choice first. Never infer monetization from prepared billing code.
 
-QA and AAB packaging are separate. `BUILD_PLAY_AAB.ps1` is packaging-only by
-default; add `-RunQualityChecks` only for explicitly requested fresh QA. Closed
-upload and Production promotion reuse the exact existing AAB without testing or
-rebuilding it.
+The AI may ask for one of three actions: QA only, AAB generation only, or a
+Store action using an existing artifact. `BUILD_PLAY_AAB.ps1` never runs tests
+or analysis and accepts no QA switch. Closed upload and Production promotion
+reuse the exact existing AAB without rebuilding or retesting it.
 
 ## Current release contract
 
@@ -50,9 +50,9 @@ $env:EDUSHEET_PURCHASE_VERIFICATION_URL = 'https://baisalya-entitlement-api.bais
 .\release\google_play\BUILD_PLAY_AAB.ps1 -BuildNumber 10
 ```
 
-The script cleans the build, restores dependencies, and builds the AAB. It runs
-all tests and static analysis only when `-RunQualityChecks` is supplied. The
-release build is:
+The script cleans the build, restores dependencies, and builds the AAB. It
+never runs tests or static analysis; run those separately only when QA is
+requested. The release build is:
 
 ```powershell
 flutter build appbundle --release --build-number=10 `

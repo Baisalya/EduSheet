@@ -14,9 +14,7 @@ param(
 
     [string]$MicrosoftStoreId = '',
     [string]$PremiumProductId = 'edusheet_premium_yearly',
-    [string]$MsixVersion = '',
-    [switch]$RunQualityChecks,
-    [switch]$SkipChecks
+    [string]$MsixVersion = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,24 +44,9 @@ if ($MsixVersion -ne $expectedMsixVersion) {
     throw "MSIX version $MsixVersion must match pubspec mapping $expectedMsixVersion."
 }
 
-if ($RunQualityChecks -and $SkipChecks) {
-    throw 'Use either -RunQualityChecks or -SkipChecks, not both.'
-}
-if ($SkipChecks) {
-    Write-Warning '-SkipChecks is retained for compatibility. Packaging-only is now the default.'
-}
-if ($RunQualityChecks) {
-    flutter pub get
-    if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed.' }
-    flutter analyze --no-fatal-infos
-    if ($LASTEXITCODE -ne 0) { throw 'flutter analyze failed.' }
-    flutter test
-    if ($LASTEXITCODE -ne 0) { throw 'flutter test failed.' }
-} else {
-    flutter pub get
-    if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed.' }
-    Write-Host 'Quality checks skipped. This command is packaging-only; use -RunQualityChecks for fresh analyze/test.' -ForegroundColor Yellow
-}
+flutter pub get
+if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed.' }
+Write-Host 'Packaging only: this command never runs flutter analyze or flutter test.' -ForegroundColor Yellow
 
 $buildArguments = @(
     'build', 'windows', '--release',
@@ -114,5 +97,4 @@ if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf)) {
     -ExpectedVersion $MsixVersion
 
 Write-Output "STORE_PACKAGE=$packagePath"
-Write-Output "FRESH_QUALITY_CHECKS=$($RunQualityChecks.IsPresent)"
 Write-Warning 'Package created only. This script never uploads or submits to Partner Center.'

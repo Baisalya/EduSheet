@@ -1,20 +1,10 @@
-[CmdletBinding()]
-param(
-    [switch]$SkipChecks
-)
-
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location -LiteralPath $projectRoot
 
-if (-not $SkipChecks) {
-    flutter pub get
-    if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed.' }
-    flutter analyze --no-fatal-infos
-    if ($LASTEXITCODE -ne 0) { throw 'flutter analyze failed.' }
-    flutter test
-    if ($LASTEXITCODE -ne 0) { throw 'flutter test failed.' }
-}
+flutter pub get
+if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed.' }
+Write-Host 'Packaging only: this local-install MSIX command never runs analysis or tests.' -ForegroundColor Yellow
 
 flutter build windows --release `
     --dart-define=PREMIUM_ENABLED=false `

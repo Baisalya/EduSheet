@@ -295,14 +295,26 @@ Next required action: Upload AAB to Play Console closed testing track and MSIX t
 
 - QA, Android AAB packaging, Windows MSIX packaging, Store upload, and Store
   promotion/submission are now independent release actions.
-- `release/google_play/BUILD_PLAY_AAB.ps1` and
-  `release/microsoft_store/BUILD_STORE_MSIX.ps1` package by default. Fresh
-  analysis and tests run only when `-RunQualityChecks` is supplied.
+- This was the first packaging-only default. The stricter 2026-09-25 entry
+  below supersedes its combined-QA option: packaging commands now never run
+  analysis or tests.
 - Matching QA evidence may be reused when the exact source and build settings
   were already tested. Artifact identity, version, signature, size, and SHA-256
   checks remain required before upload.
 - This entry records a process-only change. No tests, build, Store upload,
   submission, promotion, or monetization change was performed.
+
+## 2026-09-25 — strict QA/package separation
+
+- The Android AAB, Partner Center MSIX, and local-install MSIX commands now
+  perform packaging only and never run Flutter analysis or tests.
+- QA runners no longer generate an AAB/MSIX. An AI must select one action:
+  QA only, artifact generation only, or Store upload/promotion using an existing
+  artifact.
+- The earlier optional combined-QA switches are retired. QA evidence may still
+  be run fresh or reused, but it remains a separate recorded action.
+- No QA, artifact build, Store upload, promotion, submission, or monetization
+  change was performed for this process update.
 
 ## Entry template
 

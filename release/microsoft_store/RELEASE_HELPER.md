@@ -6,9 +6,10 @@ Free or Microsoft monetized, ask for that choice first. The current Store MSIX
 is remote-ready but remains complimentary while the add-on is unavailable; the
 packaging script alone must not be treated as monetization activation.
 
-QA and MSIX packaging are separate. `BUILD_STORE_MSIX.ps1` is packaging-only by
-default; add `-RunQualityChecks` only for explicitly requested fresh QA. Partner
-Center upload/submission reuses the exact existing MSIX without rebuilding it.
+QA and MSIX packaging are separate. `BUILD_STORE_MSIX.ps1` and
+`BUILD_QA_MSIX.ps1` are always packaging-only; neither accepts a QA switch or
+runs analysis/tests. Partner Center upload/submission reuses the exact existing
+MSIX without rebuilding or retesting it.
 
 This file is the release contract for a human or AI preparing the next EduSheet package. Read it before changing versions or generating an MSIX. Update it in the same change as every release.
 
@@ -87,7 +88,10 @@ Run from PowerShell:
 .\release\microsoft_store\BUILD_QA_MSIX.ps1
 ```
 
-This creates a locally signed QA package with the provisional local identity. It is for manifest/package testing and is not the file to upload to Partner Center.
+This creates a locally signed package with the provisional local identity. The
+historical filename contains `QA`, but the command performs packaging only and
+never runs the test suite. It is for local manifest/package inspection and is
+not the file to upload to Partner Center.
 
 ## Build the Partner Center MSIX without submitting
 
@@ -110,7 +114,10 @@ Then run:
 
 The script builds with premium checkout disabled, creates an unsigned Store MSIX, verifies its identity/version/file associations, and stops. It never uploads or submits anything.
 
-## Required verification before any upload
+## Separate QA evidence required before any upload
+
+Run or reuse this evidence independently from MSIX packaging. The MSIX commands
+above never execute these QA steps.
 
 1. `flutter analyze --no-fatal-infos` (errors and warnings must still be fixed)
 2. `flutter test`
